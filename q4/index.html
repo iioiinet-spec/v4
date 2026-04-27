@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Inside of</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; cursor: crosshair; font-family: monospace; }
+        canvas { display: block; }
+        #controls {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
+            padding: 15px; border-radius: 12px; color: white; display: flex; flex-direction: column; gap: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2); font-size: 11px;
+        }
+        input { cursor: pointer; width: 150px; accent-color: #fff; }
+        .hint { margin-top: 5px; opacity: 0.6; font-size: 9px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label>COLOR THEME</label>
+        <input type="range" id="hueSlider" min="0" max="360" value="140">
+        <label>FLOW SPEED</label>
+        <input type="range" id="speedSlider" min="0" max="100" value="30">
+        <div class="hint">
+            • Space: Reboot<br>
+            • Type any key: Glitch<br>
+            • Click: Shake
+        </div>
+    </div>
+    <canvas id="artCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('artCanvas');
+    const ctx = canvas.getContext('2d');
+    const hueSlider = document.getElementById('hueSlider');
+    const speedSlider = document.getElementById('speedSlider');
+
+    let width, height, particles = [];
+    let angleX = 0, angleY = 0, shakeIntensity = 0;
+    let isDragging = false, lastMouseX = 0, lastMouseY = 0, clickPos = {x:-1000, y:-1000};
+    
+    let highlightedKey = null, highlightTimer = 0;
+    let rebootFlash = 0; 
+    const charset = "0123456789ABCDEFHIJKLMNOPQRSTUVWXYZ$#@&?!^%+-*";
+
+    function init() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        particles = [];
+        for (let i = 0; i < 450; i++) {
+            particles.push({
+                x: (Math.random() - 0.5) * 1400,
+                y: (Math.random() - 0.5) * 1400,
+                z: (Math.random() - 0.5) * 1400,
+                char: charset[Math.floor(Math.random() * charset.length)],
+                baseSpeed: Math.random() * 1.5 + 0.5,
+                opacity: 1
+            });
+        }
+    }
+
+    function rotate(p, ax, ay) {
+        let x = p.x * Math.cos(ay) - p.z * Math.sin(ay);
+        let z = p.x * Math.sin(ay) + p.z * Math.cos(ay);
+        let y = p.y * Math.cos(ax) - z * Math.sin(ax);
+        z = p.y * Math.sin(ax) + z * Math.cos(ax);
+        return { x, y, z };
+    }
+
+    function draw() {
+        const currentHue = parseInt(hueSlider.value);
+        const speedMultiplier = speedSlider.value / 10+3;
+        
+        shakeIntensity *= 0.92; 
+        if(highlightTimer > 0) highlightTimer -= 0.03; // 글리치 지속 시간 약간 단축 (더 날카롭게)
+        if(rebootFlash > 0) rebootFlash *= 0.95; 
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, width, height);
+
+        const bgGrad = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, width/1.1);
+        const lightBase = 15 + (rebootFlash * 70); 
+        bgGrad.addColorStop(0, `hsla(${currentHue}, 100%, ${lightBase}%, 1)`);
+        bgGrad.addColorStop(1, "black");
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        const centerX = width/2, centerY = height/2, perspective = 650;
+
+        let rendered = particles.map(p => {
+            p.y += p.baseSpeed * speedMultiplier;
+            if (p.y > 700) p.y = -700;
+            if(p.opacity < 1) p.opacity += 0.02; 
+            return { ...rotate(p, angleX, angleY), char: p.char, opacity: p.opacity };
+        }).sort((a, b) => b.z - a.z);
+
+        ctx.globalCompositeOperation = 'lighter'; 
+
+        rendered.forEach(p => {
+            let scale = perspective / (perspective + p.z);
+            let x2d = p.x * scale + centerX;
+            let y2d = p.y * scale + centerY;
+
+            const isTarget = (highlightedKey && p.char === highlightedKey && highlightTimer > 0);
+
+            // [클릭 흔들림]
+            if (shakeIntensity > 1) {
+                let d = Math.hypot(x2d - clickPos.x, y2d - clickPos.y);
+                if (d < 300) {
+                    let force = (1 - d/300) * shakeIntensity;
+                    x2d += (Math.random() - 0.5) * force;
+                    y2d += (Math.random() - 0.5) * force;
+                }
+            }
+
+            if (scale > 0.1) {
+                const alpha = Math.max(0, Math.min(1, scale * 1.5) * p.opacity - (rebootFlash * 1.5));
+                
+                if (alpha > 0) {
+                    if (isTarget) {
+                        // --- [글리치 강화 로직] ---
+                        // 흔들림 폭과 색상 오프셋을 기존보다 2배 이상 키움
+                        const glitchOffset = Math.sin(Date.now() * 0.2) * 15 * highlightTimer; 
+                        const shakeOffset = (Math.random() - 0.5) * 20 * highlightTimer;
+                        
+                        ctx.font = `bold ${Math.floor(80 * scale)}px monospace`; // 폰트 크기 대폭 증가 (55 -> 80)
+                        
+                        // Red 레이어
+                        ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+                        ctx.fillText(p.char, x2d + glitchOffset + shakeOffset, y2d);
+                        // Blue 레이어
+                        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`;
+                        ctx.fillText(p.char, x2d - glitchOffset - shakeOffset, y2d);
+                        // Main White 레이어
+                        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                        ctx.fillText(p.char, x2d + (Math.random()-0.5)*5, y2d);
+                    } else {
+                        ctx.font = `bold ${Math.floor(22 * scale)}px monospace`;
+                        ctx.fillStyle = `hsla(${currentHue}, 100%, 30%, ${alpha * 0.4})`;
+                        ctx.fillText(p.char, x2d + 1, y2d + 1);
+                        ctx.fillStyle = `hsla(${currentHue}, 50%, 90%, ${alpha})`;
+                        ctx.fillText(p.char, x2d, y2d);
+                    }
+                }
+            }
+        });
+
+        ctx.globalCompositeOperation = 'source-over';
+        if (!isDragging) { angleY += 0.0015; angleX += 0.0005; }
+        requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            rebootFlash = 1.0; 
+            particles.forEach(p => {
+                p.y = -700 - (Math.random() * 500); 
+                p.opacity = 0; 
+            });
+        } else {
+            highlightedKey = e.key.toUpperCase();
+            highlightTimer = 0.6; // 글리치 지속시간 조절
+        }
+    });
+
+    window.addEventListener('mousedown', e => {
+        if(e.target.type === 'range') return;
+        clickPos = {x: e.clientX, y: e.clientY};
+        shakeIntensity = 85; 
+        isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (isDragging) {
+            angleY += (e.clientX - lastMouseX) * 0.005;
+            angleX += (e.clientY - lastMouseY) * 0.005;
+            lastMouseX = e.clientX; lastMouseY = e.clientY;
+        }
+    });
+
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('resize', init);
+
+    init();
+    draw();
+</script>
+</body>
+</html>

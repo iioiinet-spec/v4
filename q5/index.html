@@ -1,0 +1,444 @@
+
+<div style="position:relative;border-radius:14px;overflow:hidden;width:100%;height:590px;cursor:grab;">
+<canvas id="glc" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+<canvas id="oc" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
+<div style="position:absolute;top:14px;left:18px;pointer-events:none;">
+  <div id="ktime" style="font-family:'Helvetica Neue',sans-serif;font-size:22px;font-weight:300;color:rgba(255,255,255,0.92);letter-spacing:3px;text-shadow:0 1px 8px rgba(0,0,0,0.5);"></div>
+  <div id="ktod" style="font-family:'Helvetica Neue',sans-serif;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:2px;margin-top:2px;"></div>
+</div>
+<div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.35);pointer-events:none;white-space:nowrap;">DRAG · SCROLL</div>
+</div>
+<script>
+const wrap=document.querySelector('div[style*="590px"]');
+const glc=document.getElementById('glc');
+const oc=document.getElementById('oc');
+const ctx=oc.getContext('2d');
+const ktime=document.getElementById('ktime');
+const ktod=document.getElementById('ktod');
+const gl=glc.getContext('webgl',{antialias:true,alpha:false});
+
+let camYaw=0,camPitch=0.14,tYaw=0,tPitch=0.14,zoom=1,tZoom=1;
+let drag=false,lx=0,ly=0,autoRot=true,startTs=null;
+const CYCLE=300;
+
+wrap.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY;autoRot=false;wrap.style.cursor='grabbing';});
+wrap.addEventListener('mouseup',()=>{drag=false;wrap.style.cursor='grab';setTimeout(()=>autoRot=true,5000);});
+wrap.addEventListener('mousemove',e=>{if(!drag)return;tYaw+=(e.clientX-lx)*0.0035;tPitch=Math.max(-0.6,Math.min(0.7,tPitch+(e.clientY-ly)*0.003));lx=e.clientX;ly=e.clientY;});
+wrap.addEventListener('wheel',e=>{tZoom=Math.max(0.5,Math.min(2.2,tZoom-e.deltaY*0.001));e.preventDefault();},{passive:false});
+wrap.addEventListener('touchstart',e=>{drag=true;lx=e.touches[0].clientX;ly=e.touches[0].clientY;autoRot=false;},{passive:true});
+wrap.addEventListener('touchend',()=>{drag=false;setTimeout(()=>autoRot=true,5000);});
+wrap.addEventListener('touchmove',e=>{if(!drag)return;tYaw+=(e.touches[0].clientX-lx)*0.0035;tPitch=Math.max(-0.6,Math.min(0.7,tPitch+(e.touches[0].clientY-ly)*0.003));lx=e.touches[0].clientX;ly=e.touches[0].clientY;e.preventDefault();},{passive:false});
+
+const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+const fs=`
+precision highp float;
+uniform vec2 R;uniform float T;uniform float D;uniform float YW;uniform float PT;uniform float ZM;
+#define PI 3.14159265359
+#define TAU 6.28318530718
+mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0,s,0,1,0,-s,0,c);}
+mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1,0,0,0,c,-s,0,s,c);}
+float H(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float H1(float v){return fract(sin(v*74.3)*52741.3);}
+float N(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);float a=H(i),b=H(i+vec2(1,0)),c=H(i+vec2(0,1)),d=H(i+vec2(1,1));return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
+float FBM(vec2 p){float v=0.,a=.5;mat2 m=mat2(1.7,1.2,-1.2,1.7);for(int i=0;i<7;i++){v+=a*N(p);p=m*p;a*=.47;}return v;}
+
+vec3 SKY(vec3 dir,float df){
+  float uy=dir.y;
+  vec3 zD=vec3(.07,.19,.52),hD=vec3(.48,.74,.97);
+  vec3 zN=vec3(.004,.008,.04),hN=vec3(.015,.03,.10);
+  float hh=smoothstep(0.,.5,uy);
+  vec3 sky=mix(mix(hN,zN,hh),mix(hD,zD,hh),df);
+
+  float sA=TAU*(.25-df*.5);
+  float sP=sin(df*PI)*.52-.03;
+  vec3 sDir=normalize(vec3(sin(sA)*cos(sP),sin(sP),cos(sA)*cos(sP)));
+  float sd=max(0.,dot(dir,sDir));
+
+  float rise=smoothstep(0.,.14,df)*(1.-smoothstep(.14,.26,df));
+  float set=smoothstep(.74,.88,df)*(1.-smoothstep(.88,1.,df));
+  float gld=max(rise,set);
+  float hg=pow(max(0.,1.-abs(uy)*2.8),2.3);
+  sky=mix(sky,mix(vec3(.92,.38,.08),vec3(.99,.62,.18),rise),hg*gld*.95*df);
+
+  vec3 sCol=mix(vec3(.99,.60,.18),vec3(1.,.96,.85),smoothstep(.1,.4,df));
+  sky+=sCol*(pow(sd,280.)*7.+pow(sd,15.)*.45)*df;
+  sky+=sCol*pow(sd,5.)*.12*df;
+
+  vec3 mDir=normalize(vec3(-sDir.x,-sDir.y*.5,-sDir.z));
+  float md=max(0.,dot(dir,mDir));
+  float moonBright=1.-smoothstep(0.,.25,df);
+  sky+=vec3(.92,.95,1.)*pow(md,600.)*5.*moonBright;
+  sky+=vec3(.70,.78,.98)*pow(md,25.)*.20*moonBright;
+  sky+=vec3(.30,.40,.70)*pow(md,8.)*.08*moonBright;
+
+  float nightF=1.-smoothstep(0.,.22,df)*(1.-smoothstep(.78,1.,df));
+  nightF=max(nightF,(1.-df)*1.2);
+  nightF=clamp(nightF,0.,1.);
+
+  vec3 sv=dir*200.;
+  float sx=floor(sv.x*.6+sv.y*3.+sv.z*.8);
+  float sy=floor(sv.y*4.+sv.z*.5+sv.x*.7);
+  float sn=H(vec2(sx,sy));
+  float star=step(.982,sn)*nightF;
+  float twk=sin(T*2.8+sn*400.)*.35+.72;
+  vec3 starCol=mix(vec3(.85,.88,1.),vec3(1.,.95,.8),H1(sn));
+  sky+=star*twk*starCol*1.1;
+
+  float mw=FBM(vec2(atan(dir.x,dir.z)*.4+.2,dir.y*.9+.4)*2.2)*.28;
+  mw*=nightF*smoothstep(-.05,.25,uy)*(1.-smoothstep(.28,.65,uy));
+  sky+=vec3(.35,.42,.72)*mw;
+
+  vec2 cuv=vec2(atan(dir.x,dir.z)*.16+T*.0013,uy*.52+.2);
+  float cl=FBM(cuv*2.6)*.65+FBM(cuv*5.2+vec2(.8,.3))*.35;
+  cl=smoothstep(.34,.63,cl)*smoothstep(-.02,.20,uy);
+  vec3 cLit=mix(vec3(.12,.14,.22),mix(vec3(.84,.87,.93),vec3(.99,.74,.44),hg*gld*.5),df);
+  sky=mix(sky,cLit,cl*.87);
+  return sky;
+}
+
+float OC(vec2 p){
+  float h=0.;
+  h+=sin(p.x*.6+T*.95)*.40+sin(p.x*1.1+p.y*.5+T*.78)*.22;
+  h+=sin(p.x*1.9-p.y+T*1.25)*.14+sin(p.x*3.3+p.y*2.1-T*1.75)*.08;
+  h+=FBM(p*.34+vec2(T*.07,-T*.04))*.34+FBM(p*.98-vec2(T*.05,T*.09))*.16;
+  return h;
+}
+vec3 ON(vec2 p){float e=.028;float h0=OC(p),hx=OC(p+vec2(e,0.)),hy=OC(p+vec2(0.,e));return normalize(vec3(-(hx-h0)/e,2.1,-(hy-h0)/e));}
+
+vec3 OCEAN(vec3 ro,vec3 rd,float dist,float df){
+  vec3 pos=ro+rd*dist;vec2 p=pos.xz;
+  vec3 nm=ON(p);vec3 refl=reflect(rd,nm);
+  vec3 deepD=vec3(.01,.06,.22),deepN=vec3(.004,.015,.07);
+  vec3 shalD=vec3(.04,.21,.44),shalN=vec3(.008,.05,.17);
+  float dv=clamp(dist*.038,0.,1.);
+  vec3 wc=mix(mix(shalN,deepN,dv),mix(shalD,deepD,dv),df);
+  float fr=mix(.04,1.,pow(1.-max(0.,dot(-rd,nm)),2.7));
+  vec3 col=mix(wc,SKY(refl,df),fr);
+  float sA=TAU*(.25-df*.5);float sP=sin(df*PI)*.52-.03;
+  vec3 sDir=normalize(vec3(sin(sA)*cos(sP),sin(sP),cos(sA)*cos(sP)));
+  vec3 hv=normalize(-rd+sDir);float NdH=max(0.,dot(nm,hv));
+  vec3 sc=mix(vec3(1.,.55,.18),vec3(1.,.97,.88),smoothstep(.1,.4,df));
+  col+=sc*(pow(NdH,210.)*2.8+pow(NdH,45.)*.4)*df;
+  float bn=N(p*3.+vec2(T*.38))*N(p*5.8-vec2(T*.22));
+  col+=vec3(.06,.30,.92)*smoothstep(.55,.85,bn)*(1.-df)*.95;
+  float wh=OC(p);float fm=smoothstep(.37,.60,wh)*smoothstep(.33,.74,N(p*6.8+vec2(T*.75))*N(p*12.5-vec2(T*.5)));
+  col=mix(col,vec3(.89,.95,.99),fm*.65);
+  float fog=1.-exp(-dist*.009);
+  col=mix(col,mix(vec3(.03,.06,.14),vec3(.60,.77,.95),df),fog*.62);
+  return col;
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy/R*2.-1.);uv.x*=R.x/R.y;uv/=ZM;
+  vec3 rd=normalize(vec3(uv.x,uv.y,1.24));rd=RX(-PT)*RY(-YW)*rd;
+  vec3 ro=vec3(0.,2.1,0.);
+  vec3 col;
+  if(rd.y<-.006){float d=max(1.,(ro.y-.55)/(-rd.y));col=OCEAN(ro,rd,d,D);}
+  else col=SKY(rd,D);
+  vec2 vc=uv*ZM*.48;col*=clamp(1.-dot(vc,vc)*.52,.73,1.);
+  col=col*(2.51*col+.03)/(col*(2.43*col+.59)+.14);
+  col=pow(clamp(col,0.,1.),vec3(1./2.2));
+  float gr=H(uv*R+vec2(T*61.,T*37.))*.020-.010;col+=gr;
+  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+}`;
+
+function mk(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+const prog=gl.createProgram();
+gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
+gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
+gl.linkProgram(prog);gl.useProgram(prog);
+const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const al=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+const uR=gl.getUniformLocation(prog,'R'),uT=gl.getUniformLocation(prog,'T'),uD=gl.getUniformLocation(prog,'D');
+const uYW=gl.getUniformLocation(prog,'YW'),uPT=gl.getUniformLocation(prog,'PT'),uZM=gl.getUniformLocation(prog,'ZM');
+
+function getKoreaDayFraction(){
+  const now=new Date();
+  const kst=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const h=kst.getHours(),m=kst.getMinutes(),s=kst.getSeconds();
+  return (h*3600+m*60+s)/86400;
+}
+function getKoreaTimeStr(){
+  const now=new Date();
+  const kst=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const h=String(kst.getHours()).padStart(2,'0'),m=String(kst.getMinutes()).padStart(2,'0');
+  return `${h}:${m} KST`;
+}
+
+function getSunDayF(realDF){
+  return Math.max(0,Math.sin(realDF*Math.PI));
+}
+
+function todStr(df){
+  const h=Math.floor(df*24);
+  if(h>=5&&h<7)return '새벽';
+  if(h>=7&&h<9)return '일출';
+  if(h>=9&&h<17)return '낮';
+  if(h>=17&&h<19)return '일몰';
+  if(h>=19&&h<21)return '황혼';
+  return '밤';
+}
+
+function w2s(wyaw,wpitch,W,H){
+  const ry=wyaw-camYaw,rp=wpitch-camPitch;
+  const cy=Math.cos(ry),sy2=Math.sin(ry);
+  const cp=Math.cos(rp),sp=Math.sin(rp);
+  const fx=sy2*cp,fy=sp,fz=cy*cp;
+  if(fz<0.08)return null;
+  const aspect=W/H;
+  const sx=(fx/fz/1.24)*zoom*(W/2)+W/2;
+  const sy=(-fy/fz/1.24)*zoom*(H/2)+H/2;
+  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return null;
+  return{x:sx,y:sy,z:fz};
+}
+
+function drawJet(ctx,x,y,sz,alpha,ang,contrail){
+  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
+  const s=sz;
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(220,228,240,0.95)';
+  ctx.strokeStyle='rgba(200,210,225,0.95)';
+  ctx.lineWidth=s*.08;ctx.lineCap='round';ctx.lineJoin='round';
+  // fuselage - slim tapered body
+  ctx.beginPath();
+  ctx.moveTo(s*2.2,0);
+  ctx.bezierCurveTo(s*1.5,s*.08,s*.5,s*.12,-s*2.0,s*.08);
+  ctx.bezierCurveTo(-s*2.2,s*.06,-s*2.2,-s*.06,-s*2.0,-s*.08);
+  ctx.bezierCurveTo(s*.5,-s*.12,s*1.5,-s*.08,s*2.2,0);
+  ctx.closePath();ctx.fill();ctx.stroke();
+  // swept wings
+  ctx.beginPath();
+  ctx.moveTo(s*.3,0);
+  ctx.lineTo(-s*.6,s*1.5);
+  ctx.lineTo(-s*1.1,s*1.5);
+  ctx.lineTo(-s*.5,s*.1);
+  ctx.closePath();ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(s*.3,0);
+  ctx.lineTo(-s*.6,-s*1.5);
+  ctx.lineTo(-s*1.1,-s*1.5);
+  ctx.lineTo(-s*.5,-s*.1);
+  ctx.closePath();ctx.fill();
+  // tail fins
+  ctx.beginPath();
+  ctx.moveTo(-s*1.5,0);
+  ctx.lineTo(-s*2.0,-s*.6);
+  ctx.lineTo(-s*2.2,-s*.6);
+  ctx.lineTo(-s*1.8,s*.08);
+  ctx.closePath();ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-s*1.5,0);
+  ctx.lineTo(-s*2.0,s*.6);
+  ctx.lineTo(-s*2.2,s*.6);
+  ctx.lineTo(-s*1.8,-s*.08);
+  ctx.closePath();ctx.fill();
+  // engine pods
+  for(const ey of[-s*.9,s*.9]){
+    ctx.beginPath();
+    ctx.ellipse(-s*.3,ey,s*.55,s*.18,0,0,Math.PI*2);
+    ctx.fillStyle='rgba(190,200,215,0.9)';ctx.fill();
+    ctx.fillStyle='rgba(220,228,240,0.95)';
+  }
+  // cockpit tint
+  ctx.beginPath();
+  ctx.ellipse(s*1.6,0,s*.38,s*.10,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(140,180,220,0.6)';ctx.fill();
+  // contrail
+  if(contrail>0){
+    const g=ctx.createLinearGradient(-s*2.2,s*.08,-s*2.2-contrail,s*.25*contrail/80);
+    g.addColorStop(0,'rgba(255,255,255,0.55)');g.addColorStop(.3,'rgba(235,240,255,0.25)');g.addColorStop(1,'rgba(235,240,255,0)');
+    ctx.strokeStyle=g;ctx.lineWidth=s*.45;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(-s*2.2,s*.08);ctx.lineTo(-s*2.2-contrail,s*.25);ctx.stroke();
+    const g2=ctx.createLinearGradient(-s*2.2,-s*.08,-s*2.2-contrail,-s*.25*contrail/80);
+    g2.addColorStop(0,'rgba(255,255,255,0.55)');g2.addColorStop(.3,'rgba(235,240,255,0.25)');g2.addColorStop(1,'rgba(235,240,255,0)');
+    ctx.strokeStyle=g2;ctx.lineWidth=s*.45;
+    ctx.beginPath();ctx.moveTo(-s*2.2,-s*.08);ctx.lineTo(-s*2.2-contrail,-s*.25);ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawShip(ctx,x,y,sz,alpha,ang,dayF){
+  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
+  const s=sz;
+  // hull - realistic dark steel
+  ctx.beginPath();
+  ctx.moveTo(-s*3.2,s*.5);
+  ctx.lineTo(s*3.5,s*.5);
+  ctx.bezierCurveTo(s*4.0,s*.5,s*4.2,s*.1,s*4.0,-s*.1);
+  ctx.lineTo(-s*3.2,-s*.1);
+  ctx.bezierCurveTo(-s*3.6,-s*.1,-s*3.6,s*.5,-s*3.2,s*.5);
+  ctx.closePath();
+  ctx.fillStyle=`rgba(45,55,70,${0.9+dayF*.05})`;ctx.fill();
+  ctx.strokeStyle='rgba(80,95,110,0.6)';ctx.lineWidth=s*.06;ctx.stroke();
+  // waterline stripe
+  ctx.beginPath();ctx.moveTo(-s*3.1,s*.1);ctx.lineTo(s*3.8,s*.1);
+  ctx.strokeStyle='rgba(200,50,50,0.7)';ctx.lineWidth=s*.12;ctx.stroke();
+  // main deck
+  ctx.beginPath();
+  ctx.rect(-s*2.8,-s*.1,s*5.8,s*.22);
+  ctx.fillStyle='rgba(65,75,88,0.95)';ctx.fill();
+  // superstructure block
+  ctx.beginPath();
+  ctx.rect(-s*.5,-s*.7,s*2.0,s*.62);
+  ctx.fillStyle='rgba(80,92,108,0.98)';ctx.fill();
+  ctx.strokeStyle='rgba(100,115,130,0.5)';ctx.lineWidth=s*.05;ctx.stroke();
+  // bridge windows
+  for(let i=0;i<4;i++){
+    ctx.beginPath();ctx.rect(-s*.3+i*s*.4,-s*.58,s*.25,s*.16);
+    ctx.fillStyle='rgba(160,200,240,0.7)';ctx.fill();
+  }
+  // funnel / chimney
+  ctx.beginPath();ctx.rect(s*.2,-s*1.1,s*.35,s*.42);
+  ctx.fillStyle='rgba(55,65,80,0.95)';ctx.fill();
+  // smoke
+  for(let k=0;k<3;k++){
+    const sk=k*.3;
+    ctx.beginPath();ctx.arc(s*.37-sk*s*.2,-s*1.15-sk*s*.3,s*(.12+sk*.08),0,Math.PI*2);
+    ctx.fillStyle=`rgba(150,150,155,${0.15-sk*.04})`;ctx.fill();
+  }
+  // forward crane/mast
+  ctx.strokeStyle='rgba(100,112,128,0.9)';ctx.lineWidth=s*.08;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.1);ctx.lineTo(-s*1.8,-s*.8);ctx.stroke();
+  ctx.lineWidth=s*.05;
+  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.8);ctx.lineTo(-s*1.0,-s*.55);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.8);ctx.lineTo(-s*2.3,-s*.58);ctx.stroke();
+  // wake
+  const wg=ctx.createLinearGradient(-s*3.5,0,-s*10,0);
+  wg.addColorStop(0,'rgba(180,215,240,0.40)');wg.addColorStop(.4,'rgba(180,215,240,0.15)');wg.addColorStop(1,'rgba(180,215,240,0)');
+  ctx.strokeStyle=wg;ctx.lineWidth=s*1.8;ctx.lineCap='butt';
+  ctx.beginPath();ctx.moveTo(-s*3.5,s*.2);ctx.lineTo(-s*10,s*.5);ctx.stroke();
+  ctx.lineWidth=s*1.0;
+  ctx.beginPath();ctx.moveTo(-s*3.5,s*.2);ctx.lineTo(-s*9,-s*.1);ctx.stroke();
+  ctx.restore();
+}
+
+function drawGull(ctx,x,y,sz,alpha,flap,ang){
+  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
+  const s=sz;
+  const f=Math.sin(flap)*s*.9;
+  ctx.strokeStyle='rgba(210,218,228,0.95)';
+  ctx.lineWidth=s*.28;ctx.lineCap='round';ctx.lineJoin='round';
+  // left wing - graceful curve
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(-s*.7,-f*1.1,-s*1.6,-f*.55);
+  ctx.quadraticCurveTo(-s*2.0,-f*.3,-s*2.2,-f*.15);
+  ctx.stroke();
+  // right wing
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(s*.7,-f*1.1,s*1.6,-f*.55);
+  ctx.quadraticCurveTo(s*2.0,-f*.3,s*2.2,-f*.15);
+  ctx.stroke();
+  // body
+  ctx.lineWidth=s*.20;
+  ctx.beginPath();ctx.moveTo(-s*.25,s*.05);ctx.lineTo(s*.35,-s*.02);ctx.stroke();
+  // head
+  ctx.fillStyle='rgba(225,232,240,0.95)';
+  ctx.beginPath();ctx.arc(s*.38,s*.0,s*.18,0,Math.PI*2);ctx.fill();
+  // beak
+  ctx.fillStyle='rgba(230,160,60,0.9)';
+  ctx.beginPath();ctx.moveTo(s*.52,-s*.04);ctx.lineTo(s*.78,-s*.06);ctx.lineTo(s*.52,s*.04);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+
+const planes=[
+  {ys:0.038,sy:0.7,pb:.27,pa:.04,pf:.007,sz:7,trail:90,phase:0},
+  {ys:-0.026,sy:3.1,pb:.22,pa:.03,pf:.009,sz:6,trail:70,phase:0},
+];
+const ships=[
+  {ys:0.006,sy:0.3,pb:-.068,sz:18,phase:0},
+];
+const gulls=[
+  {ys:.095,sy:.5,pb:.055,pa:.022,pf:.27,ff:4.8,sz:5.5,phase:0},
+  {ys:.075,sy:2.0,pb:.040,pa:.018,pf:.22,ff:3.9,sz:5.0,phase:1.6},
+  {ys:-.065,sy:3.8,pb:.068,pa:.025,pf:.19,ff:5.2,sz:4.5,phase:3.1},
+  {ys:.085,sy:1.2,pb:.030,pa:.015,pf:.30,ff:4.3,sz:4.0,phase:.8},
+  {ys:-.055,sy:5.3,pb:.082,pa:.020,pf:.17,ff:3.6,sz:4.0,phase:2.4},
+];
+
+function draw2D(elapsed,dayF,W,H){
+  ctx.clearRect(0,0,W,H);
+  const TAU=Math.PI*2;
+  const nightAlpha=Math.max(.25,dayF);
+
+  for(const p of planes){
+    const wy=(p.sy+elapsed*p.ys)%TAU;
+    const wp=p.pb+Math.sin(elapsed*p.pf)*p.pa;
+    const sc=w2s(wy,wp,W,H);if(!sc)continue;
+    const wy2=(p.sy+(elapsed+.08)*p.ys)%TAU;
+    const sc2=w2s(wy2,wp,W,H);
+    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
+    const a=Math.min(.95,nightAlpha+.25);
+    drawJet(ctx,sc.x,sc.y,p.sz,a,ang,p.trail);
+  }
+
+  for(const s of ships){
+    const wy=(s.sy+elapsed*s.ys)%TAU;
+    const sc=w2s(wy,s.pb,W,H);if(!sc)continue;
+    if(sc.y<H*.28)continue;
+    const wy2=(s.sy+(elapsed+.1)*s.ys)%TAU;
+    const sc2=w2s(wy2,s.pb,W,H);
+    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
+    drawShip(ctx,sc.x,sc.y,s.sz,Math.min(1,dayF*1.3+.15)*0.92,ang,dayF);
+  }
+
+  for(const g of gulls){
+    const wy=(g.sy+elapsed*g.ys)%TAU;
+    const wp=g.pb+Math.sin(elapsed*g.pf)*g.pa;
+    const sc=w2s(wy,wp,W,H);if(!sc)continue;
+    const flap=elapsed*g.ff+g.phase;
+    const wy2=(g.sy+(elapsed+.03)*g.ys)%TAU;
+    const sc2=w2s(wy2,wp,W,H);
+    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
+    const a=Math.min(.92,nightAlpha+.2);
+    drawGull(ctx,sc.x,sc.y,g.sz,a,flap,ang);
+  }
+}
+
+const todLabels={새벽:'새벽 DAWN',일출:'일출 SUNRISE',낮:'낮 DAY',일몰:'일몰 SUNSET',황혼:'황혼 DUSK',밤:'밤 NIGHT'};
+
+function frame(ts){
+  if(!startTs)startTs=ts;
+  const elapsed=(ts-startTs)*.001;
+
+  const realDF=getKoreaDayFraction();
+  const dayF=getSunDayF(realDF);
+
+  if(autoRot)tYaw+=.0020;
+  camYaw+=(tYaw-camYaw)*.052;
+  camPitch+=(tPitch-camPitch)*.052;
+  zoom+=(tZoom-zoom)*.08;
+
+  const dpr=devicePixelRatio||1;
+  const W=glc.offsetWidth,H=glc.offsetHeight;
+  if(glc.width!==Math.round(W*dpr)){
+    glc.width=Math.round(W*dpr);glc.height=Math.round(H*dpr);
+    oc.width=Math.round(W*dpr);oc.height=Math.round(H*dpr);
+    ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);
+  }
+
+  gl.viewport(0,0,glc.width,glc.height);
+  gl.uniform2f(uR,glc.width,glc.height);
+  gl.uniform1f(uT,elapsed);
+  gl.uniform1f(uD,dayF);
+  gl.uniform1f(uYW,camYaw);
+  gl.uniform1f(uPT,camPitch);
+  gl.uniform1f(uZM,zoom);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  draw2D(elapsed,dayF,W,H);
+
+  ktime.textContent=getKoreaTimeStr();
+  const h=Math.floor(realDF*24);
+  let tod='밤';
+  if(h>=5&&h<7)tod='새벽';else if(h>=7&&h<9)tod='일출';
+  else if(h>=9&&h<17)tod='낮';else if(h>=17&&h<19)tod='일몰';
+  else if(h>=19&&h<21)tod='황혼';
+  ktod.textContent=todLabels[tod]||todLabels['밤'];
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

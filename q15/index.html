@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>PREMIUM RAINBOW CORE</title>
+    <style>
+        :root {
+            --bg: #000000;
+            --rainbow: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3);
+        }
+
+        body {
+            margin: 0; background: var(--bg); color: white;
+            overflow: hidden; font-family: 'Arial', sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; perspective: 2000px;
+            cursor: grab;
+        }
+        body:active { cursor: grabbing; }
+
+        .bg-fx {
+            position: fixed; inset: 0;
+            background: radial-gradient(circle at center, #0d0d2b 0%, #000 80%);
+            z-index: -1;
+        }
+
+        /* 메인 컨테이너 */
+        #container {
+            width: 0; height: 0;
+            transform-style: preserve-3d;
+            will-change: transform;
+            transition: transform 0.1s ease-out; /* 드래그를 부드럽게 */
+        }
+
+        #scene {
+            width: 0; height: 0;
+            transform-style: preserve-3d;
+        }
+
+        .piece {
+            position: absolute; width: 90px; height: 90px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid transparent;
+            border-image: var(--rainbow);
+            border-image-slice: 1;
+            backface-visibility: visible;
+            /* transform에만 transition 적용 (오류 방지) */
+            transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s, box-shadow 0.5s;
+        }
+
+        .active-piece {
+            filter: brightness(2.5) drop-shadow(0 0 25px #fff) !important;
+            z-index: 100;
+        }
+
+        .controls {
+            position: fixed; bottom: 50px; display: flex; gap: 40px; z-index: 1000;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff; padding: 15px 35px;
+            cursor: pointer; font-size: 11px; letter-spacing: 5px;
+            text-transform: uppercase;
+            backdrop-filter: blur(10px);
+        }
+        .btn:hover { background: #fff; color: #000; box-shadow: 0 0 20px #fff; }
+
+        .guide {
+            position: fixed; top: 30px; font-size: 10px; 
+            color: rgba(255,255,255,0.4); letter-spacing: 2px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-fx"></div>
+<div class="guide">DRAG TO ROTATE // WHEEL TO ZOOM</div>
+
+<div id="container">
+    <div id="scene"></div>
+</div>
+
+<div class="controls">
+    <button class="btn" onclick="release()">Release</button>
+    <button class="btn" onclick="sequenceAssemble()">Initialize</button>
+</div>
+
+<script>
+    const container = document.getElementById('container');
+    const scene = document.getElementById('scene');
+    const pieces = [];
+    const size = 95;
+
+    // 회전 및 줌 변수
+    let rotX = -20, rotY = 45, zoom = 1;
+    let isDragging = false;
+    let lastX, lastY;
+
+    // 1. 큐브 조각 생성 (처음부터 생성되도록 실행)
+    function createCube() {
+        const faces = [
+            { pos: [0, 0, 1.5], rot: [0, 0, 0], color: '#ff0000' },
+            { pos: [0, 0, -1.5], rot: [0, 180, 0], color: '#00ff00' },
+            { pos: [-1.5, 0, 0], rot: [0, -90, 0], color: '#0000ff' },
+            { pos: [1.5, 0, 0], rot: [0, 90, 0], color: '#ffff00' },
+            { pos: [0, -1.5, 0], rot: [90, 0, 0], color: '#ff00ff' },
+            { pos: [0, 1.5, 0], rot: [-90, 0, 0], color: '#00ffff' }
+        ];
+
+        scene.innerHTML = ''; // 중복 생성 방지
+        pieces.length = 0;
+
+        faces.forEach(face => {
+            for (let x = -1; x <= 1; x++) {
+                for (let y = -1; y <= 1; y++) {
+                    const el = document.createElement('div');
+                    el.className = 'piece';
+                    
+                    const posX = (face.pos[0] === 0) ? x * size : face.pos[0] * size;
+                    const posY = (face.pos[1] === 0) ? y * size : face.pos[1] * size;
+                    const posZ = (face.pos[2] === 0) ? (face.pos[0] !== 0 ? x * size : y * size) : face.pos[2] * size;
+                    
+                    const data = {
+                        homeX: posX, homeY: posY, homeZ: posZ,
+                        homeRotX: face.rot[0], homeRotY: face.rot[1],
+                        glow: face.color
+                    };
+                    
+                    // 초기 위치 설정 (조립된 상태)
+                    el.style.transform = `translate3d(${posX}px, ${posY}px, ${posZ}px) rotateX(${data.homeRotX}deg) rotateY(${data.homeRotY}deg)`;
+                    el.style.boxShadow = `0 0 15px ${data.glow}44`;
+                    
+                    scene.appendChild(el);
+                    pieces.push({ el, data });
+                }
+            }
+        });
+        updateTransform();
+    }
+
+    // 2. 마우스 인터랙션 이벤트 리스너 (동작 보장)
+    document.addEventListener('mousedown', e => { 
+        isDragging = true; 
+        lastX = e.clientX; 
+        lastY = e.clientY; 
+    });
+
+    document.addEventListener('mouseup', () => { isDragging = false; });
+
+    document.addEventListener('mousemove', e => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - lastX;
+        const deltaY = e.clientY - lastY;
+        
+        rotY += deltaX * 0.5;
+        rotX -= deltaY * 0.5;
+        
+        lastX = e.clientX;
+        lastY = e.clientY;
+        updateTransform();
+    });
+
+    // 줌 기능
+    window.addEventListener('wheel', e => {
+        zoom -= e.deltaY * 0.001;
+        zoom = Math.max(0.3, Math.min(zoom, 3));
+        updateTransform();
+    }, { passive: false });
+
+    function updateTransform() {
+        container.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(${zoom}, ${zoom}, ${zoom})`;
+    }
+
+    // 3. 해체 함수
+    function release() {
+        pieces.forEach(p => {
+            const rx = (Math.random() - 0.5) * 2500;
+            const ry = (Math.random() - 0.5) * 2500;
+            const rz = (Math.random() - 0.5) * 2500;
+            p.el.style.transform = `translate3d(${rx}px, ${ry}px, ${rz}px) rotateX(${Math.random()*720}deg) rotateY(${Math.random()*720}deg)`;
+            p.el.style.opacity = "0.3";
+            p.el.style.boxShadow = `0 0 30px white`;
+        });
+    }
+
+    // 4. 순차 조립 함수 (async 사용)
+    async function sequenceAssemble() {
+        const shuffled = [...pieces].sort(() => Math.random() - 0.5);
+        
+        for (let i = 0; i < shuffled.length; i++) {
+            const p = shuffled[i];
+            p.el.classList.add('active-piece');
+            p.el.style.opacity = "1";
+            p.el.style.transform = `translate3d(${p.data.homeX}px, ${p.data.homeY}px, ${p.data.homeZ}px) 
+                                    rotateX(${p.data.homeRotX}deg) rotateY(${p.data.homeRotY}deg)`;
+            p.el.style.boxShadow = `0 0 20px ${p.data.glow}`;
+
+            // 조립 속도 (너무 느리면 20 정도로 줄이세요)
+            await new Promise(resolve => setTimeout(resolve, 40)); 
+            
+            // 빛나는 효과 서서히 제거
+            setTimeout(() => p.el.classList.remove('active-piece'), 600);
+        }
+    }
+
+    // 실행
+    window.onload = createCube;
+</script>
+
+</body>
+</html>

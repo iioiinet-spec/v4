@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Neon Flower & Colorful Particles</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #instruction {
+            position: absolute; top: 10px; left: 10px; color: white;
+            font-family: sans-serif; pointer-events: none; text-shadow: 1px 1px 2px black;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="instruction">이동: WASD | 클릭: 컬러풀 네온 꽃 & 파티클 소환</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 초기 설정 ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const wallGeometry = new THREE.PlaneGeometry(200, 200);
+        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x050505 });
+        const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+        wall.position.z = -5;
+        scene.add(wall);
+
+        const ambientLight = new THREE.AmbientLight(0x202020);
+        scene.add(ambientLight);
+
+        camera.position.z = 10;
+
+        // --- 데이터 관리 ---
+        const flowers = [];
+        const particles = [];
+        const keys = { w: false, a: false, s: false, d: false };
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // --- [함수 1] 네온 꽃 생성 ---
+        function createNeonFlower(position, color) {
+            const group = new THREE.Group();
+            const petalCount = 6;
+            const targetScale = 0.5 + Math.random() * 1.5;
+            
+            for (let i = 0; i < petalCount; i++) {
+                const angle = (i / petalCount) * Math.PI * 2;
+                const curve = new THREE.EllipseCurve(
+                    Math.cos(angle) * 0.4, Math.sin(angle) * 0.4, 
+                    0.5, 0.3, 
+                    0, Math.PI * 2, false, angle
+                );
+                const points = curve.getPoints(50);
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color, 
+                    transparent: true,
+                    opacity: 1
+                });
+                const petal = new THREE.Line(geometry, material);
+                group.add(petal);
+            }
+
+            const light = new THREE.PointLight(color, 2, 8);
+            group.add(light);
+
+            group.position.copy(position);
+            group.scale.set(0.01, 0.01, 0.01); 
+            group.userData = { 
+                createdAt: Date.now(), 
+                targetScale: targetScale,
+                rotationSpeed: (Math.random() - 0.5) * 0.03 
+            };
+            
+            scene.add(group);
+            flowers.push(group);
+        }
+
+        // --- [함수 2] 파티클 생성 ---
+        function createParticles(position, color) {
+            const count = 12;
+            for (let i = 0; i < count; i++) {
+                const pColor = color.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.2);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: pColor,
+                    transparent: true,
+                    opacity: 1
+                });
+                
+                const size = 0.15;
+                const pts = [
+                    new THREE.Vector3(-size, 0, 0), new THREE.Vector3(size, 0, 0),
+                    new THREE.Vector3(0, -size, 0), new THREE.Vector3(0, size, 0)
+                ];
+                const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+                const cross = new THREE.LineSegments(geometry, material);
+                
+                cross.position.copy(position);
+                cross.userData = {
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.3,
+                        (Math.random() - 0.5) * 0.3,
+                        Math.random() * 0.15
+                    ),
+                    life: 1.0,
+                    decay: 0.01 + Math.random() * 0.02
+                };
+                scene.add(cross);
+                particles.push(cross);
+            }
+        }
+
+        // --- 이벤트 핸들러 ---
+        window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
+
+        window.addEventListener('mousedown', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(wall);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                point.z += 0.1;
+                const commonColor = new THREE.Color(`hsl(${Math.random() * 360}, 100%, 70%)`);
+                createNeonFlower(point, commonColor);
+                createParticles(point, commonColor);
+            }
+        });
+
+        // --- 애니메이션 루프 (이 부분이 핵심입니다!) ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. 카메라 이동
+            const camSpeed = 0.15;
+            if (keys.w) camera.position.y += camSpeed;
+            if (keys.s) camera.position.y -= camSpeed;
+            if (keys.a) camera.position.x -= camSpeed;
+            if (keys.d) camera.position.x += camSpeed;
+
+            // 2. 꽃 애니메이션 (성장 및 소멸 로직 포함)
+            const now = Date.now();
+            const lifeSpan = 10; // 10초 유지
+            const fadeOutTime = 1.0; // 마지막 1초 동안 사라짐
+
+            for (let i = flowers.length - 1; i >= 0; i--) {
+                const flower = flowers[i];
+                const age = (now - flower.userData.createdAt) / 1000;
+
+                if (age < lifeSpan - fadeOutTime) {
+                    // 성장 단계
+                    if (flower.scale.x < flower.userData.targetScale) {
+                        const nextS = THREE.MathUtils.lerp(flower.scale.x, flower.userData.targetScale, 0.1);
+                        flower.scale.set(nextS, nextS, nextS);
+                    }
+                } else {
+                    // 소멸 단계 (점점 작아짐)
+                    const nextS = THREE.MathUtils.lerp(flower.scale.x, 0, 0.1);
+                    flower.scale.set(nextS, nextS, nextS);
+                }
+
+                flower.rotation.z += flower.userData.rotationSpeed;
+
+                if (age > lifeSpan) {
+                    scene.remove(flower);
+                    flowers.splice(i, 1);
+                }
+            }
+
+            // 3. 파티클 애니메이션
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.velocity);
+                p.userData.life -= p.userData.decay;
+                p.scale.setScalar(p.userData.life);
+                p.material.opacity = p.userData.life;
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

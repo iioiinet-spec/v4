@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Rubik Fixed Engine</title>
+
+<style>
+body { margin:0; overflow:hidden; }
+
+#ui{
+  position:fixed;
+  top:10px;
+  right:10px;
+  background:rgba(0,0,0,0.75);
+  color:white;
+  padding:12px;
+  font-family:sans-serif;
+  font-size:13px;
+  border-radius:8px;
+  line-height:1.5;
+}
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+<b>Fixed Rubik Cube</b><br>
+W/A/S/D: 회전<br>
+Space: 섞기<br>
+R: 리셋<br>
+우클릭: 회전
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
+
+<script>
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+camera.position.z = 8;
+
+// 루트 그룹
+let cubeGroup = new THREE.Group();
+scene.add(cubeGroup);
+
+// 큐브 저장
+let cubes = [];
+
+// 🎨 색
+const colors = [
+  0xff0000, 0x00ff00, 0x0000ff,
+  0xffff00, 0xff8800, 0xffffff
+];
+
+// =========================
+// 큐브 생성
+// =========================
+function createCube(x,y,z){
+
+  let geo = new THREE.BoxGeometry(0.95,0.95,0.95);
+
+  let mats = colors.map(c =>
+    new THREE.MeshBasicMaterial({color:c})
+  );
+
+  let cube = new THREE.Mesh(geo, mats);
+
+  cube.position.set(x,y,z);
+
+  cube.userData.coord = {x,y,z};
+
+  cubeGroup.add(cube);
+  cubes.push(cube);
+}
+
+// 27개 생성
+for(let x=-1;x<=1;x++)
+for(let y=-1;y<=1;y++)
+for(let z=-1;z<=1;z++)
+createCube(x,y,z);
+
+// =========================
+// 🔄 리셋
+// =========================
+function reset(){
+ cubes.forEach(c=>{
+  let p=c.userData.coord;
+  c.position.set(p.x,p.y,p.z);
+ });
+
+ cubeGroup.rotation.set(0,0,0);
+}
+
+// =========================
+// 🎯 핵심 FIX 회전 엔진
+// =========================
+let rotating=false;
+
+function rotate(axis, layer, dir){
+
+ if(rotating) return;
+ rotating=true;
+
+ // 👉 안정적인 필터 (중복 방지 핵심)
+ let targets = cubes.filter(c =>
+  Math.abs(c.userData.coord[axis] - layer) < 0.01
+ );
+
+ // 회전용 그룹
+ let group = new THREE.Group();
+ cubeGroup.add(group);
+
+ // 🔥 한 번만 attach (중복 방지 핵심)
+ targets.forEach(c=>{
+  if(c.parent !== group){
+    group.attach(c);
+  }
+ });
+
+ let angle = Math.PI/2 * dir;
+ let progress = 0;
+ let speed = 0.1;
+
+ function animate(){
+
+  group.rotation[axis] += speed * dir;
+  progress += speed;
+
+  if(progress >= Math.PI/2){
+
+    // 정확 스냅
+    group.rotation[axis] = angle;
+
+    // 👉 좌표 갱신 (절대 기준)
+    targets.forEach(c=>{
+
+      let p = c.userData.coord;
+
+      let x=p.x, y=p.y, z=p.z;
+
+      if(axis==="x"){
+        p.y = -z*dir;
+        p.z = y*dir;
+      }
+
+      if(axis==="y"){
+        p.x = z*dir;
+        p.z = -x*dir;
+      }
+
+      if(axis==="z"){
+        p.x = -y*dir;
+        p.y = x*dir;
+      }
+
+      p.x=Math.round(p.x);
+      p.y=Math.round(p.y);
+      p.z=Math.round(p.z);
+
+      // 👉 부모 강제 복귀 (핵심 fix)
+      cubeGroup.attach(c);
+
+      c.position.set(p.x,p.y,p.z);
+    });
+
+    // 그룹 제거 (중요)
+    cubeGroup.remove(group);
+
+    rotating=false;
+    return;
+  }
+
+  requestAnimationFrame(animate);
+ }
+
+ animate();
+}
+
+// =========================
+// 🎮 키 입력
+// =========================
+document.addEventListener("keydown", e=>{
+
+ if(e.code==="Space"){
+  let axes=["x","y","z"];
+  rotate(
+    axes[Math.floor(Math.random()*3)],
+    [-1,0,1][Math.floor(Math.random()*3)],
+    Math.random()>0.5?1:-1
+  );
+ }
+
+ if(e.key==="a") rotate("x",-1,1);
+ if(e.key==="d") rotate("x",1,-1);
+ if(e.key==="w") rotate("y",1,1);
+ if(e.key==="s") rotate("y",-1,-1);
+
+ if(e.key==="r") reset();
+});
+
+// =========================
+// 🖱️ 회전
+// =========================
+window.addEventListener("contextmenu",e=>e.preventDefault());
+
+let drag=false, px=0, py=0;
+
+window.addEventListener("mousedown",e=>{
+ if(e.button===2){
+  drag=true;
+  px=e.clientX;
+  py=e.clientY;
+ }
+});
+
+window.addEventListener("mouseup",e=>{
+ if(e.button===2) drag=false;
+});
+
+window.addEventListener("mousemove",e=>{
+ if(drag){
+  let dx=e.clientX-px;
+  let dy=e.clientY-py;
+
+  cubeGroup.rotation.y += dx*0.01;
+  cubeGroup.rotation.x += dy*0.01;
+
+  px=e.clientX;
+  py=e.clientY;
+ }
+});
+
+// =========================
+// render
+// =========================
+function animate(){
+ requestAnimationFrame(animate);
+ renderer.render(scene,camera);
+}
+animate();
+</script>
+
+</body>
+</html>

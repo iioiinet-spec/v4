@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neo Survival FPS - Boss HP + Headshot</title>
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    overflow:hidden;
+    background:#050814;
+    font-family:Arial, sans-serif;
+    cursor:none;
+}
+
+canvas{
+    display:block;
+}
+
+/* CROSSHAIR */
+.crosshair{
+    position:fixed;
+    left:50%;
+    top:50%;
+    width:30px;
+    height:30px;
+    transform:translate(-50%,-50%);
+    z-index:999;
+    pointer-events:none;
+}
+
+.crosshair::before,
+.crosshair::after{
+    content:"";
+    position:absolute;
+    background:#fff;
+    box-shadow:0 0 14px cyan;
+}
+
+.crosshair::before{
+    width:30px;
+    height:2px;
+    top:14px;
+    left:0;
+}
+
+.crosshair::after{
+    width:2px;
+    height:30px;
+    left:14px;
+    top:0;
+}
+
+/* UI */
+.ui{
+    position:fixed;
+    color:white;
+    font-weight:bold;
+    z-index:999;
+    text-shadow:0 0 12px cyan;
+}
+
+.hp{
+    left:20px;
+    bottom:20px;
+    font-size:28px;
+}
+
+.wave{
+    left:20px;
+    top:20px;
+    font-size:26px;
+}
+
+.kill{
+    left:20px;
+    top:58px;
+    font-size:22px;
+}
+
+.ammo{
+    right:30px;
+    bottom:20px;
+    font-size:42px;
+    text-align:right;
+}
+
+#waveAlert{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    font-size:72px;
+    font-weight:bold;
+    color:white;
+    text-shadow:0 0 25px cyan;
+    z-index:9999;
+    opacity:0;
+    pointer-events:none;
+    transition:0.4s;
+}
+
+/* BOSS HP BAR */
+#bossBarWrap{
+    position:fixed;
+    top:20px;
+    left:50%;
+    transform:translateX(-50%);
+    width:500px;
+    z-index:9999;
+    display:none;
+}
+
+#bossName{
+    text-align:center;
+    color:white;
+    font-weight:bold;
+    font-size:22px;
+    margin-bottom:8px;
+    text-shadow:0 0 12px #ff00ff;
+}
+
+#bossBar{
+    width:100%;
+    height:22px;
+    border:2px solid white;
+    background:rgba(255,255,255,0.1);
+    border-radius:999px;
+    overflow:hidden;
+}
+
+#bossHp{
+    width:100%;
+    height:100%;
+    background:linear-gradient(
+        90deg,
+        #ff00ff,
+        #ff4444
+    );
+    transition:0.15s;
+}
+</style>
+</head>
+<body>
+
+<div class="crosshair"></div>
+
+<div class="ui hp" id="hpUI">HP : 150</div>
+<div class="ui wave" id="waveUI">WAVE : 1</div>
+<div class="ui kill" id="killUI">KILLS : 0</div>
+<div class="ui ammo" id="ammoUI">12 / ∞</div>
+
+<div id="waveAlert">WAVE 1 START</div>
+
+<div id="bossBarWrap">
+    <div id="bossName">BOSS</div>
+    <div id="bossBar">
+        <div id="bossHp"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+/* =========================
+SCENE
+========================= */
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060814);
+scene.fog = new THREE.Fog(0x060814, 200, 3500);
+
+const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    5000
+);
+
+camera.position.set(0, 25, 100);
+
+const renderer = new THREE.WebGLRenderer({
+    antialias:true
+});
+
+renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+);
+
+document.body.appendChild(renderer.domElement);
+
+/* =========================
+LIGHT
+========================= */
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+const neon1 = new THREE.PointLight(0x00ffff, 2, 5000);
+neon1.position.set(0, 300, 0);
+scene.add(neon1);
+
+const neon2 = new THREE.PointLight(0xff00ff, 1.5, 4000);
+neon2.position.set(300, 200, 300);
+scene.add(neon2);
+
+/* =========================
+MAP
+========================= */
+
+const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(8000, 8000, 150, 150),
+    new THREE.MeshStandardMaterial({
+        color:0x101425,
+        wireframe:true
+    })
+);
+
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+for(let i=0;i<60;i++){
+    const h = Math.random() * 500 + 150;
+
+    const building = new THREE.Mesh(
+        new THREE.BoxGeometry(120, h, 120),
+        new THREE.MeshStandardMaterial({
+            color:0x1a2238,
+            emissive:0x001133
+        })
+    );
+
+    building.position.set(
+        Math.random() * 5000 - 2500,
+        h / 2,
+        Math.random() * 5000 - 2500
+    );
+
+    scene.add(building);
+}
+
+/* =========================
+PLAYER
+========================= */
+
+let yaw = 0;
+let pitch = 0;
+
+let move = {
+    w:false,
+    a:false,
+    s:false,
+    d:false
+};
+
+let velocityY = 0;
+let onGround = true;
+
+let hp = 150;
+let ammo = 12;
+let maxAmmo = 12;
+let reloading = false;
+
+let wave = 1;
+let kills = 0;
+let aiming = false;
+
+/* =========================
+GUN
+========================= */
+
+const gun = new THREE.Group();
+
+function gunBox(w,h,d,color,x,y,z,rz=0){
+    const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w,h,d),
+        new THREE.MeshStandardMaterial({
+            color:color,
+            metalness:0.7,
+            roughness:0.3
+        })
+    );
+
+    mesh.position.set(x,y,z);
+    mesh.rotation.z = rz;
+    gun.add(mesh);
+}
+
+gunBox(36,6,6,0x2b3142,0,0,0);
+gunBox(26,2,2,0x111111,32,0,0);
+gunBox(4,12,3,0x111111,-7,-9,0,-0.45);
+gunBox(4,10,3,0x111111,6,-8,0,0.25);
+gunBox(20,1,1,0xffdd55,5,3,3);
+
+camera.add(gun);
+scene.add(camera);
+gun.position.set(18,-10,-30);
+
+/* =========================
+ENEMIES
+========================= */
+
+const enemies = [];
+const bullets = [];
+const raycaster = new THREE.Raycaster();
+
+function showDamage(text, isHead = false){
+    const div = document.createElement("div");
+
+    div.innerText = text;
+    div.style.position = "fixed";
+    div.style.left =
+        (window.innerWidth/2 + (Math.random()*80-40)) + "px";
+    div.style.top =
+        (window.innerHeight/2 - 40 + (Math.random()*30)) + "px";
+
+    div.style.color =
+        isHead ? "#ff4444" : "#ffffff";
+
+    div.style.fontSize =
+        isHead ? "32px" : "24px";
+
+    div.style.fontWeight = "bold";
+    div.style.textShadow =
+        isHead
+        ? "0 0 15px red"
+        : "0 0 10px cyan";
+
+    div.style.zIndex = "99999";
+    div.style.pointerEvents = "none";
+    div.style.transition = "0.6s";
+
+    document.body.appendChild(div);
+
+    setTimeout(()=>{
+        div.style.transform = "translateY(-60px)";
+        div.style.opacity = 0;
+    },30);
+
+    setTimeout(()=>{
+        div.remove();
+    },700);
+}
+
+function updateBossBar(enemy){
+    const wrap = document.getElementById("bossBarWrap");
+    const hpBar = document.getElementById("bossHp");
+
+    if(!enemy || !enemy.userData.isBoss){
+        wrap.style.display = "none";
+        return;
+    }
+
+    wrap.style.display = "block";
+
+    const percent =
+        (enemy.userData.hp / enemy.userData.maxHp) * 100;
+
+    hpBar.style.width =
+        Math.max(percent,0) + "%";
+}
+
+function createZombie(x, z, isBoss = false){
+
+    const zombie = new THREE.Group();
+    const size = isBoss ? 1.8 : 1;
+
+    const body = new THREE.Mesh(
+        new THREE.CapsuleGeometry(
+            3 * size,
+            10 * size,
+            8,
+            16
+        ),
+        new THREE.MeshStandardMaterial({
+            color: isBoss ? 0xaa00ff : 0x44ff66
+        })
+    );
+
+    body.position.y = 12 * size;
+    zombie.add(body);
+
+    const head = new THREE.Mesh(
+        new THREE.SphereGeometry(
+            3.5 * size,
+            24,
+            24
+        ),
+        new THREE.MeshStandardMaterial({
+            color:0xe0e0e0
+        })
+    );
+
+    head.position.y = 22 * size;
+    zombie.add(head);
+
+    zombie.position.set(x, 0, z);
+
+    zombie.userData.isBoss = isBoss;
+
+    zombie.userData.maxHp =
+        isBoss ? 500 + (wave * 80)
+               : 120 + (wave * 20);
+
+    zombie.userData.hp =
+        zombie.userData.maxHp;
+
+    zombie.userData.speed =
+        isBoss ? 1.2 + (wave * 0.12)
+               : 0.9 + (wave * 0.08);
+
+    zombie.userData.attack =
+        isBoss ? 20 + (wave * 2)
+               : 10 + wave;
+
+    zombie.userData.cool = 0;
+
+    scene.add(zombie);
+    enemies.push(zombie);
+
+    return zombie;
+}
+
+function showWaveAlert(text){
+    const alertBox =
+        document.getElementById("waveAlert");
+
+    alertBox.innerText = text;
+    alertBox.style.opacity = 1;
+    alertBox.style.transform =
+        "translate(-50%,-50%) scale(1.2)";
+
+    setTimeout(()=>{
+        alertBox.style.opacity = 0;
+        alertBox.style.transform =
+            "translate(-50%,-50%) scale(1)";
+    },1800);
+}
+
+function spawnWave(){
+
+    const normalCount = wave * 6;
+
+    showWaveAlert("WAVE " + wave + " START");
+
+    for(let i=0;i<normalCount;i++){
+        createZombie(
+            Math.random() * 1600 - 800,
+            Math.random() * -1800 - 400,
+            false
+        );
+    }
+
+    showWaveAlert("BOSS INCOMING");
+
+    const boss = createZombie(
+        0,
+        -1000,
+        true
+    );
+
+    updateBossBar(boss);
+
+    document.getElementById("waveUI").innerText =
+        "WAVE : " + wave;
+}
+
+/* =========================
+UI
+========================= */
+
+function updateUI(){
+    document.getElementById("hpUI").innerText =
+        "HP : " + hp;
+
+    document.getElementById("ammoUI").innerText =
+        ammo + " / ∞";
+
+    document.getElementById("killUI").innerText =
+        "KILLS : " + kills;
+}
+
+/* =========================
+RELOAD
+========================= */
+
+function reload(){
+
+    if(reloading) return;
+    if(ammo === maxAmmo) return;
+
+    reloading = true;
+    gun.rotation.z = -0.35;
+
+    setTimeout(()=>{
+        ammo = maxAmmo;
+        gun.rotation.z = 0;
+        reloading = false;
+        updateUI();
+    },1000);
+}
+
+/* =========================
+SHOOT
+========================= */
+
+function shoot(){
+
+    if(reloading) return;
+
+    if(ammo <= 0){
+        reload();
+        return;
+    }
+
+    ammo--;
+    updateUI();
+
+    gun.position.z += 2;
+    gun.rotation.x = -0.08;
+
+    setTimeout(()=>{
+        gun.position.z -= 2;
+        gun.rotation.x = 0;
+    },80);
+
+    raycaster.setFromCamera(
+        new THREE.Vector2(0,0),
+        camera
+    );
+
+    const hits = raycaster.intersectObjects(
+        scene.children,
+        true
+    );
+
+    if(hits.length > 0){
+
+        let target = hits[0].object;
+
+        while(
+            target.parent &&
+            !enemies.includes(target)
+        ){
+            target = target.parent;
+        }
+
+        if(enemies.includes(target)){
+
+            const isHead =
+                hits[0].object.geometry &&
+                hits[0].object.geometry.type ===
+                "SphereGeometry";
+
+            let damage =
+                isHead ? 40 : 30;
+
+            target.userData.hp -= damage;
+
+            showDamage(
+                isHead
+                ? "HEAD +" + damage
+                : damage,
+                isHead
+            );
+
+            if(target.userData.isBoss){
+                updateBossBar(target);
+            }
+
+            if(target.userData.hp <= 0){
+
+                if(target.userData.isBoss){
+                    updateBossBar(null);
+                }
+
+                scene.remove(target);
+
+                const idx =
+                    enemies.indexOf(target);
+
+                if(idx > -1){
+                    enemies.splice(idx,1);
+                }
+
+                kills++;
+                updateUI();
+
+                if(enemies.length === 0){
+                    wave++;
+                    spawnWave();
+                }
+            }
+        }
+    }
+}
+
+/* =========================
+INPUT
+========================= */
+
+document.body.addEventListener("click",()=>{
+    document.body.requestPointerLock();
+    shoot();
+});
+
+document.addEventListener("mousedown",(e)=>{
+    if(e.button === 2){
+
+        aiming = true;
+
+        gun.position.set(
+            8,
+            -6,
+            -20
+        );
+
+        camera.fov = 55;
+        camera.updateProjectionMatrix();
+    }
+});
+
+document.addEventListener("mouseup",(e)=>{
+    if(e.button === 2){
+
+        aiming = false;
+
+        gun.position.set(
+            18,
+            -10,
+            -30
+        );
+
+        camera.fov = 75;
+        camera.updateProjectionMatrix();
+    }
+});
+
+document.addEventListener(
+    "contextmenu",
+    e => e.preventDefault()
+);
+
+document.addEventListener("mousemove",(e)=>{
+
+    if(
+        document.pointerLockElement !==
+        document.body
+    ) return;
+
+    yaw -= e.movementX * 0.002;
+    pitch -= e.movementY * 0.002;
+
+    if(pitch > 1.2) pitch = 1.2;
+    if(pitch < -1.2) pitch = -1.2;
+
+    camera.rotation.order = "YXZ";
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+});
+
+document.addEventListener("keydown",(e)=>{
+    const k = e.key.toLowerCase();
+
+    if(move.hasOwnProperty(k)){
+        move[k] = true;
+    }
+
+    if(e.code === "Space" && onGround){
+        velocityY = 8;
+        onGround = false;
+    }
+
+    if(k === "r"){
+        reload();
+    }
+});
+
+document.addEventListener("keyup",(e)=>{
+    const k = e.key.toLowerCase();
+
+    if(move.hasOwnProperty(k)){
+        move[k] = false;
+    }
+});
+
+/* =========================
+GAME LOOP
+========================= */
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+    const speed =
+        aiming ? 1.6 : 2.8;
+
+    if(move.w){
+        camera.position.x -=
+            Math.sin(yaw) * speed;
+        camera.position.z -=
+            Math.cos(yaw) * speed;
+    }
+
+    if(move.s){
+        camera.position.x +=
+            Math.sin(yaw) * speed;
+        camera.position.z +=
+            Math.cos(yaw) * speed;
+    }
+
+    if(move.a){
+        camera.position.x -=
+            Math.cos(yaw) * speed;
+        camera.position.z +=
+            Math.sin(yaw) * speed;
+    }
+
+    if(move.d){
+        camera.position.x +=
+            Math.cos(yaw) * speed;
+        camera.position.z -=
+            Math.sin(yaw) * speed;
+    }
+
+    if(!onGround){
+        velocityY -= 0.4;
+        camera.position.y += velocityY;
+
+        if(camera.position.y <= 25){
+            camera.position.y = 25;
+            velocityY = 0;
+            onGround = true;
+        }
+    }
+
+    enemies.forEach(enemy=>{
+
+        const dx =
+            camera.position.x -
+            enemy.position.x;
+
+        const dz =
+            camera.position.z -
+            enemy.position.z;
+
+        const dist =
+            Math.sqrt(dx*dx + dz*dz);
+
+        if(dist > 18){
+            enemy.position.x +=
+                dx / dist *
+                enemy.userData.speed;
+
+            enemy.position.z +=
+                dz / dist *
+                enemy.userData.speed;
+        }
+
+        if(dist < 24){
+
+            enemy.userData.cool++;
+
+            if(enemy.userData.cool > 30){
+
+                hp -= enemy.userData.attack;
+                enemy.userData.cool = 0;
+
+                updateUI();
+
+                if(hp <= 0){
+                    alert("GAME OVER");
+                    location.reload();
+                }
+            }
+        }
+
+        enemy.rotation.y += 0.04;
+    });
+
+    renderer.render(scene, camera);
+}
+
+spawnWave();
+updateUI();
+animate();
+
+window.addEventListener("resize",()=>{
+    camera.aspect =
+        window.innerWidth /
+        window.innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+        window.innerWidth,
+        window.innerHeight
+    );
+});
+</script>
+
+</body>
+</html>

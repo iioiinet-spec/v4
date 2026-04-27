@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Cosmic Symphony</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            pointer-events: none;
+            z-index: 10;
+        }
+        h1 {
+            font-weight: 100;
+            letter-spacing: 20px;
+            text-transform: uppercase;
+            opacity: 0.8;
+            margin: 0;
+        }
+        p { letter-spacing: 5px; color: rgba(255,255,255,0.4); font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>DIMENSION</h1>
+        <p>드래그하여 시점을 돌리고, 클릭하여 빛을 터뜨리세요</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer, stars, starGeo;
+        let particles = [];
+
+        function init() {
+            // 1. Scene & Camera 세팅
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.z = 1;
+            camera.rotation.x = Math.PI / 2;
+
+            // 2. Renderer 세팅
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 3. 별무리(Stars) 생성
+            starGeo = new THREE.BufferGeometry();
+            const starCoords = [];
+            for (let i = 0; i < 15000; i++) {
+                starCoords.push(
+                    Math.random() * 600 - 300,
+                    Math.random() * 600 - 300,
+                    Math.random() * 600 - 300
+                );
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+
+            let sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+            let starMaterial = new THREE.PointsMaterial({
+                color: 0xaaaaaa,
+                size: 0.7,
+                map: sprite,
+                transparent: true
+            });
+
+            stars = new THREE.Points(starGeo, starMaterial);
+            scene.add(stars);
+
+            animate();
+        }
+
+        // 마우스 상호작용
+        let mouseX = 0, mouseY = 0;
+        window.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX - window.innerWidth / 2) / 100;
+            mouseY = (e.clientY - window.innerHeight / 2) / 100;
+        });
+
+        // 클릭 시 파티클 폭발
+        window.addEventListener('mousedown', (e) => {
+            createExplosion(mouseX, -mouseY);
+        });
+
+        function createExplosion(x, y) {
+            const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            
+            for(let i=0; i<20; i++) {
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(x, y, camera.position.z - 5);
+                mesh.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+                scene.add(mesh);
+                particles.push(mesh);
+            }
+        }
+
+        function animate() {
+            // 별무리 회전 및 카메라 반응
+            stars.rotation.y += 0.002;
+            camera.position.x += (mouseX - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+
+            // 폭발 파티클 업데이트
+            particles.forEach((p, i) => {
+                p.position.add(p.userData.velocity);
+                p.scale.multiplyScalar(0.95); // 점점 작아짐
+                if(p.scale.x < 0.01) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                }
+            });
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        init();
+    </script>
+</body>
+</html>

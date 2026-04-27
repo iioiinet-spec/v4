@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Final Matrix Engine</title>
+
+<style>
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: monospace;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+#error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 90px;
+  font-weight: bold;
+  display: none;
+  background: linear-gradient(90deg, #00ff66, #000000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+</style>
+</head>
+
+<body>
+<canvas id="c"></canvas>
+<div id="error">ERROR</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+let w,h;
+function resize(){
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// =======================
+// 3D VOLUME WORLD
+// =======================
+const spacing = 18;
+const cols = 26;
+const rows = 18;
+const depth = 16;
+
+let grid = [];
+
+function rebuild(){
+  grid = [];
+  for(let x=0;x<cols;x++){
+    for(let y=0;y<rows;y++){
+      for(let z=0;z<depth;z++){
+        grid.push({
+          x:(x-cols/2)*spacing,
+          y:(y-rows/2)*spacing,
+          z:(z-depth/2)*spacing,
+          char: Math.random()>0.5 ? "0":"1",
+
+          // 🔥 flicker system
+          blink: Math.random()*60,
+          visible: true
+        });
+      }
+    }
+  }
+}
+rebuild();
+
+// =======================
+// CAMERA
+// =======================
+let camZ = -900;
+let rotX = 0;
+let rotY = 0;
+let targetRotX = 0;
+let targetRotY = 0;
+
+// =======================
+// GLITCH SYSTEM
+// =======================
+let glitchMap = new Map();
+
+// =======================
+// DRAG (rotation)
+// =======================
+let dragging=false;
+let lx=0,ly=0;
+
+document.addEventListener("mousedown",e=>{
+  dragging=true;
+  lx=e.clientX;
+  ly=e.clientY;
+});
+
+document.addEventListener("mouseup",()=>dragging=false);
+
+document.addEventListener("mousemove",e=>{
+  if(!dragging) return;
+  targetRotY += (e.clientX-lx)*0.004;
+  targetRotX += (e.clientY-ly)*0.004;
+  lx=e.clientX;
+  ly=e.clientY;
+});
+
+// =======================
+// ZOOM (into space)
+// =======================
+document.addEventListener("wheel",e=>{
+  camZ += e.deltaY*0.5;
+  camZ = Math.max(-3000,Math.min(-300,camZ));
+});
+
+// =======================
+// GLITCH
+// =======================
+function triggerGlitch(i,target){
+  glitchMap.set(i,{life:10,target});
+}
+
+// =======================
+// INPUT SYSTEM
+// =======================
+document.addEventListener("keydown",e=>{
+  const err=document.getElementById("error");
+
+  // SPACE → all per-character glitch
+  if(e.code==="Space"){
+    for(let i=0;i<grid.length;i++){
+      glitchMap.set(i,{
+        life:10,
+        target:grid[i].char
+      });
+    }
+    return;
+  }
+
+  // 0 → only 0
+  if(e.key==="0"){
+    for(let i=0;i<grid.length;i++){
+      if(grid[i].char==="0" && Math.random()<0.12){
+        triggerGlitch(i,"0");
+      }
+    }
+    return;
+  }
+
+  // 1 → only 1
+  if(e.key==="1"){
+    for(let i=0;i<grid.length;i++){
+      if(grid[i].char==="1" && Math.random()<0.12){
+        triggerGlitch(i,"1");
+      }
+    }
+    return;
+  }
+
+  // other numbers → ERROR burst
+  if(!isNaN(e.key)){
+    err.style.display="block";
+    setTimeout(()=>err.style.display="none",400);
+
+    for(let i=0;i<80;i++){
+      glitchMap.set(Math.floor(Math.random()*grid.length),{
+        life:8,
+        target:"all"
+      });
+    }
+    return;
+  }
+
+  // RESET
+  if(e.code==="Escape"){
+    glitchMap.clear();
+    camZ=-900;
+    targetRotX=0;
+    targetRotY=0;
+    rebuild();
+    err.style.display="none";
+  }
+});
+
+// =======================
+// 3D PROJECTION
+// =======================
+function project(x,y,z){
+
+  let cx=Math.cos(rotX), sx=Math.sin(rotX);
+  let y1=y*cx - z*sx;
+  let z1=y*sx + z*cx;
+
+  let cy=Math.cos(rotY), sy=Math.sin(rotY);
+  let x2=x*cy - z1*sy;
+  let z2=x*sy + z1*cy;
+
+  z2+=camZ;
+
+  let scale=900/(900+z2);
+
+  return {
+    x:w/2+x2*scale,
+    y:h/2+y1*scale,
+    scale
+  };
+}
+
+// =======================
+// GLITCH TEXT (RGB split)
+// =======================
+function drawGlitchText(t,x,y){
+  const c=["#ff0033","#00ffff","#ffff00"];
+
+  for(let i=0;i<3;i++){
+    ctx.fillStyle=c[i];
+    ctx.fillText(
+      t,
+      x+(Math.random()*4-2),
+      y+(Math.random()*4-2)
+    );
+  }
+}
+
+// =======================
+// DRAW LOOP
+// =======================
+function draw(){
+
+  ctx.fillStyle="rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,w,h);
+
+  rotX+=(targetRotX-rotX)*0.05;
+  rotY+=(targetRotY-rotY)*0.05;
+
+  ctx.font="14px monospace";
+
+  for(let i=0;i<grid.length;i++){
+
+    let p=grid[i];
+
+    // =======================
+    // 🔥 FLICKER SYSTEM
+    // =======================
+    p.blink--;
+
+    if(p.blink<=0){
+      p.visible=!p.visible;
+      p.blink=Math.random()*50+10;
+    }
+
+    if(!p.visible) continue;
+
+    let proj=project(p.x,p.y,p.z);
+    if(proj.scale<=0) continue;
+
+    let g=glitchMap.get(i);
+
+    if(g){
+      drawGlitchText(p.char,proj.x,proj.y);
+
+      g.life--;
+      if(g.life<=0) glitchMap.delete(i);
+
+    } else {
+      ctx.fillStyle="#00ff66";
+      ctx.fillText(p.char,proj.x,proj.y);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+
+</body>
+</html>

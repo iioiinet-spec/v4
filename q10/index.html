@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate RGB Stickman</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; pointer-events: none; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="ui">클릭: 소환 | 스페이스바: RGB 파티클 회전</div>
+    <canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let width, height, cx, cy;
+
+const stickmen = [];
+const particles = [];
+let isSpinning = false;
+let spinAngle = 0;
+
+// 화면 크기 설정
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    cx = width / 2;
+    cy = height / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// 3D 좌표를 2D로 변환하는 함수 (라이브러리 없이 직접 구현)
+function project(x, y, z, angle) {
+    // Y축 회전 행렬 적용
+    let cosA = Math.cos(angle);
+    let sinA = Math.sin(angle);
+    let nx = x * cosA - z * sinA;
+    let nz = x * sinA + z * cosA + 10; // 카메라 거리
+    
+    let scale = 600 / nz; // 원근법 적용
+    return {
+        x: cx + nx * scale,
+        y: cy + y * scale,
+        scale: scale
+    };
+}
+
+// 클릭 시 졸라맨 생성
+window.addEventListener('mousedown', (e) => {
+    stickmen.push({
+        x: (e.clientX - cx) / 50,
+        y: (e.clientY - cy) / 50,
+        z: (Math.random() - 0.5) * 5,
+        hue: Math.random() * 360
+    });
+});
+
+// 스페이스바 회전
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+        isSpinning = true;
+        spinAngle = 0;
+        // 회전할 때 파티클 생성
+        stickmen.forEach(s => {
+            for(let i=0; i<30; i++) {
+                particles.push({
+                    x: s.x, y: s.y, z: s.z,
+                    vx: (Math.random()-0.5)*0.5, vy: (Math.random()-0.5)*0.5, vz: (Math.random()-0.5)*0.5,
+                    life: 1.0, hue: s.hue
+                });
+            }
+        });
+    }
+});
+
+function drawStickman(s, currentAngle) {
+    const angle = isSpinning ? currentAngle : 0;
+    const baseColor = `hsl(${isSpinning ? (s.hue + spinAngle * 50) % 360 : s.hue}, 100%, 60%)`;
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+
+    // 각 부위 좌표 (x, y, z)
+    const points = {
+        head: project(s.x, s.y - 1.2, s.z, angle),
+        neck: project(s.x, s.y - 0.8, s.z, angle),
+        pelvis: project(s.x, s.y, s.z, angle),
+        handL: project(s.x - 0.6, s.y - 0.4, s.z, angle),
+        handR: project(s.x + 0.6, s.y - 0.4, s.z, angle),
+        footL: project(s.x - 0.4, s.y + 0.8, s.z, angle),
+        footR: project(s.x + 0.4, s.y + 0.8, s.z, angle)
+    };
+
+    ctx.beginPath();
+    // 머리
+    ctx.arc(points.head.x, points.head.y, 15 * (points.head.scale/50), 0, Math.PI*2);
+    // 몸통
+    ctx.moveTo(points.neck.x, points.neck.y); ctx.lineTo(points.pelvis.x, points.pelvis.y);
+    // 팔
+    ctx.moveTo(points.handL.x, points.handL.y); ctx.lineTo(points.neck.x, points.neck.y);
+    ctx.lineTo(points.handR.x, points.handR.y);
+    // 다리
+    ctx.moveTo(points.footL.x, points.footL.y); ctx.lineTo(points.pelvis.x, points.pelvis.y);
+    ctx.lineTo(points.footR.x, points.footR.y);
+    ctx.stroke();
+    
+    // RGB 빛 효과
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = baseColor;
+}
+
+function update() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.fillRect(0, 0, width, height);
+
+    if (isSpinning) {
+        spinAngle += 0.1;
+        if (spinAngle > Math.PI * 2) isSpinning = false;
+    }
+
+    // 파티클 업데이트 및 그리기
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.z += p.vz;
+        p.life -= 0.02;
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+        }
+        let pos = project(p.x, p.y, p.z, isSpinning ? spinAngle : 0);
+        ctx.fillStyle = `hsla(${(p.hue + spinAngle*100)%360}, 100%, 70%, ${p.life})`;
+        ctx.fillRect(pos.x, pos.y, 3, 3);
+    }
+
+    // 졸라맨 그리기
+    stickmen.forEach(s => drawStickman(s, spinAngle));
+
+    requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
