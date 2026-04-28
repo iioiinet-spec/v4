@@ -1,444 +1,380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>바다 미디어아트</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;}
+#wrap{position:fixed;inset:0;width:100vw;height:100vh;}
+canvas{position:absolute;inset:0;width:100%;height:100%;}
+#oc{pointer-events:none;}
+#ui{position:fixed;top:18px;left:22px;pointer-events:none;z-index:10;}
+#tod{font-family:'Helvetica Neue',Helvetica,sans-serif;font-size:22px;font-weight:300;letter-spacing:3px;text-shadow:0 1px 14px rgba(0,0,0,0.75);}
+#sub{font-family:'Helvetica Neue',Helvetica,sans-serif;font-size:11px;color:rgba(255,255,255,0.48);letter-spacing:2px;margin-top:4px;}
 
-<div style="position:relative;border-radius:14px;overflow:hidden;width:100%;height:590px;cursor:grab;">
-<canvas id="glc" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
-<canvas id="oc" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
-<div style="position:absolute;top:14px;left:18px;pointer-events:none;">
-  <div id="ktime" style="font-family:'Helvetica Neue',sans-serif;font-size:22px;font-weight:300;color:rgba(255,255,255,0.92);letter-spacing:3px;text-shadow:0 1px 8px rgba(0,0,0,0.5);"></div>
-  <div id="ktod" style="font-family:'Helvetica Neue',sans-serif;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:2px;margin-top:2px;"></div>
+#hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);font-family:sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.25);pointer-events:none;z-index:10;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="glc"></canvas>
+  <canvas id="oc"></canvas>
 </div>
-<div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:sans-serif;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.35);pointer-events:none;white-space:nowrap;">DRAG · SCROLL</div>
+<div id="ui">
+  <div id="tod"></div>
+  <div id="sub"></div>
 </div>
+
+<div id="hint">DRAG · SCROLL TO ZOOM · F11 FULLSCREEN</div>
+
 <script>
-const wrap=document.querySelector('div[style*="590px"]');
+const wrap=document.getElementById('wrap');
 const glc=document.getElementById('glc');
 const oc=document.getElementById('oc');
-const ctx=oc.getContext('2d');
-const ktime=document.getElementById('ktime');
-const ktod=document.getElementById('ktod');
+
+const todEl=document.getElementById('tod');
+const subEl=document.getElementById('sub');
+const ctx2=oc.getContext('2d');
+
 const gl=glc.getContext('webgl',{antialias:true,alpha:false});
 
-let camYaw=0,camPitch=0.14,tYaw=0,tPitch=0.14,zoom=1,tZoom=1;
+let camYaw=0,camPitch=0.13,tYaw=0,tPitch=0.13,zoom=1,tZoom=1;
 let drag=false,lx=0,ly=0,autoRot=true,startTs=null;
-const CYCLE=300;
+const CYCLE=600;
+const objStart=performance.now();
 
-wrap.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY;autoRot=false;wrap.style.cursor='grabbing';});
-wrap.addEventListener('mouseup',()=>{drag=false;wrap.style.cursor='grab';setTimeout(()=>autoRot=true,5000);});
-wrap.addEventListener('mousemove',e=>{if(!drag)return;tYaw+=(e.clientX-lx)*0.0035;tPitch=Math.max(-0.6,Math.min(0.7,tPitch+(e.clientY-ly)*0.003));lx=e.clientX;ly=e.clientY;});
-wrap.addEventListener('wheel',e=>{tZoom=Math.max(0.5,Math.min(2.2,tZoom-e.deltaY*0.001));e.preventDefault();},{passive:false});
-wrap.addEventListener('touchstart',e=>{drag=true;lx=e.touches[0].clientX;ly=e.touches[0].clientY;autoRot=false;},{passive:true});
-wrap.addEventListener('touchend',()=>{drag=false;setTimeout(()=>autoRot=true,5000);});
-wrap.addEventListener('touchmove',e=>{if(!drag)return;tYaw+=(e.touches[0].clientX-lx)*0.0035;tPitch=Math.max(-0.6,Math.min(0.7,tPitch+(e.touches[0].clientY-ly)*0.003));lx=e.touches[0].clientX;ly=e.touches[0].clientY;e.preventDefault();},{passive:false});
+function resize(){
+  const dpr=devicePixelRatio||1;
+  const W=window.innerWidth,H=window.innerHeight;
+  glc.width=Math.round(W*dpr);glc.height=Math.round(H*dpr);
+  oc.width=Math.round(W*dpr);oc.height=Math.round(H*dpr);
+  ctx2.setTransform(1,0,0,1,0,0);ctx2.scale(dpr,dpr);
+}
+resize();
+window.addEventListener('resize',resize);
+
+document.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY;autoRot=false;document.body.style.cursor='grabbing';});
+document.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';setTimeout(()=>autoRot=true,5000);});
+document.addEventListener('mousemove',e=>{if(!drag)return;tYaw+=(e.clientX-lx)*0.0032;tPitch=Math.max(-0.58,Math.min(0.68,tPitch+(e.clientY-ly)*0.0028));lx=e.clientX;ly=e.clientY;});
+document.addEventListener('wheel',e=>{tZoom=Math.max(0.5,Math.min(2.0,tZoom-e.deltaY*0.001));e.preventDefault();},{passive:false});
+document.addEventListener('touchstart',e=>{drag=true;lx=e.touches[0].clientX;ly=e.touches[0].clientY;autoRot=false;},{passive:true});
+document.addEventListener('touchend',()=>{drag=false;setTimeout(()=>autoRot=true,5000);});
+document.addEventListener('touchmove',e=>{if(!drag)return;tYaw+=(e.touches[0].clientX-lx)*0.0032;tPitch=Math.max(-0.58,Math.min(0.68,tPitch+(e.touches[0].clientY-ly)*0.0028));lx=e.touches[0].clientX;ly=e.touches[0].clientY;e.preventDefault();},{passive:false});
+document.addEventListener('keydown',e=>{if(e.key==='F11'){e.preventDefault();if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();}});
+
+function getDayF(s){
+  if(s<120){return 0.12+Math.pow(s/120,0.7)*0.43;}
+  if(s<240){return 0.55+Math.sin((s-120)/120*Math.PI)*0.35;}
+  if(s<360){return 0.55-Math.pow((s-240)/120,0.6)*0.52;}
+  if(s<480){return 0.0;}
+  return Math.pow((s-480)/120,1.4)*0.13;
+}
+function getSunYaw(s){return(s/CYCLE)*Math.PI*1.1;}
 
 const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
 const fs=`
 precision highp float;
-uniform vec2 R;uniform float T;uniform float D;uniform float YW;uniform float PT;uniform float ZM;
-#define PI 3.14159265359
-#define TAU 6.28318530718
-mat3 RY(float a){float c=cos(a),s=sin(a);return mat3(c,0,s,0,1,0,-s,0,c);}
-mat3 RX(float a){float c=cos(a),s=sin(a);return mat3(1,0,0,0,c,-s,0,s,c);}
-float H(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-float H1(float v){return fract(sin(v*74.3)*52741.3);}
-float N(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);float a=H(i),b=H(i+vec2(1,0)),c=H(i+vec2(0,1)),d=H(i+vec2(1,1));return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
-float FBM(vec2 p){float v=0.,a=.5;mat2 m=mat2(1.7,1.2,-1.2,1.7);for(int i=0;i<7;i++){v+=a*N(p);p=m*p;a*=.47;}return v;}
-
-vec3 SKY(vec3 dir,float df){
+uniform vec2 R;uniform float T;uniform float D;uniform float SY;uniform float YW;uniform float PT;uniform float ZM;
+#define PI 3.14159265
+#define TAU 6.28318530
+mat3 mRY(float a){float c=cos(a),s=sin(a);return mat3(c,0,s,0,1,0,-s,0,c);}
+mat3 mRX(float a){float c=cos(a),s=sin(a);return mat3(1,0,0,0,c,-s,0,s,c);}
+float hash21(vec2 p){p=fract(p*vec2(234.34,435.345));p+=dot(p,p+34.23);return fract(p.x*p.y);}
+float hash11(float p){return fract(sin(p*127.1)*43758.5);}
+float snoise(vec2 p){
+  vec2 i=floor(p),f=fract(p),u=f*f*f*(f*(f*6.-15.)+10.);
+  return mix(mix(hash21(i),hash21(i+vec2(1,0)),u.x),mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),u.x),u.y);
+}
+float fbm(vec2 p){float v=0.,a=.5;vec2 sh=vec2(3.1,1.7);for(int i=0;i<6;i++){v+=a*snoise(p);p=p*2.0+sh;a*=.5;}return v;}
+float cloudFbm(vec2 p){float wx=snoise(p+vec2(1.3,0.8)),wy=snoise(p+vec2(0.5,2.1));p+=vec2(wx,wy)*0.55;return fbm(p);}
+float starField(vec3 dir,float bright){
+  float phi=atan(dir.x,dir.z),theta=asin(clamp(dir.y,-1.,1.));
+  vec2 cell=floor(vec2(phi,theta)*28.);
+  float n=hash21(cell+vec2(71.2,193.7));
+  vec2 cellF=fract(vec2(phi,theta)*28.),starPos=vec2(hash11(n),hash11(n+.31))*.85+.075;
+  float d=length(cellF-starPos),size=mix(.06,.14,hash11(n+.6));
+  return smoothstep(size,size*.2,d)*(sin(T*2.5+n*400.)*.35+.72)*bright;
+}
+vec3 getSky(vec3 dir,float df){
   float uy=dir.y;
-  vec3 zD=vec3(.07,.19,.52),hD=vec3(.48,.74,.97);
-  vec3 zN=vec3(.004,.008,.04),hN=vec3(.015,.03,.10);
+  vec3 zenD=vec3(.07,.20,.54),horD=vec3(.47,.73,.97);
+  vec3 zenN=vec3(.003,.006,.030),horN=vec3(.008,.016,.065);
+  vec3 zenDw=vec3(.04,.06,.20),horDw=vec3(.50,.28,.55);
+  float nightF=1.-smoothstep(0.,.10,df),dawnF=smoothstep(0.,.15,df)*(1.-smoothstep(.15,.38,df)),dayF=smoothstep(.12,.45,df);
   float hh=smoothstep(0.,.5,uy);
-  vec3 sky=mix(mix(hN,zN,hh),mix(hD,zD,hh),df);
-
-  float sA=TAU*(.25-df*.5);
-  float sP=sin(df*PI)*.52-.03;
-  vec3 sDir=normalize(vec3(sin(sA)*cos(sP),sin(sP),cos(sA)*cos(sP)));
+  vec3 zen=mix(mix(zenN,zenDw,dawnF),zenD,dayF),hor=mix(mix(horN,horDw,dawnF),horD,dayF);
+  vec3 sky=mix(hor,zen,hh*hh);
+  float sP=df*PI*.88-.04;
+  vec3 sDir=normalize(vec3(sin(SY)*cos(sP),sin(sP),cos(SY)*cos(sP)));
   float sd=max(0.,dot(dir,sDir));
-
-  float rise=smoothstep(0.,.14,df)*(1.-smoothstep(.14,.26,df));
-  float set=smoothstep(.74,.88,df)*(1.-smoothstep(.88,1.,df));
-  float gld=max(rise,set);
-  float hg=pow(max(0.,1.-abs(uy)*2.8),2.3);
-  sky=mix(sky,mix(vec3(.92,.38,.08),vec3(.99,.62,.18),rise),hg*gld*.95*df);
-
-  vec3 sCol=mix(vec3(.99,.60,.18),vec3(1.,.96,.85),smoothstep(.1,.4,df));
-  sky+=sCol*(pow(sd,280.)*7.+pow(sd,15.)*.45)*df;
-  sky+=sCol*pow(sd,5.)*.12*df;
-
+  float golden=smoothstep(.08,.22,df)*(1.-smoothstep(.22,.58,df))+smoothstep(.52,.70,df)*(1.-smoothstep(.75,.92,df));
+  float hg=pow(max(0.,1.-abs(uy)*2.6),2.4);
+  sky=mix(sky,vec3(.95,.38,.07),hg*golden*.90);
+  sky=mix(sky,vec3(.80,.22,.04),hg*(1.-smoothstep(.55,.70,df))*golden*.45);
+  vec3 sunCol=mix(vec3(1.,.55,.15),vec3(1.,.97,.88),smoothstep(.10,.50,df));
+  sky+=sunCol*pow(sd,280.)*7.*df;
+  sky+=sunCol*pow(sd,18.)*.55*df;
+  sky+=sunCol*pow(sd,6.)*.14*df;
   vec3 mDir=normalize(vec3(-sDir.x,-sDir.y*.5,-sDir.z));
-  float md=max(0.,dot(dir,mDir));
-  float moonBright=1.-smoothstep(0.,.25,df);
-  sky+=vec3(.92,.95,1.)*pow(md,600.)*5.*moonBright;
-  sky+=vec3(.70,.78,.98)*pow(md,25.)*.20*moonBright;
-  sky+=vec3(.30,.40,.70)*pow(md,8.)*.08*moonBright;
-
-  float nightF=1.-smoothstep(0.,.22,df)*(1.-smoothstep(.78,1.,df));
-  nightF=max(nightF,(1.-df)*1.2);
-  nightF=clamp(nightF,0.,1.);
-
-  vec3 sv=dir*200.;
-  float sx=floor(sv.x*.6+sv.y*3.+sv.z*.8);
-  float sy=floor(sv.y*4.+sv.z*.5+sv.x*.7);
-  float sn=H(vec2(sx,sy));
-  float star=step(.982,sn)*nightF;
-  float twk=sin(T*2.8+sn*400.)*.35+.72;
-  vec3 starCol=mix(vec3(.85,.88,1.),vec3(1.,.95,.8),H1(sn));
-  sky+=star*twk*starCol*1.1;
-
-  float mw=FBM(vec2(atan(dir.x,dir.z)*.4+.2,dir.y*.9+.4)*2.2)*.28;
-  mw*=nightF*smoothstep(-.05,.25,uy)*(1.-smoothstep(.28,.65,uy));
-  sky+=vec3(.35,.42,.72)*mw;
-
-  vec2 cuv=vec2(atan(dir.x,dir.z)*.16+T*.0013,uy*.52+.2);
-  float cl=FBM(cuv*2.6)*.65+FBM(cuv*5.2+vec2(.8,.3))*.35;
-  cl=smoothstep(.34,.63,cl)*smoothstep(-.02,.20,uy);
-  vec3 cLit=mix(vec3(.12,.14,.22),mix(vec3(.84,.87,.93),vec3(.99,.74,.44),hg*gld*.5),df);
-  sky=mix(sky,cLit,cl*.87);
+  float md=max(0.,dot(dir,mDir)),moonV=max(nightF,dawnF*.6);
+  sky+=vec3(.93,.96,1.)*pow(md,700.)*5.5*moonV;
+  sky+=vec3(.72,.80,.98)*pow(md,22.)*.24*moonV;
+  sky+=vec3(.35,.42,.72)*pow(md,5.)*.08*moonV;
+  float starBright=clamp(nightF+dawnF*.5,0.,1.)*smoothstep(-.06,.10,uy);
+  sky+=vec3(.88,.91,1.)*starField(dir,starBright);
+  float mwPhi=atan(dir.x,dir.z)*.18,mwTheta=dir.y*1.1;
+  float mw=fbm(vec2(mwPhi+.2,mwTheta+.5)*2.6)*.28;
+  mw*=nightF*smoothstep(-.04,.22,uy)*(1.-smoothstep(.22,.62,uy));
+  sky+=vec3(.30,.38,.70)*mw;
+  sky=mix(sky,vec3(.52,.28,.68)*.6,dawnF*smoothstep(-.1,.3,uy)*.38);
+  float phi2=atan(dir.x,dir.z),theta2=dir.y;
+  vec2 cUV=vec2(phi2*.20+T*.0012,theta2*.55+.22);
+  float cl=cloudFbm(cUV*2.4);
+  cl=smoothstep(.34,.62,cl)*smoothstep(-.02,.20,uy);
+  vec3 cNight=vec3(.09,.11,.18),cDay=mix(vec3(.84,.87,.94),vec3(.99,.75,.44),hg*golden*.55),cDawn=vec3(.72,.52,.78);
+  sky=mix(sky,mix(mix(cNight,cDawn,dawnF),cDay,dayF),cl*.88);
   return sky;
 }
-
-float OC(vec2 p){
+float wave(vec2 p){
   float h=0.;
-  h+=sin(p.x*.6+T*.95)*.40+sin(p.x*1.1+p.y*.5+T*.78)*.22;
-  h+=sin(p.x*1.9-p.y+T*1.25)*.14+sin(p.x*3.3+p.y*2.1-T*1.75)*.08;
-  h+=FBM(p*.34+vec2(T*.07,-T*.04))*.34+FBM(p*.98-vec2(T*.05,T*.09))*.16;
+  h+=sin(p.x*.62+T*.97)*.42+sin(p.x*1.08+p.y*.52+T*.80)*.22;
+  h+=sin(p.x*1.91-p.y*1.02+T*1.28)*.14+sin(p.x*3.30+p.y*2.12-T*1.78)*.08;
+  h+=snoise(p*.36+vec2(T*.07,-T*.04))*.34+snoise(p*1.02-vec2(T*.05,T*.09))*.16;
   return h;
 }
-vec3 ON(vec2 p){float e=.028;float h0=OC(p),hx=OC(p+vec2(e,0.)),hy=OC(p+vec2(0.,e));return normalize(vec3(-(hx-h0)/e,2.1,-(hy-h0)/e));}
-
-vec3 OCEAN(vec3 ro,vec3 rd,float dist,float df){
-  vec3 pos=ro+rd*dist;vec2 p=pos.xz;
-  vec3 nm=ON(p);vec3 refl=reflect(rd,nm);
-  vec3 deepD=vec3(.01,.06,.22),deepN=vec3(.004,.015,.07);
-  vec3 shalD=vec3(.04,.21,.44),shalN=vec3(.008,.05,.17);
+vec3 waveNorm(vec2 p){float e=.030;return normalize(vec3(-(wave(p+vec2(e,0.))-wave(p))/e,2.1,-(wave(p+vec2(0.,e))-wave(p))/e));}
+vec3 getOcean(vec3 ro,vec3 rd,float dist,float df){
+  vec2 p=(ro+rd*dist).xz;
+  vec3 nm=waveNorm(p),refl=reflect(rd,nm);
+  float dawnF=smoothstep(0.,.15,df)*(1.-smoothstep(.15,.38,df)),dayF=smoothstep(.12,.45,df),nightF=1.-smoothstep(0.,.12,df);
   float dv=clamp(dist*.038,0.,1.);
-  vec3 wc=mix(mix(shalN,deepN,dv),mix(shalD,deepD,dv),df);
+  vec3 shalD=vec3(.04,.22,.45),deepD=vec3(.01,.06,.23),shalN=vec3(.005,.03,.14),deepN=vec3(.003,.012,.06),shalDw=vec3(.10,.04,.22),deepDw=vec3(.04,.02,.14);
+  vec3 wCol=mix(mix(mix(shalN,shalDw,dawnF),shalD,dayF),mix(mix(deepN,deepDw,dawnF),deepD,dayF),dv);
   float fr=mix(.04,1.,pow(1.-max(0.,dot(-rd,nm)),2.7));
-  vec3 col=mix(wc,SKY(refl,df),fr);
-  float sA=TAU*(.25-df*.5);float sP=sin(df*PI)*.52-.03;
-  vec3 sDir=normalize(vec3(sin(sA)*cos(sP),sin(sP),cos(sA)*cos(sP)));
+  vec3 col=mix(wCol,getSky(refl,df),fr);
+  float sP=df*PI*.88-.04;
+  vec3 sDir=normalize(vec3(sin(SY)*cos(sP),sin(sP),cos(SY)*cos(sP)));
   vec3 hv=normalize(-rd+sDir);float NdH=max(0.,dot(nm,hv));
-  vec3 sc=mix(vec3(1.,.55,.18),vec3(1.,.97,.88),smoothstep(.1,.4,df));
-  col+=sc*(pow(NdH,210.)*2.8+pow(NdH,45.)*.4)*df;
-  float bn=N(p*3.+vec2(T*.38))*N(p*5.8-vec2(T*.22));
-  col+=vec3(.06,.30,.92)*smoothstep(.55,.85,bn)*(1.-df)*.95;
-  float wh=OC(p);float fm=smoothstep(.37,.60,wh)*smoothstep(.33,.74,N(p*6.8+vec2(T*.75))*N(p*12.5-vec2(T*.5)));
-  col=mix(col,vec3(.89,.95,.99),fm*.65);
-  float fog=1.-exp(-dist*.009);
-  col=mix(col,mix(vec3(.03,.06,.14),vec3(.60,.77,.95),df),fog*.62);
+  vec3 sc=mix(vec3(1.,.55,.18),vec3(1.,.97,.88),smoothstep(.1,.5,df));
+  col+=sc*(pow(NdH,215.)*2.8+pow(NdH,44.)*.38)*df;
+  float bn=snoise(p*3.1+vec2(T*.4))*snoise(p*5.9-vec2(T*.23));
+  col+=vec3(.06,.30,.92)*smoothstep(.55,.85,bn)*nightF*.88;
+  col+=vec3(.18,.04,.32)*smoothstep(.55,.80,bn)*dawnF*.45;
+  float wh=wave(p),fo=smoothstep(.37,.60,wh)*smoothstep(.33,.74,snoise(p*6.9+vec2(T*.76))*snoise(p*12.6-vec2(T*.51)));
+  col=mix(col,vec3(.90,.95,.99),fo*.64);
+  float fog=1.-exp(-dist*.0092);
+  vec3 fogD=vec3(.60,.77,.95),fogN=vec3(.02,.04,.12),fogDw=vec3(.38,.24,.52);
+  col=mix(col,mix(mix(fogN,fogDw,dawnF),fogD,dayF),fog*.60);
   return col;
 }
-
 void main(){
   vec2 uv=(gl_FragCoord.xy/R*2.-1.);uv.x*=R.x/R.y;uv/=ZM;
-  vec3 rd=normalize(vec3(uv.x,uv.y,1.24));rd=RX(-PT)*RY(-YW)*rd;
-  vec3 ro=vec3(0.,2.1,0.);
-  vec3 col;
-  if(rd.y<-.006){float d=max(1.,(ro.y-.55)/(-rd.y));col=OCEAN(ro,rd,d,D);}
-  else col=SKY(rd,D);
-  vec2 vc=uv*ZM*.48;col*=clamp(1.-dot(vc,vc)*.52,.73,1.);
+  vec3 rd=normalize(vec3(uv.x,uv.y,1.26));rd=mRX(-PT)*mRY(-YW)*rd;
+  vec3 ro=vec3(0.,2.1,0.);vec3 col;
+  if(rd.y<-.006){float d=max(1.,(ro.y-.55)/(-rd.y));col=getOcean(ro,rd,d,D);}
+  else col=getSky(rd,D);
+  vec2 vc=uv*ZM*.46;col*=clamp(1.-dot(vc,vc)*.50,.74,1.);
   col=col*(2.51*col+.03)/(col*(2.43*col+.59)+.14);
   col=pow(clamp(col,0.,1.),vec3(1./2.2));
-  float gr=H(uv*R+vec2(T*61.,T*37.))*.020-.010;col+=gr;
-  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+  float gr=hash21(uv*R+vec2(T*61.,T*37.))*.016-.008;
+  gl_FragColor=vec4(clamp(col+gr,0.,1.),1.);
 }`;
 
-function mk(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+function mkS(t,s){const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh;}
 const prog=gl.createProgram();
-gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
-gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
+gl.attachShader(prog,mkS(gl.VERTEX_SHADER,vs));
+gl.attachShader(prog,mkS(gl.FRAGMENT_SHADER,fs));
 gl.linkProgram(prog);gl.useProgram(prog);
 const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
 const al=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
 const uR=gl.getUniformLocation(prog,'R'),uT=gl.getUniformLocation(prog,'T'),uD=gl.getUniformLocation(prog,'D');
-const uYW=gl.getUniformLocation(prog,'YW'),uPT=gl.getUniformLocation(prog,'PT'),uZM=gl.getUniformLocation(prog,'ZM');
+const uSY=gl.getUniformLocation(prog,'SY'),uYW=gl.getUniformLocation(prog,'YW'),uPT=gl.getUniformLocation(prog,'PT'),uZM=gl.getUniformLocation(prog,'ZM');
 
-function getKoreaDayFraction(){
-  const now=new Date();
-  const kst=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
-  const h=kst.getHours(),m=kst.getMinutes(),s=kst.getSeconds();
-  return (h*3600+m*60+s)/86400;
-}
-function getKoreaTimeStr(){
-  const now=new Date();
-  const kst=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
-  const h=String(kst.getHours()).padStart(2,'0'),m=String(kst.getMinutes()).padStart(2,'0');
-  return `${h}:${m} KST`;
-}
 
-function getSunDayF(realDF){
-  return Math.max(0,Math.sin(realDF*Math.PI));
-}
-
-function todStr(df){
-  const h=Math.floor(df*24);
-  if(h>=5&&h<7)return '새벽';
-  if(h>=7&&h<9)return '일출';
-  if(h>=9&&h<17)return '낮';
-  if(h>=17&&h<19)return '일몰';
-  if(h>=19&&h<21)return '황혼';
-  return '밤';
-}
-
-function w2s(wyaw,wpitch,W,H){
-  const ry=wyaw-camYaw,rp=wpitch-camPitch;
-  const cy=Math.cos(ry),sy2=Math.sin(ry);
-  const cp=Math.cos(rp),sp=Math.sin(rp);
-  const fx=sy2*cp,fy=sp,fz=cy*cp;
+function w2s(wy,wp,W,H){
+  const ry=wy-camYaw,rp=wp-camPitch;
+  const fx=Math.sin(ry)*Math.cos(rp),fy=Math.sin(rp),fz=Math.cos(ry)*Math.cos(rp);
   if(fz<0.08)return null;
-  const aspect=W/H;
-  const sx=(fx/fz/1.24)*zoom*(W/2)+W/2;
-  const sy=(-fy/fz/1.24)*zoom*(H/2)+H/2;
-  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return null;
-  return{x:sx,y:sy,z:fz};
+  const sx=(fx/fz/1.26)*zoom*(W/2)+W/2,sy=(-fy/fz/1.26)*zoom*(H/2)+H/2;
+  if(sx<-250||sx>W+250||sy<-250||sy>H+250)return null;
+  return{x:sx,y:sy};
 }
 
-function drawJet(ctx,x,y,sz,alpha,ang,contrail){
-  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
-  const s=sz;
-  ctx.shadowBlur=0;
-  ctx.fillStyle='rgba(220,228,240,0.95)';
-  ctx.strokeStyle='rgba(200,210,225,0.95)';
-  ctx.lineWidth=s*.08;ctx.lineCap='round';ctx.lineJoin='round';
-  // fuselage - slim tapered body
-  ctx.beginPath();
-  ctx.moveTo(s*2.2,0);
-  ctx.bezierCurveTo(s*1.5,s*.08,s*.5,s*.12,-s*2.0,s*.08);
-  ctx.bezierCurveTo(-s*2.2,s*.06,-s*2.2,-s*.06,-s*2.0,-s*.08);
-  ctx.bezierCurveTo(s*.5,-s*.12,s*1.5,-s*.08,s*2.2,0);
-  ctx.closePath();ctx.fill();ctx.stroke();
-  // swept wings
-  ctx.beginPath();
-  ctx.moveTo(s*.3,0);
-  ctx.lineTo(-s*.6,s*1.5);
-  ctx.lineTo(-s*1.1,s*1.5);
-  ctx.lineTo(-s*.5,s*.1);
-  ctx.closePath();ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(s*.3,0);
-  ctx.lineTo(-s*.6,-s*1.5);
-  ctx.lineTo(-s*1.1,-s*1.5);
-  ctx.lineTo(-s*.5,-s*.1);
-  ctx.closePath();ctx.fill();
-  // tail fins
-  ctx.beginPath();
-  ctx.moveTo(-s*1.5,0);
-  ctx.lineTo(-s*2.0,-s*.6);
-  ctx.lineTo(-s*2.2,-s*.6);
-  ctx.lineTo(-s*1.8,s*.08);
-  ctx.closePath();ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(-s*1.5,0);
-  ctx.lineTo(-s*2.0,s*.6);
-  ctx.lineTo(-s*2.2,s*.6);
-  ctx.lineTo(-s*1.8,-s*.08);
-  ctx.closePath();ctx.fill();
-  // engine pods
-  for(const ey of[-s*.9,s*.9]){
-    ctx.beginPath();
-    ctx.ellipse(-s*.3,ey,s*.55,s*.18,0,0,Math.PI*2);
-    ctx.fillStyle='rgba(190,200,215,0.9)';ctx.fill();
-    ctx.fillStyle='rgba(220,228,240,0.95)';
-  }
-  // cockpit tint
-  ctx.beginPath();
-  ctx.ellipse(s*1.6,0,s*.38,s*.10,0,0,Math.PI*2);
-  ctx.fillStyle='rgba(140,180,220,0.6)';ctx.fill();
-  // contrail
-  if(contrail>0){
-    const g=ctx.createLinearGradient(-s*2.2,s*.08,-s*2.2-contrail,s*.25*contrail/80);
-    g.addColorStop(0,'rgba(255,255,255,0.55)');g.addColorStop(.3,'rgba(235,240,255,0.25)');g.addColorStop(1,'rgba(235,240,255,0)');
-    ctx.strokeStyle=g;ctx.lineWidth=s*.45;ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(-s*2.2,s*.08);ctx.lineTo(-s*2.2-contrail,s*.25);ctx.stroke();
-    const g2=ctx.createLinearGradient(-s*2.2,-s*.08,-s*2.2-contrail,-s*.25*contrail/80);
-    g2.addColorStop(0,'rgba(255,255,255,0.55)');g2.addColorStop(.3,'rgba(235,240,255,0.25)');g2.addColorStop(1,'rgba(235,240,255,0)');
-    ctx.strokeStyle=g2;ctx.lineWidth=s*.45;
-    ctx.beginPath();ctx.moveTo(-s*2.2,-s*.08);ctx.lineTo(-s*2.2-contrail,-s*.25);ctx.stroke();
-  }
-  ctx.restore();
+/* 카메라와 무관한 고정 월드 → 화면 좌표 변환 (camYaw/camPitch 미적용) */
+function w2sFixed(wy,wp,W,H){
+  const fx=Math.sin(wy)*Math.cos(wp),fy=Math.sin(wp),fz=Math.cos(wy)*Math.cos(wp);
+  if(fz<0.08)return null;
+  const sx=(fx/fz/1.26)*(W/2)+W/2,sy=(-fy/fz/1.26)*(H/2)+H/2;
+  if(sx<-250||sx>W+250||sy<-250||sy>H+250)return null;
+  return{x:sx,y:sy};
 }
 
-function drawShip(ctx,x,y,sz,alpha,ang,dayF){
-  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
-  const s=sz;
-  // hull - realistic dark steel
-  ctx.beginPath();
-  ctx.moveTo(-s*3.2,s*.5);
-  ctx.lineTo(s*3.5,s*.5);
-  ctx.bezierCurveTo(s*4.0,s*.5,s*4.2,s*.1,s*4.0,-s*.1);
-  ctx.lineTo(-s*3.2,-s*.1);
-  ctx.bezierCurveTo(-s*3.6,-s*.1,-s*3.6,s*.5,-s*3.2,s*.5);
-  ctx.closePath();
-  ctx.fillStyle=`rgba(45,55,70,${0.9+dayF*.05})`;ctx.fill();
-  ctx.strokeStyle='rgba(80,95,110,0.6)';ctx.lineWidth=s*.06;ctx.stroke();
-  // waterline stripe
-  ctx.beginPath();ctx.moveTo(-s*3.1,s*.1);ctx.lineTo(s*3.8,s*.1);
-  ctx.strokeStyle='rgba(200,50,50,0.7)';ctx.lineWidth=s*.12;ctx.stroke();
-  // main deck
-  ctx.beginPath();
-  ctx.rect(-s*2.8,-s*.1,s*5.8,s*.22);
-  ctx.fillStyle='rgba(65,75,88,0.95)';ctx.fill();
-  // superstructure block
-  ctx.beginPath();
-  ctx.rect(-s*.5,-s*.7,s*2.0,s*.62);
-  ctx.fillStyle='rgba(80,92,108,0.98)';ctx.fill();
-  ctx.strokeStyle='rgba(100,115,130,0.5)';ctx.lineWidth=s*.05;ctx.stroke();
-  // bridge windows
-  for(let i=0;i<4;i++){
-    ctx.beginPath();ctx.rect(-s*.3+i*s*.4,-s*.58,s*.25,s*.16);
-    ctx.fillStyle='rgba(160,200,240,0.7)';ctx.fill();
-  }
-  // funnel / chimney
-  ctx.beginPath();ctx.rect(s*.2,-s*1.1,s*.35,s*.42);
-  ctx.fillStyle='rgba(55,65,80,0.95)';ctx.fill();
-  // smoke
-  for(let k=0;k<3;k++){
-    const sk=k*.3;
-    ctx.beginPath();ctx.arc(s*.37-sk*s*.2,-s*1.15-sk*s*.3,s*(.12+sk*.08),0,Math.PI*2);
-    ctx.fillStyle=`rgba(150,150,155,${0.15-sk*.04})`;ctx.fill();
-  }
-  // forward crane/mast
-  ctx.strokeStyle='rgba(100,112,128,0.9)';ctx.lineWidth=s*.08;ctx.lineCap='round';
-  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.1);ctx.lineTo(-s*1.8,-s*.8);ctx.stroke();
-  ctx.lineWidth=s*.05;
-  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.8);ctx.lineTo(-s*1.0,-s*.55);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(-s*1.8,-s*.8);ctx.lineTo(-s*2.3,-s*.58);ctx.stroke();
-  // wake
-  const wg=ctx.createLinearGradient(-s*3.5,0,-s*10,0);
-  wg.addColorStop(0,'rgba(180,215,240,0.40)');wg.addColorStop(.4,'rgba(180,215,240,0.15)');wg.addColorStop(1,'rgba(180,215,240,0)');
-  ctx.strokeStyle=wg;ctx.lineWidth=s*1.8;ctx.lineCap='butt';
-  ctx.beginPath();ctx.moveTo(-s*3.5,s*.2);ctx.lineTo(-s*10,s*.5);ctx.stroke();
-  ctx.lineWidth=s*1.0;
-  ctx.beginPath();ctx.moveTo(-s*3.5,s*.2);ctx.lineTo(-s*9,-s*.1);ctx.stroke();
-  ctx.restore();
+function drawJet(c,x,y,s,alpha,ang,trail){
+  c.save();c.globalAlpha=alpha;c.translate(x,y);c.rotate(ang);
+  c.fillStyle='rgba(218,227,240,0.96)';c.strokeStyle='rgba(190,205,222,0.7)';c.lineWidth=s*.06;c.lineCap='round';c.lineJoin='round';
+  c.beginPath();c.moveTo(s*2.2,0);c.bezierCurveTo(s*1.4,s*.10,s*.4,s*.13,-s*2.0,s*.09);c.bezierCurveTo(-s*2.2,s*.06,-s*2.2,-s*.06,-s*2.0,-s*.09);c.bezierCurveTo(s*.4,-s*.13,s*1.4,-s*.10,s*2.2,0);c.closePath();c.fill();c.stroke();
+  c.beginPath();c.moveTo(s*.28,0);c.lineTo(-s*.62,s*1.52);c.lineTo(-s*1.12,s*1.52);c.lineTo(-s*.52,s*.10);c.closePath();c.fill();
+  c.beginPath();c.moveTo(s*.28,0);c.lineTo(-s*.62,-s*1.52);c.lineTo(-s*1.12,-s*1.52);c.lineTo(-s*.52,-s*.10);c.closePath();c.fill();
+  c.beginPath();c.moveTo(-s*1.48,0);c.lineTo(-s*2.02,-s*.64);c.lineTo(-s*2.22,-s*.64);c.lineTo(-s*1.80,s*.09);c.closePath();c.fill();
+  c.beginPath();c.moveTo(-s*1.48,0);c.lineTo(-s*2.02,s*.64);c.lineTo(-s*2.22,s*.64);c.lineTo(-s*1.80,-s*.09);c.closePath();c.fill();
+  for(const ey of[-s*.92,s*.92]){c.beginPath();c.ellipse(-s*.28,ey,s*.52,s*.17,0,0,Math.PI*2);c.fillStyle='rgba(185,198,215,0.9)';c.fill();c.fillStyle='rgba(218,227,240,0.96)';}
+  c.beginPath();c.ellipse(s*1.58,0,s*.36,s*.10,0,0,Math.PI*2);c.fillStyle='rgba(130,178,225,0.65)';c.fill();
+  if(trail>0){for(const ey of[s*.09,-s*.09]){const g=c.createLinearGradient(-s*2.0,ey,-s*2.0-trail,ey*2.8);g.addColorStop(0,'rgba(255,255,255,0.50)');g.addColorStop(.4,'rgba(235,242,255,0.18)');g.addColorStop(1,'rgba(235,242,255,0)');c.strokeStyle=g;c.lineWidth=s*.40;c.beginPath();c.moveTo(-s*2.0,ey);c.lineTo(-s*2.0-trail,ey*2.8);c.stroke();}}
+  c.restore();
 }
 
-function drawGull(ctx,x,y,sz,alpha,flap,ang){
-  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.rotate(ang);
-  const s=sz;
-  const f=Math.sin(flap)*s*.9;
-  ctx.strokeStyle='rgba(210,218,228,0.95)';
-  ctx.lineWidth=s*.28;ctx.lineCap='round';ctx.lineJoin='round';
-  // left wing - graceful curve
-  ctx.beginPath();
-  ctx.moveTo(0,0);
-  ctx.quadraticCurveTo(-s*.7,-f*1.1,-s*1.6,-f*.55);
-  ctx.quadraticCurveTo(-s*2.0,-f*.3,-s*2.2,-f*.15);
-  ctx.stroke();
-  // right wing
-  ctx.beginPath();
-  ctx.moveTo(0,0);
-  ctx.quadraticCurveTo(s*.7,-f*1.1,s*1.6,-f*.55);
-  ctx.quadraticCurveTo(s*2.0,-f*.3,s*2.2,-f*.15);
-  ctx.stroke();
-  // body
-  ctx.lineWidth=s*.20;
-  ctx.beginPath();ctx.moveTo(-s*.25,s*.05);ctx.lineTo(s*.35,-s*.02);ctx.stroke();
-  // head
-  ctx.fillStyle='rgba(225,232,240,0.95)';
-  ctx.beginPath();ctx.arc(s*.38,s*.0,s*.18,0,Math.PI*2);ctx.fill();
-  // beak
-  ctx.fillStyle='rgba(230,160,60,0.9)';
-  ctx.beginPath();ctx.moveTo(s*.52,-s*.04);ctx.lineTo(s*.78,-s*.06);ctx.lineTo(s*.52,s*.04);ctx.closePath();ctx.fill();
-  ctx.restore();
+function drawShip(c,x,y,s,alpha,ang){
+  c.save();c.globalAlpha=alpha;c.translate(x,y);c.rotate(ang);
+  c.fillStyle='rgba(40,50,66,0.93)';c.strokeStyle='rgba(72,88,106,0.5)';c.lineWidth=s*.05;
+  c.beginPath();c.moveTo(-s*3.3,s*.52);c.lineTo(s*3.6,s*.52);c.bezierCurveTo(s*4.2,s*.52,s*4.4,s*.10,s*4.1,-s*.12);c.lineTo(-s*3.3,-s*.12);c.bezierCurveTo(-s*3.8,-s*.12,-s*3.8,s*.52,-s*3.3,s*.52);c.closePath();c.fill();c.stroke();
+  c.strokeStyle='rgba(192,42,42,0.72)';c.lineWidth=s*.13;c.beginPath();c.moveTo(-s*3.2,s*.12);c.lineTo(s*4.0,s*.12);c.stroke();
+  c.fillStyle='rgba(60,72,88,0.96)';c.fillRect(-s*3.0,-s*.12,s*6.1,s*.22);
+  c.fillStyle='rgba(76,88,106,0.98)';c.fillRect(-s*.52,-s*.72,s*2.05,s*.62);
+  for(let i=0;i<4;i++){c.fillStyle='rgba(148,194,238,0.68)';c.fillRect(-s*.30+i*s*.40,-s*.60,s*.24,s*.15);}
+  c.fillStyle='rgba(50,60,76,0.96)';c.fillRect(s*.17,-s*1.14,s*.36,s*.44);
+  for(let k=0;k<4;k++){const sk=k*.26;c.beginPath();c.arc(s*.35-sk*s*.15,-s*1.18-sk*s*.26,s*(.10+sk*.07),0,Math.PI*2);c.fillStyle=`rgba(148,148,153,${.13-sk*.03})`;c.fill();}
+  c.strokeStyle='rgba(92,108,126,0.88)';c.lineWidth=s*.078;c.lineCap='round';
+  c.beginPath();c.moveTo(-s*1.82,-s*.12);c.lineTo(-s*1.82,-s*.85);c.stroke();
+  c.lineWidth=s*.048;c.beginPath();c.moveTo(-s*1.82,-s*.85);c.lineTo(-s*1.02,-s*.56);c.stroke();
+  c.beginPath();c.moveTo(-s*1.82,-s*.85);c.lineTo(-s*2.34,-s*.62);c.stroke();
+  const wg=c.createLinearGradient(-s*3.6,0,-s*12,0);
+  wg.addColorStop(0,'rgba(172,212,238,0.36)');wg.addColorStop(.45,'rgba(172,212,238,0.12)');wg.addColorStop(1,'rgba(172,212,238,0)');
+  c.strokeStyle=wg;c.lineWidth=s*1.85;c.lineCap='butt';
+  c.beginPath();c.moveTo(-s*3.6,s*.24);c.lineTo(-s*12,s*.55);c.stroke();
+  c.lineWidth=s*.95;c.beginPath();c.moveTo(-s*3.6,s*.24);c.lineTo(-s*10,-s*.14);c.stroke();
+  c.restore();
 }
 
+function drawGull(c,x,y,s,alpha,flap,ang){
+  c.save();c.globalAlpha=alpha;c.translate(x,y);c.rotate(ang);
+  const f=Math.sin(flap)*s*.90;
+  c.strokeStyle='rgba(205,215,228,0.94)';c.lineWidth=s*.26;c.lineCap='round';c.lineJoin='round';
+  c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(-s*.70,-f*1.10,-s*1.60,-f*.54);c.quadraticCurveTo(-s*2.02,-f*.28,-s*2.22,-f*.13);c.stroke();
+  c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(s*.70,-f*1.10,s*1.60,-f*.54);c.quadraticCurveTo(s*2.02,-f*.28,s*2.22,-f*.13);c.stroke();
+  c.lineWidth=s*.18;c.beginPath();c.moveTo(-s*.25,s*.05);c.lineTo(s*.36,-s*.02);c.stroke();
+  c.fillStyle='rgba(220,229,240,0.96)';c.beginPath();c.arc(s*.38,0,s*.17,0,Math.PI*2);c.fill();
+  c.fillStyle='rgba(226,156,55,0.90)';c.beginPath();c.moveTo(s*.52,-s*.04);c.lineTo(s*.80,-s*.06);c.lineTo(s*.52,s*.04);c.closePath();c.fill();
+  c.restore();
+}
+
+/* 월드 고정 오브젝트: wyaw=월드 수평각(rad), wpitch=월드 수직각(rad), wyawSpd=초당 회전속도 */
+/* 카메라가 돌아가도 오브젝트는 월드에 고정 → 화면 밖이면 그냥 안보임 */
+const TAU=Math.PI*2;
 const planes=[
-  {ys:0.038,sy:0.7,pb:.27,pa:.04,pf:.007,sz:7,trail:90,phase:0},
-  {ys:-0.026,sy:3.1,pb:.22,pa:.03,pf:.009,sz:6,trail:70,phase:0},
+  {wyaw:0.8,  wpitch:0.22, wyawSpd: 0.018, sz:7.5, trail:95},
+  {wyaw:3.5,  wpitch:0.19, wyawSpd:-0.013, sz:6.5, trail:72},
 ];
 const ships=[
-  {ys:0.006,sy:0.3,pb:-.068,sz:18,phase:0},
+  {wyaw:1.2,  wpitch:-0.04, wyawSpd: 0.004, sz:19},
+  {wyaw:4.8,  wpitch:-0.04, wyawSpd: 0.003, sz:16},
 ];
 const gulls=[
-  {ys:.095,sy:.5,pb:.055,pa:.022,pf:.27,ff:4.8,sz:5.5,phase:0},
-  {ys:.075,sy:2.0,pb:.040,pa:.018,pf:.22,ff:3.9,sz:5.0,phase:1.6},
-  {ys:-.065,sy:3.8,pb:.068,pa:.025,pf:.19,ff:5.2,sz:4.5,phase:3.1},
-  {ys:.085,sy:1.2,pb:.030,pa:.015,pf:.30,ff:4.3,sz:4.0,phase:.8},
-  {ys:-.055,sy:5.3,pb:.082,pa:.020,pf:.17,ff:3.6,sz:4.0,phase:2.4},
+  {wyaw:0.3,  wpitch:0.07, wyawSpd: 0.038, sz:5,   ff:4.8, ph:0.0},
+  {wyaw:1.8,  wpitch:0.05, wyawSpd: 0.029, sz:4.5,  ff:3.9, ph:1.6},
+  {wyaw:3.1,  wpitch:0.09, wyawSpd:-0.033, sz:5,    ff:5.1, ph:3.1},
+  {wyaw:4.4,  wpitch:0.04, wyawSpd: 0.042, sz:4,    ff:4.2, ph:0.8},
+  {wyaw:5.6,  wpitch:0.06, wyawSpd:-0.025, sz:4.5,  ff:3.5, ph:2.4},
 ];
 
-function draw2D(elapsed,dayF,W,H){
-  ctx.clearRect(0,0,W,H);
-  const TAU=Math.PI*2;
-  const nightAlpha=Math.max(.25,dayF);
+/* 월드 각도 → 화면 픽셀 좌표 변환 (카메라 적용) */
+function project(wyaw, wpitch, W, H){
+  // 월드 방향벡터
+  const wx = Math.sin(wyaw)*Math.cos(wpitch);
+  const wy = Math.sin(wpitch);
+  const wz = Math.cos(wyaw)*Math.cos(wpitch);
+  // 카메라 역회전 적용 (yaw)
+  const cy = Math.cos(-camYaw), sy = Math.sin(-camYaw);
+  const rx =  wx*cy + wz*sy;
+  const ry =  wy;
+  const rz = -wx*sy + wz*cy;
+  // 카메라 역회전 적용 (pitch)
+  const cp = Math.cos(-camPitch), sp = Math.sin(-camPitch);
+  const fx = rx;
+  const fy = ry*cp - rz*sp;
+  const fz = ry*sp + rz*cp;
+  // 뒤쪽이면 null
+  if(fz < 0.05) return null;
+  const sx = (fx/fz/1.26)*zoom*(W/2) + W/2;
+  const sy2 = (-fy/fz/1.26)*zoom*(H/2) + H/2;
+  return {x:sx, y:sy2, fz};
+}
 
-  for(const p of planes){
-    const wy=(p.sy+elapsed*p.ys)%TAU;
-    const wp=p.pb+Math.sin(elapsed*p.pf)*p.pa;
-    const sc=w2s(wy,wp,W,H);if(!sc)continue;
-    const wy2=(p.sy+(elapsed+.08)*p.ys)%TAU;
-    const sc2=w2s(wy2,wp,W,H);
-    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
-    const a=Math.min(.95,nightAlpha+.25);
-    drawJet(ctx,sc.x,sc.y,p.sz,a,ang,p.trail);
+function draw2D(elapsed, dayF){
+  const W=window.innerWidth, H=window.innerHeight;
+  ctx2.clearRect(0,0,W,H);
+  const vis=Math.max(.22,dayF);
+  const objT=(performance.now()-objStart)*0.001;
+
+  for(const pl of planes){
+    const wyaw = pl.wyaw + pl.wyawSpd*objT;
+    const sc = project(wyaw, pl.wpitch, W, H);
+    if(!sc) continue;
+    const sc2 = project(wyaw + pl.wyawSpd*0.1, pl.wpitch, W, H);
+    const ang = sc2 ? Math.atan2(sc2.y-sc.y, sc2.x-sc.x) : 0;
+    drawJet(ctx2, sc.x, sc.y, pl.sz, Math.min(.94,vis+.26), ang, pl.trail);
   }
 
-  for(const s of ships){
-    const wy=(s.sy+elapsed*s.ys)%TAU;
-    const sc=w2s(wy,s.pb,W,H);if(!sc)continue;
-    if(sc.y<H*.28)continue;
-    const wy2=(s.sy+(elapsed+.1)*s.ys)%TAU;
-    const sc2=w2s(wy2,s.pb,W,H);
-    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
-    drawShip(ctx,sc.x,sc.y,s.sz,Math.min(1,dayF*1.3+.15)*0.92,ang,dayF);
+  for(const sh of ships){
+    const wyaw = sh.wyaw + sh.wyawSpd*objT;
+    const sc = project(wyaw, sh.wpitch, W, H);
+    if(!sc) continue;
+    if(sc.y < H*0.3 || sc.y > H*0.95) continue;
+    const sc2 = project(wyaw + sh.wyawSpd*0.1, sh.wpitch, W, H);
+    const ang = sc2 ? Math.atan2(sc2.y-sc.y, sc2.x-sc.x) : 0;
+    drawShip(ctx2, sc.x, sc.y, sh.sz, Math.min(1,dayF*1.2+.16)*.91, ang);
   }
 
   for(const g of gulls){
-    const wy=(g.sy+elapsed*g.ys)%TAU;
-    const wp=g.pb+Math.sin(elapsed*g.pf)*g.pa;
-    const sc=w2s(wy,wp,W,H);if(!sc)continue;
-    const flap=elapsed*g.ff+g.phase;
-    const wy2=(g.sy+(elapsed+.03)*g.ys)%TAU;
-    const sc2=w2s(wy2,wp,W,H);
-    const ang=sc2?Math.atan2(sc2.y-sc.y,sc2.x-sc.x):0;
-    const a=Math.min(.92,nightAlpha+.2);
-    drawGull(ctx,sc.x,sc.y,g.sz,a,flap,ang);
+    const wyaw = g.wyaw + g.wyawSpd*objT;
+    const wpitch = g.wpitch + Math.sin(objT*0.5+g.ph)*0.02;
+    const sc = project(wyaw, wpitch, W, H);
+    if(!sc) continue;
+    const sc2 = project(wyaw + g.wyawSpd*0.1, wpitch, W, H);
+    const ang = sc2 ? Math.atan2(sc2.y-sc.y, sc2.x-sc.x) : 0;
+    drawGull(ctx2, sc.x, sc.y, g.sz||5, Math.min(.91,vis+.20), objT*(g.ff||4)+g.ph, ang);
   }
 }
 
-const todLabels={새벽:'새벽 DAWN',일출:'일출 SUNRISE',낮:'낮 DAY',일몰:'일몰 SUNSET',황혼:'황혼 DUSK',밤:'밤 NIGHT'};
+const phaseInfo=[
+  {name:'아침',sub:'MORNING · 06:00',color:'rgba(255,185,80,0.92)'},
+  {name:'점심',sub:'MIDDAY · 12:00',color:'rgba(255,235,100,0.88)'},
+  {name:'저녁',sub:'EVENING · 18:30',color:'rgba(255,130,70,0.92)'},
+  {name:'밤',  sub:'NIGHT · 22:00',  color:'rgba(160,188,255,0.88)'},
+  {name:'새벽',sub:'DAWN · 04:00',   color:'rgba(185,148,228,0.88)'},
+];
 
 function frame(ts){
   if(!startTs)startTs=ts;
   const elapsed=(ts-startTs)*.001;
+  const cycSec=elapsed%CYCLE,cycT=cycSec/CYCLE;
+  const dayF=getDayF(cycSec),sunYaw=getSunYaw(cycSec);
+  const pi=Math.min(4,Math.floor(cycSec/120));
+  todEl.textContent=phaseInfo[pi].name;
+  todEl.style.color=phaseInfo[pi].color;
+  subEl.textContent=phaseInfo[pi].sub;
 
-  const realDF=getKoreaDayFraction();
-  const dayF=getSunDayF(realDF);
-
-  if(autoRot)tYaw+=.0020;
-  camYaw+=(tYaw-camYaw)*.052;
-  camPitch+=(tPitch-camPitch)*.052;
+  if(autoRot)tYaw+=.00195;
+  camYaw+=(tYaw-camYaw)*.050;
+  camPitch+=(tPitch-camPitch)*.050;
   zoom+=(tZoom-zoom)*.08;
 
-  const dpr=devicePixelRatio||1;
-  const W=glc.offsetWidth,H=glc.offsetHeight;
-  if(glc.width!==Math.round(W*dpr)){
-    glc.width=Math.round(W*dpr);glc.height=Math.round(H*dpr);
-    oc.width=Math.round(W*dpr);oc.height=Math.round(H*dpr);
-    ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);
-  }
-
-  gl.viewport(0,0,glc.width,glc.height);
-  gl.uniform2f(uR,glc.width,glc.height);
+  const W=glc.width,H=glc.height;
+  gl.viewport(0,0,W,H);
+  gl.uniform2f(uR,W,H);
   gl.uniform1f(uT,elapsed);
   gl.uniform1f(uD,dayF);
+  gl.uniform1f(uSY,sunYaw);
   gl.uniform1f(uYW,camYaw);
   gl.uniform1f(uPT,camPitch);
   gl.uniform1f(uZM,zoom);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-
-  draw2D(elapsed,dayF,W,H);
-
-  ktime.textContent=getKoreaTimeStr();
-  const h=Math.floor(realDF*24);
-  let tod='밤';
-  if(h>=5&&h<7)tod='새벽';else if(h>=7&&h<9)tod='일출';
-  else if(h>=9&&h<17)tod='낮';else if(h>=17&&h<19)tod='일몰';
-  else if(h>=19&&h<21)tod='황혼';
-  ktod.textContent=todLabels[tod]||todLabels['밤'];
-
+  draw2D(elapsed,dayF);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 </script>
+</body>
+</html>
