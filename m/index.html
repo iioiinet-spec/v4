@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>어머니께 드리는 카네이션</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;1,400&display=swap');
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; background:#0d0308; overflow:hidden; }
+canvas { position:fixed; top:0; left:0; width:100%; height:100%; display:block; }
+
+#overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+  padding-bottom:8vh; pointer-events:none; z-index:10;
+}
+.msg-card { text-align:center; animation:fadeUp 2s ease 1.5s both; }
+.subtitle {
+  font-family:'Playfair Display',serif; font-style:italic;
+  font-size:clamp(11px,3.2vw,15px); color:#f4a0b5;
+  letter-spacing:3px; opacity:0.85; margin-bottom:8px;
+}
+.title {
+  font-family:'Noto Serif KR',serif; font-weight:300;
+  font-size:clamp(20px,5.5vw,30px); color:#fff8f0;
+  letter-spacing:8px; margin-bottom:12px;
+  text-shadow:0 0 40px rgba(232,86,122,0.6);
+}
+.divider {
+  width:50px; height:1px; margin:0 auto 12px;
+  background:linear-gradient(90deg,transparent,#d4a848,transparent);
+}
+.poem {
+  font-family:'Noto Serif KR',serif; font-weight:300;
+  font-size:clamp(10px,2.8vw,13px); color:rgba(255,214,224,0.72);
+  line-height:2.2; letter-spacing:1.5px;
+}
+.hint {
+  margin-top:18px; font-size:10px; color:rgba(255,255,255,0.22);
+  letter-spacing:2px; animation:pulse 3s ease-in-out infinite;
+}
+#top {
+  position:fixed; top:24px; left:0; width:100%; text-align:center;
+  z-index:10; pointer-events:none; animation:fadeDown 2s ease 0.3s both;
+}
+.year {
+  font-family:'Playfair Display',serif; font-style:italic;
+  font-size:clamp(10px,2.8vw,13px); color:#d4a848; letter-spacing:4px; opacity:0.7;
+}
+
+@keyframes fadeUp   { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:translateY(0)} }
+@keyframes pulse    { 0%,100%{opacity:0.22} 50%{opacity:0.5} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="top"><div class="year">2026 · 어버이날</div></div>
+<div id="overlay">
+  <div class="msg-card">
+    <div class="subtitle">for mother, with love</div>
+    <div class="title">사 랑 합 니 다</div>
+    <div class="divider"></div>
+    <div class="poem">항상 곁에서 힘이 되어주셔서<br>진심으로 감사합니다</div>
+    <div class="hint">✦ 화면을 터치해 꽃을 피워보세요 ✦</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); initScene(); });
+
+// ══════════════════════════════════════
+//  꽃잎 하나 그리기 (좌표계: 0,0 → 꽃잎 뿌리, 위로 -len)
+// ══════════════════════════════════════
+function drawOnePetal(len, wid, hue, light, alpha) {
+  ctx.globalAlpha = alpha;
+
+  // 본체 그라디언트
+  const g = ctx.createLinearGradient(0, 0, 0, -len);
+  g.addColorStop(0,   `hsl(${hue},   85%, ${light+22}%)`);
+  g.addColorStop(0.45,`hsl(${hue},   82%, ${light+6}%)`);
+  g.addColorStop(1,   `hsl(${hue-8}, 74%, ${light-8}%)`);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(-wid,      -len*0.18, -wid*1.12, -len*0.72, 0, -len);
+  ctx.bezierCurveTo( wid*1.12, -len*0.72,  wid,      -len*0.18, 0,  0);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // 주름 (frill) - 양쪽
+  ctx.lineWidth = 0.85;
+  for (let side = -1; side <= 1; side += 2) {
+    ctx.beginPath();
+    const steps = 8;
+    for (let i = 0; i <= steps; i++) {
+      const frac = i / steps;
+      const ex = side * wid * Math.sin(frac * Math.PI) * (1.12 - frac*0.3);
+      const ey = -len * (0.15 + frac * 0.8);
+      const bump = side * wid * 0.17 * Math.sin(frac * Math.PI) * (i%2===0 ? 1 : -0.35);
+      if (i===0) ctx.moveTo(ex+bump, ey);
+      else       ctx.lineTo(ex+bump, ey);
+    }
+    ctx.strokeStyle = `hsla(${hue+6}, 88%, ${light+26}%, 0.42)`;
+    ctx.stroke();
+  }
+
+  // 중심 맥
+  ctx.beginPath();
+  ctx.moveTo(0, -len*0.05);
+  ctx.bezierCurveTo(wid*0.1, -len*0.38, -wid*0.07, -len*0.7, 0, -len*0.96);
+  ctx.strokeStyle = `hsla(${hue}, 70%, ${light+20}%, 0.28)`;
+  ctx.lineWidth = 0.55;
+  ctx.stroke();
+}
+
+// ══════════════════════════════════════
+//  카네이션 전체 (cx,cy = 꽃 헤드 중심)
+// ══════════════════════════════════════
+function drawCarnation(cx, cy, size, hue, bloom, t) {
+  if (bloom <= 0.01) return;
+
+  // 꽃받침
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalAlpha = Math.min(1, bloom * 4) * 0.92;
+  const cs = size * 0.22 * Math.min(bloom*3, 1);
+  const cg = ctx.createRadialGradient(0,0,0,0,0,cs);
+  cg.addColorStop(0,'#5a9060'); cg.addColorStop(1,'#2d5233');
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  for (let i=0;i<5;i++){
+    const a  = i/5*Math.PI*2 - Math.PI/2;
+    const a2 = a + Math.PI/5;
+    ctx.lineTo(Math.cos(a)*cs,  Math.sin(a)*cs);
+    ctx.lineTo(Math.cos(a2)*cs*0.42, Math.sin(a2)*cs*0.42);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  // 레이어 테이블
+  const L = [
+    { n:5,  r:0.30, w:0.15, d:0.00, bs:0.00, l:48, o:0.00 },
+    { n:7,  r:0.42, w:0.20, d:0.035,bs:0.10, l:54, o:0.44 },
+    { n:9,  r:0.55, w:0.25, d:0.08, bs:0.22, l:59, o:0.22 },
+    { n:11, r:0.66, w:0.28, d:0.12, bs:0.34, l:64, o:0.66 },
+    { n:12, r:0.76, w:0.30, d:0.16, bs:0.46, l:68, o:0.11 },
+    { n:13, r:0.84, w:0.30, d:0.18, bs:0.58, l:72, o:0.88 },
+    { n:12, r:0.88, w:0.28, d:0.15, bs:0.70, l:76, o:0.37 },
+  ];
+
+  L.forEach((layer, li) => {
+    const lb = Math.max(0, Math.min(1, (bloom - layer.bs) / 0.14));
+    if (lb <= 0) return;
+
+    const pLen = size * layer.r * lb;
+    const pWid = size * layer.w * lb;
+    const dist = size * layer.d * lb;
+    const lHue = hue + li*3 - 5;
+    const spin = t * 0.00045 * (li%2===0 ? 1 : -1);
+
+    for (let i=0; i<layer.n; i++) {
+      const ang = (i/layer.n)*Math.PI*2 + layer.o + spin;
+      const px  = cx + Math.cos(ang)*dist;
+      const py  = cy + Math.sin(ang)*dist;
+      const alp = (0.78 + 0.22*Math.sin(t*0.0028+i*0.8+li)) * lb;
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(ang + Math.PI/2);  // 꽃잎이 바깥으로 향하게
+      drawOnePetal(pLen, pWid, lHue, layer.l, alp);
+      ctx.restore();
+    }
+  });
+
+  // 중심 글로우
+  if (bloom > 0.1) {
+    const gAmt = Math.min(1, (bloom-0.1)*2.2);
+    ctx.save();
+    ctx.globalAlpha = gAmt * 0.48;
+    const sg = ctx.createRadialGradient(cx,cy,0,cx,cy,size*0.28);
+    sg.addColorStop(0, `hsla(${hue+15},100%,96%,0.9)`);
+    sg.addColorStop(0.5,`hsla(${hue+8}, 88%,78%,0.4)`);
+    sg.addColorStop(1,  `hsla(${hue},   78%,56%,0)`);
+    ctx.fillStyle=sg;
+    ctx.beginPath(); ctx.arc(cx,cy,size*0.28,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════
+//  줄기 + 잎 (cx,cy = 꽃 헤드, 아래로 내려감)
+// ══════════════════════════════════════
+function drawStem(cx, cy, size, t) {
+  const stemLen = size * 2.1;
+  const sway    = Math.sin(t*0.0016) * size * 0.055;
+
+  ctx.save();
+  // 줄기
+  ctx.strokeStyle = '#4a7a50';
+  ctx.lineWidth   = Math.max(2.5, size*0.055);
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + size*0.08);
+  ctx.bezierCurveTo(
+    cx+sway,        cy+stemLen*0.35,
+    cx-sway*0.5,    cy+stemLen*0.68,
+    cx+sway*0.3,    cy+stemLen
+  );
+  ctx.stroke();
+
+  // 잎 2장
+  [[0.36, 1], [0.60, -1]].forEach(([pos, dir]) => {
+    const lx = cx + sway * pos * 1.8;
+    const ly = cy + stemLen * pos;
+    const ls = size * 0.44;
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(dir * 0.62 + Math.sin(t*0.0018+pos)*0.03 + (dir>0 ? -0.1 : 0.1));
+    const lg = ctx.createLinearGradient(0,0,ls,0);
+    lg.addColorStop(0,'#3d6b42'); lg.addColorStop(0.55,'#589060'); lg.addColorStop(1,'#78b07d');
+    ctx.globalAlpha = 0.88;
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.bezierCurveTo(ls*0.28,-ls*0.27, ls*0.78,-ls*0.17, ls, 0);
+    ctx.bezierCurveTo(ls*0.78, ls*0.17, ls*0.28, ls*0.23,  0, 0);
+    ctx.fillStyle=lg; ctx.fill();
+    // 잎맥
+    ctx.strokeStyle='#2d5233'; ctx.lineWidth=0.65; ctx.globalAlpha=0.32;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ls,0); ctx.stroke();
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// ══════════════════════════════════════
+//  Flower 클래스
+// ══════════════════════════════════════
+class Flower {
+  constructor(x, y, size, hue, delay) {
+    this.x=x; this.y=y; this.size=size; this.hue=hue;
+    this.bloom=0; this.delay=delay;
+    this.born=performance.now();
+  }
+  update(now) {
+    const sec=(now-this.born)/1000;
+    if (sec > this.delay) this.bloom += (1-this.bloom)*0.015;
+  }
+  draw(t) {
+    drawStem(this.x, this.y, this.size, t);
+    drawCarnation(this.x, this.y, this.size, this.hue, this.bloom, t);
+  }
+}
+
+// ══════════════════════════════════════
+//  낙화 파티클
+// ══════════════════════════════════════
+class FallingPetal {
+  constructor(init) { this.reset(init); }
+  reset(init) {
+    const W=canvas.width, H=canvas.height;
+    this.x  = Math.random()*W;
+    this.y  = init ? Math.random()*H : -15;
+    this.sz = 4+Math.random()*9;
+    this.hue= 336+Math.random()*24;
+    this.vx = (Math.random()-0.5)*1.1;
+    this.vy = 0.55+Math.random()*1.1;
+    this.rot= Math.random()*Math.PI*2;
+    this.rs = (Math.random()-0.5)*0.07;
+    this.a  = 0.32+Math.random()*0.44;
+    this.wb = Math.random()*Math.PI*2;
+  }
+  update() {
+    this.wb+=0.022; this.x+=this.vx+Math.sin(this.wb)*0.65;
+    this.y+=this.vy; this.rot+=this.rs;
+    if (this.y>canvas.height+25) this.reset(false);
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x,this.y); ctx.rotate(this.rot);
+    ctx.globalAlpha=this.a;
+    const pg=ctx.createRadialGradient(0,-this.sz*0.28,0,0,0,this.sz);
+    pg.addColorStop(0,`hsl(${this.hue},88%,86%)`);
+    pg.addColorStop(1,`hsla(${this.hue},70%,55%,0)`);
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.bezierCurveTo(-this.sz*0.6,-this.sz*0.3,-this.sz*0.65,-this.sz*0.88,0,-this.sz);
+    ctx.bezierCurveTo( this.sz*0.65,-this.sz*0.88, this.sz*0.6,-this.sz*0.3, 0, 0);
+    ctx.fillStyle=pg; ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════
+//  반짝이
+// ══════════════════════════════════════
+class Sparkle {
+  constructor() {
+    this.x=Math.random()*canvas.width; this.y=Math.random()*canvas.height;
+    this.sz=0.4+Math.random()*1.7; this.ph=Math.random()*Math.PI*2;
+    this.sp=0.004+Math.random()*0.012; this.hue=26+Math.random()*36;
+  }
+  draw(t) {
+    const a=(Math.sin(t*this.sp+this.ph)+1)*0.27;
+    ctx.save(); ctx.globalAlpha=a;
+    ctx.fillStyle=`hsl(${this.hue},90%,87%)`;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.sz,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════
+//  씬 초기화
+// ══════════════════════════════════════
+let flowers=[], petals=[], sparkles=[], touchFlowers=[];
+
+function initScene() {
+  const W=canvas.width, H=canvas.height;
+  const base=Math.min(W,H)*0.165;
+
+  // 꽃 헤드 y 위치: 화면 상단 35~42% → 줄기가 아래로 뻗어 자연스럽게
+  flowers=[
+    new Flower(W*0.50, H*0.35, base*1.18, 348, 0.0),
+    new Flower(W*0.24, H*0.40, base*0.88, 355, 0.55),
+    new Flower(W*0.76, H*0.39, base*0.92, 341, 1.0),
+  ];
+  petals   = Array.from({length:24}, ()=>new FallingPetal(true));
+  sparkles = Array.from({length:55}, ()=>new Sparkle());
+  touchFlowers=[];
+}
+initScene();
+
+// ══════════════════════════════════════
+//  터치 / 클릭
+// ══════════════════════════════════════
+function spawnAt(x,y) {
+  const s=Math.min(canvas.width,canvas.height)*(0.10+Math.random()*0.055);
+  const f=new Flower(x, y, s, 334+Math.random()*26, 0);
+  touchFlowers.push(f);
+  setTimeout(()=>{ const i=touchFlowers.indexOf(f); if(i>=0) touchFlowers.splice(i,1); }, 7000);
+}
+canvas.addEventListener('click', e=>spawnAt(e.offsetX,e.offsetY));
+canvas.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  Array.from(e.touches).forEach(t=>spawnAt(t.clientX-r.left, t.clientY-r.top));
+},{passive:false});
+
+// ══════════════════════════════════════
+//  배경
+// ══════════════════════════════════════
+function drawBG(t) {
+  const W=canvas.width, H=canvas.height;
+  const bg=ctx.createRadialGradient(W/2,H*0.3,0, W/2,H*0.55,Math.max(W,H)*0.9);
+  bg.addColorStop(0,'#2e0b1a'); bg.addColorStop(0.45,'#1a0810');
+  bg.addColorStop(0.8,'#0d050a'); bg.addColorStop(1,'#060204');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const cols=['#c03060','#e8567a','#9a2848','#d4a848'];
+  for(let i=0;i<6;i++){
+    const bx=W*(0.05+0.18*i+Math.sin(t*0.00028+i)*0.04);
+    const by=H*(0.08+0.13*(i%3)+Math.cos(t*0.00033+i)*0.04);
+    const br=W*(0.10+0.04*(i%3));
+    ctx.save();
+    ctx.globalAlpha=0.04+0.018*Math.sin(t*0.001+i);
+    const cg=ctx.createRadialGradient(bx,by,0,bx,by,br);
+    cg.addColorStop(0,cols[i%4]); cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════
+//  메인 루프
+// ══════════════════════════════════════
+function loop(t) {
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  drawBG(t);
+  sparkles.forEach(s=>s.draw(t));
+  petals.forEach(p=>{p.update();p.draw();});
+  flowers.forEach(f=>{f.update(t);f.draw(t);});
+  touchFlowers.forEach(f=>{f.update(t);f.draw(t);});
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
