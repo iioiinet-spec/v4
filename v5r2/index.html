@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>네온 유체 미디어아트 : 하늘의 조각</title>
+    <style>
+        /* 기본 스타일링 및 초기화 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #010103;
+        }
+
+        /* 메인 레이아웃 및 레이어 계층 */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3; /* 유체 레이어는 최상단 */
+            pointer-events: auto;
+            transform-origin: center;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ====================================================
+           [실시간 애니메이션 하늘 배경 레이어]
+           ==================================================== */
+        .background-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            transition: opacity 2.5s cubic-bezier(0.25, 1, 0.5, 1);
+            opacity: 0;
+            overflow: hidden;
+        }
+        .background-layer.active {
+            opacity: 1;
+        }
+
+        /* --- 1. 황혼의 밤수림 (Twilight Symphony) --- */
+        .bg-twilight {
+            background: linear-gradient(180deg, #04010a 0%, #10011c 35%, #2e0524 70%, #4a1027 100%);
+        }
+
+        /* --- 2. 극광의 설산 (Emerald Cosmic Aurora) --- */
+        .bg-aurora {
+            background: radial-gradient(circle at bottom, #01030d 0%, #000002 100%);
+        }
+
+        /* --- 3. 달빛 버들 호수 (Dreamy Moonlit Night) --- */
+        .bg-moonlight {
+            background: linear-gradient(180deg, #020718 0%, #061533 45%, #0f254c 100%);
+        }
+
+        /* --- 4. 황금 세계수와 풍등 (Sea of Golden Clouds) --- */
+        .bg-golden {
+            background: linear-gradient(180deg, #040100 0%, #0d0601 35%, #1e1003 70%, #36200a 100%);
+        }
+
+        /* ====================================================
+           [인터랙션 콘트롤러 UI & 안내]
+           ==================================================== */
+        #guide-text {
+            position: absolute;
+            top: 38%;
+            left: 40%; /* 우측 패널 고려하여 좌측 공간으로 중심 이동 */
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1.15rem;
+            letter-spacing: 4px;
+            pointer-events: none;
+            transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+            text-align: center;
+            text-shadow: 0 0 25px rgba(255, 255, 255, 0.5);
+            z-index: 5;
+            line-height: 1.8;
+        }
+
+        /* 음악 컨트롤러 UI */
+        #music-controller {
+            position: absolute;
+            top: 20px;
+            left: 20px; /* 우측 설명창과의 간섭 방지를 위해 좌측 상단으로 이동 */
+            z-index: 10;
+            background: rgba(4, 4, 8, 0.65);
+            padding: 10px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .music-btn {
+            background: none;
+            border: none;
+            color: #ffffff;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 12px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .music-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+
+        .music-status {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            width: 100px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 조작 패널 모티프 */
+        #control-panel {
+            position: absolute;
+            bottom: 35px;
+            left: 40%; /* 우측 패널 고려하여 좌측 공간으로 중심 이동 */
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            background: rgba(4, 4, 8, 0.75);
+            padding: 14px 26px;
+            border-radius: 26px;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 10;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+        }
+
+        /* 테마 선택 그룹 */
+        .theme-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .theme-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.55);
+            padding: 8px 15px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 20px;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            outline: none;
+        }
+
+        .theme-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .theme-btn.active {
+            color: #000;
+            background: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
+        }
+
+        /* 미세 조정 슬라이더 그룹 */
+        .settings-group {
+            display: flex;
+            gap: 24px;
+            width: 100%;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 10px;
+            justify-content: space-around;
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255, 255, 255, 0.55);
+            font-size: 0.75rem;
+        }
+
+        .setting-item input[type="range"] {
+            appearance: none;
+            background: rgba(255, 255, 255, 0.15);
+            height: 3px;
+            border-radius: 2px;
+            width: 80px;
+            outline: none;
+        }
+
+        .setting-item input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(255,255,255,0.8);
+        }
+
+        /* ====================================================
+           [오른쪽 설명 패널 프레임 스타일]
+           ==================================================== */
+        #doc-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 320px;
+            z-index: 10;
+            background: rgba(10, 10, 18, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #doc-panel.collapsed {
+            transform: translateX(calc(100% + 40px));
+        }
+
+        .doc-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .doc-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            background: linear-gradient(90deg, #fff, #bbaaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .doc-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        /* 스크롤바 디자인 */
+        .doc-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .doc-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .doc-section {
+            margin-bottom: 24px;
+        }
+
+        .doc-section h3 {
+            font-size: 0.95rem;
+            color: #fff;
+            margin: 0 0 10px 0;
+            border-left: 3px solid #bbaaff;
+            padding-left: 8px;
+        }
+
+        .doc-section p {
+            margin: 0 0 8px 0;
+        }
+
+        .doc-section ul {
+            margin: 0;
+            padding-left: 16px;
+        }
+
+        .doc-section li {
+            margin-bottom: 6px;
+        }
+
+        .code-tag {
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 5px;
+            border-radius: 4px;
+            color: #ffd8a8;
+        }
+
+        /* 접기/펼치기 토글 버튼 */
+        #doc-toggle-btn {
+            position: absolute;
+            top: 25px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(4, 4, 8, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        #doc-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* 반응형 레이아웃 처리 (화면이 작을 때 가림 방지) */
+        @media (max-width: 1024px) {
+            #doc-panel {
+                display: none; /* 태블릿/모바일 크기에서는 캔버스 집중을 위해 기본 숨김 권장 */
+            }
+            #doc-toggle-btn {
+                display: none;
+            }
+            #guide-text, #control-panel {
+                left: 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="bg-twilight" class="background-layer active bg-twilight"></div>
+    <div id="bg-aurora" class="background-layer bg-aurora"></div>
+    <div id="bg-moonlight" class="background-layer bg-moonlight"></div>
+    <div id="bg-golden" class="background-layer bg-golden"></div>
+
+    <div id="guide-text">
+        마우스로 하늘을 쓸어넘겨 찬란한 은하수를 그려보세요<br>
+        <span style="font-size: 0.85rem; color: rgba(255,255,255,0.45); letter-spacing: 1px;">화면을 길게 누르면 우주의 빛이 모이고, 떼면 밤하늘 가득 초대형 불꽃이 터집니다</span>
+    </div>
+
+    <div id="music-controller">
+        <button class="music-btn" id="music-play-btn" onclick="toggleMusic()">🎵 재생</button>
+        <div class="music-status" id="music-text">Music Off</div>
+    </div>
+
+    <button id="doc-toggle-btn" onclick="toggleDocPanel()">📖 설명 닫기</button>
+    <div id="doc-panel">
+        <div class="doc-header">
+            <h2>Media Art Dynamic</h2>
+        </div>
+        <div class="doc-content">
+            <div class="doc-section">
+                <h3>1. 유체 시뮬레이션이란?</h3>
+                <p>본 소스코드에 적용된 유체 시뮬레이션(Fluid Simulation)은 수학적 노이즈 함수 기법을 활용한 <strong>실시간 기류 벡터 연산 기술</strong>입니다.</p>
+                <p>수학적 삼각함수 복합 공식(<span class="code-tag">getFluidDirection</span>)을 기반으로 화면 전체에 격자형 가상 기류 벡터장을 형성하며, 생성된 네온 파티클들이 이 보이지 않는 바람의 흐름에 따라 유기적으로 가속, 감속 및 회전합니다.</p>
+            </div>
+            <div class="doc-section">
+                <h3>2. 아트워크 핵심 알고리즘</h3>
+                <ul>
+                    <li><strong>가산 혼합 (Lighter Canvas):</strong> 입자들이 중첩될수록 빛이 더 정교하게 밝아지는 브러시 발광 효과를 구현합니다.</li>
+                    <li><strong>자가 궤적 시스템:</strong> 파티클마다 내부에 과거 좌표 구조(<span class="code-tag">history</span>) 배열을 구축하여 흐려지는 곡선 잔상을 부드럽고 영롱하게 표현합니다.</li>
+                    <li><strong>Web Audio API:</strong> 단순 오디오 파일 재생이 아닌, 충전 및 폭발 상태 변화에 따라 순수 주파수 합성음과 공간 이펙트를 실시간으로 동적 렌더링합니다.</li>
+                </ul>
+            </div>
+            <div class="doc-section">
+                <h3>3. 구현된 4가지 세계관 테마</h3>
+                <ul>
+                    <li><strong>황혼의 밤수림:</strong> 자가발광 생명체 꽃무리와 숲을 유영하는 반딧불이 군락 스뮬레이션.</li>
+                    <li><strong>극광의 설산:</strong> 고화질 주름 패턴을 지닌 오로라 커튼 장막 렌더링 알고리즘.</li>
+                    <li><strong>달빛 버들 호수:</strong> 사실적인 보름달 크레이터, 지평선 안개 및 윤슬(Specular 수면 물비침) 입체 레이어링.</li>
+                    <li><strong>황금 세계수와 풍등:</strong> 3D 한지 원기둥 그림자 패턴 연산이 반영된 풍등 시스템.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="control-panel">
+        <div class="theme-group">
+            <button class="theme-btn active" onclick="setTheme('twilight', this)">황혼의 밤수림</button>
+            <button class="theme-btn" onclick="setTheme('aurora', this)">극광의 설산</button>
+            <button class="theme-btn" onclick="setTheme('moonlight', this)">달빛 버들 호수</button>
+            <button class="theme-btn" onclick="setTheme('golden', this)">황금 세계수와 풍등</button>
+        </div>
+        <div class="settings-group">
+            <div class="setting-item">
+                <span>은하수 별가루</span>
+                <input type="range" id="stardust-density" min="1" max="4" value="2" onchange="updateDensity(this.value)">
+            </div>
+            <div class="setting-item">
+                <span>흐름 속도</span>
+                <input type="range" id="fluid-speed" min="93" max="97" value="95" onchange="updateFriction(this.value)">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvasContainer = document.getElementById('canvas-container');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: true }); 
+        const guideText = document.getElementById('guide-text');
+
+        // 가로 및 세로 길이를 윈도우 사이즈로 미리 안전하게 설정
+        let width = window.innerWidth || 1024;
+        let height = window.innerHeight || 768;
+        
+        let particles = [];
+        let stars = [];         // 하늘을 수놓는 별똥별
+        let ambientStars = [];  // 밤하늘을 수놓는 배경 별무리 오브젝트
+        let fireflies = [];     // 황혼 테마 전용 반딧불이 무리
+        let shockwaves = [];    // 폭발 시 확장되는 충격파 링 효과 배열
+        let lanterns = [];      // 황금 테마 전용 풍등 배열
+        let leaves = [];        // 황금 테마 전용 흩날리는 낙엽 배열
+        
+        // 엠비언트 플래시 (폭죽 폭발 시 배경을 순간적으로 물들이는 광원 강도)
+        let flashOpacity = 0;
+        let flashColor = '';
+
+        let globalHue = Math.random() * 360;
+        let time = 0;
+        let hasInteracted = false;
+        
+        let isMouseDown = false;
+        let chargePower = 0;
+        let flowDirection = 1; 
+        let currentTheme = 'twilight';
+
+        // 화면 쉐이크(진동)용 강도 상태 변수
+        let shakeIntensity = 0;
+
+        // 최적화된 초기 스폰 상한치 및 속도 상수
+        let stardustSpawnMultiplier = 2; 
+        let frictionCoefficient = 0.95; 
+
+        // 마우스 및 터치 트래킹
+        const mouse = {
+            x: -1000,
+            y: -1000,
+            px: -1000,
+            py: -1000,
+            vx: 0,
+            vy: 0
+        };
+
+        // 설명 패널 토글 함수 추가
+        function toggleDocPanel() {
+            const panel = document.getElementById('doc-panel');
+            const btn = document.getElementById('doc-toggle-btn');
+            panel.classList.toggle('collapsed');
+            if(panel.classList.contains('collapsed')) {
+                btn.innerHTML = '📖 설명 보기';
+            } else {
+                btn.innerHTML = '📖 설명 닫기';
+            }
+        }
+
+        // ====================================================
+        // [음악 및 자연환경 오디오 시스템 (Web Audio API)]
+        // ====================================================
+        let audioCtx = null;
+        let isPlaying = false;
+        let ambientNode = null; // 귀뚜라미 소리/물소리 노이즈 소스
+        let musicTimer = null;
+        let chargeOsc = null;  // 충전 시 윙윙거리는 오실레이터
+        let chargeGain = null;
+
+        // 고유 주파수 및 멜로디 딕셔너리
+        const scaleFreqs = {
+            C4: 261.63, D4: 293.66, E4: 329.63, G4: 392.00, A4: 440.00,
+            C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880.00, B5: 987.77
+        };
+
+        // 테마별 감성 멜로디 라인
+        const themesMelody = {
+            twilight: ['A4', 'C5', 'D5', 'G5', 'E5', 'D5', 'C5', 'A4'], // 보랏빛 오보에/플루트 느낌
+            aurora: ['C5', 'E5', 'G5', 'B5', 'G5', 'E5', 'B5', 'C5'],   // 겨울 설산 투명한 벨 사운드
+            moonlight: ['E4', 'G4', 'A4', 'C5', 'A4', 'G4', 'C5', 'E5'],// 서정적인 정통 피아노 독주
+            golden: ['D4', 'G4', 'A4', 'D5', 'A4', 'G4', 'D5', 'A4']    // 칼림바/하프 몽환적 대지 사운드
+        };
+
+        let noteIndex = 0;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                createAmbientLakesideSound();
+            }
+        }
+
+        // 잔잔한 호숫가 물소리와 귀뚜라미 소리 합성
+        function createAmbientLakesideSound() {
+            const bufferSize = audioCtx.sampleRate * 2;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            
+            const noiseSource = audioCtx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            noiseSource.loop = true;
+            
+            const waterFilter = audioCtx.createBiquadFilter();
+            waterFilter.type = 'lowpass';
+            waterFilter.frequency.setValueAtTime(400, audioCtx.currentTime);
+            
+            const ambientGain = audioCtx.createGain();
+            ambientGain.gain.setValueAtTime(0.015, audioCtx.currentTime); // 잔잔한 환경 사운드
+            
+            noiseSource.connect(waterFilter);
+            waterFilter.connect(ambientGain);
+            ambientGain.connect(audioCtx.destination);
+            noiseSource.start();
+        }
+
+        // 마우스 홀드 충전 효과음 (Implosion Synth)
+        function startChargeSound() {
+            if (!audioCtx) return;
+            try {
+                chargeOsc = audioCtx.createOscillator();
+                chargeGain = audioCtx.createGain();
+                
+                chargeOsc.type = 'sawtooth';
+                chargeOsc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                // 에너지가 모이면서 주파수가 점차 오름 (충전 연출)
+                chargeOsc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 2.5);
+                
+                chargeGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                chargeGain.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + 1.5);
+                
+                // 불필요한 고주파 필터링으로 부드러운 중저음 충전감 연출
+                const chargeFilter = audioCtx.createBiquadFilter();
+                chargeFilter.type = 'lowpass';
+                chargeFilter.frequency.setValueAtTime(900, audioCtx.currentTime);
+
+                chargeOsc.connect(chargeFilter);
+                chargeFilter.connect(chargeGain);
+                chargeGain.connect(audioCtx.destination);
+                
+                chargeOsc.start();
+            } catch(e) {}
+        }
+
+        function stopChargeSound() {
+            if (chargeOsc) {
+                try {
+                    chargeGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+                    chargeOsc.stop(audioCtx.currentTime + 0.15);
+                } catch(e) {}
+                chargeOsc = null;
+            }
+        }
+
+        // 폭발 타격 및 크랙클 파열음 (Explosion Synth & Spark FX)
+        function playExplosionSound(power) {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                
+                // 1. 대형 저음 쿵 (Bass Drum Explosion)
+                const bassOsc = audioCtx.createOscillator();
+                const bassGain = audioCtx.createGain();
+                bassOsc.type = 'triangle';
+                bassOsc.frequency.setValueAtTime(140, now);
+                bassOsc.frequency.exponentialRampToValueAtTime(20, now + 0.4);
+                
+                bassGain.gain.setValueAtTime(0.35 + power * 0.002, now);
+                bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8 + power * 0.005);
+                
+                bassOsc.connect(bassGain);
+                bassGain.connect(audioCtx.destination);
+                bassOsc.start();
+                bassOsc.stop(now + 1.0);
+
+                // 2. 타닥타닥 고속 스파크 크랙클 소리 합성 (Crackling Sparks)
+                const sparkCount = Math.floor(4 + power * 0.1);
+                for (let i = 0; i < sparkCount; i++) {
+                    const sparkTime = now + 0.05 + Math.random() * 0.4;
+                    const sparkOsc = audioCtx.createOscillator();
+                    const sparkGain = audioCtx.createGain();
+                    
+                    sparkOsc.type = 'triangle';
+                    sparkOsc.frequency.setValueAtTime(1800 + Math.random() * 1200, sparkTime);
+                    
+                    sparkGain.gain.setValueAtTime(0, sparkTime);
+                    sparkGain.gain.linearRampToValueAtTime(0.02, sparkTime + 0.005);
+                    sparkGain.gain.exponentialRampToValueAtTime(0.0001, sparkTime + 0.05 + Math.random() * 0.05);
+                    
+                    sparkOsc.connect(sparkGain);
+                    sparkGain.connect(audioCtx.destination);
+                    sparkOsc.start(sparkTime);
+                    sparkOsc.stop(sparkTime + 0.15);
+                }
+            } catch(e) {}
+        }
+
+        // 테마 지역별로 차별화된 뉴에이지 멜로디 자동 연주
+        function playPianoNote() {
+            if (!isPlaying) return;
+
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                // 현재 테마 멜로디 구조 추출
+                const themeNotes = themesMelody[currentTheme] || themesMelody['twilight'];
+                const noteName = themeNotes[noteIndex % themeNotes.length];
+                const noteFreq = scaleFreqs[noteName] || 440;
+
+                // 테마에 맞는 악기 고유 음색 시뮬레이션
+                if (currentTheme === 'twilight') {
+                    // 플루트/오보에 스타일: 부드러운 삼각파 결합
+                    osc.type = 'triangle';
+                    gainNode.gain.setValueAtTime(0, now);
+                    gainNode.gain.linearRampToValueAtTime(0.06, now + 0.1); // 부드러운 소리 시작
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+                } else if (currentTheme === 'aurora') {
+                    // 빙하 벨 사운드: 예리한 고주파 사인파 배음
+                    osc.type = 'sine';
+                    gainNode.gain.setValueAtTime(0, now);
+                    gainNode.gain.linearRampToValueAtTime(0.08, now + 0.02);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 2.0); // 맑고 긴 여운
+                } else if (currentTheme === 'moonlight') {
+                    // 서정적인 정통 피아노: 부드러운 사인파 어택
+                    osc.type = 'sine';
+                    gainNode.gain.setValueAtTime(0, now);
+                    gainNode.gain.linearRampToValueAtTime(0.09, now + 0.04);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+                } else {
+                    // 칼림바/하프 명상 사운드: 매우 가늘고 톡 쏘는 고주파 어택
+                    osc.type = 'sine';
+                    gainNode.gain.setValueAtTime(0, now);
+                    gainNode.gain.linearRampToValueAtTime(0.12, now + 0.01);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
+                }
+
+                osc.frequency.setValueAtTime(noteFreq, now);
+
+                // 명품 에코 공간감 설계 (Delay Feedback)
+                const delay = audioCtx.createDelay();
+                delay.delayTime.value = currentTheme === 'aurora' ? 0.6 : 0.45; // 오로라는 더 긴 딜레이 공간감
+                const delayGain = audioCtx.createGain();
+                delayGain.gain.value = 0.38;
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                gainNode.connect(delay);
+                delay.connect(delayGain);
+                delayGain.connect(audioCtx.destination);
+                
+                osc.start(now);
+                osc.stop(now + 2.5);
+                
+                noteIndex++;
+            } catch(e) {}
+            
+            // 템포 제어 (부드럽고 여유롭게 흘러가는 뉴에이지 박자)
+            musicTimer = setTimeout(playPianoNote, currentTheme === 'golden' ? 500 : 700);
+        }
+
+        function toggleMusic() {
+            initAudio();
+            const btn = document.getElementById('music-play-btn');
+            const txt = document.getElementById('music-text');
+            
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            if (!isPlaying) {
+                isPlaying = true;
+                btn.innerHTML = '⏸️ 일시정지';
+                txt.innerHTML = currentTheme === 'moonlight' ? 'Moonlit Lake' : 'Celestial Waltz';
+                playPianoNote();
+            } else {
+                isPlaying = false;
+                btn.innerHTML = '🎵 재생';
+                txt.innerHTML = 'Music Off';
+                clearTimeout(musicTimer);
+            }
+        }
+
+
+        function updateDensity(val) {
+            stardustSpawnMultiplier = parseInt(val);
+        }
+        function updateFriction(val) {
+            frictionCoefficient = parseInt(val) / 100;
+        }
+
+        // 테마별 환상적인 하늘 연출 변환 (유체 잔상 즉각 완벽 제거 기능 탑재)
+        function setTheme(themeName, element) {
+            currentTheme = themeName;
+            
+            // [지역변경 핵심 기능] 지형 전환 시 캔버스를 맑게 정화하고 모든 네온유체 흔적 즉각 증발!
+            particles = [];
+            stars = [];
+            shockwaves = [];
+            ctx.clearRect(0, 0, width, height);
+
+            const layers = document.querySelectorAll('.background-layer');
+            layers.forEach(layer => layer.classList.remove('active'));
+            document.getElementById(`bg-${themeName}`).classList.add('active');
+            
+            const buttons = document.querySelectorAll('.theme-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+
+            // 테마 변경에 따른 고유 색상 조율
+            if(themeName === 'twilight') globalHue = 310;
+            else if(themeName === 'aurora') globalHue = 135;
+            else if(themeName === 'moonlight') globalHue = 205;
+            else if(themeName === 'golden') globalHue = 30;
+
+            // 재생 중일 때 타이틀 텍스트 연동 업데이트
+            if (isPlaying) {
+                const txt = document.getElementById('music-text');
+                if (themeName === 'twilight') txt.innerHTML = 'Twilight Whisper';
+                else if (themeName === 'aurora') txt.innerHTML = 'Glacial Wind';
+                else if (themeName === 'moonlight') txt.innerHTML = 'Moonlit Lake';
+                else txt.innerHTML = 'Sacred Garden';
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth || 1024;
+            height = canvas.height = window.innerHeight || 768;
+            ctx.clearRect(0, 0, width, height);
+
+            // 화면 크기 변경 시 배경 오브젝트들 리셋
+            lanterns = [];
+            for (let i = 0; i < 18; i++) {
+                lanterns.push(new Lantern(true));
+            }
+
+            fireflies = [];
+            for (let i = 0; i < 20; i++) {
+                fireflies.push(new Firefly());
+            }
+
+            ambientStars = [];
+            for (let i = 0; i < 120; i++) {
+                ambientStars.push(new AmbientStar());
+            }
+
+            leaves = [];
+            for (let i = 0; i < 25; i++) {
+                leaves.push(new FallingLeaf(true));
+            }
+        }
+        window.addEventListener('resize', resize);
+
+        // 부드러운 흐름을 만들기 위한 유체 기류 노이즈 함수
+        function getFluidDirection(x, y, t) {
+            const scale = 0.0012; 
+            const n1 = Math.sin(x * scale + t) * Math.cos(y * scale + t);
+            const n2 = Math.sin(x * scale * 1.3 - t * 0.35) * Math.cos(y * scale * 1.3 - t * 0.35);
+            const angle = (n1 + n2) * Math.PI * 2.5;
+            return {
+                x: Math.cos(angle),
+                y: Math.sin(angle)
+            };
+        }
+
+        // ====================================================
+        // [테마 전용 특수 예술적 배경 오브젝트 설계]
+        // ====================================================
+
+        // 1. [황금 풍등 테마] 3D 원기둥 한지 질감 및 한지 세로 결 패턴이 정교히 묘사된 풍등 클래스
+        class Lantern {
+            constructor(initRandom = false) {
+                this.x = Math.random() * width;
+                this.y = initRandom ? Math.random() * (height + 100) - 50 : height + 50;
+                this.sizeWidth = Math.random() * 10 + 10; 
+                this.sizeHeight = this.sizeWidth * 1.4;
+                this.speed = Math.random() * 0.22 + 0.12;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.012 + 0.004;
+                this.hue = Math.random() * 8 + 18; // 붉고 따스한 전통 한지풍 황금색조
+                this.alpha = Math.random() * 0.3 + 0.55; 
+                this.tilt = 0;
+            }
+
+            update() {
+                this.y -= this.speed;
+                this.wobble += this.wobbleSpeed;
+                
+                // 바람의 흔들림을 우아하게 감쇠하여 현실적으로 보정
+                const windX = Math.sin(this.wobble) * 0.1;
+                this.x += windX;
+                
+                // 지나치게 휘지 않고 아주 부드럽게 한들거리도록 기울기 제어 적용 (0.6 -> 0.35)
+                this.tilt = windX * 0.35; 
+
+                if (this.y < -60) {
+                    this.y = height + 50;
+                    this.x = Math.random() * width;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                
+                // 촛불의 유기적 떨림 연산 (Flicker)
+                const flicker = 0.92 + Math.sin(time * 0.18 + this.wobble * 2) * 0.08;
+                const sw = this.sizeWidth * flicker;
+                const sh = this.sizeHeight * flicker;
+
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.tilt);
+
+                // 1. 내부 열원으로 종이 전체가 붉게 번지는 투과 아우라 광륜 (Subsurface Scattering Corona)
+                let glowGrad = ctx.createRadialGradient(0, sh * 0.1, 0, 0, sh * 0.1, sw * 2.8);
+                glowGrad.addColorStop(0, `hsla(${this.hue}, 100%, 65%, ${this.alpha * 1.3})`);
+                glowGrad.addColorStop(0.35, `hsla(${(this.hue - 15 + 360)%360}, 100%, 48%, ${this.alpha * 0.45})`);
+                glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                
+                ctx.beginPath();
+                ctx.arc(0, sh * 0.1, sw * 2.8, 0, Math.PI * 2);
+                ctx.fillStyle = glowGrad;
+                ctx.fill();
+
+                // 2. 3D 원기둥 타원 가공 (아래위 타원 뚜껑을 생성하여 실제 실린더감 연출)
+                const rx = sw * 0.5;
+                const ry = sw * 0.15; // 상하 테두리 타원 원근 찌그러짐 비율
+
+                // 한지 원기둥 좌우 입체 명암 그라데이션 (대비 증가)
+                let bodyGrad = ctx.createLinearGradient(-rx, 0, rx, 0);
+                bodyGrad.addColorStop(0, `hsla(${this.hue - 12}, 100%, 25%, ${this.alpha * 0.95})`);
+                bodyGrad.addColorStop(0.35, `hsla(${this.hue + 5}, 100%, 82%, ${this.alpha * 1.15})`);
+                bodyGrad.addColorStop(0.65, `hsla(${this.hue + 5}, 100%, 82%, ${this.alpha * 1.15})`);
+                bodyGrad.addColorStop(1, `hsla(${this.hue - 12}, 100%, 25%, ${this.alpha * 0.95})`);
+
+                // 몸체 실린더 영역 드로잉
+                ctx.beginPath();
+                ctx.moveTo(-rx, -sh * 0.5);
+                ctx.lineTo(-rx, sh * 0.5);
+                ctx.quadraticCurveTo(0, sh * 0.5 + ry * 2, rx, sh * 0.5);
+                ctx.lineTo(rx, -sh * 0.5);
+                ctx.quadraticCurveTo(0, -sh * 0.5 + ry * 2, -rx, -sh * 0.5);
+                ctx.closePath();
+                ctx.fillStyle = bodyGrad;
+                ctx.fill();
+
+                // 한지의 고유한 격자 결 주름 패턴 선명도 강화
+                ctx.strokeStyle = `rgba(140, 45, 5, ${this.alpha * 0.45})`;
+                ctx.lineWidth = 0.8;
+                const numPaperLines = 4;
+                for (let i = 1; i <= numPaperLines; i++) {
+                    const ratio = i / (numPaperLines + 1);
+                    const lineX = -rx + rx * 2 * ratio;
+                    // 원근 실린더 감을 살리기 위해 좌우측 세로선은 둥글게 곡률 주기
+                    ctx.beginPath();
+                    ctx.moveTo(lineX, -sh * 0.5 + ry);
+                    ctx.quadraticCurveTo(lineX * 0.9, 0, lineX * 0.85, sh * 0.5 + ry);
+                    ctx.stroke();
+                }
+
+                // 가로형 가벼운 대나무 버팀선 추가로 디테일 세부화
+                ctx.strokeStyle = `rgba(100, 35, 5, ${this.alpha * 0.35})`;
+                ctx.lineWidth = 0.6;
+                ctx.beginPath();
+                ctx.moveTo(-rx * 0.95, -sh * 0.15);
+                ctx.quadraticCurveTo(0, -sh * 0.15 + ry, rx * 0.95, -sh * 0.15);
+                ctx.moveTo(-rx * 0.98, sh * 0.2);
+                ctx.quadraticCurveTo(0, sh * 0.2 + ry, rx * 0.98, sh * 0.2);
+                ctx.stroke();
+
+                // 윗면 오목 타원 한지 입체 가이드 (풍등 뚜껑의 검은 테두리 그림자)
+                ctx.beginPath();
+                ctx.ellipse(0, -sh * 0.5, rx, ry, 0, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue - 8}, 100%, 15%, ${this.alpha * 0.95})`;
+                ctx.fill();
+
+                // 3. 밑받침 대나무 프레임 및 버팀 구조 와이어 세밀화
+                ctx.strokeStyle = `rgba(50, 20, 4, ${this.alpha * 0.85})`;
+                ctx.lineWidth = 1.3;
+                ctx.beginPath();
+                // 3D 밑면 타원형 대나무 테두리
+                ctx.ellipse(0, sh * 0.5, rx, ry, 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 대나무 프레임의 고정 매듭 디테일 추가
+                ctx.fillStyle = `rgba(30, 10, 2, ${this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(-rx, sh * 0.5, 1.5, 0, Math.PI * 2);
+                ctx.arc(rx, sh * 0.5, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 중심 세로 지지대선
+                ctx.strokeStyle = `rgba(50, 20, 4, ${this.alpha * 0.65})`;
+                ctx.lineWidth = 0.9;
+                ctx.beginPath();
+                ctx.moveTo(0, -sh * 0.5 + ry);
+                ctx.lineTo(0, sh * 0.5 + ry);
+                ctx.stroke();
+
+                // 4. 풍등 내부 하단의 고온 화이트 열화 불꽃 핵심부 (촛불 모션 밝기 업그레이드)
+                const flameH = sw * 0.4;
+                let flameGrad = ctx.createRadialGradient(0, sh * 0.35, 0, 0, sh * 0.35, flameH);
+                flameGrad.addColorStop(0, '#ffffff');
+                flameGrad.addColorStop(0.3, '#ffffe0'); // 눈부신 내부 핵 추가
+                flameGrad.addColorStop(0.6, `hsla(${this.hue + 15}, 100%, 75%, 1)`);
+                flameGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                ctx.beginPath();
+                ctx.arc(0, sh * 0.35, flameH, 0, Math.PI * 2);
+                ctx.fillStyle = flameGrad;
+                ctx.fill();
+
+                // 풍등 촛불이 위치하는 검붉은색 촛대 및 받침쇠 묘사
+                ctx.fillStyle = `rgba(30, 12, 4, ${this.alpha})`;
+                ctx.fillRect(-sw * 0.08, sh * 0.51, sw * 0.16, sh * 0.06);
+
+                // 5. 풍등 열기로 인해 내부에서 우주로 날아오르는 미세 엠버 불씨들
+                if (Math.random() < 0.15) {
+                    const sparkX = (Math.random() - 0.5) * sw * 0.7;
+                    const sparkY = sh * 0.5 + Math.random() * 10;
+                    ctx.beginPath();
+                    ctx.arc(sparkX, sparkY, Math.random() * 1.5 + 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue + 15}, 100%, 82%, ${this.alpha * 1.6})`;
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // 2. [황혼 테마] 숲속을 부드럽게 유영하는 연두색 반딧불이 클래스
+        class Firefly {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = height - Math.random() * 180 - 20;
+                this.size = Math.random() * 2 + 1;
+                this.vx = (Math.random() - 0.5) * 0.6;
+                this.vy = (Math.random() - 0.5) * 0.4;
+                this.angle = Math.random() * Math.PI * 2;
+                this.glowCycle = Math.random() * Math.PI;
+                this.glowSpeed = Math.random() * 0.04 + 0.02;
+            }
+
+            update() {
+                this.angle += 0.02;
+                this.vx += Math.sin(this.angle) * 0.02;
+                this.vy += Math.cos(this.angle) * 0.01;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.glowCycle += this.glowSpeed;
+
+                // 화면 경계 이탈 제어
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < height - 250) this.y = height - 20;
+                if (this.y > height) this.y = height - 200;
+            }
+
+            draw(ctx) {
+                const brightness = (Math.sin(this.glowCycle) + 1) * 0.5; // 0 ~ 1 페이드
+                if (brightness < 0.1) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+
+                // 반딧불이 빛 번짐 광륜 (연두빛 네온)
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 5 * brightness, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(164, 255, 60, ${0.12 * brightness})`;
+                ctx.fill();
+
+                // 반딧불이 중심 코어
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(220, 255, 120, ${brightness})`;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 3. [황금 테마] 부드럽게 떨어지며 회전하는 황금빛 낙엽 클래스
+        class FallingLeaf {
+            constructor(initRandom = false) {
+                this.x = Math.random() * width;
+                this.y = initRandom ? Math.random() * height : -20;
+                this.size = Math.random() * 5 + 3;
+                this.speedY = Math.random() * 0.4 + 0.2;
+                this.speedX = (Math.random() - 0.5) * 0.3;
+                this.angle = Math.random() * Math.PI * 2;
+                this.spinSpeed = (Math.random() - 0.5) * 0.02;
+                this.alpha = Math.random() * 0.35 + 0.15;
+            }
+
+            update() {
+                this.y += this.speedY;
+                this.angle += this.spinSpeed;
+                // 미세 소용돌이 기류 및 바람 효과
+                this.x += Math.sin(time * 0.015 + this.angle) * 0.4 + this.speedX;
+                if (this.y > height + 20 || this.x < -20 || this.x > width + 20) {
+                    this.y = -20;
+                    this.x = Math.random() * width;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.size, this.size * 0.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 160, 45, ${this.alpha})`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // ====================================================
+        // [초경량 고성능 파티클 물리 설계]
+        // ====================================================
+
+        // 1. 네온 액체 빛 가닥 파티클 (자체 궤적 저장 기법 적용)
+        class Particle {
+            constructor(x, y, hueBase, vx = 0, vy = 0, isSpark = false, decayScale = 1) {
+                this.x = x;
+                this.y = y;
+                
+                this.history = [];
+                this.maxHistory = isSpark ? 6 : 10; // 과거 좌표 이력으로 부드럽고 영롱한 곡선 렌더링
+                
+                this.vx = vx * 0.65 + (Math.random() - 0.5) * 0.8;
+                this.vy = vy * 0.65 + (Math.random() - 0.5) * 0.8;
+                
+                this.life = 1.0;
+                // 폭발 스파크는 수명이 무작위로 다르게 줄어들며 다채로운 꼬리를 형성
+                this.decay = isSpark ? (Math.random() * 0.014 + 0.009) * decayScale : (Math.random() * 0.007 + 0.004); 
+                this.size = isSpark ? (Math.random() * 1.5 + 0.6) : (Math.random() * 0.8 + 0.4);
+                this.hue = hueBase + (Math.random() * 24 - 12);
+                this.isSpark = isSpark;
+                
+                // 폭죽의 타닥타닥 반짝이는 크랙클 효과 부여를 위한 속성
+                this.isCrackler = isSpark && (Math.random() < 0.35);
+                this.cracklingPhase = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+
+                const flow = getFluidDirection(this.x, this.y, time * 0.002);
+                this.vx += flow.x * 0.08 * flowDirection;
+                this.vy += flow.y * 0.08 * flowDirection;
+
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (isMouseDown && dist > 5) {
+                    const force = Math.min(2.0, 90 / dist);
+                    this.vx -= (dx / dist) * force * 0.55;
+                    this.vy -= (dy / dist) * force * 0.55;
+                } else if (dist < 180 && dist > 0) {
+                    const force = (180 - dist) / 180;
+                    
+                    this.vx += mouse.vx * force * 0.012;
+                    this.vy += mouse.vy * force * 0.012;
+
+                    const cross = (dx * mouse.vy - dy * mouse.vx) * 0.001;
+                    const tx = -dy / dist; 
+                    const ty = dx / dist;  
+                    
+                    this.vx += tx * cross * force;
+                    this.vy += ty * cross * force;
+                }
+
+                // 중력 효과 추가 (폭죽 불꽃일 때 아래로 부드럽게 낙하하도록)
+                if (this.isSpark) {
+                    this.vy += 0.045; 
+                }
+
+                this.vx *= frictionCoefficient;
+                this.vy *= frictionCoefficient;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0 || this.history.length < 2) return;
+
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                let lightness = Math.min(85, (this.isSpark ? 55 : 42) + speed * 1.2); 
+                const dynamicSize = this.size + speed * 0.012;
+
+                let opacity = this.life;
+                
+                // 마지막 순간 반짝이 크랙클 효과 연출
+                if (this.isCrackler && this.life < 0.4) {
+                    const crackleFlicker = Math.sin(time * 0.5 + this.cracklingPhase);
+                    if (crackleFlicker < 0) {
+                        opacity = 0; // 순간적으로 안 보임 (깜빡임 극대화)
+                    } else {
+                        lightness = 95; // 반짝일 때는 새하얗게 발광
+                        opacity = 0.9;
+                    }
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+                for (let i = 1; i < this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+
+                // 바깥 아우라 (Glow)
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, ${lightness - 8}%, ${opacity * (this.isSpark ? 0.32 : 0.18)})`;
+                ctx.lineWidth = dynamicSize * (this.isSpark ? 3.4 : 2.5);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+
+                // Bright Core
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, ${lightness + 8}%, ${opacity * 0.8})`;
+                ctx.lineWidth = dynamicSize;
+                ctx.stroke();
+            }
+        }
+
+        // 2. 은하수 펄 가루 파티클
+        class StardustParticle {
+            constructor(x, y, hueBase) {
+                this.x = x + (Math.random() - 0.5) * 12;
+                this.y = y + (Math.random() - 0.5) * 12;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.vy = Math.random() * 0.5 + 0.1;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.018 + 0.006;
+                this.hue = hueBase + (Math.random() * 30 - 15);
+                this.size = Math.random() * 1.3 + 0.4;
+            }
+
+            update() {
+                const flow = getFluidDirection(this.x, this.y, time * 0.0014);
+                this.vx += flow.x * 0.02;
+                this.vy += 0.012; // 가벼운 중력 적용
+
+                this.vx *= 0.975;
+                this.vy *= 0.975;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+                const alpha = this.life * 0.7;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2.2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 65%, ${alpha * 0.22})`;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 85%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // 3. 하늘을 가르는 별똥별
+        class ShootingStar {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width * 0.6;
+                this.y = -40;
+                this.speed = Math.random() * 11 + 7;
+                this.angle = Math.PI / 5.5 + (Math.random() - 0.5) * 0.08; 
+                this.vx = Math.cos(this.angle) * this.speed;
+                this.vy = Math.sin(this.angle) * this.speed;
+                this.hue = (globalHue + 150) % 360; 
+                this.active = true;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x > width + 100 || this.y > height + 100) {
+                    this.active = false;
+                }
+            }
+
+            draw(ctx) {
+                if (!this.active) return;
+
+                // 그라데이션 좌표값이 유효한 숫자인지 확인하는 방어 로직 추가 (finite값 체크)
+                const startX = this.x;
+                const startY = this.y;
+                const endX = this.x - this.vx * 2.3;
+                const endY = this.y - this.vy * 2.3;
+
+                if (!isFinite(startX) || !isFinite(startY) || !isFinite(endX) || !isFinite(endY)) {
+                    return;
+                }
+
+                const grad = ctx.createLinearGradient(startX, startY, endX, endY);
+                grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+                grad.addColorStop(0.2, `hsla(${this.hue}, 100%, 75%, 0.6)`);
+                grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+            }
+        }
+
+        // 4. [잔상 해결 핵심] 완벽 소멸형 먼지 고리 충격파 클래스 (Perfect Ring Dissolve)
+        class Shockwave {
+            constructor(x, y, hue, maxR = 160) {
+                this.x = x;
+                this.y = y;
+                this.radius = 5;
+                this.maxRadius = maxR;
+                this.speed = 10;
+                this.life = 1.0;
+                this.decay = 0.035; // 원형이 머무르지 않도록 즉각적이고 빠르게 소멸
+                this.hue = hue;
+                
+                // 충격파 고리가 부서져 내릴 때 사용할 소형 입자 고리들 생성
+                this.segments = Math.floor(maxR * 0.18);
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.speed *= 0.88; // 급격한 제동식 팽창
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+                
+                // 선 형태의 완전한 고리를 그리지 않고, 부서지는 점 조각(Dust Segment)으로 표현
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                
+                const alpha = this.life * 0.7;
+
+                for (let i = 0; i < this.segments; i++) {
+                    const angle = (i / this.segments) * Math.PI * 2 + (time * 0.01);
+                    const rx = this.x + Math.cos(angle) * this.radius;
+                    const ry = this.y + Math.sin(angle) * this.radius;
+                    
+                    // 입자들이 구 형태로 둥글게 퍼지며 서서히 안개처럼 기화하여 사라짐
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, Math.max(0.2, 2.5 * this.life), 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${alpha})`;
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // 5. 밤하늘 은하수 미광 고정 별빛 오브젝트
+        class AmbientStar {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * height;
+            }
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 1.5 + 0.3;
+                this.alpha = Math.random() * 0.55 + 0.15;
+                this.twinkleSpeed = Math.random() * 0.022 + 0.005;
+                this.twinkleOffset = Math.random() * Math.PI;
+                this.hue = Math.random() * 20 - 10;
+            }
+            update() {
+                // 반짝임은 애니메이션 루프 속에서 삼각함수로 보간
+            }
+            draw(ctx, targetHue) {
+                const curAlpha = this.alpha * (0.55 + Math.sin(time * this.twinkleSpeed + this.twinkleOffset) * 0.45);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${targetHue + this.hue}, 90%, 85%, ${curAlpha})`;
+                ctx.fill();
+            }
+        }
+
+        // ====================================================
+        // [초강력 기가 폭발 & 다단계 성운 불꽃놀이 시스템]
+        // ====================================================
+        function createBlast(x, y, power = 1) {
+            // 폭죽 효과음 재생 (물리적 진동 사운드 탑재)
+            playExplosionSound(power);
+
+            // 파워 상승에 비례해 스케일 3.5배 강화
+            const scaleMultiplier = 1 + (power * 0.035);
+            shakeIntensity = Math.min(35, 12 + power * 0.5);
+
+            globalHue = (globalHue + 40 + Math.random() * 40) % 360;
+
+            // 폭죽 대기 조색 엠비언트 플래시 가동
+            flashOpacity = 0.55 + (power * 0.005);
+            flashColor = `hsla(${globalHue}, 100%, 65%, `;
+
+            // 1. 완벽 소멸형 링 충격파들 생성 (점진적 확장)
+            shockwaves.push(new Shockwave(x, y, globalHue, 160 * scaleMultiplier));
+            setTimeout(() => {
+                shockwaves.push(new Shockwave(x, y, (globalHue + 45) % 360, 220 * scaleMultiplier));
+            }, 80);
+            if (power > 25) {
+                setTimeout(() => {
+                    shockwaves.push(new Shockwave(x, y, (globalHue + 90) % 360, 290 * scaleMultiplier));
+                }, 160);
+            }
+
+            // 2. 다단계 성운 유체 가닥 스폰
+            const particleCount = Math.min(230, 80 + power * 3.0);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (Math.random() * 7.0 + 2.0) * (1 + power * 0.015);
+                particles.push(new Particle(
+                    x, y, 
+                    globalHue, 
+                    Math.cos(angle) * speed, 
+                    Math.sin(angle) * speed,
+                    false // 일반 유체 타입
+                ));
+            }
+
+            // 3. 성운 2차 분기형 스파크 불꽃 다발 (타닥타닥 반짝이는 크랙클 효과 포함)
+            const sparkCount = Math.floor(particleCount * 0.9);
+            for (let i = 0; i < sparkCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (Math.random() * 12.0 + 5.0) * (1 + power * 0.01);
+                
+                // 가속도가 극적으로 빠른 불꽃 파티착 장착
+                const p = new Particle(
+                    x, y, 
+                    (globalHue + 30) % 360, 
+                    Math.cos(angle) * speed, 
+                    Math.sin(angle) * speed,
+                    true, // 스파크 타입
+                    0.8  // 수명이 평소보다 약간 길게 보존됨
+                );
+                
+                // 2차 분기 연쇄 소멸 효과 탑재
+                p.hasDaughterShell = true;
+                particles.push(p);
+            }
+
+            // 4. 은하수 펄 가루 구름 대량 안개 살포
+            const pulseDustCount = Math.floor(particleCount * 0.45);
+            for (let i = 0; i < pulseDustCount; i++) {
+                particles.push(new StardustParticle(x, y, globalHue));
+            }
+
+            // 별똥별 관통 동시 생성
+            stars.push(new ShootingStar());
+        }
+
+        // 기류 흐름 생성 (마우스 드래그 궤적)
+        function spawnParticles() {
+            const dx = mouse.x - mouse.px;
+            const dy = mouse.y - mouse.py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            mouse.vx = dx;
+            mouse.vy = dy;
+
+            const steps = Math.min(Math.floor(dist / 4.5), 24); 
+            
+            for (let i = 0; i < steps; i++) {
+                const sx = mouse.px + (dx * (i / steps));
+                const sy = mouse.py + (dy * (i / steps));
+                
+                particles.push(new Particle(sx, sy, globalHue, dx * 0.06, dy * 0.06, false));
+
+                // 별가루 입자 트레일
+                for (let k = 0; k < stardustSpawnMultiplier; k++) {
+                    if (Math.random() < 0.45) {
+                        particles.push(new StardustParticle(sx, sy, globalHue));
+                    }
+                }
+            }
+            
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+        }
+
+        // ====================================================
+        // [입력 제스처 조작감 연동]
+        // ====================================================
+        window.addEventListener('mousemove', (e) => {
+            if (e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return; // 패널 내부 조작 차단
+            if (!hasInteracted) {
+                guideText.style.opacity = '0';
+                hasInteracted = true;
+            }
+            if (mouse.x === -1000) {
+                mouse.px = e.clientX;
+                mouse.py = e.clientY;
+            }
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            spawnParticles();
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel')) return;
+            e.preventDefault();
+            if (!hasInteracted) {
+                guideText.style.opacity = '0';
+                hasInteracted = true;
+            }
+            const touch = e.touches[0];
+            if (mouse.x === -1000) {
+                mouse.px = touch.clientX;
+                mouse.py = touch.clientY;
+            }
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+            spawnParticles();
+        }, { passive: false });
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            isMouseDown = true;
+            chargePower = 0;
+            
+            // 에너지 흡수 사운드 개시
+            initAudio();
+            startChargeSound();
+        });
+        window.addEventListener('mouseup', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            isMouseDown = false;
+            
+            // 충전 에너지 사운드 정지 및 대폭발 발사
+            stopChargeSound();
+            createBlast(e.clientX, e.clientY, chargePower);
+            chargePower = 0;
+        });
+        
+        window.addEventListener('dblclick', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            flowDirection *= -1;
+            globalHue += 120;
+            createBlast(e.clientX, e.clientY, 40);
+        });
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            isMouseDown = true;
+            chargePower = 0;
+            const touch = e.touches[0];
+            mouse.px = touch.clientX;
+            mouse.py = touch.clientY;
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+
+            initAudio();
+            startChargeSound();
+        }, { passive: false });
+        window.addEventListener('touchend', (e) => {
+            if (e.target.closest('#control-panel') || e.target.closest('#music-controller') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            isMouseDown = false;
+            
+            stopChargeSound();
+            createBlast(mouse.x, mouse.y, chargePower);
+            chargePower = 0;
+        });
+
+        window.addEventListener('mouseout', () => {
+            mouse.x = -1000;
+            mouse.y = -1000;
+            isMouseDown = false;
+            stopChargeSound();
+        });
+
+        function triggerNaturalShootingStar() {
+            if (Math.random() < 0.003) { 
+                stars.push(new ShootingStar());
+            }
+        }
+
+        // ====================================================
+        // [테마별 고유 전용 배경 렌더링 파트]
+        // ====================================================
+
+        // 1. [황혼의 밤수림] - 다중 레이어 숲 실루엣, 별자리 은하수, 밤안개, 살랑이는 나무 및 반딧불이
+        function drawTwilightForest() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+
+            // 은은한 Constellations (가까운 대기 별들끼리 신비로운 기하학 선으로 연결)
+            ctx.strokeStyle = `rgba(255, 180, 240, 0.045)`;
+            ctx.lineWidth = 0.55;
+            for (let i = 0; i < ambientStars.length; i++) {
+                for (let j = i + 1; j < ambientStars.length; j++) {
+                    const dist = Math.hypot(ambientStars[i].x - ambientStars[j].x, ambientStars[i].y - ambientStars[j].y);
+                    if (dist < 80) {
+                        ctx.beginPath();
+                        ctx.moveTo(ambientStars[i].x, ambientStars[i].y);
+                        ctx.lineTo(ambientStars[j].x, ambientStars[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // 1차 먼 원경: 밤하늘 보랏빛 산맥 실루엣
+            ctx.fillStyle = '#0a0316';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            for (let x = 0; x <= width; x += 35) {
+                const mountainY = height - 65 - Math.sin(x * 0.01) * 20;
+                ctx.lineTo(x, mountainY);
+            }
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+
+            // [자연화] 숲속 계곡 사이를 채우는 몽환적인 숲 밤안개 레이어 (Valley Mist)
+            ctx.globalCompositeOperation = 'screen';
+            const mistY = height - 80;
+            const mistWidth = width * 0.6;
+            const mistShift = (time * 0.06) % (width * 0.6) - width * 0.3;
+            let mistGrad = ctx.createLinearGradient(mistShift, mistY, mistShift + mistWidth, mistY);
+            mistGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            mistGrad.addColorStop(0.5, 'rgba(180, 110, 255, 0.04)'); // 보랏빛 은은한 밤수림 안개
+            mistGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = mistGrad;
+            ctx.fillRect(mistShift, mistY - 25, mistWidth, 55);
+
+            ctx.globalCompositeOperation = 'source-over';
+
+            // [자연화] 숲 바닥에 스스로 신비롭게 깜빡이는 고대 야생화 꽃무리 렌더링 (Bioluminescent Wildflowers)
+            const numFlowers = 15;
+            for (let i = 0; i < numFlowers; i++) {
+                const fx = width * (0.05 + (i / numFlowers) * 0.9) + Math.sin(i * 12) * 20;
+                const fy = height - 35 - Math.cos(i * 8) * 12;
+                
+                // 삼각함수 맥동을 통한 은은한 자가발광 연출 (Bioluminescence)
+                const flowerPulse = 0.4 + Math.sin(time * 0.018 + i * 1.5) * 0.6;
+                if (flowerPulse > 0.15) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    // 꽃 주변 아우라
+                    let flowerGlow = ctx.createRadialGradient(fx, fy, 0, fx, fy, 15 * flowerPulse);
+                    flowerGlow.addColorStop(0, `rgba(230, 120, 255, ${0.15 * flowerPulse})`);
+                    flowerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, 15 * flowerPulse, 0, Math.PI * 2);
+                    ctx.fillStyle = flowerGlow;
+                    ctx.fill();
+
+                    // 작고 정교한 야간 야생화 꽃핵
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 180, 255, ${flowerPulse * 0.9})`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // 반딧불이 무리 렌더링
+            for (let i = 0; i < fireflies.length; i++) {
+                fireflies[i].update();
+                fireflies[i].draw(ctx);
+            }
+
+            // 2차 근경: 정교한 침엽수림 실루엣 그리기
+            ctx.fillStyle = '#030107';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            for (let x = 0; x <= width; x += 25) {
+                // 나무들마다 바람을 받는 흔들림 위상차 부여
+                const treeSway = Math.sin(time * 0.015 + x * 0.008) * 4; 
+                const forestY = height - 45 - Math.sin(x * 0.015) * 18 - Math.cos(x * 0.008) * 10;
+                
+                ctx.lineTo(x, forestY);
+                ctx.lineTo(x + 8 + treeSway, forestY - 25); // 꼭대기 기우뚱 sway 모션
+                ctx.lineTo(x + 16, forestY);
+            }
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // 2. [극광의 설산] - 만년설산 및 고화질 세로 광선 오로라 장막 시뮬레이션
+        function drawSnowyMountains() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            // 1차 원경: 거대한 빙하 산맥 지형
+            ctx.fillStyle = '#01050c';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            ctx.lineTo(0, height * 0.62);
+            ctx.lineTo(width * 0.28, height * 0.42);
+            ctx.lineTo(width * 0.48, height * 0.68);
+            ctx.lineTo(width * 0.72, height * 0.48);
+            ctx.lineTo(width, height * 0.65);
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+
+            // 만년설 빙하 무늬 하이라이트 표현 (연한 실버/시안)
+            ctx.fillStyle = '#071b2d';
+            ctx.beginPath();
+            ctx.moveTo(width * 0.28, height * 0.42);
+            ctx.lineTo(width * 0.22, height * 0.48);
+            ctx.lineTo(width * 0.25, height * 0.49);
+            ctx.lineTo(width * 0.28, height * 0.46);
+            ctx.lineTo(width * 0.31, height * 0.5);
+            ctx.lineTo(width * 0.34, height * 0.49);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(width * 0.72, height * 0.48);
+            ctx.lineTo(width * 0.67, height * 0.53);
+            ctx.lineTo(width * 0.7, height * 0.54);
+            ctx.lineTo(width * 0.72, height * 0.51);
+            ctx.lineTo(width * 0.75, height * 0.55);
+            ctx.lineTo(width * 0.78, height * 0.53);
+            ctx.closePath();
+            ctx.fill();
+
+            // 2차 근경: 산맥 아래 침엽수 삼림 실루엣
+            ctx.fillStyle = '#000103';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            for (let x = 0; x <= width; x += 16) {
+                const pineY = height * 0.7 + Math.sin(x * 0.01) * 12;
+                ctx.lineTo(x, pineY);
+                ctx.lineTo(x + 5, pineY - 14); // 침엽수 꼭대기
+                ctx.lineTo(x + 10, pineY);
+            }
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // 극도로 현실적인 오로라 장막 (세로 띠 레이어 형태의 Curtain Striations 렌더링)
+        function drawAuroraCurtain() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+
+            const numRays = 180; // 세로 광선의 해상도 밀도
+            const auroraHue1 = (globalHue + 40) % 360;
+            const auroraHue2 = (globalHue + 180) % 360;
+
+            for (let j = 0; j < 2; j++) { // 이중 장막 구성
+                const shift = time * 0.0015 + j * 3.5;
+                const baseHue = j === 0 ? auroraHue1 : auroraHue2;
+
+                for (let i = 0; i < numRays; i++) {
+                    const pct = i / numRays;
+                    const x = pct * (width + 100) - 50;
+                    
+                    // 메인 물결 사인 커브 높이
+                    const waveY = height * (0.16 + j * 0.1) + 
+                                  Math.sin(pct * Math.PI * 3 + shift) * 75 * Math.cos(pct * Math.PI * 1.5 - shift * 0.4);
+
+                    // 각 띠별로 고밀도 가변성 높이 (실제 커튼 주름 연출)
+                    const curtainHeight = 130 + Math.sin(pct * Math.PI * 8 + shift * 2) * 45;
+
+                    // 실제 오로라처럼 세로 주름(Ray)이 깜빡이도록 노이즈 성 불투명도 부여 (선명도 소폭 향상)
+                    const alphaMultiplier = (0.5 + Math.sin(pct * Math.PI * 16 + shift * 3) * 0.5) * 0.14;
+                    
+                    const rayGrad = ctx.createLinearGradient(x, waveY, x, waveY + curtainHeight);
+                    rayGrad.addColorStop(0, 'rgba(0,0,0,0)');
+                    rayGrad.addColorStop(0.2, `hsla(${baseHue}, 100%, 58%, ${alphaMultiplier})`);
+                    rayGrad.addColorStop(0.5, `hsla(${(baseHue + 35) % 360}, 100%, 48%, ${alphaMultiplier * 0.5})`);
+                    rayGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                    ctx.fillStyle = rayGrad;
+                    // 세로 띠 조각 그리기
+                    ctx.fillRect(x, waveY, (width / numRays) * 2.5, curtainHeight);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // [세부화] 달빛 버들 호수 테마용 은빛 야간 산맥 능선 지형 실시간 그리기 (Luminous Night Hills)
+        function drawDistantHills() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            // 먼 능선 (Distant Velvety Blue Mountains)
+            ctx.fillStyle = '#06132b'; // 달빛에 젖은 어스름한 남빛 산맥
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.68);
+            for (let x = 0; x <= width; x += 40) {
+                const y = height * 0.56 - Math.sin(x * 0.004 + 1.2) * 50 - Math.cos(x * 0.002) * 25;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width, height * 0.68);
+            ctx.closePath();
+            ctx.fill();
+
+            // 산맥 꼭대기 능선의 눈부신 실버 림라이트 (Atmospheric Silver Backlight)
+            ctx.strokeStyle = 'rgba(235, 245, 255, 0.28)';
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            for (let x = 0; x <= width; x += 15) {
+                const y = height * 0.56 - Math.sin(x * 0.004 + 1.2) * 50 - Math.cos(x * 0.002) * 25;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // [현실화] 풀이 물에 침수되어 보이지 않고, 땅 위에 올바르게 자리잡도록 호숫가 지면 그리기
+        function drawLakesideLand() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = '#02040c';
+            
+            // ① 왼쪽 하단에 버들나무 줄기와 갈대가 자라날 수 있는 풍성한 흙 언덕/바위 지면 묘사
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            ctx.lineTo(0, height * 0.82);
+            ctx.quadraticCurveTo(width * 0.16, height * 0.85, width * 0.32, height + 10);
+            ctx.closePath();
+            ctx.fill();
+
+            // ② 오른쪽 하단 완만하고 아늑한 지면 실루엣 추가
+            ctx.beginPath();
+            ctx.moveTo(width, height);
+            ctx.lineTo(width, height * 0.88);
+            ctx.quadraticCurveTo(width * 0.86, height * 0.9, width * 0.76, height + 10);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // [세부화 & 레이어 입체화] 달빛 버들 호수 수면 안개 및 윤슬 그리기 파트
+        function drawLakeMistAndReflection(pass) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const horizon = height * 0.68;
+            const moonX = width * 0.78;
+
+            if (pass === 'back') {
+                // 1. 수평선의 날카로운 경계를 부드럽게 감쇄시키는 지평선 마스크 안개광 (Horizon Blending)
+                let horizonGlow = ctx.createLinearGradient(0, horizon - 25, 0, horizon + 25);
+                horizonGlow.addColorStop(0, 'rgba(6, 21, 51, 0)');
+                horizonGlow.addColorStop(0.5, 'rgba(100, 140, 200, 0.16)'); // 은은한 달빛 안개층 형성
+                horizonGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = horizonGlow;
+                ctx.fillRect(0, horizon - 25, width, 50);
+
+                // 2. 수평선으로부터 하단까지 정밀하게 퍼지며 일렁이는 유기적 윤슬 광선 (Realistic Water Specular)
+                for (let y = horizon + 3; y < height; y += 4) {
+                    const relativeY = (y - horizon) / (height - horizon);
+                    // 바람과 파동에 따른 동적 물결 왜곡 연산
+                    const waveDistortion = Math.sin(y * 0.08 + time * 0.05) * 12 * relativeY;
+                    const rippleWidth = (35 + relativeY * 160) * (0.85 + Math.sin(y * 0.06 - time * 0.035) * 0.15);
+
+                    ctx.beginPath();
+                    ctx.ellipse(moonX + waveDistortion, y, rippleWidth, 1.6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 246, 185, ${0.48 * (1.0 - relativeY * 0.75)})`;
+                    ctx.fill();
+                }
+
+                // 3. 수풀 뒤로 흘러가는 원경 안개 레이어 (Lake Mist - Back)
+                const mistShift = (time * 0.05) % (width * 0.6) - width * 0.3;
+                const mistY = horizon + 15;
+                let mistGrad = ctx.createLinearGradient(mistShift, mistY, mistShift + width * 0.6, mistY);
+                mistGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                mistGrad.addColorStop(0.5, 'rgba(150, 190, 255, 0.045)');
+                mistGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = mistGrad;
+                ctx.fillRect(mistShift, mistY - 15, width * 0.6, 30);
+            } 
+            else if (pass === 'front') {
+                // 4. 수풀과 지형의 앞단을 자연스럽게 가리며 흘러가는 몽환적인 근경 안개 (Volumetric Mist - Front)
+                for (let i = 0; i < 2; i++) {
+                    const mistShift = (time * 0.07 + i * width * 0.4) % (width * 1.4) - width * 0.4;
+                    const mistY = horizon + 60 + i * 50;
+                    let mistGrad = ctx.createLinearGradient(mistShift, mistY, mistShift + width * 0.45, mistY);
+                    mistGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                    mistGrad.addColorStop(0.5, `rgba(200, 225, 255, ${0.035 - i * 0.01})`);
+                    mistGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    ctx.fillStyle = mistGrad;
+                    ctx.fillRect(mistShift, mistY - 20, width * 0.45, 40);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // [새로운 연출] 수양버들과 갈대의 밤호수 투과 물비침(Water-Surface Reflections) 실시간 렌더링
+        function drawLakesideReflections() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const horizon = height * 0.68;
+            
+            // 1. 수양버들 가지의 몽환적인 물비침 데칼코마니 연출 (거꾸로 뒤집힌 실루엣)
+            ctx.save();
+            ctx.translate(0, horizon);
+            ctx.scale(1, -0.45); // 호수 깊이에 따른 반사 압축률 적용
+            ctx.strokeStyle = 'rgba(2, 8, 26, 0.2)';
+            
+            // 수양버들 수면 굴절 물결 왜곡 (Wobble)
+            const sway = Math.sin(time * 0.013) * 16;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(width * 0.12, height * 0.08, width * 0.16, 0);
+            ctx.lineWidth = 14;
+            ctx.stroke();
+
+            // 버들 줄기들의 반사 가닥들 드로잉
+            ctx.lineWidth = 1.0;
+            ctx.strokeStyle = 'rgba(6, 18, 48, 0.15)';
+            for (let i = 0; i < 14; i++) {
+                const startX = width * (0.015 + i * 0.011);
+                const length = 130 + Math.cos(i) * 60;
+                const rSway = Math.sin(time * 0.013 + i + time * 0.02) * 22; // 잔물결로 더 심한 소용돌이 흔들림
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, 0);
+                ctx.quadraticCurveTo(startX + rSway * 0.5, length * 0.5, startX + rSway, length);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // 2. 근경 갈대들의 정교한 물비침 반사광
+            const numForegroundReeds = 12;
+            const landY = height * 0.82; // 갈대 지면 기준 수위 레벨
+
+            for (let i = 0; i < numForegroundReeds; i++) {
+                const rx = 10 + i * 15 + Math.sin(i) * 5;
+                const h = 110 + Math.cos(i) * 35;
+                const sway = Math.sin(time * 0.015 + i) * 12;
+
+                ctx.save();
+                ctx.translate(rx, landY);
+                ctx.scale(1, -0.5); // 거꾸로 물비침 렌더링
+                
+                // 물결 굴절에 의해 흔들리고 부서지는 형상
+                const reflectionSway = sway + Math.sin(time * 0.09 + i) * 6;
+                let refGrad = ctx.createLinearGradient(0, 0, reflectionSway, h);
+                refGrad.addColorStop(0, 'rgba(100, 140, 200, 0.22)');
+                refGrad.addColorStop(1, 'rgba(100, 140, 200, 0.0)');
+
+                ctx.strokeStyle = refGrad;
+                ctx.lineWidth = 2.4;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(reflectionSway * 0.5, h * 0.5, reflectionSway, h);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // 3. [달빛 버들 호수] - 보름달 크레이터 묘사와 달무리
+        function drawMoonlightReflection() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+
+            const moonX = width * 0.78;
+            const moonY = height * 0.22;
+            const moonRadius = 65;
+
+            // 보름달의 아련하고 영롱한 다층식 대기 달무리 (Atmospheric Corona/Halo)
+            let moonGlow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, moonRadius * 4.5);
+            moonGlow.addColorStop(0, 'rgba(255, 252, 230, 0.98)');
+            moonGlow.addColorStop(0.18, 'rgba(255, 245, 170, 0.5)');
+            moonGlow.addColorStop(0.45, 'rgba(255, 240, 150, 0.1)');
+            moonGlow.addColorStop(1, 'rgba(0,0,0,0)');
+
+            ctx.beginPath();
+            ctx.arc(moonX, moonY, moonRadius * 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = moonGlow;
+            ctx.fill();
+
+            // 실제 보름달 구체 베이스
+            ctx.beginPath();
+            ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffe6';
+            ctx.fill();
+
+            // [초정밀 디테일] 중첩 레이어를 통한 극 사실주의 달의 바다 및 분화구 음영 표현
+            ctx.fillStyle = 'rgba(175, 160, 130, 0.65)'; 
+            const seas = [
+                {x: -16, y: -22, rx: 18, ry: 15, rot: 0.2}, // 비의 바다
+                {x: 18, y: -20, rx: 14, ry: 14, rot: 0},    // 고요의 바다
+                {x: 28, y: -4, rx: 12, ry: 16, rot: -0.3},  // 풍요의 바다
+                {x: -28, y: 4, rx: 16, ry: 20, rot: 0.5},   // 폭풍의 대양 일부
+                {x: -6, y: 18, rx: 18, ry: 12, rot: -0.1},  // 구름의 바다
+                {x: 12, y: 28, rx: 22, ry: 11, rot: 0.1}    // 감로주의 바다
+            ];
+            seas.forEach(s => {
+                ctx.beginPath();
+                ctx.ellipse(moonX + s.x, moonY + s.y, s.rx, s.ry, s.rot, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 눈부신 타이코(Tycho) 크레이터 중심광 및 우백색 충돌구 광조선 (Ray Systems)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'; // 보름달 크레이터 광선 한층 더 뚜렷하게
+            ctx.lineWidth = 0.6;
+            const tychoX = moonX + 15;
+            const tychoY = moonY + 35;
+            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
+                ctx.beginPath();
+                ctx.moveTo(tychoX, tychoY);
+                // 방사형으로 가늘게 퍼져 나가는 충돌 광조
+                ctx.lineTo(tychoX + Math.cos(angle) * (moonRadius * 0.75), tychoY + Math.sin(angle) * (moonRadius * 0.75));
+                ctx.stroke();
+            }
+
+            // 하이라이트 타이코 충돌공 핵
+            ctx.beginPath();
+            ctx.arc(tychoX, tychoY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            // 입체감을 더해주는 입체 아우라 림라이트 효과 추가 (달의 가장자리에 은은한 백색 테두리)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(moonX, moonY, moonRadius - 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 코페르니쿠스 및 케플러 등 소형 핵심 크레이터들 데코레이션
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            const subCraters = [
+                {x: -20, y: -8, r: 2.2},
+                {x: -12, y: 10, r: 1.8},
+                {x: 24, y: -24, r: 1.5}
+            ];
+            subCraters.forEach(sc => {
+                ctx.beginPath();
+                ctx.arc(moonX + sc.x, moonY + sc.y, sc.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 달 앞을 가로지르는 반투명 밤안개 구름
+            ctx.beginPath();
+            for (let i = 0; i < 3; i++) {
+                const cloudShift = (time * 0.15 + i * 200) % (width + 400) - 200;
+                const cy = moonY + 15 + Math.sin(time * 0.01 + i) * 10;
+                let cloudGrad = ctx.createLinearGradient(cloudShift - 150, cy, cloudShift + 150, cy);
+                cloudGrad.addColorStop(0, 'rgba(0,0,0,0)');
+                cloudGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
+                cloudGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = cloudGrad;
+                ctx.fillRect(cloudShift - 150, cy - 25, 300, 50);
+            }
+
+            ctx.restore();
+        }
+
+        // 달빛 테마 좌상단 흔들리는 수양버들 나무
+        function drawWillow() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = '#01040d';
+            ctx.fillStyle = '#01040d';
+
+            // 수양버들 몸체 큰 줄기 묘사
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(width * 0.12, height * 0.08, width * 0.16, 0);
+            ctx.lineWidth = 14;
+            ctx.stroke();
+
+            // 아래로 길게 늘어지는 잔가지와 잎사귀들 생성 (Sway 모션 포함)
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = '#020612';
+            const numVines = 14;
+            for (let i = 0; i < numVines; i++) {
+                const startX = width * (0.015 + i * 0.011);
+                const startY = height * (0.015 + Math.sin(i) * 0.015);
+                const length = 130 + Math.cos(i) * 60;
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                
+                const sway = Math.sin(time * 0.013 + i) * 16;
+                ctx.quadraticCurveTo(startX + sway * 0.5, startY + length * 0.5, startX + sway, startY + length);
+                ctx.stroke();
+
+                // 수양버들 잎사귀에 부드러운 하이라이트 음영 추가 (달빛 투과 및 림라이트 효과 묘사)
+                const leafCount = 9;
+                for (let j = 0; j < leafCount; j++) {
+                    const t = j / leafCount;
+                    const lx = startX * (1 - t) + (startX + sway) * t;
+                    const ly = startY * (1 - t) + (startY + length) * t;
+                    
+                    // 기본 잎사귀 어두운 판
+                    ctx.fillStyle = '#010206';
+                    ctx.beginPath();
+                    ctx.ellipse(lx, ly, 5, 2, Math.PI / 4 + sway * 0.01, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 은은히 달빛에 노출되어 테두리가 밝게 빛나는 림라이트 연출 추가
+                    ctx.strokeStyle = 'rgba(200, 220, 255, 0.45)';
+                    ctx.lineWidth = 0.6;
+                    ctx.beginPath();
+                    ctx.ellipse(lx, ly, 5, 2, Math.PI / 4 + sway * 0.01, 0, Math.PI);
+                    ctx.stroke();
+
+                    // 달빛을 받아 한쪽 면만 은은히 빛나는 녹빛 하이라이트 터치
+                    ctx.fillStyle = 'rgba(100, 140, 190, 0.45)';
+                    ctx.beginPath();
+                    ctx.ellipse(lx - 1, ly - 0.5, 3.5, 1, Math.PI / 4 + sway * 0.01, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // [세부화 & 레이어 분리] 수평선 부근의 원경 갈대 군락
+        function drawBackgroundReeds() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            ctx.strokeStyle = '#010207';
+            ctx.fillStyle = '#010207';
+            const horizon = height * 0.68;
+            const numReeds = 24;
+            const startX = width * 0.04;
+
+            for (let i = 0; i < numReeds; i++) {
+                // 수평선 뒤편에 은은히 배치하여 경계를 차폐
+                const rx = startX + i * 7.5 + Math.sin(i) * 3;
+                const h = 42 + Math.cos(i) * 18;
+                const sway = Math.sin(time * 0.022 + i) * 6;
+                
+                ctx.beginPath();
+                ctx.moveTo(rx, horizon + 3); // 수면 경계에 약간 겹쳐서 고정
+                ctx.quadraticCurveTo(rx + sway * 0.5, horizon - h * 0.5, rx + sway, horizon - h);
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 원경 갈대 이삭 헤드
+                ctx.beginPath();
+                ctx.ellipse(rx + sway, horizon - h, 1.8, 7, sway * 0.04, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        // [세부화 & 레이어 분리] 호수 근경에 배치되며 물결 파동을 소환하는 근경 갈대들
+        function drawForegroundReeds() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            const numForegroundReeds = 12;
+            const landY = height * 0.82; // [수정] 뜬금없는 바닥 침수 방지를 위해 지면의 높이에 맞춰 시작하도록 조정
+
+            for (let i = 0; i < numForegroundReeds; i++) {
+                // 왼쪽 아래 구석 언덕(Land)에 자연스레 이식
+                const rx = 10 + i * 15 + Math.sin(i) * 5;
+                const h = 110 + Math.cos(i) * 35;
+                const sway = Math.sin(time * 0.015 + i) * 12;
+                
+                // 지상에서 단단히 자라나 대기 위로 흔들리는 몸통 그리기
+                let reedGrad = ctx.createLinearGradient(rx, landY, rx + sway, landY - h);
+                reedGrad.addColorStop(0, '#000000'); 
+                reedGrad.addColorStop(0.3, '#01030d');
+                reedGrad.addColorStop(1, '#020612'); 
+                
+                ctx.strokeStyle = reedGrad;
+                ctx.lineWidth = 2.8;
+                ctx.beginPath();
+                ctx.moveTo(rx, landY);
+                ctx.quadraticCurveTo(rx + sway * 0.5, landY - h * 0.5, rx + sway, landY - h);
+                ctx.stroke();
+
+                // 갈대 대 줄기에 입힌 달빛 림라이트 윤곽선
+                let rimGrad = ctx.createLinearGradient(rx + 1, landY, rx + sway + 1, landY - h);
+                rimGrad.addColorStop(0, 'rgba(210, 230, 255, 0.25)'); 
+                rimGrad.addColorStop(1, 'rgba(210, 230, 255, 0.45)');
+                
+                ctx.strokeStyle = rimGrad;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(rx + 1, landY);
+                ctx.quadraticCurveTo(rx + sway * 0.5 + 1, landY - h * 0.5, rx + sway + 1, landY - h);
+                ctx.stroke();
+
+                // 갈대 솜뭉치 헤드
+                ctx.fillStyle = '#010207';
+                ctx.beginPath();
+                ctx.ellipse(rx + sway, landY - h, 3.5, 14, sway * 0.03, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 갈대 솜뭉치 헤드 역광 하이라이트 효과 (솜털 테두리 빛번짐)
+                ctx.strokeStyle = 'rgba(240, 245, 255, 0.4)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.ellipse(rx + sway, landY - h, 3.5, 14, sway * 0.03, Math.PI, Math.PI * 2);
+                ctx.stroke();
+
+                // 갈대 끝에 달빛을 받아 반짝이는 미세 이슬방울 하이라이트 (Dewdrop Twinkling)
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + Math.sin(time * 0.1 + i) * 0.3})`; // 스스로 반짝이게 깜빡임 주기
+                ctx.beginPath();
+                ctx.arc(rx + sway + 1.2, landY - h - 12, 1.4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // [자연스런 결합] 갈대밭 주변 수면에 아스라히 잔잔히 퍼지는 지면 맞닿음 파동 (Lakeside Base Ripples)
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.strokeStyle = `rgba(200, 225, 255, ${0.11 * (1.0 - (i/numForegroundReeds)*0.45)})`;
+                ctx.lineWidth = 0.8;
+                
+                const rippleY = height * 0.85; // 지면 옆 수위 높이
+                const rippleScale = 8 + Math.sin(time * 0.035 + i) * 3;
+                ctx.beginPath();
+                ctx.ellipse(rx + sway * 0.15, rippleY, rippleScale, rippleScale * 0.22, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // 4. [세계수와 풍등] - 우하단에 배치되는 신비로운 세계수 실루엣
+        function drawSacredTree() {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = '#040201';
+            ctx.strokeStyle = '#040201';
+
+            // 웅장한 세계수 주 기둥 나무둥치 묘사
+            ctx.beginPath();
+            ctx.moveTo(width, height);
+            ctx.quadraticCurveTo(width * 0.86, height * 0.68, width * 0.82, height * 0.38);
+            ctx.lineTo(width * 0.85, height * 0.38);
+            ctx.quadraticCurveTo(width * 0.89, height * 0.68, width, height * 0.94);
+            ctx.closePath();
+            ctx.fill();
+
+            // 구부러진 고목 가지들 뻗어 나오게 드로잉
+            ctx.lineWidth = 11;
+            ctx.beginPath();
+            ctx.moveTo(width * 0.835, height * 0.4);
+            ctx.quadraticCurveTo(width * 0.72, height * 0.3, width * 0.66, height * 0.34);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(width * 0.835, height * 0.44);
+            ctx.quadraticCurveTo(width * 0.74, height * 0.22, width * 0.7, height * 0.12);
+            ctx.stroke();
+
+            // 실시간 바람에 조용히 흔들리는 세계수 잎사귀 클러스터 묘사
+            ctx.fillStyle = '#080402';
+            const clusters = [
+                {x: width * 0.65, y: height * 0.35, r: 42},
+                {x: width * 0.7, y: height * 0.13, r: 52},
+                {x: width * 0.78, y: height * 0.2, r: 46},
+                {x: width * 0.85, y: height * 0.28, r: 58},
+                {x: width * 0.93, y: height * 0.23, r: 42},
+                {x: width * 0.89, y: height * 0.1, r: 48}
+            ];
+
+            for (let i = 0; i < clusters.length; i++) {
+                const c = clusters[i];
+                const swayX = Math.sin(time * 0.01 + i) * 7;
+                const swayY = Math.cos(time * 0.007 + i) * 4;
+                ctx.beginPath();
+                ctx.arc(c.x + swayX, c.y + swayY, c.r, 0, Math.PI * 2);
+                ctx.arc(c.x + swayX - c.r * 0.3, c.y + swayY + c.r * 0.1, c.r * 0.8, 0, Math.PI * 2);
+                ctx.arc(c.x + swayX + c.r * 0.2, c.y + swayY - c.r * 0.2, c.r * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        // ====================================================
+        // [실시간 고속 프레임 렌더 루프]
+        // ====================================================
+        function animate() {
+            time++;
+            globalHue += 0.08; 
+
+            triggerNaturalShootingStar();
+
+            // 1. [완벽 소멸 핵심] 지저분한 축적 잔상 방지를 위해 매 프레임 캔버스 클리어!
+            ctx.clearRect(0, 0, width, height);
+
+            // 2. 물리 쉐이크(진동) 적용
+            if (shakeIntensity > 0.1) {
+                const shakeX = (Math.random() - 0.5) * shakeIntensity;
+                const shakeY = (Math.random() - 0.5) * shakeIntensity;
+                canvasContainer.style.transform = `translate(${shakeX}px, ${shakeY}px)`;
+                shakeIntensity *= 0.88; // 감속 처리
+            } else {
+                canvasContainer.style.transform = 'translate(0px, 0px)';
+            }
+
+            // 3. 테마 고유 개성 배경 실시간 연출 렌더링 (레이어링 정교화)
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (currentTheme === 'twilight') {
+                drawTwilightForest();
+            } else if (currentTheme === 'aurora') {
+                drawSnowyMountains();
+                drawAuroraCurtain();
+            } else if (currentTheme === 'moonlight') {
+                // [달빛 버들 호수 수풀-수면 레이어링 대폭 설계 수정]
+                drawMoonlightReflection();       // 달무리 및 하늘 바탕 렌더링
+                drawLakeMistAndReflection('back');// 1단계 수평선 블렌딩 및 윤슬
+                drawLakesideReflections();       // 수양버들과 갈대의 물비침 굴절 그림자
+                drawBackgroundReeds();           // 원경 수평선 숲
+                drawWillow();                    // 흩날리는 수양버들 나무가지
+                drawLakesideLand();              // 침수 방지용 호숫가 흙 언덕 지면
+                drawForegroundReeds();           // 지면 위에서 안정감 있게 솟아난 갈대밭
+                drawLakeMistAndReflection('front');// 버들가지 앞을 가로지르는 2단계 체적 물안개
+            } else if (currentTheme === 'golden') {
+                // 황금빛 낙엽 흩날림 시뮬레이션
+                for (let i = 0; i < leaves.length; i++) {
+                    leaves[i].update();
+                    leaves[i].draw(ctx);
+                }
+                drawSacredTree();
+                // 떠오르는 풍등 묘사
+                for (let i = 0; i < lanterns.length; i++) {
+                    lanterns[i].update();
+                    lanterns[i].draw(ctx);
+                }
+            }
+
+            // 4. 배경을 순간적으로 물들이는 화려한 엠비언트 플래시 광원 렌더링 (폭죽 화력 강화)
+            if (flashOpacity > 0.01) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = flashColor + flashOpacity + ')';
+                ctx.fillRect(0, 0, width, height);
+                flashOpacity *= 0.88; // 대기 광원이 빠르게 식어감
+                ctx.restore();
+            }
+
+            // 5. 은하수 및 별똥별 렌더링
+            let currentTargetHue = globalHue;
+            if (currentTheme === 'twilight') currentTargetHue = 310;
+            else if (currentTheme === 'aurora') currentTargetHue = 135;
+            else if (currentTheme === 'moonlight') currentTargetHue = 205;
+            else if (currentTheme === 'golden') currentTargetHue = 30;
+
+            for (let i = 0; i < ambientStars.length; i++) {
+                ambientStars[i].draw(ctx, currentTargetHue);
+            }
+
+            for (let i = stars.length - 1; i >= 0; i--) {
+                stars[i].update();
+                stars[i].draw(ctx);
+                if (!stars[i].active) {
+                    stars.splice(i, 1);
+                }
+            }
+
+            // 충격파 링 렌더링
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                ctx.save();
+                shockwaves[i].update();
+                shockwaves[i].draw(ctx);
+                if (shockwaves[i].life <= 0) {
+                    shockwaves.splice(i, 1);
+                }
+                ctx.restore();
+            }
+
+            // 마우스 꾹 누를 때 [에너지 흡수 번개/흡인 광원 효과] (Implosion)
+            if (isMouseDown && mouse.x !== -1000) {
+                chargePower = Math.min(chargePower + 1.25, 55); 
+                
+                // 1. 에너지 집약 오라 외곽구
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, chargePower * 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${globalHue}, 100%, 65%, 0.12)`;
+                ctx.fill();
+
+                // 2. 우주 에너지가 번개처럼 안으로 꺾여 빨려 들어가는 전기 아크 렌더링
+                ctx.strokeStyle = `hsla(${(globalHue + 40) % 360}, 100%, 75%, 0.45)`;
+                ctx.lineWidth = 1.0;
+                for (let i = 0; i < 4; i++) {
+                    const arcAngle = (time * 0.1 + i * Math.PI / 2);
+                    const rx = mouse.x + Math.cos(arcAngle) * chargePower * 1.5;
+                    const ry = mouse.y + Math.sin(arcAngle) * chargePower * 1.5;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(rx, ry);
+                    const midX = (mouse.x + rx) * 0.5 + (Math.random() - 0.5) * 8;
+                    const midY = (mouse.y + ry) * 0.5 + (Math.random() - 0.5) * 8;
+                    ctx.lineTo(midX, midY);
+                    ctx.lineTo(mouse.x, mouse.y);
+                    ctx.stroke();
+                }
+                
+                // 3. 백색 중심 화이트 홀 코어
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, chargePower * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, 0.4)`;
+                ctx.fill();
+            }
+
+            // 6. 네온 입자 전용 가산 혼합(Lighter) 활성화
+            ctx.globalCompositeOperation = 'lighter';
+
+            // 유체 파티클 및 궤적 렌더링
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw(ctx);
+                
+                // 성운 2차 분기 불꽃 파티클 (지정한 임계점 수명 봉착 시 타닥타닥 터지며 한 번 더 폭발 연쇄 구현)
+                if (p.hasDaughterShell && p.life < 0.35 && p.life > 0.32 && Math.random() < 0.28) {
+                    p.hasDaughterShell = false; // 일회성 차단
+                    // 가벼운 미세 크랙클 불꽃 조각 소환
+                    for (let s = 0; s < 3; s++) {
+                        const sAngle = Math.random() * Math.PI * 2;
+                        const sSpeed = Math.random() * 4.0 + 1.0;
+                        particles.push(new Particle(
+                            p.x, p.y, 
+                            (p.hue + 45) % 360, 
+                            Math.cos(sAngle) * sSpeed, 
+                            Math.sin(sAngle) * sSpeed, 
+                            true, // 스파크 타입
+                            2.8   // 더 빠르게 사그라져 밤하늘을 정리
+                        ));
+                    }
+                }
+                
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 안전장치를 통한 퍼포먼스 방어벽 (모바일 및 환경 프레임 드랍 완벽 억제)
+            if (particles.length > 950) {
+                particles.splice(0, particles.length - 950);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 최초 수동 크기 조절 및 가동
+        resize();
+        animate();
+    </script>
+</body>
+</html>
