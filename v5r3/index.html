@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>유체 역학 및 시뮬레이션 시각화 실험실</title>
+    <style>
+        /* 기본 스타일 및 레이아웃 초기화 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #050508;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* 메인 캔버스 컨테이너 (설명창 너비를 고려하여 가로 공간 확보) */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 하단 테마 전환 메뉴 바 */
+        #menu-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 40%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(10, 10, 15, 0.8);
+            padding: 12px 24px;
+            border-radius: 24px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            gap: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.55);
+            padding: 10px 18px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 16px;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .menu-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .menu-btn.active {
+            color: #000000;
+            background: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.25);
+        }
+
+        /* 상단 타이틀 표시부 */
+        #title-display {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        #title-display h1 {
+            margin: 0 0 5px 0;
+            font-size: 1.3rem;
+            letter-spacing: 1px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #ffffff, #aaccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #title-display p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        /* 오른쪽 핵심 원리 설명 패널 */
+        #doc-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 340px;
+            z-index: 10;
+            background: rgba(10, 10, 18, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #doc-panel.collapsed {
+            transform: translateX(calc(100% + 40px));
+        }
+
+        .doc-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .doc-header h2 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #bbaaff;
+        }
+
+        .doc-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.82rem;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* 스크롤바 커스텀 */
+        .doc-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .doc-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .doc-section {
+            display: none;
+        }
+        .doc-section.active {
+            display: block;
+        }
+
+        .doc-section h3 {
+            font-size: 0.9rem;
+            color: #ffffff;
+            margin: 0 0 10px 0;
+            border-left: 3px solid #bbaaff;
+            padding-left: 8px;
+        }
+
+        .doc-section p {
+            margin: 0 0 10px 0;
+        }
+
+        .doc-section ul {
+            margin: 0 0 14px 0;
+            padding-left: 16px;
+        }
+
+        .doc-section li {
+            margin-bottom: 6px;
+        }
+
+        .formula-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            color: #ffd8a8;
+            margin: 8px 0;
+            font-size: 0.78rem;
+            white-space: pre-wrap;
+            border-left: 2px solid #ff922b;
+        }
+
+        /* 보였다 안보였다 토글 버튼 */
+        #doc-toggle-btn {
+            position: absolute;
+            top: 25px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(10, 10, 15, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        #doc-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* 반응형 대응 */
+        @media (max-width: 1024px) {
+            #doc-panel, #doc-toggle-btn {
+                display: none;
+            }
+            #menu-panel {
+                left: 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="title-display">
+        <h1 id="current-title">연기와 화염 시뮬레이션</h1>
+        <p id="current-desc">격자 부력 연산 및 열 밀도 감쇠 시스템</p>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <div id="menu-panel">
+        <button class="menu-btn active" onclick="switchTheme('smoke', this)">연기와 화염</button>
+        <button class="menu-btn" onclick="switchTheme('ripple', this)">수면 파동</button>
+        <button class="menu-btn" onclick="switchTheme('obstacle', this)">장애물 회류</button>
+        <button class="menu-btn" onclick="switchTheme('marbling', this)">잉크 마블링</button>
+    </div>
+
+    <button id="doc-toggle-btn" onclick="toggleDoc()">📖 문서 닫기</button>
+    <div id="doc-panel">
+        <div class="doc-header">
+            <h2>Algorithm Document</h2>
+        </div>
+        <div class="doc-content">
+            
+            <div id="doc-smoke" class="doc-section active">
+                <h3>연기와 화염 (Smoke & Fire)</h3>
+                <p>격자 밀도 분산 및 입자 상승 부력을 모방한 파티클 시스템 기반의 유체 연출 알고리즘입니다.</p>
+                <p><strong>핵심 매커니즘:</strong></p>
+                <ul>
+                    <li><strong>열 부력 연산:</strong> 모든 입자는 생성 시 고유의 온도 변수를 가집니다. 시간이 지남에 따라 위쪽 벡터로 가속도(y축 감산)가 붙으며 기류 소용돌이인 윈드 노이즈 공식을 추가 적용받습니다.</li>
+                    <li><strong>다단계 색상 매핑:</strong> 입자의 수명 및 열 에너지 상태에 따라 색상이 동적으로 변화합니다.</li>
+                </ul>
+                <div class="formula-box">초기 핵: 순수 백색 (온도 최고)
+상승기: 황색 -> 적색 (열 분산 및 냉각)
+소멸기: 회색 암전 연기 (소멸 및 분산)</div>
+                <p><strong>수학적 감쇠 법칙:</strong> 수명에 비례하여 부드럽게 크기가 커지고 투명도가 흐려지는 감쇠 기법(Dissipation)을 사용하여 연기가 공기 중으로 기화하는 현상을 정밀하게 재현합니다.</p>
+            </div>
+
+            <div id="doc-ripple" class="doc-section">
+                <h3>수면 파동 방정식 (Water Ripple)</h3>
+                <p>2차원 격자 높이 배열 구조를 이용해 실제 액체의 물리적인 파동 전달을 정밀 픽셀 연산하는 정통 알고리즘입니다.</p>
+                <p>
+                
+                </p>
+                <p><strong>핵심 매커니즘:</strong></p>
+                <ul>
+                    <li><strong>2차원 파동 방정식 이산화:</strong> 현재 픽셀 주변 4방향(상, 하, 좌, 우) 이웃 격자들의 파동 높이 합을 계산한 뒤, 이전 프레임의 중앙 높이 값을 감산하여 에너지를 전파합니다.</li>
+                    <li><strong>감쇠 연산:</strong> 물의 마찰력과 저항을 구현하기 위해 매 프레임 파동 계수에 1 미만의 감쇠 상수를 곱해 안정화합니다.</li>
+                </ul>
+                <div class="formula-box">Next_Buffer[x, y] = ((Buffer1[x-1, y] + Buffer1[x+1, y] + Buffer1[x, y-1] + Buffer1[x, y+1]) / 2) - Buffer2[x, y]
+Next_Buffer[x, y] = Next_Buffer[x, y] * 감쇠상수(0.98)</div>
+                <p><strong>렌더링 기법:</strong> 연산된 높이 버퍼의 수평/수직 차이를 이용해 가상 빛 굴절률(X, Y 오프셋)을 유도하고, 이미지 데이터를 직접 변형(ImageData 픽셀 제어)하여 투명한 물결 일렁임을 묘사합니다.</p>
+            </div>
+
+            <div id="doc-obstacle" class="doc-section">
+                <h3>장애물 회류 (Flow Obstacles)</h3>
+                <p>가상의 흐름장 내부에 고정된 형태의 기하학적 장애물이 배치되었을 때, 벡터 유속의 흐름이 우회하며 발생하는 소용돌이 시각화 예제입니다.</p>
+                <p>
+                
+                </p>
+                <p><strong>핵심 매커니즘:</strong></p>
+                <ul>
+                    <li><strong>경계 조건 법칙:</strong> 좌측에서 우측으로 일정하게 흐르는 균일 벡터 기류장을 기본 생성합니다. 화면 중앙의 구형 장애물 영역 내에 진입한 입자는 강제로 장애물 표면의 접선 방향 벡터로 연산 방향이 꺾이게 이탈 제어됩니다.</li>
+                    <li><strong>소용돌이 스트리트 유도:</strong> 장애물 통과 직후 압력 차에 의해 후방 영역에서 불규칙한 '카르만 소용돌이(Von Karman Vortex)' 유체 주름 현상이 자연스럽게 피어오르게 구현되어 있습니다.</li>
+                </ul>
+                <p><strong>시각화 팁:</strong> 흐름의 속도(Velocity) 절대값에 맞춰 색상 인덱스를 파란색(저속)에서 청록/네온색(고속)으로 맵핑하여 물리적 속도 차이를 직관적으로 식별할 수 있습니다.</p>
+            </div>
+
+            <div id="doc-marbling" class="doc-section">
+                <h3>잉크 마블링 (Ink Marbling Art)</h3>
+                <p>전통 예술 '에브루(Ebru)' 기법처럼 점성이 높은 액체 수면에 서로 다른 색상의 기름 물감을 떨어뜨린 뒤, 휘저어 꼬아내는 현상을 유체 기류 추상화로 구현한 모델입니다.</p>
+                <p><strong>핵심 매커니즘:</strong></p>
+                <ul>
+                    <li><strong>나선형 소용돌이 수학식:</strong> 마우스를 드래그할 때 단순 직선 가속도가 아닌 회전 행렬 벡터가 가미된 나선형 전단 변형(Shear Displacement) 수식을 벡터 격자장에 중첩 투사합니다.</li>
+                    <li><strong>점성 보존 수식:</strong> 입자들이 급격하게 사그라지지 않도록 마찰 저항 변수를 매우 높게 책정하여, 물감 가닥들이 끊어지지 않고 실처럼 길게 늘어지며 중첩되도록 보존합니다.</li>
+                </ul>
+                <div class="formula-box">방향 벡터 회전 연산:
+Force_X = Math.sin(시간 + 위치) * 점성변수
+Force_Y = Math.cos(시간 + 위치) * 점성변수</div>
+                <p><strong>혼합 모드:</strong> 기존의 가산 혼합 방식과 달리 알파 투명 혼합 공식을 적용하여, 색조가 타서 하얗게 증발하지 않고 유기적으로 겹쳐 물드는 회화적 텍스처를 완성합니다.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let currentTheme = 'smoke';
+        let time = 0;
+
+        // 마우스 트래킹 객체
+        const mouse = { x: -1000, y: -1000, px: -1000, py: -1000, isDown: false, vx: 0, vy: 0 };
+
+        // 공통 사용 배열 및 버퍼들
+        let particles = [];
+        
+        // [수면 파동용 전용 버퍼 정의]
+        let cols = Math.floor(width / 4);
+        let rows = Math.floor(height / 4);
+        let currentBuffer = [];
+        let previousBuffer = [];
+        let rippleImageData = null;
+
+        // [장애물 회류용 장애물 정보]
+        const obstacle = { x: width * 0.4, y: height * 0.5, r: 70 };
+
+        // 초기화 함수
+        function initBuffers() {
+            cols = Math.floor(width / 4);
+            rows = Math.floor(height / 4);
+            currentBuffer = new Array(cols).fill(0).map(() => new Array(rows).fill(0));
+            previousBuffer = new Array(cols).fill(0).map(() => new Array(rows).fill(0));
+            rippleImageData = ctx.createImageData(width, height);
+        }
+
+        // 설명 패널 보였다 안보였다 토글 기능
+        function toggleDoc() {
+            const panel = document.getElementById('doc-panel');
+            const btn = document.getElementById('doc-toggle-btn');
+            panel.classList.toggle('collapsed');
+            if (panel.classList.contains('collapsed')) {
+                btn.innerHTML = '📖 문서 보기';
+            } else {
+                btn.innerHTML = '📖 문서 닫기';
+            }
+        }
+
+        // 테마 및 설명 문서 내용 즉각 스위칭
+        function switchTheme(themeName, btnElement) {
+            currentTheme = themeName;
+            particles = [];
+            ctx.clearRect(0, 0, width, height);
+
+            // 메뉴 버튼 활성화 상태 변경
+            document.querySelectorAll('.menu-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            // 문서 본문 표시 상태 변경
+            document.querySelectorAll('.doc-section').forEach(sec => sec.classList.remove('active'));
+            document.getElementById(`doc-${themeName}`).classList.add('active');
+
+            // 타이틀 및 설명문구 실시간 매핑 변경
+            const titleH1 = document.getElementById('current-title');
+            const titleP = document.getElementById('current-desc');
+
+            if (themeName === 'smoke') {
+                titleH1.innerHTML = "연기와 화염 시뮬레이션";
+                titleP.innerHTML = "격자 부력 연산 및 열 밀도 감쇠 시스템";
+            } else if (themeName === 'ripple') {
+                titleH1.innerHTML = "수면 이산 파동 방정식";
+                titleP.innerHTML = "주변 4방향 격자 에너지 전파 및 빛 굴절 시각화";
+                initBuffers();
+            } else if (themeName === 'obstacle') {
+                titleH1.innerHTML = "장애물 우회 회류장";
+                titleP.innerHTML = "카르만 소용돌이 거리(Von Karman Vortex Street) 유도";
+            } else if (themeName === 'marbling') {
+                titleH1.innerHTML = "잉크 마블링 추상 아트";
+                titleP.innerHTML = "나선형 전단 유체장 및 고점성 결 보존 기법";
+            }
+        }
+
+        // ====================================================
+        // [객체 클래스 설계 모듈]
+        // ====================================================
+
+        class FluidParticle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.life = 1.0;
+
+                if (type === 'smoke') {
+                    this.vx = (Math.random() - 0.5) * 1.5;
+                    this.vy = -Math.random() * 2 - 1.5;
+                    this.decay = Math.random() * 0.012 + 0.006;
+                    this.size = Math.random() * 12 + 8;
+                    this.hue = Math.random() * 25 + 15; // 화염색조 기본
+                } else if (type === 'obstacle') {
+                    this.x = 0; // 좌측에서 생성되어 유입
+                    this.y = Math.random() * height;
+                    this.vx = Math.random() * 2 + 3;
+                    this.vy = (Math.random() - 0.5) * 0.5;
+                    this.size = Math.random() * 2 + 1;
+                    this.decay = 0.001; // 오래 생존
+                } else if (type === 'marbling') {
+                    this.vx = (Math.random() - 0.5) * 0.5;
+                    this.vy = (Math.random() - 0.5) * 0.5;
+                    this.size = Math.random() * 4 + 2;
+                    this.decay = Math.random() * 0.002 + 0.001;
+                    this.hue = Math.random() * 360;
+                }
+            }
+
+            update() {
+                if (this.type === 'smoke') {
+                    // 상승 부력 적용 및 외부 흔들림 기류 연산
+                    this.vy -= 0.06; 
+                    this.vx += Math.sin(time * 0.04 + this.y * 0.01) * 0.12;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.size += 0.25; // 위로 갈수록 뭉게뭉게 커짐
+                    this.life -= this.decay;
+                } 
+                else if (this.type === 'obstacle') {
+                    // 기본 좌->우 기류 주입
+                    this.vx += 0.1;
+                    if(this.vx > 5) this.vx = 5;
+
+                    // 장애물 충돌 검사 및 벡터 우회 연산
+                    const dx = this.x - obstacle.x;
+                    const dy = this.y - obstacle.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < obstacle.r + 5) {
+                        const angle = Math.atan2(dy, dx);
+                        // 장애물 표면을 타고 흐르도록 벡터 강제 편향 밀어내기
+                        this.x = obstacle.x + (obstacle.r + 5) * Math.cos(angle);
+                        this.y = obstacle.y + (obstacle.r + 5) * Math.sin(angle);
+                        
+                        // 접선 기류 가속도 유도
+                        this.vx += Math.sin(angle) * 1.5;
+                        this.vy += Math.cos(angle) * 1.5;
+                    }
+
+                    // 후방 와류 영역 소용돌이 노이즈 추가
+                    if (this.x > obstacle.x + obstacle.r) {
+                        this.vy += Math.sin(time * 0.08 + this.x * 0.03) * 0.22;
+                    }
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // 화면 이탈 시 제거용 수명 소멸
+                    if (this.x > width || this.y < 0 || this.y > height) {
+                        this.life = 0;
+                    }
+                }
+                else if (this.type === 'marbling') {
+                    // 고점성 관성 저항 속도 제동 연산
+                    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    if (speed > 0.1) {
+                        this.vx *= 0.98;
+                        this.vy *= 0.98;
+                    }
+                    
+                    // 잔잔한 고유 자전 회전 기류 믹싱
+                    this.vx += Math.sin(time * 0.01 + this.y * 0.005) * 0.03;
+                    this.vy += Math.cos(time * 0.01 + this.x * 0.005) * 0.03;
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.life -= this.decay;
+                }
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+
+                if (this.type === 'smoke') {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    
+                    let alpha = this.life;
+                    let r, g, b;
+
+                    // 수명 구간별 다단계 연소 가열 색상 보간 계산
+                    if (this.life > 0.6) {
+                        // 초기 고온 핵 영역 (순수 화이트/옐로우 계열)
+                        let ratio = (this.life - 0.6) / 0.4;
+                        r = 255; g = Math.floor(200 + 55 * ratio); b = Math.floor(120 * ratio);
+                    } else if (this.life > 0.25) {
+                        // 중간 팽창 영역 (적혈구/화염 오렌지빛)
+                        let ratio = (this.life - 0.25) / 0.35;
+                        r = 255; g = Math.floor(100 * ratio); b = 0;
+                    } else {
+                        // 후기 소멸 영역 (회색 연기 암전)
+                        let ratio = this.life / 0.25;
+                        r = g = b = Math.floor(80 * ratio);
+                        alpha = this.life * 0.4;
+                    }
+
+                    ctx.beginPath();
+                    let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+                    grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha * 0.3})`);
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad;
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                } 
+                else if (this.type === 'obstacle') {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    // 속도 절대값 계산을 통한 물리 속도 식별 색상 매핑
+                    const currentVel = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    const speedIndex = Math.min(1, currentVel / 6);
+                    
+                    ctx.fillStyle = `hsla(${190 + speedIndex * 60}, 100%, 65%, 0.65)`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+                else if (this.type === 'marbling') {
+                    ctx.save();
+                    // 오일 잉크 텍스처를 유도하기 위한 부드러운 소스오버 투명 채색
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.beginPath();
+                    let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 3);
+                    grad.addColorStop(0, `hsla(${this.hue}, 95%, 60%, ${this.life * 0.4})`);
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad;
+                    ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
+
+        // ====================================================
+        // [실시간 메인 연산 루프 모듈]
+        // ====================================================
+
+        function loop() {
+            time++;
+
+            if (currentTheme === 'smoke') {
+                // 상시 하단부 기본 화염 연소 파티클 지속 주입
+                for (let i = 0; i < 4; i++) {
+                    particles.push(new FluidParticle(width * 0.4 + (Math.random() - 0.5) * 80, height - 20, 'smoke'));
+                }
+
+                // 마우스 인터랙션 드래그 시 추가 화염 기둥 분사
+                if (mouse.isDown) {
+                    for(let i=0; i<6; i++) {
+                        particles.push(new FluidParticle(mouse.x + (Math.random()-0.5)*30, mouse.y, 'smoke'));
+                    }
+                }
+
+                // 잔상 캔버스 연출
+                ctx.fillStyle = 'rgba(5, 5, 8, 0.12)';
+                ctx.fillRect(0, 0, width, height);
+
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw(ctx);
+                    if (particles[i].life <= 0) particles.splice(i, 1);
+                }
+            } 
+            else if (currentTheme === 'ripple') {
+                // 수면 파동 모드는 ImageData 기반의 2차원 이산 수학 방정식 처리를 집행합니다.
+                ctx.fillStyle = '#050a18';
+                ctx.fillRect(0, 0, width, height);
+
+                // 마우스 클릭 또는 드래그 시 파동 원천 소스 주입
+                if (mouse.isDown) {
+                    let cx = Math.floor(mouse.x / 4);
+                    let cy = Math.floor(mouse.y / 4);
+                    if (cx > 1 && cx < cols - 1 && cy > 1 && cy < rows - 1) {
+                        currentBuffer[cx][cy] = 510; // 강력한 진폭 충격 발생
+                    }
+                }
+
+                // 빗방울 낙하 시뮬레이션 (자동 무작위 점진 파동 유도)
+                if (Math.random() < 0.04) {
+                    let rx = Math.floor(Math.random() * (cols - 4)) + 2;
+                    let ry = Math.floor(Math.random() * (rows - 4)) + 2;
+                    currentBuffer[rx][ry] = 300;
+                }
+
+                // 픽셀 포인터 로드 및 변형 준비
+                let imgData = ctx.getImageData(0, 0, width, height);
+                let data = imgData.data;
+
+                // 이산 파동 방정식 고속 이중 루프 연산
+                for (let x = 1; x < cols - 1; x++) {
+                    for (let y = 1; y < rows - 1; y++) {
+                        // 4방향 이웃 격자 에너지 총합 분산 유도 알고리즘 공식
+                        let waveSum = (
+                            previousBuffer[x - 1][y] +
+                            previousBuffer[x + 1][y] +
+                            previousBuffer[x][y - 1] +
+                            previousBuffer[x][y + 1]
+                        ) / 2;
+
+                        let nextValue = waveSum - currentBuffer[x][y];
+                        nextValue = nextValue * 0.98; // 감쇠 마찰 계수 반영
+
+                        currentBuffer[x][y] = nextValue;
+
+                        // 계산된 진폭 값에 기반한 스크린 이미지 왜곡 및 빛 꼬임 하이라이트 매핑
+                        let offset = (x * 4 + y * 4 * width) * 4;
+                        let waveHeight = Math.floor(nextValue);
+
+                        // 경계 제어 가공
+                        if (waveHeight > 125) waveHeight = 125;
+                        if (waveHeight < -125) waveHeight = -125;
+
+                        // 투명한 물빛 반사 픽셀 제어 채색 (시안/네온 블루 그라데이션)
+                        if (offset + 3 < data.length) {
+                            data[offset] = 40 + waveHeight;       // R
+                            data[offset + 1] = 90 + waveHeight * 2; // G
+                            data[offset + 2] = 180 + waveHeight * 3;// B
+                            data[offset + 3] = 255;                 // A
+                        }
+                    }
+                }
+
+                ctx.putImageData(imgData, 0, 0);
+
+                // 파동 연산 순환을 위한 이중 버퍼 주소지 맞교환 (포인터 스와핑)
+                let temp = currentBuffer;
+                currentBuffer = previousBuffer;
+                previousBuffer = temp;
+            } 
+            else if (currentTheme === 'obstacle') {
+                // 지속적인 유입 기류 입자 보충 생성
+                for (let i = 0; i < 7; i++) {
+                    particles.push(new FluidParticle(0, 0, 'obstacle'));
+                }
+
+                ctx.fillStyle = 'rgba(5, 8, 12, 0.25)';
+                ctx.fillRect(0, 0, width, height);
+
+                // 고정 장애물 형상 시각화 렌더링 (구형 코어 부근 외곽선 강조)
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.r, 0, Math.PI * 2);
+                ctx.fillStyle = '#101626';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 3;
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                // 마우스 드래그를 이용해 실시간 장애물 임시 이동 인터랙션 지원
+                if (mouse.isDown) {
+                    obstacle.x = mouse.x;
+                    obstacle.y = mouse.y;
+                }
+
+                // 입자 루프 가동 및 렌더링
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw(ctx);
+                    if (particles[i].life <= 0) particles.splice(i, 1);
+                }
+            } 
+            else if (currentTheme === 'marbling') {
+                // 마우스 드래그를 실행했을 때 강력한 전단 회전 소용돌이 가닥 잉크 방출
+                if (mouse.isDown) {
+                    const dx = mouse.x - mouse.px;
+                    const dy = mouse.y - mouse.py;
+                    // 마우스 속도에 맞춰 분사력 확대
+                    const mSpeed = Math.sqrt(dx*dx + dy*dy);
+                    const spawnCount = Math.min(25, Math.floor(mSpeed * 0.5) + 3);
+
+                    for (let i = 0; i < spawnCount; i++) {
+                        // 원형 가닥으로 꼬이도록 가속도 인덱스 계산 배치
+                        const p = new FluidParticle(mouse.x + (Math.random()-0.5)*15, mouse.y + (Math.random()-0.5)*15, 'marbling');
+                        p.vx = dx * 0.3 + Math.sin(i) * 2;
+                        p.vy = dy * 0.3 + Math.cos(i) * 2;
+                        particles.push(p);
+                    }
+                }
+
+                // 아지랑이 마블링 텍스처를 구축하기 위해 의도적으로 매우 정체된 잔상 알파 배경 투사
+                ctx.fillStyle = 'rgba(4, 4, 6, 0.025)';
+                ctx.fillRect(0, 0, width, height);
+
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw(ctx);
+                    if (particles[i].life <= 0) particles.splice(i, 1);
+                }
+
+                // 과도한 입자 폭증으로 인한 렉 방지용 상한 제동 장치 장착
+                if (particles.length > 2000) {
+                    particles.splice(0, particles.length - 2000);
+                }
+            }
+
+            // 마우스 이전값 롤링 업데이트
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+
+            requestAnimationFrame(loop);
+        }
+
+        // ====================================================
+        // [인터랙션 이벤트 트래킹 감지 모듈]
+        // ====================================================
+
+        function getMousePos(e) {
+            if (e.target.closest('#menu-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) {
+                // UI 컨트롤러 컴포넌트 위를 조작 중일 때는 시뮬레이션 파티클 방출 차단 가동
+                return { x: -1000, y: -1000 };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            if (pos.x === -1000) return;
+            mouse.isDown = true;
+            mouse.x = mouse.px = pos.x;
+            mouse.y = mouse.py = pos.y;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            const pos = getMousePos(e);
+            if (pos.x === -1000) {
+                if(!mouse.isDown) { mouse.x = -1000; mouse.y = -1000; }
+                return;
+            }
+            if (mouse.x === -1000) { mouse.px = pos.x; mouse.py = pos.y; }
+            mouse.x = pos.x;
+            mouse.y = pos.y;
+        });
+
+        window.addEventListener('mouseup', () => { mouse.isDown = false; });
+
+        // 터치 기반 스마트기기 제스처 이벤트 매핑 연동
+        window.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            if (e.target.closest('#menu-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            mouse.isDown = true;
+            mouse.x = mouse.px = t.clientX;
+            mouse.y = mouse.py = t.clientY;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.target.closest('#menu-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            const t = e.touches[0];
+            mouse.x = t.clientX;
+            mouse.y = t.clientY;
+        });
+
+        window.addEventListener('touchend', () => { mouse.isDown = false; });
+
+        // 창 크기 변경 대응 리사이징 시스템
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            if (currentTheme === 'ripple') initBuffers();
+            obstacle.x = width * 0.4;
+            obstacle.y = height * 0.5;
+        });
+
+        // 렌더링 루프 최초 가동 실행
+        loop();
+    </script>
+</body>
+</html>
