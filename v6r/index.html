@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>인터랙티브 소리-음파 물리 시뮬레이터</title>
+    <style>
+        /* 기본 스타일링 및 초기화 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #040406;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* 메인 시뮬레이션 캔버스 */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 상단 인터랙션 타이틀 */
+        #title-panel {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        #title-panel h1 {
+            margin: 0 0 4px 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: linear-gradient(90deg, #ffffff, #b0cfff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #title-panel p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        /* 하단 피아노 건반 가상 악기 UI */
+        #instrument-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 40%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(12, 12, 20, 0.85);
+            padding: 15px;
+            border-radius: 20px;
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            gap: 6px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .key {
+            width: 45px;
+            height: 140px;
+            background: #ffffff;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 10px;
+            box-sizing: border-box;
+            color: #333333;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.1s ease;
+            box-shadow: inset 0 -5px 0 #cccccc, 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .key:active, .key.active {
+            background: #e0eafc;
+            height: 136px;
+            transform: translateY(4px);
+            box-shadow: inset 0 -1px 0 #bbbbbb, 0 2px 4px rgba(0,0,0,0.2);
+            color: #0052d4;
+        }
+
+        /* 오른쪽 핵심 원리 및 물리 문서 설명창 */
+        #doc-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 340px;
+            z-index: 10;
+            background: rgba(10, 10, 18, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #doc-panel.collapsed {
+            transform: translateX(calc(100% + 40px));
+        }
+
+        .doc-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .doc-header h2 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #aaccff;
+        }
+
+        .doc-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.82rem;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .doc-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .doc-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .doc-section {
+            margin-bottom: 20px;
+        }
+
+        .doc-section h3 {
+            font-size: 0.9rem;
+            color: #ffffff;
+            margin: 0 0 10px 0;
+            border-left: 3px solid #74b9ff;
+            padding-left: 8px;
+        }
+
+        .formula-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            color: #ffd8a8;
+            margin: 8px 0;
+            font-size: 0.78rem;
+            white-space: pre-wrap;
+            border-left: 2px solid #74b9ff;
+        }
+
+        /* 접기 / 펼치기 토글 버튼 */
+        #doc-toggle-btn {
+            position: absolute;
+            top: 25px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(12, 12, 20, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        #doc-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* 반응형 모바일 차단 가이드 */
+        @media (max-width: 1024px) {
+            #doc-panel, #doc-toggle-btn {
+                display: none;
+            }
+            #instrument-panel {
+                left: 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="title-panel">
+        <h1>소리 주파수-음파 시뮬레이터</h1>
+        <p>Web Audio API 신시사이저 연동 및 동적 파동 벡터 시각화 실험실</p>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="waveCanvas"></canvas>
+    </div>
+
+    <div id="instrument-panel">
+        <div class="key" data-note="C4" onclick="playInstrument('C4')">도</div>
+        <div class="key" data-note="D4" onclick="playInstrument('D4')">레</div>
+        <div class="key" data-note="E4" onclick="playInstrument('E4')">미</div>
+        <div class="key" data-note="F4" onclick="playInstrument('F4')">파</div>
+        <div class="key" data-note="G4" onclick="playInstrument('G4')">솔</div>
+        <div class="key" data-note="A4" onclick="playInstrument('A4')">라</div>
+        <div class="key" data-note="B4" onclick="playInstrument('B4')">시</div>
+        <div class="key" data-note="C5" onclick="playInstrument('C5')">도↑</div>
+    </div>
+
+    <button id="doc-toggle-btn" onclick="togglePanel()">📖 문서 닫기</button>
+    <div id="doc-panel">
+        <div class="doc-header">
+            <h2>Acoustic Wave Document</h2>
+        </div>
+        <div class="doc-content">
+            <div class="doc-section">
+                <h3>1. 소리와 주파수의 물리적 관계</h3>
+                <p>악기 건반을 누르면 각 음계에 대응하는 고유한 물리적 <strong>헤르츠(Hz, 주파수)</strong> 연산이 발생합니다.</p>
+                <div class="formula-box">주요 음계별 주파수 매핑 수식:
+도(C4): 261.63 Hz
+미(E4): 329.63 Hz
+솔(G4): 392.00 Hz
+도(C5): 523.25 Hz</div>
+                <p>주파수가 높을수록(고음일수록) 파동의 주기가 짧아져 촘촘하고 빠른 원형 파동 유체가 생성되며, 색상은 에너지가 높은 네온 핑크/바이올렛 계열로 동적 변환됩니다.</p>
+            </div>
+
+            <div class="doc-section">
+                <h3>2. 소리 합성공학 (Web Audio API)</h3>
+                <p>본 소스코드는 오디오 파일을 가져와 재생하는 방식이 아닌, 브라우저 엔진에서 순수 전자 주파수를 발진시키는 <strong>OscillatorNode</strong> 공학을 채택했습니다.</p>
+                <ul>
+                    <li><strong>GainNode(진폭 제어):</strong> 건반을 누른 직후 소리가 가장 크고 서서히 감쇄하는 피아노의 어택-디케이(Attack-Decay) 물리 볼륨 곡선을 수학적으로 반영합니다.</li>
+                </ul>
+            </div>
+
+            <div class="doc-section">
+                <h3>3. 유체 역학 음파 시뮬레이션 공식</h3>
+                <p>생성된 파동 고리들은 다음과 같은 감쇠 및 기류 변형 공식에 의해 캔버스 내부로 전파됩니다.</p>
+                <ul>
+                    <li><strong>구면파 전파 (Propagation):</strong> 중심점으로부터 반지름이 시간(time)에 비례하여 지속적으로 확장됩니다.</li>
+                    <li><strong>거리 반비례 감쇠 (Attenuation):</strong> 에너지가 사방으로 분산됨에 따라 파동의 선 두께와 불투명도는 반지름 크기에 반비례하여 감소합니다.</li>
+                </ul>
+                <div class="formula-box">현재 불투명도 계산식:
+Opacity = (1.0 - 현재반지름 / 최대반지름) * 에너지상수</div>
+                <li><strong>매질의 저항 소용돌이:</strong> 순수한 원형에 기류 매질 노이즈 변수(Math.sin)를 곱하여, 실제 공기 저항 및 바람에 의해 음파가 미세하게 꺾이고 일렁이는 청각적 예술 미디어를 완성합니다.</li>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let time = 0;
+        let soundWaves = []; // 생성된 음파 링들을 담는 배열
+
+        // 음계별 주파수 및 컬러 데이터베이스 매핑
+        const noteDatabase = {
+            C4: { freq: 261.63, hue: 0 },   // 도 (레드)
+            D4: { freq: 293.66, hue: 35 },  // 레 (오렌지)
+            E4: { freq: 329.63, hue: 60 },  // 미 (옐로우)
+            F4: { freq: 349.23, hue: 120 }, // 파 (그린)
+            G4: { freq: 392.00, hue: 195 }, // 솔 (청록)
+            A4: { freq: 440.00, hue: 240 }, // 라 (블루)
+            B4: { freq: 493.88, hue: 285 }, // 시 (퍼플)
+            C5: { freq: 523.25, hue: 325 }  // 도 (핑크)
+        };
+
+        // Web Audio API 콘텍스트 초기화
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 설명 패널 접기 / 펼치기 기능
+        function togglePanel() {
+            const panel = document.getElementById('doc-panel');
+            const btn = document.getElementById('doc-toggle-btn');
+            panel.classList.toggle('collapsed');
+            if (panel.classList.contains('collapsed')) {
+                btn.innerHTML = '📖 문서 보기';
+            } else {
+                btn.innerHTML = '📖 문서 닫기';
+            }
+        }
+
+        // ====================================================
+        // [음향 재생 및 음파 생성 동시 처리 코어 모듈]
+        // ====================================================
+        
+        function playInstrument(noteName) {
+            initAudio();
+            if(audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const noteInfo = noteDatabase[noteName];
+            if (!noteInfo) return;
+
+            // 1. 순수 전자기 오실레이터 주파수 합성 연산
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine'; // 가장 맑고 청아한 사인파 채택
+            osc.frequency.setValueAtTime(noteInfo.freq, audioCtx.currentTime);
+
+            // 피아노 특유의 즉각적인 터치 및 여운 감쇠 곡선(Envelope) 설계
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.02); // 피아노 타건 어택(Attack)
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8); // 부드러운 여운 소멸(Decay)
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.8);
+
+            // 2. 시각화 시스템: 해당 건반 위치 기반 또는 화면 중앙에서 번지는 음파 고리(Wave Ring) 객체 생성
+            // 건반 위치를 시각적으로 추적하기 위해 건반 DOM 엘리먼트 위치 획득
+            const keyEl = document.querySelector(`.key[data-note="${noteName}"]`);
+            let startX = width * 0.4;
+            let startY = height * 0.5;
+            
+            if (keyEl) {
+                const rect = keyEl.getBoundingClientRect();
+                startX = rect.left + rect.width / 2;
+                startY = rect.top; // 건반 상단에서 파동이 피어오르도록 좌표 바인딩
+            }
+
+            // 고유 음파 고리 배열에 추가
+            soundWaves.push(new SoundWaveRing(startX, startY, noteInfo.hue, noteInfo.freq));
+
+            // 가상 건반 UI에 시각적 활성화 피드백 임시 부여
+            if (keyEl) {
+                keyEl.classList.add('active');
+                setTimeout(() => keyEl.classList.remove('active'), 150);
+            }
+        }
+
+        // ====================================================
+        // [음파 파동 링 클래스 설계 모듈]
+        // ====================================================
+
+        class SoundWaveRing {
+            constructor(x, y, hue, frequency) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.frequency = frequency;
+                
+                this.radius = 0;
+                // 고음(주파수가 높을수록)일수록 파동 전파 속도가 미세하게 민첩하도록 설계 보정
+                this.speed = 3.5 + (frequency * 0.003); 
+                this.maxRadius = Math.max(width, height) * 0.8;
+                this.life = 1.0;
+                
+                // 주파수 수치에 비례한 물결 주름 밀도 위상 계수 계산
+                this.waveDensity = 0.03 + (frequency * 0.0001); 
+                this.wobblePhase = Math.random() * Math.PI;
+            }
+
+            update() {
+                this.radius += this.speed;
+                // 거리 비례 수명(에너지 변수) 감쇠 연산
+                this.life = 1.0 - (this.radius / this.maxRadius);
+                if (this.life < 0) this.life = 0;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen'; // 빛의 중첩 가산 효과 극대화
+                
+                ctx.beginPath();
+                
+                const numPoints = 120; // 음파 고리를 구성하는 다각형 점의 해상도 밀도
+                for (let i = 0; i <= numPoints; i++) {
+                    const angle = (i / numPoints) * Math.PI * 2;
+                    
+                    // [핵심 연출 공식] 순수 원형에 주파수 복합 노이즈를 결합하여 공기 매질 속 물리 음파 주름 구현
+                    const waveDistortion = Math.sin(angle * (this.frequency * 0.02) + time * 0.08 + this.wobblePhase) * (18 * this.life);
+                    const currentR = this.radius + waveDistortion;
+
+                    const px = this.x + Math.cos(angle) * currentR;
+                    const py = this.y + Math.sin(angle) * currentR;
+
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+
+                ctx.closePath();
+
+                // 고유 음계 컬러 아우라 흐림 효과
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 65%, ${this.life * 0.4})`;
+                ctx.lineWidth = 4.5 * this.life;
+                ctx.stroke();
+
+                // 중심 코어 고강도 네온 백색선 효과
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 85%, ${this.life * 0.95})`;
+                ctx.lineWidth = 1.5 * this.life;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // ====================================================
+        // [이벤트 감지 및 무한 렌더링 루프 모듈]
+        // ====================================================
+
+        function animate() {
+            time++;
+
+            // 미세한 우주 공간 스타일의 소프트 암전 잔상 배경 렌더
+            ctx.fillStyle = 'rgba(4, 4, 6, 0.08)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 활성화된 모든 음파 고리들 업데이트 및 실시간 드로잉
+            for (let i = soundWaves.length - 1; i >= 0; i--) {
+                soundWaves[i].update();
+                soundWaves[i].draw(ctx);
+                
+                // 수명이 다한 파동은 즉각 배열에서 안전 삭제(메모리 누수 차단)
+                if (soundWaves[i].life <= 0) {
+                    soundWaves.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 마우스 클릭 시 가상 악기 버튼 이외의 빈 화면 공간에서도 무작위 음파 테스트 생성 연동 지원
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('#instrument-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            
+            // 빈 공간 클릭 시 랜덤한 음계를 하나 선택해 강제 플레이 연산 가동
+            const notes = Object.keys(noteDatabase);
+            const randomNote = notes[Math.floor(Math.random() * notes.length)];
+            
+            initAudio();
+            // 사용자의 클릭 물리 좌표를 직접 수혈하여 거기서 음파가 생성되도록 예외 오버라이딩 처리
+            const noteInfo = noteDatabase[randomNote];
+            soundWaves.push(new SoundWaveRing(e.clientX, e.clientY, noteInfo.hue, noteInfo.freq));
+            playInstrument(randomNote);
+        });
+
+        // 키보드 자판 단축키 매핑 (A, S, D, F, G, H, J, K로 도레미파솔라시도 연주 가능)
+        const keyMapping = {
+            'a': 'C4', 's': 'D4', 'd': 'E4', 'f': 'F4',
+            'g': 'G4', 'h': 'A4', 'j': 'B4', 'k': 'C5'
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if(e.repeat) return; // 키 장기 홀드 시 중복 오디오 폭증 제어 방어벽
+            const mappedNote = keyMapping[e.key.toLowerCase()];
+            if (mappedNote) {
+                playInstrument(mappedNote);
+            }
+        });
+
+        // 윈도우 리사이징 대응
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 시스템 기동
+        animate();
+    </script>
+</body>
+</html>
