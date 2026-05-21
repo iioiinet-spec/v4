@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>4비트 스트로크 기타 유체 시뮬레이터</title>
+    <style>
+        /* 기본 스타일링 및 모바일 제스처 가드 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #030306;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        /* 메인 그래픽 캔버스 */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 상단 타이틀 및 상태 판넬 */
+        #title-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        #title-panel h1 {
+            margin: 0 0 4px 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: linear-gradient(90deg, #ffffff, #ffb74d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #title-panel p {
+            margin: 0;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+        #bpm-display {
+            margin-top: 5px;
+            font-size: 0.7rem;
+            color: #ff922b;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        /* 하단 기타 코드 선택기 패널 */
+        #chord-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 40%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(18, 12, 8, 0.85);
+            padding: 14px;
+            border-radius: 20px;
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 180, 100, 0.12);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            width: calc(100% - 400px);
+            max-width: 500px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+            box-sizing: border-box;
+        }
+
+        .chord-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            height: 55px;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .chord-btn span {
+            font-size: 0.95rem;
+            letter-spacing: 0.5px;
+        }
+
+        .chord-btn small {
+            font-size: 0.55rem;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 2px;
+        }
+
+        /* 자동 4비트 스트로크 연주 중 상태 */
+        .chord-btn.playing {
+            background: linear-gradient(135deg, #ff922b, #f57c00);
+            border-color: #ff922b;
+            box-shadow: 0 0 15px rgba(255, 146, 43, 0.4);
+            animation: pulse 0.63s infinite alternate; /* 95 BPM 주기에 맞춘 시각 펄스 */
+        }
+        .chord-btn.playing small {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(0.96); }
+        }
+
+        /* 오른쪽 핵심 설명 문서 프레임 */
+        #doc-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 330px;
+            z-index: 10;
+            background: rgba(15, 12, 10, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #doc-panel.collapsed {
+            transform: translateX(calc(100% + 40px));
+        }
+
+        .doc-header {
+            padding: 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .doc-header h2 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffb74d;
+        }
+
+        .doc-content {
+            padding: 18px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .doc-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .doc-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .doc-section {
+            margin-bottom: 18px;
+        }
+
+        .doc-section h3 {
+            font-size: 0.85rem;
+            color: #ffffff;
+            margin: 0 0 8px 0;
+            border-left: 3px solid #ff922b;
+            padding-left: 8px;
+        }
+
+        .formula-box {
+            background: rgba(255, 255, 255, 0.04);
+            padding: 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            color: #ffd8a8;
+            margin: 6px 0;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            border-left: 2px solid #ff922b;
+        }
+
+        /* 설명창 제어 토글 버튼 */
+        #doc-toggle-btn {
+            position: absolute;
+            top: 25px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(18, 12, 8, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 8px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        /* 반응형 스마트폰 스크린 최적화 */
+        @media (max-width: 1024px) {
+            #doc-panel, #doc-toggle-btn {
+                display: none;
+            }
+            #chord-panel {
+                width: calc(100% - 40px);
+                left: 50%;
+                max-width: 100%;
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .chord-btn {
+                height: 50px;
+            }
+            .chord-btn span {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="title-panel">
+        <h1>4비트 자동 스트로크 기타 음악실</h1>
+        <p>음악 메트로놈 루프 스케줄러 기반 정박(4 Beat) 자동 주파수 유체 시뮬레이션</p>
+        <div id="bpm-display">TEMPO: 95 BPM (4비트 무한 스트로크 연주 중)</div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="guitarCanvas"></canvas>
+    </div>
+
+    <div id="chord-panel">
+        <div class="chord-btn" id="btn-C" onclick="toggleChordLoop('C')"><span>C</span><small>자판: A</small></div>
+        <div class="chord-btn" id="btn-A" onclick="toggleChordLoop('A')"><span>A</span><small>자판: S</small></div>
+        <div class="chord-btn" id="btn-G" onclick="toggleChordLoop('G')"><span>G</span><small>자판: D</small></div>
+        <div class="chord-btn" id="btn-E" onclick="toggleChordLoop('E')"><span>E</span><small>자판: F</small></div>
+        <div class="chord-btn" id="btn-D" onclick="toggleChordLoop('D')"><span>D</span><small>자판: G</small></div>
+        <div class="chord-btn" id="btn-Am" onclick="toggleChordLoop('Am')"><span>Am</span><small>자판: H</small></div>
+        <div class="chord-btn" id="btn-Em" onclick="toggleChordLoop('Em')"><span>Em</span><small>자판: J</small></div>
+        <div class="chord-btn" id="btn-Dm" onclick="toggleChordLoop('Dm')"><span>Dm</span><small>자판: K</small></div>
+    </div>
+
+    <button id="doc-toggle-btn" onclick="toggleDoc()">📖 문서 닫기</button>
+    <div id="doc-panel">
+        <div class="doc-header">
+            <h2>4 Beat Stroke Engine</h2>
+        </div>
+        <div class="doc-content">
+            <div class="doc-section">
+                <h3>1. 4비트 스트로크 물리 알고리즘</h3>
+                <p>4비트 스트로크(4 Beat Stroke)는 한 마디에 4분음표 4개가 균일하게 정박으로 떨어지는 가장 기본적이고 대중적인 음악 리듬 형태입니다.</p>
+                <div class="formula-box">4비트 스트로크 리듬 타임라인 구성:
+1박자: 다운 스트로크 (Down Strum)
+2박자: 다운 스트로크 (Down Strum)
+3박자: 다운 스트로크 (Down Strum)
+4박자: 다운 스트로크 (Down Strum)</div>
+                <p>매 박자 타이밍에 맞춰 피크가 6줄을 순차적으로 타격하는 다운 스트로크 사운드 믹서가 가동됩니다.</p>
+            </div>
+
+            <div class="doc-section">
+                <h3>2. BPM 메트로놈 루프 스케줄러</h3>
+                <p>브라우저 환경에서 밀림 없는 정밀한 메트로놈 템포 박자를 구현하기 위해 분당 비트 수(BPM) 기준 밀리초 스케줄러 회로를 장착했습니다.</p>
+                <div class="formula-box">박자 주기 시간(ms) 계산 공식:
+Interval = (60 / BPM) * 1000
+BPM 95 설정 시: (60 / 95) * 1000 = 약 631.57ms 마다 1비트 연주</div>
+                <p>한 번 코드를 선택하면 Web API 타이머가 연주 상태 변수를 감시하여 정해진 주기 주기마다 자동으로 6줄의 아르페지오를 소환합니다.</p>
+            </div>
+
+            <div class="doc-section">
+                <h3>3. 박자 동기화 음파 간섭 시각화</h3>
+                <p>4비트 자동 메트로놈 타이밍에 완벽하게 락업(Lock-up)되어 6개의 음파 링이 주기적으로 뿜어져 나옵니다.</p>
+                <p>사용자가 화면의 빈 공간을 터치하거나 마우스를 휘저으면, 자동 연주되고 있는 4비트 주파수 음파 링들과 동적 마우스 기류가 유기적으로 교차 및 간섭을 일으키며 환상적인 물리적 잔상 무늬를 빚어냅니다.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('guitarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let time = 0;
+        let guitarWaves = []; // 기타 음파 링 배열
+
+        // 기타 8개 오픈 코드 주파수 매핑 테이블 (6번줄부터 1번줄 순서)
+        const guitarChordDatabase = {
+            C:  [0, 130.81, 164.81, 196.00, 261.63, 329.63], 
+            A:  [0, 110.00, 164.81, 220.00, 277.18, 329.63], 
+            G:  [98.00, 123.47, 146.83, 196.00, 246.94, 392.00], 
+            E:  [82.41, 123.47, 164.81, 207.65, 246.94, 329.63], 
+            D:  [0, 0, 146.83, 220.00, 293.66, 369.99],         
+            Am: [0, 110.00, 164.81, 220.00, 261.63, 329.63], 
+            Em: [82.41, 123.47, 164.81, 196.00, 246.94, 329.63], 
+            Dm: [0, 0, 146.83, 220.00, 293.66, 349.23]          
+        };
+
+        const chordHueMap = {
+            C: 15, Am: 340, G: 140, Em: 200, E: 45, A: 270, D: 215, Dm: 300
+        };
+
+        // [4비트 제어 시스템 핵심 글로벌 변수]
+        const tempoBPM = 95; // 4비트 연주에 최적화된 95 BPM 박자 
+        let currentPlayingChord = null; // 현재 루프 작동 중인 코드 이름
+        let strokeTimerId = null;       // setInterval 타이머 포인터 ID
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function toggleDoc() {
+            const panel = document.getElementById('doc-panel');
+            const btn = document.getElementById('doc-toggle-btn');
+            panel.classList.toggle('collapsed');
+            btn.innerHTML = panel.classList.contains('collapsed') ? '📖 문서 보기' : '📖 문서 닫기';
+        }
+
+        // ====================================================
+        // [4비트 스트로크 루프 스케줄러 코어 모듈]
+        // ====================================================
+
+        function toggleChordLoop(chordName) {
+            initAudio();
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            // 기존에 똑같은 코드 버튼을 다시 누르면 연주 정지 및 해제
+            if (currentPlayingChord === chordName) {
+                stop4BeatLoop();
+                return;
+            }
+
+            // 다른 코드가 켜져 있는 상태에서 새 코드를 누르면 기존 타이머 클리어 후 갱신
+            if (strokeTimerId) {
+                clearInterval(strokeTimerId);
+            }
+
+            currentPlayingChord = chordName;
+            
+            // UI에 연주 중인 active 클래스 일체형 마크업 동적 부여
+            updateChordUiStyle();
+
+            // 첫 번째 정박은 버튼 누르는 즉시 지연 없이 다이렉트 트리거 실행
+            executeSingleDownStroke();
+
+            // 95 BPM 주기에 맞춰 무한 정박 4비트 스트로크 루프 가동 시작
+            // (60 / 95) * 1000 = 약 631.57 밀리초 간격 계산식 적용
+            const beatInterval = (60 / tempoBPM) * 1000;
+            strokeTimerId = setInterval(executeSingleDownStroke, beatInterval);
+        }
+
+        function stop4BeatLoop() {
+            if (strokeTimerId) {
+                clearInterval(strokeTimerId);
+                strokeTimerId = null;
+            }
+            currentPlayingChord = null;
+            updateChordUiStyle();
+        }
+
+        function updateChordUiStyle() {
+            document.querySelectorAll('.chord-btn').forEach(btn => {
+                btn.classList.remove('playing');
+            });
+            if (currentPlayingChord) {
+                const targetBtn = document.getElementById(`btn-${currentPlayingChord}`);
+                if (targetBtn) targetBtn.classList.add('playing');
+            }
+        }
+
+        // 단일 다운 스트로크 실행 연산 (6줄 드르릉- 아르페지오 소환)
+        function executeSingleDownStroke() {
+            if (!currentPlayingChord) return;
+
+            const freqs = guitarChordDatabase[currentPlayingChord];
+            const baseHue = chordHueMap[currentPlayingChord];
+            if (!freqs) return;
+
+            let stringDelay = 0;
+            const targetX = width * 0.4;
+            const targetY = height * 0.5;
+
+            for (let i = 0; i < freqs.length; i++) {
+                const freq = freqs[i];
+                if (freq === 0) continue; // 개방 뮤트현 스킵
+
+                // 정박 4비트 타격 내에서 위에서 아래 줄로 흘러내리는 20ms 미세 시간차 스트로크 구현
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+
+                    osc.type = 'triangle'; // 카랑카랑한 통기타 바디 질감 모방
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.01); 
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8); // 정박 지속형 댐핑
+
+                    osc.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 1.8);
+
+                    // 그래픽 유체 음파 인스턴스 분사 사출
+                    const spacingOffset = (i - 3) * 20;
+                    guitarWaves.push(new Guitar4BeatWave(targetX + spacingOffset, targetY, baseHue, freq, i));
+
+                }, stringDelay);
+
+                stringDelay += 20; 
+            }
+        }
+
+        // ====================================================
+        // [4비트 전용 파동 유체 링 클래스]
+        // ====================================================
+
+        class Guitar4BeatWave {
+            constructor(x, y, baseHue, frequency, stringIndex) {
+                this.x = x;
+                this.y = y;
+                this.hue = (baseHue + stringIndex * 9) % 360;
+                this.frequency = frequency;
+                this.stringIndex = stringIndex;
+                
+                this.radius = 0;
+                this.speed = 3.2 + (stringIndex * 0.45); 
+                this.maxRadius = Math.max(width, height) * 0.95;
+                this.life = 1.0;
+                this.wobbleSpeed = 0.045 + (frequency * 0.0001);
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.life = 1.0 - (this.radius / this.maxRadius);
+                if (this.life < 0) this.life = 0;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+
+                ctx.beginPath();
+                const points = 100;
+                
+                for (let i = 0; i <= points; i++) {
+                    const angle = (i / points) * Math.PI * 2;
+                    
+                    // 정박 4비트에 맞춰 보다 굵고 넓은 유체 맥동 물결 무늬가 퍼지도록 왜곡 수식 튜닝
+                    const waveRipple = Math.sin(angle * (this.stringIndex * 3.0) + time * this.wobbleSpeed) * (24 * this.life);
+                    const currentRadius = this.radius + waveRipple;
+
+                    const px = this.x + Math.cos(angle) * currentRadius;
+                    const py = this.y + Math.sin(angle) * currentRadius;
+
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+
+                ctx.closePath();
+
+                // 외곽 벌크 네온 컬러 아우라 선
+                ctx.strokeStyle = `hsla(${this.hue}, 95%, 60%, ${this.life * 0.35})`;
+                ctx.lineWidth = 4.2 * this.life;
+                ctx.stroke();
+
+                // 중심 관통 코어선
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 90%, ${this.life * 0.95})`;
+                ctx.lineWidth = 1.2 * this.life;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // ====================================================
+        // [애니메이션 렌더 루프 및 입력 트래킹 모듈]
+        // ====================================================
+
+        function animate() {
+            time++;
+
+            // 소프트 암전 스크린 유지 클리어
+            ctx.fillStyle = 'rgba(3, 3, 5, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 실시간 파동 업데이트
+            for (let i = guitarWaves.length - 1; i >= 0; i--) {
+                guitarWaves[i].update();
+                guitarWaves[i].draw(ctx);
+                if (guitarWaves[i].life <= 0) {
+                    guitarWaves.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 마우스 및 터치 빈 공간 제어 (화면 빈 공간 클릭 시 자동 연주 스톱 가드 역할 부여)
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('#chord-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            stop4BeatLoop(); // 빈 곳을 터치하면 흐르던 4비트 자동 스트로크 루프 전면 정지
+        });
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.closest('#chord-panel') || e.target.closest('#doc-panel') || e.target.closest('#doc-toggle-btn')) return;
+            stop4BeatLoop();
+        });
+
+        // PC 사용자를 위한 단축키 연속 4비트 연동 스위칭 매핑
+        const pcKeyMap = {
+            'a': 'C', 's': 'A', 'd': 'G', 'f': 'E',
+            'g': 'D', 'h': 'Am', 'j': 'Em', 'k': 'Dm'
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const targetChord = pcKeyMap[e.key.toLowerCase()];
+            if (targetChord) {
+                toggleChordLoop(targetChord);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 메인 기동 루프 가동
+        animate();
+    </script>
+</body>
+</html>
