@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스페이스 오케스트라 : 유체 은하수와 천체 악기</title>
+    <style>
+        /* 기본 스타일링 및 모바일 제스처 방어 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #020205;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        /* 메인 시뮬레이션 그래픽 캔버스 */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 안내 가이드 레이어 */
+        #title-panel {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            z-index: 5;
+            pointer-events: none;
+        }
+        #title-panel h1 {
+            margin: 0 0 5px 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: linear-gradient(90deg, #b0cfff, #ffdfba);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #title-panel p {
+            margin: 0;
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        /* 오른쪽 알고리즘 설명 패널 */
+        #doc-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 330px;
+            z-index: 10;
+            background: rgba(8, 8, 16, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #doc-panel.collapsed {
+            transform: translateX(calc(100% + 40px));
+        }
+
+        .doc-header {
+            padding: 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .doc-header h2 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #aaccff;
+        }
+
+        .doc-content {
+            padding: 18px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .doc-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .doc-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .doc-section {
+            margin-bottom: 18px;
+        }
+
+        .doc-section h3 {
+            font-size: 0.85rem;
+            color: #ffffff;
+            margin: 0 0 8px 0;
+            border-left: 3px solid #aaccff;
+            padding-left: 8px;
+        }
+
+        .formula-box {
+            background: rgba(255, 255, 255, 0.04);
+            padding: 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            color: #ffd8a8;
+            margin: 6px 0;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            border-left: 2px solid #aaccff;
+        }
+
+        /* 설명창 전용 토글 버튼 */
+        #doc-toggle-btn {
+            position: absolute;
+            top: 25px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(10, 10, 18, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 8px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        /* 모바일 반응형 가드 */
+        @media (max-width: 1024px) {
+            #doc-panel, #doc-toggle-btn {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="title-panel">
+        <h1>우주 은하수 피아노 오케스트라</h1>
+        <p>행성과 별을 터치해 천체 악기를 연주하고, 유체 은하수를 요동치게 만들어보세요.</p>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="spaceCanvas"></canvas>
+    </div>
+
+    <button id="doc-toggle-btn" onclick="toggleDoc()">📖 문서 닫기</button>
+    <div id="doc-panel">
+        <div class="doc-header">
+            <h2>Space Fluid Engine</h2>
+        </div>
+        <div class="doc-content">
+            <div class="doc-section">
+                <h3>1. 다중 천체 악기 메커니즘</h3>
+                <p>화면에 생성된 행성과 별은 크기(반지름)에 따라 소리의 주파수와 악기 음색이 물리적으로 다르게 매핑됩니다.</p>
+                <div class="formula-box">천체 인덱스별 음향 합성 공식:
+대형 행성: 낮은 주파수 (웅장한 신시사이저 패드 코드 화음)
+중형 행성: 중간 주파수 (맑은 정통 피아노 사인파)
+소형 아기별: 높은 주파수 (청아한 고음역 실로폰 벨 톤)</div>
+            </div>
+
+            <div class="doc-section">
+                <h3>2. 천체 충격 파동 방정식</h3>
+                <p>행성이나 별을 손으로 터치하면 즉각 구면 충격파 수식이 트리거됩니다. 파동의 확산 반지름은 시간에 비례하여 동심원으로 확장됩니다.</p>
+                <div class="formula-box">파동 투명도 및 세기 공식:
+Opacity = (1.0 - 현재반지름 / 최대전파반지름) * 에너지계수</div>
+                <p>소리의 에너지가 우주 공간으로 퍼져나가면서 투명도와 두께가 정밀하게 반비례하여 줄어들며 기화하는 감쇠 현상을 묘사했습니다.</p>
+            </div>
+
+            <div class="doc-section">
+                <h3>3. 유체 역학 은하수 성운 공식</h3>
+                <p>배경의 수많은 별가루 은하수 궤적들은 단순한 무작위 이동이 아닌 복합 삼각함수 벡터 유체 기류장을 공유합니다.</p>
+                <div class="formula-box">은하수 유체장 기류 방향 벡터 연산:
+Velocity_X = Math.sin(X * 스케일 + 시간) * Math.cos(Y * 스케일)
+Velocity_Y = Math.cos(X * 스케일 - 시간) * Math.sin(Y * 스케일)</div>
+                <p>손가락이나 마우스로 은하수 영역을 직접 쓸어넘기면 터치 가속도 벡터가 격자 기류장에 주입되어 성운 입자들이 역동적으로 출렁이며 소용돌이칩니다.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('spaceCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let time = 0;
+        let planets = [];       // 화면에 배치된 우주 행성/별 배열
+        let nebulaParticles = []; // 유체 연산을 따르는 은하수 입자 배열
+        let shockWaves = [];    // 천체 터치 시 번지는 파동 고리 배열
+
+        // 마우스 및 터치 트래킹 구조체
+        const mouse = { x: -1000, y: -1000, px: -1000, py: -1000, isDown: false, vx: 0, vy: 0 };
+
+        // Web Audio API 콘텍스트 선언
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function toggleDoc() {
+            const panel = document.getElementById('doc-panel');
+            const btn = document.getElementById('doc-toggle-btn');
+            panel.classList.toggle('collapsed');
+            btn.innerHTML = panel.classList.contains('collapsed') ? '📖 문서 보기' : '📖 문서 닫기';
+        }
+
+        // ====================================================
+        // [우주 천체 객체 모델 클래스 설계]
+        // ====================================================
+
+        // 1. 행성 및 일반 별 클래스
+        class SpaceBody {
+            constructor(x, y, radius, type) {
+                this.x = x;
+                this.y = y;
+                this.r = radius;
+                this.type = type; // 'giant' (대형 행성), 'terrestrial' (중형 행성), 'star' (소형 아기별)
+                
+                // 천체 고유 색상 조율
+                if (type === 'giant') {
+                    this.hue = Math.random() * 40 + 200; // 푸른 가스 행성 계열
+                    this.freqs = [130.81, 164.81, 196.00]; // C3, E3, G3 (웅장한 메이저 화음 코드 담당)
+                } else if (type === 'terrestrial') {
+                    this.hue = Math.random() * 30 + 15;  // 붉거나 노란 대지 행성
+                    this.freqs = [261.63, 329.63, 392.00]; // C4, E4, G4 (맑은 중음역 피아노 담당)
+                } else {
+                    this.hue = Math.random() * 40 + 290; // 네온 바이올렛/핑크 아기별
+                    this.freqs = [523.25, 659.25, 783.99]; // C5, E5, G5 (고음역 실로폰/종소리 담당)
+                }
+
+                // 부드러운 우주 자전 공전 느낌을 주기 위한 가벼운 고유 진동 변수
+                this.wobbleOffset = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.01 + 0.005;
+                this.currentY = y;
+            }
+
+            update() {
+                // 우주 공간에서 행성들이 아주 천천히 위아래로 둥둥 떠다니는 모션 구현
+                this.wobbleOffset += this.wobbleSpeed;
+                this.y = this.currentY + Math.sin(this.wobbleOffset) * 8;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'source-over';
+
+                // 1. 행성 주변을 감싸는 신비로운 우주 대기광 아우라 (Atmospheric Glow)
+                let glowGrad = ctx.createRadialGradient(this.x, this.y, this.r * 0.2, this.x, this.y, this.r * 2.2);
+                glowGrad.addColorStop(0, `hsla(${this.hue}, 100%, 65%, 0.45)`);
+                glowGrad.addColorStop(0.3, `hsla(${this.hue}, 100%, 50%, 0.15)`);
+                glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = glowGrad;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r * 2.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 2. 행성 구체 본체 드로잉 (3D 구형 입체감을 극대화하는 광원 그라데이션)
+                let bodyGrad = ctx.createRadialGradient(this.x - this.r * 0.3, this.y - this.r * 0.3, this.r * 0.1, this.x, this.y, this.r);
+                bodyGrad.addColorStop(0, `hsla(${this.hue}, 100%, 85%, 1)`); // 눈부신 빛을 받는 핵심부
+                bodyGrad.addColorStop(0.6, `hsla(${this.hue}, 90%, 45%, 1)`);
+                bodyGrad.addColorStop(1, `#030308`); // 그림자가 지는 우주 암흑면 우회 처리
+                ctx.fillStyle = bodyGrad;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 3. 대형 가스 행성일 경우 신비로운 토성 스타일 행성 고리 고리(Ring System) 추가 묘사
+                if (this.type === 'giant') {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(-Math.PI / 8); // 고리 비스듬히 기울이기
+                    ctx.strokeStyle = `hsla(${this.hue}, 80%, 70%, 0.35)`;
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, this.r * 2.0, this.r * 0.35, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // 2. 천체 터치 시 번져나가는 물결 파동 클래스 (Acoustic Ripple Wave)
+        class CelestialWave {
+            constructor(x, y, hue, isGiant) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.radius = 0;
+                this.speed = isGiant ? 4.0 : 6.0; // 큰 대형 행성일수록 중후하고 느린 음파 속도 배정
+                this.maxRadius = Math.max(width, height) * 0.65;
+                this.life = 1.0;
+                // 우주 매질 파형 주름의 무작위 위상차 부여
+                this.wavePatternCount = Math.floor(Math.random() * 4) + 5;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.life = 1.0 - (this.radius / this.maxRadius);
+                if (this.life < 0) this.life = 0;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen'; // 빛 알갱이 가산 결합 활성화
+
+                ctx.beginPath();
+                const resolution = 90; // 다각형 정밀 나열 수
+                for (let i = 0; i <= resolution; i++) {
+                    const angle = (i / resolution) * Math.PI * 2;
+                    
+                    // [핵심 공식] 음파가 퍼질 때 단순 원형이 아니라 유체처럼 일렁이는 우주 저항 꼬임 수식 결합
+                    const rippleDisplacement = Math.sin(angle * this.wavePatternCount + time * 0.06) * (14 * this.life);
+                    const currentRadius = this.radius + rippleDisplacement;
+
+                    const px = this.x + Math.cos(angle) * currentRadius;
+                    const py = this.y + Math.sin(angle) * currentRadius;
+
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+
+                // 외곽 은은한 네온 아우라 광륜 선
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 60%, ${this.life * 0.35})`;
+                ctx.lineWidth = 3.5 * this.life;
+                ctx.stroke();
+
+                // 고강도 화이트 코어 빛 선
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 88%, ${this.life * 0.9})`;
+                ctx.lineWidth = 1.0 * this.life;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // 3. 유체 기류장을 따라 부드럽게 요동치고 쓸어넘겨지는 은하수 성운 입자 클래스 (Fluid Nebula)
+        class NebulaStar {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(initRandomY = false) {
+                this.x = Math.random() * width;
+                // 최초 생성 시에는 전체 화면 배치, 흐름 이탈 리셋 시에는 왼쪽 유입 분사
+                this.y = initRandomY ? Math.random() * height : Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.size = Math.random() * 1.5 + 0.4;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.002 + 0.0005;
+                
+                // 은하수 성운 전용 신비로운 오로라 시안/바이올렛 그라데이션 조색
+                this.hue = Math.random() * 60 + 180; // 180~240도 범위의 청록, 남색, 블루진 계열 믹싱
+            }
+
+            update() {
+                // [나비에 스토크스 약식 유체 격자 벡터 공식]
+                // 수많은 별가루들이 연쇄 공간 노이즈 기류장 방향 벡터를 수혈받아 부드럽게 대류 유영을 집행
+                const scale = 0.0025;
+                const fluidX = Math.sin(this.x * scale + time * 0.001) * Math.cos(this.y * scale + time * 0.001);
+                const fluidY = Math.cos(this.x * scale - time * 0.001) * Math.sin(this.y * scale + time * 0.001);
+
+                this.vx += fluidX * 0.03;
+                this.vy += fluidY * 0.03;
+
+                // 마우스나 손가락 드래그 궤적 벡터가 주변에 있을 때 기류 폭발 요동 처리 (Stirring Interaction)
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 140 && dist > 0) {
+                    const pushForce = (140 - dist) / 140;
+                    // 사용자의 손짓 가속도(vx, vy) 속도 벡터를 주변 성운들이 자연스럽게 흡수하여 동조 꼬임 발생
+                    this.vx += mouse.vx * pushForce * 0.04;
+                    this.vy += mouse.vy * pushForce * 0.04;
+                }
+
+                // 점성 마찰 마찰 제동 계수 반영
+                this.vx *= 0.96;
+                this.vy *= 0.96;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 화면 탈출 경계 가드 리셋
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset(false);
+                }
+            }
+
+            draw(ctx) {
+                // 은하수 은빛 성운 가닥 레이어 렌더링
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2.2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 65%, 0.14)`;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 20%, 90%, 0.85)`;
+                ctx.fill();
+            }
+        }
+
+        // ====================================================
+        // [초기 지형 및 천체 배치 공간 빌더 모듈]
+        // ====================================================
+
+        function buildCosmos() {
+            planets = [];
+            nebulaParticles = [];
+            shockWaves = [];
+
+            // 1. 은하수를 이루는 성운 파티클 대량 살포 (총 450개 최적화 분배)
+            for (let i = 0; i < 450; i++) {
+                nebulaParticles.push(new NebulaStar());
+            }
+
+            // 2. 가상의 음악 우주 좌표계 행성 배치 규칙 조립
+            // 대형 거대 가스 행성 2동
+            planets.push(new SpaceBody(width * 0.22, height * 0.35, 48, 'giant'));
+            planets.push(new SpaceBody(width * 0.76, height * 0.65, 42, 'giant'));
+
+            // 중형 대지 테라 행성 3동
+            planets.push(new SpaceBody(width * 0.48, height * 0.28, 28, 'terrestrial'));
+            planets.push(new SpaceBody(width * 0.15, height * 0.72, 24, 'terrestrial'));
+            planets.push(new SpaceBody(width * 0.82, height * 0.22, 26, 'terrestrial'));
+
+            // 소형 반짝이 가야 아기별 4동 배치
+            planets.push(new SpaceBody(width * 0.36, height * 0.68, 12, 'star'));
+            planets.push(new SpaceBody(width * 0.62, height * 0.45, 11, 'star'));
+            planets.push(new SpaceBody(width * 0.58, height * 0.82, 13, 'star'));
+            planets.push(new SpaceBody(width * 0.92, height * 0.78, 10, 'star'));
+        }
+
+        // ====================================================
+        // [천체 타건 악기 재생 및 음향 공학 합성 코어 모듈]
+        // ====================================================
+
+        function triggerCosmicInstrument(body) {
+            initAudio();
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const now = audioCtx.currentTime;
+
+            // 천체 타입에 맞는 독립적인 사운드 이산 파형 합성 집행
+            if (body.type === 'giant') {
+                // 대형 가스 행성: 3개의 오실레이터가 중첩 구동되는 웅장한 신시사이저 패드 코드 화음 구현
+                body.freqs.forEach((freq, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    
+                    osc.type = 'triangle'; // 중후하고 포근한 삼각파 배음
+                    osc.frequency.setValueAtTime(freq / 2, now); // 1옥타브 내려 중저음 베이스 보정
+                    
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.12, now + 0.1); // 서서히 웅장하게 밀려오는 어택
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.5); // 길고 우아한 대기권 여운 감쇠
+                    
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(now + 2.6);
+                });
+            } 
+            else if (body.type === 'terrestrial') {
+                // 중형 대지 행성: 맑고 정동적인 순수 사인파 피아노 공명음 유도
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                // 랜덤하게 해당 코드의 단음 하나를 추출해 연주 가동
+                const randomFreq = body.freqs[Math.floor(Math.random() * body.freqs.length)];
+                osc.frequency.setValueAtTime(randomFreq, now);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.3, now + 0.02); // 뚜렷한 피아노 타현 타격감
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(now + 1.7);
+            } 
+            else {
+                // 소형 반짝이 아기별: 높은 고주파수 배음이 가미된 영롱한 실로폰/뮤직박스 크리스탈 톤 합성
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                const highFreq = body.freqs[Math.floor(Math.random() * body.freqs.length)] * 1.5; // 고음역 시프팅
+                osc.frequency.setValueAtTime(highFreq, now);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.35, now + 0.008); // 매우 날카롭고 민첩한 타격 어택
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8); // 빠르게 팅하고 사그라드는 잔향
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(now + 0.9);
+            }
+
+            // 시각화 연동: 천체 중심부 좌표로부터 확장형 구면 파동 링 생성 방출
+            shockWaves.push(new CelestialWave(body.x, body.y, body.hue, body.type === 'giant'));
+        }
+
+        // 천체 충돌 히트 테스트 검사 장치
+        function checkCosmicCollision(tx, ty) {
+            for (let i = 0; i < planets.length; i++) {
+                const body = planets[i];
+                const distance = Math.hypot(tx - body.x, ty - body.y);
+                
+                // 터치 감지 반경에 판정이 걸렸을 경우 악기 트리거 발동
+                if (distance < body.r + 20) { 
+                    triggerCosmicInstrument(body);
+                    break; // 중복 중첩 터치 방지 차단
+                }
+            }
+        }
+
+        // ====================================================
+        // [하이브리드 터치 인터랙션 및 실시간 그래픽스 루프 모듈]
+        // ====================================================
+
+        function animate() {
+            time++;
+
+            // 우주 심연 공간의 무한 깊이감을 자아내기 위한 가산 잔상 알파 보존 클리어
+            ctx.fillStyle = 'rgba(2, 2, 5, 0.12)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 1. 요동치며 흐르는 유체 은하수 성운 입자 렌더 루프 가동
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter'; // 성운 입자 중첩 시 신비로운 은하 핵 발광 유도
+            for (let i = 0; i < nebulaParticles.length; i++) {
+                nebulaParticles[i].update();
+                nebulaParticles[i].draw(ctx);
+            }
+            ctx.restore();
+
+            // 2. 터치 파동 원형 고리 레이어 전파 및 소멸 관리
+            for (let i = shockWaves.length - 1; i >= 0; i--) {
+                shockWaves[i].update();
+                shockWaves[i].draw(ctx);
+                if (shockWaves[i].life <= 0) {
+                    shockWaves.splice(i, 1);
+                }
+            }
+
+            // 3. 고정 행성/천체 자전 및 그래픽스 상시 렌더링
+            for (let i = 0; i < planets.length; i++) {
+                planets[i].update();
+                planets[i].draw(ctx);
+            }
+
+            // 드래그 속도 벡터 감쇠 자동 보정
+            mouse.vx = mouse.x - mouse.px;
+            mouse.vy = mouse.y - mouse.py;
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+
+            requestAnimationFrame(animate);
+        }
+
+        // 인터랙션 차단 필터 가이드 검사
+        function checkUiComponentInterference(target) {
+            return target.closest('#doc-panel') || target.closest('#doc-toggle-btn');
+        }
+
+        // 마우스 입력 연동 바인딩
+        window.addEventListener('mousedown', (e) => {
+            if (checkUiComponentInterference(e.target)) return;
+            mouse.isDown = true;
+            mouse.x = mouse.px = e.clientX;
+            mouse.y = mouse.py = e.clientY;
+
+            // 천체 타건 충돌 체크
+            checkCosmicCollision(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (checkUiComponentInterference(e.target)) return;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => { mouse.isDown = false; mouse.x = -1000; mouse.y = -1000; });
+
+        // 스마트폰 멀티 터치 제스처 가드 및 모바일 인바운드 핸들러
+        window.addEventListener('touchstart', (e) => {
+            if (checkUiComponentInterference(e.target)) return;
+            mouse.isDown = true;
+            const touch = e.touches[0];
+            mouse.x = mouse.px = touch.clientX;
+            mouse.y = mouse.py = touch.clientY;
+
+            checkCosmicCollision(touch.clientX, touch.clientY);
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (checkUiComponentInterference(e.target)) return;
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        });
+
+        window.addEventListener('touchend', () => { mouse.isDown = false; mouse.x = -1000; mouse.y = -1000; });
+
+        // 해상도 가변 리사이징 처리
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            buildCosmos();
+        });
+
+        // 시스템 기동 부팅
+        buildCosmos();
+        animate();
+    </script>
+</body>
+</html>
