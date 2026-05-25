@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Soft Fluid Wave</title>
+
+<style>
+    *{
+        margin:0;
+        padding:0;
+        box-sizing:border-box;
+    }
+
+    html,body{
+        width:100%;
+        height:100%;
+        overflow:hidden;
+        background:#0b0f1a;
+    }
+
+    canvas{
+        width:100%;
+        height:100%;
+        display:block;
+        cursor:crosshair;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let w,h;
+
+function resize(){
+    w = canvas.width = innerWidth;
+    h = canvas.height = innerHeight;
+}
+
+resize();
+window.addEventListener("resize", resize);
+
+
+// ========================================
+// 부드러운 컬러 팔레트
+// ========================================
+
+const palette = [
+    [170,210,240],
+    [200,190,240],
+    [240,240,240],
+    [180,225,225],
+    [220,205,235]
+];
+
+function randomColor(){
+    return palette[Math.floor(Math.random()*palette.length)];
+}
+
+
+// ========================================
+// 얇은 유체 웨이브
+// ========================================
+
+const waves = [];
+
+class Wave{
+
+    constructor(x,y,vx,vy,color){
+
+        this.points = [];
+
+        this.life = 1;
+
+        this.decay = Math.random()*0.003 + 0.0015;
+
+        this.color = color;
+
+        this.vx = vx;
+        this.vy = vy;
+
+        this.angle = Math.random()*Math.PI*2;
+
+        this.seed = Math.random()*1000;
+
+        const length = 30;
+
+        for(let i=0;i<length;i++){
+
+            this.points.push({
+                x:x,
+                y:y
+            });
+        }
+    }
+
+    update(){
+
+        this.life -= this.decay;
+
+        this.angle += 0.03;
+
+        const swirlX = Math.cos(this.angle)*0.35;
+        const swirlY = Math.sin(this.angle)*0.35;
+
+        this.vx *= 0.985;
+        this.vy *= 0.985;
+
+        const head = this.points[0];
+
+        const nx =
+            head.x +
+            this.vx +
+            swirlX +
+            Math.sin(performance.now()*0.001 + this.seed)*0.5;
+
+        const ny =
+            head.y +
+            this.vy +
+            swirlY +
+            Math.cos(performance.now()*0.001 + this.seed)*0.5;
+
+        this.points.unshift({
+            x:nx,
+            y:ny
+        });
+
+        this.points.pop();
+    }
+
+    draw(){
+
+        if(this.life <= 0) return;
+
+        ctx.save();
+
+        ctx.beginPath();
+
+        for(let i=0;i<this.points.length;i++){
+
+            const p = this.points[i];
+
+            if(i===0){
+
+                ctx.moveTo(p.x,p.y);
+
+            }else{
+
+                const prev = this.points[i-1];
+
+                const cx = (prev.x + p.x)/2;
+                const cy = (prev.y + p.y)/2;
+
+                ctx.quadraticCurveTo(
+                    prev.x,
+                    prev.y,
+                    cx,
+                    cy
+                );
+            }
+        }
+
+        const alpha = this.life * 0.8;
+
+        ctx.strokeStyle =
+            `rgba(${this.color[0]},${this.color[1]},${this.color[2]},${alpha})`;
+
+        ctx.lineWidth = 2;
+
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        ctx.stroke();
+
+        ctx.restore();
+    }
+}
+
+
+
+// ========================================
+// 유체 생성
+// ========================================
+
+function createWave(x,y,mx=0,my=0){
+
+    const speed = Math.sqrt(mx*mx + my*my);
+
+    const amount = Math.min(10, 2 + speed*0.12);
+
+    for(let i=0;i<amount;i++){
+
+        const angle = Math.random()*Math.PI*2;
+
+        const force = Math.random()*2 + speed*0.04;
+
+        const vx =
+            Math.cos(angle)*force + mx*0.18;
+
+        const vy =
+            Math.sin(angle)*force + my*0.18;
+
+        waves.push(
+            new Wave(
+                x,
+                y,
+                vx,
+                vy,
+                randomColor()
+            )
+        );
+    }
+}
+
+
+
+// ========================================
+// 마우스 인터랙션
+// ========================================
+
+let down = false;
+
+canvas.addEventListener("mousedown",(e)=>{
+    down = true;
+    createWave(e.clientX,e.clientY);
+});
+
+window.addEventListener("mouseup",()=>{
+    down = false;
+});
+
+canvas.addEventListener("mousemove",(e)=>{
+
+    const speed =
+        Math.abs(e.movementX) +
+        Math.abs(e.movementY);
+
+    if(down || speed > 2){
+
+        createWave(
+            e.clientX,
+            e.clientY,
+            e.movementX,
+            e.movementY
+        );
+    }
+});
+
+canvas.addEventListener("click",(e)=>{
+    createWave(e.clientX,e.clientY);
+});
+
+
+
+// ========================================
+// 애니메이션
+// ========================================
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+    // 부드러운 잔상
+    ctx.fillStyle = "rgba(11,15,26,0.08)";
+    ctx.fillRect(0,0,w,h);
+
+    for(let i=waves.length-1;i>=0;i--){
+
+        const wave = waves[i];
+
+        wave.update();
+        wave.draw();
+
+        if(wave.life <= 0){
+            waves.splice(i,1);
+        }
+    }
+}
+
+animate();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Element Paint Clean</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#050505;font-family:Arial;}
+canvas{position:fixed;inset:0;width:100%;height:100%;cursor:crosshair;}
+
+.ui{
+position:fixed;top:15px;left:15px;width:340px;
+padding:16px;border-radius:16px;
+background:rgba(0,0,0,0.6);
+color:white;backdrop-filter:blur(10px);
+}
+
+.group{margin-bottom:12px;}
+label{font-size:12px;opacity:0.8;display:block;margin-bottom:6px;}
+
+input[type=range]{width:100%;}
+
+.palette-grid{
+display:grid;
+grid-template-columns:repeat(5,1fr);
+gap:6px;
+}
+
+.palette-grid input{
+height:34px;border:none;cursor:pointer;
+}
+
+.mode{display:flex;gap:6px;}
+
+button{
+flex:1;padding:8px;border:none;
+border-radius:10px;cursor:pointer;
+background:rgba(255,255,255,0.08);
+color:white;
+}
+
+.active{background:#00cfff;color:black;}
+</style>
+</head>
+
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="ui">
+
+<div class="group">
+<label>브러시 크기</label>
+<input type="range" id="size" min="2" max="80" value="28">
+</div>
+
+<div class="group">
+<label>단일 색상</label>
+<input type="color" id="singleColor" value="#00cfff">
+</div>
+
+<div class="group">
+<label>5색 팔레트</label>
+<div class="palette-grid">
+<input type="color" class="pal" value="#00cfff">
+<input type="color" class="pal" value="#8d5cff">
+<input type="color" class="pal" value="#ff4fd8">
+<input type="color" class="pal" value="#6fffd2">
+<input type="color" class="pal" value="#ffe95b">
+</div>
+</div>
+
+<div class="group">
+<label>컬러 모드</label>
+<div class="mode">
+<button id="palBtn" class="active">5색</button>
+<button id="singleBtn">단일</button>
+</div>
+</div>
+
+<div class="group">
+<label>원소 모드</label>
+<div class="mode">
+<button id="water">🌊</button>
+<button id="fire">🔥</button>
+<button id="light">⚡</button>
+</div>
+</div>
+
+</div>
+
+<script>
+
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+
+let w,h;
+function resize(){
+w=canvas.width=innerWidth;
+h=canvas.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
+
+let particles=[];
+const MAX=1200;
+
+let brush=28;
+let fade=0.08; // 🔥 고정 잔상 값
+
+// COLOR SYSTEM
+let paletteMode=true;
+let singleColor="#00cfff";
+let palette=["#00cfff","#8d5cff","#ff4fd8","#6fffd2","#ffe95b"];
+
+function getColor(){
+return paletteMode
+? palette[Math.random()*palette.length|0]
+: singleColor;
+}
+
+// MODE
+let mode="normal";
+
+// PARTICLE
+class P{
+constructor(x,y,vx,vy){
+this.x=x;
+this.y=y;
+this.vx=vx;
+this.vy=vy;
+this.life=1;
+this.size=Math.random()*brush+2;
+this.color=getColor();
+}
+
+update(){
+
+if(mode==="fire"){
+this.vy-=0.08;
+this.vx*=0.96;
+this.vy*=0.97;
+this.life-=0.02;
+}
+else if(mode==="water"){
+this.vy+=0.12;
+this.vx*=0.99;
+this.vy*=0.99;
+this.life-=0.01;
+}
+else if(mode==="light"){
+this.vx+=(Math.random()-0.5)*2;
+this.vy+=(Math.random()-0.5)*2;
+this.life-=0.03;
+}
+else{
+this.vx*=0.985;
+this.vy*=0.985;
+this.life-=0.012;
+}
+
+this.x+=this.vx;
+this.y+=this.vy;
+this.size*=0.995;
+}
+
+draw(){
+
+ctx.globalCompositeOperation="lighter";
+
+let c=this.color;
+
+if(mode==="fire") c="rgba(255,120,0,1)";
+if(mode==="water") c="rgba(0,170,255,1)";
+if(mode==="light") c="rgba(200,255,255,1)";
+
+const g=ctx.createRadialGradient(this.x,this.y,0,this.x,this.y,this.size);
+g.addColorStop(0,c);
+g.addColorStop(1,"transparent");
+
+ctx.globalAlpha=this.life*0.6;
+ctx.fillStyle=g;
+
+ctx.beginPath();
+ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+ctx.fill();
+}
+}
+
+// SPAWN
+function spawn(x,y,dx,dy){
+
+if(particles.length>MAX) return;
+
+let speed=Math.sqrt(dx*dx+dy*dy);
+let count=Math.min(2+speed*0.03,6);
+
+for(let i=0;i<count;i++){
+let a=Math.random()*Math.PI*2;
+let f=Math.random()*1.8;
+
+particles.push(new P(
+x+(Math.random()*6-3),
+y+(Math.random()*6-3),
+dx*0.03+Math.cos(a)*f,
+dy*0.03+Math.sin(a)*f
+));
+}
+}
+
+// MOUSE
+let down=false,lx=0,ly=0;
+
+onmousedown=(e)=>{
+if(e.button===1){
+for(let i=0;i<50;i++){
+let a=Math.random()*Math.PI*2;
+let s=Math.random()*7;
+particles.push(new P(e.clientX,e.clientY,Math.cos(a)*s,Math.sin(a)*s));
+}
+return;
+}
+down=true;
+lx=e.clientX;ly=e.clientY;
+};
+
+onmouseup=()=>down=false;
+
+onmousemove=(e)=>{
+if(!down) return;
+spawn(e.clientX,e.clientY,e.clientX-lx,e.clientY-ly);
+lx=e.clientX;ly=e.clientY;
+};
+
+// RENDER (고정 잔상)
+function loop(){
+requestAnimationFrame(loop);
+
+ctx.globalCompositeOperation="source-over";
+ctx.globalAlpha=1;
+
+ctx.fillStyle=`rgba(0,0,0,${fade})`;
+ctx.fillRect(0,0,w,h);
+
+for(let i=particles.length-1;i>=0;i--){
+let p=particles[i];
+p.update();
+p.draw();
+if(p.life<=0) particles.splice(i,1);
+}
+}
+loop();
+
+// UI
+size.oninput=e=>brush=+e.target.value;
+
+singleColor.oninput=e=>singleColor=e.target.value;
+
+document.querySelectorAll(".pal").forEach((p,i)=>{
+p.oninput=e=>palette[i]=e.target.value;
+});
+
+// COLOR MODE
+palBtn.onclick=()=>{
+paletteMode=true;
+palBtn.classList.add("active");
+singleBtn.classList.remove("active");
+};
+
+singleBtn.onclick=()=>{
+paletteMode=false;
+singleBtn.classList.add("active");
+palBtn.classList.remove("active");
+};
+
+// ELEMENT MODE
+function setMode(m){
+mode=(mode===m)?"normal":m;
+
+water.classList.remove("active");
+fire.classList.remove("active");
+light.classList.remove("active");
+
+if(mode==="water") water.classList.add("active");
+if(mode==="fire") fire.classList.add("active");
+if(mode==="light") light.classList.add("active");
+}
+
+water.onclick=()=>setMode("water");
+fire.onclick=()=>setMode("fire");
+light.onclick=()=>setMode("light");
+
+// KEY
+addEventListener("keydown",e=>{
+if(e.code==="Space") particles=[];
+if(e.key==="s"){
+let a=document.createElement("a");
+a.download="paint.png";
+a.href=canvas.toDataURL();
+a.click();
+}
+});
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cold Neon Fluid Mosaic</title>
+
+<style>
+html,body{
+    margin:0;
+    padding:0;
+    overflow:hidden;
+    background:#000;
+}
+
+canvas{
+    display:block;
+    width:100%;
+    height:100%;
+    cursor:none;
+}
+
+.ui{
+    position:fixed;
+    top:14px;
+    left:14px;
+    color:white;
+    font-family:Arial;
+    mix-blend-mode:screen;
+    pointer-events:none;
+}
+
+.title{
+    font-size:22px;
+    font-weight:bold;
+    text-shadow:0 0 10px #0ff,0 0 20px #f0f;
+}
+
+.small{
+    font-size:12px;
+    opacity:0.8;
+    line-height:1.5;
+}
+</style>
+</head>
+<body>
+
+<div class="ui">
+<div class="title">COLD NEON FLUID</div>
+<div class="small">
+Drag: flow<br>
+Click: burst<br>
+SPACE: reset<br>
+C: color<br>
+S: save<br>
+H: pause
+</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const c=document.getElementById("c");
+const ctx=c.getContext("2d");
+
+let w,h;
+function resize(){
+    w=c.width=innerWidth;
+    h=c.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
+
+// =====================
+// PAUSE
+// =====================
+let paused=false;
+
+// =====================
+// COLOR
+// =====================
+const palette=[
+["#ff0040","#ff7a00"],
+["#ffee00","#00ff88"],
+["#00ccff","#3d5afe"],
+["#d500ff","#ff00aa"]
+];
+
+let pIndex=0;
+function color(){
+    const p=palette[pIndex];
+    return p[Math.random()*p.length|0];
+}
+
+// =====================
+// PARTICLES
+// =====================
+const particles=[];
+const MAX=3800;
+
+class P{
+    constructor(x,y,vx,vy,sz,col){
+        this.x=x;
+        this.y=y;
+        this.vx=vx;
+        this.vy=vy;
+        this.sz=sz;
+        this.col=col;
+        this.life=1;
+        this.spin=(Math.random()-0.5)*0.12;
+        this.a=Math.random()*Math.PI*2;
+    }
+
+    update(){
+
+        this.a+=this.spin;
+
+        // 🌊 약한 소용돌이 (차가운 유체)
+        this.vx+=Math.cos(this.a)*0.01;
+        this.vy+=Math.sin(this.a)*0.01;
+
+        // ❄️ 매우 부드러운 감속 (식은 유체)
+        this.vx*=0.992;
+        this.vy*=0.992;
+
+        this.x+=this.vx;
+        this.y+=this.vy;
+
+        // 천천히 사라짐
+        this.life-=0.0028;
+
+        // ❌ 절대 커지지 않음
+        this.sz*=0.997;
+    }
+
+    draw(){
+        ctx.globalAlpha=this.life;
+
+        const g=ctx.createRadialGradient(
+            this.x,this.y,0,
+            this.x,this.y,this.sz
+        );
+
+        g.addColorStop(0,this.col);
+        g.addColorStop(0.5,this.col+"aa");
+        g.addColorStop(1,"transparent");
+
+        ctx.fillStyle=g;
+
+        ctx.beginPath();
+        ctx.arc(this.x,this.y,this.sz,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.globalAlpha=1;
+    }
+}
+
+function add(x,y,vx,vy,sz){
+    if(particles.length>MAX)particles.shift();
+    particles.push(new P(x,y,vx,vy,sz,color()));
+}
+
+// =====================
+// FLOW
+// =====================
+let mouse={x:w/2,y:h/2,px:w/2,py:h/2,down:false};
+
+function emit(x,y,dx,dy,n=2){
+
+    for(let i=0;i<n;i++){
+
+        const a=Math.random()*Math.PI*2;
+
+        const s=Math.random()*0.8; // ❄️ 차가운 에너지
+
+        add(
+            x,y,
+            Math.cos(a)*s + dx*0.06,
+            Math.sin(a)*s + dy*0.06,
+            Math.random()*35+8
+        );
+    }
+}
+
+// =====================
+// EVENTS
+// =====================
+addEventListener("mousedown",e=>{
+    mouse.down=true;
+    emit(e.clientX,e.clientY,0,0,40);
+});
+
+addEventListener("mouseup",()=>mouse.down=false);
+
+addEventListener("mousemove",e=>{
+    mouse.px=mouse.x;
+    mouse.py=mouse.y;
+
+    mouse.x=e.clientX;
+    mouse.y=e.clientY;
+
+    const dx=mouse.x-mouse.px;
+    const dy=mouse.y-mouse.py;
+
+    if(mouse.down && !paused){
+        emit(mouse.x,mouse.y,dx,dy,2);
+    }
+});
+
+// touch
+addEventListener("touchmove",e=>{
+    e.preventDefault();
+
+    const t=e.touches[0];
+
+    mouse.px=mouse.x;
+    mouse.py=mouse.y;
+
+    mouse.x=t.clientX;
+    mouse.y=t.clientY;
+
+    const dx=mouse.x-mouse.px;
+    const dy=mouse.y-mouse.py;
+
+    if(!paused){
+        emit(mouse.x,mouse.y,dx,dy,2);
+    }
+},{passive:false});
+
+// =====================
+// KEY
+// =====================
+addEventListener("keydown",e=>{
+
+    if(e.code==="Space"){
+        particles.length=0;
+    }
+
+    if(e.key==="c"||e.key==="C"){
+        pIndex=(pIndex+1)%palette.length;
+    }
+
+    if(e.key==="s"||e.key==="S"){
+        const a=document.createElement("a");
+        a.download="cold-fluid.png";
+        a.href=c.toDataURL();
+        a.click();
+    }
+
+    if(e.key==="h"||e.key==="H"){
+        paused=!paused;
+    }
+});
+
+// =====================
+// LOOP
+// =====================
+function loop(){
+    requestAnimationFrame(loop);
+
+    // 잔상 (더 부드럽게)
+    ctx.fillStyle="rgba(0,0,0,0.05)";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.globalCompositeOperation="lighter";
+
+    for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i];
+
+        if(!paused) p.update();
+
+        p.draw();
+
+        if(p.life<=0){
+            particles.splice(i,1);
+        }
+    }
+
+    ctx.globalCompositeOperation="source-over";
+
+    // 마우스 오라
+    const g=ctx.createRadialGradient(
+        mouse.x,mouse.y,0,
+        mouse.x,mouse.y,180
+    );
+
+    g.addColorStop(0,"rgba(255,255,255,0.04)");
+    g.addColorStop(1,"transparent");
+
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.arc(mouse.x,mouse.y,180,0,Math.PI*2);
+    ctx.fill();
+}
+
+loop();
+</script>
+
+</body>
+</html>

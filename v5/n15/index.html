@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>크고 아름다운 달이 뜬 밤호수 미디어 아트</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; user-select: none; }
+        body, html { width: 100%; height: 100%; background-color: #010206; cursor: crosshair; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
+        #info-ui {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4); font-family: 'Malgun Gothic', sans-serif;
+            font-size: 12px; letter-spacing: 1px; pointer-events: none; text-align: center;
+            background: rgba(0, 0, 0, 0.6); padding: 8px 18px; border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(5px); transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info-ui">클릭 드래그: 풍성한 미니멀 유체 | 꾹 누르고 떼기: 리얼 폭죽 사운드 ✨ | Space: 리셋</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scale = 0.5; 
+
+        const bgCanvas = document.createElement('canvas');
+        const bgCtx = bgCanvas.getContext('2d');
+
+        let audioCtx = null;
+        let shakeIntensity = 0; 
+        const SHAKE_DECAY = 0.85; 
+
+        let stars = [];
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function createNoiseBuffer() {
+            const bufferSize = audioCtx.sampleRate * 1.5; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            return buffer;
+        }
+
+        function playRealFireworkSound(powerRatio) {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const now = audioCtx.currentTime;
+
+            // 1. 폭죽 중심부 타격음
+            const thudOsc = audioCtx.createOscillator();
+            const thudGain = audioCtx.createGain();
+            thudOsc.type = 'triangle';
+            thudOsc.frequency.setValueAtTime(160, now); 
+            thudOsc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+            thudGain.gain.setValueAtTime(0.5 + (powerRatio * 0.4), now);
+            thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            thudOsc.connect(thudGain);
+            thudGain.connect(audioCtx.destination);
+
+            // 2. 대기 파열음
+            const blastNoise = audioCtx.createBufferSource();
+            blastNoise.buffer = createNoiseBuffer();
+            const blastGain = audioCtx.createGain();
+            const blastFilter = audioCtx.createBiquadFilter();
+            blastFilter.type = 'bandpass'; 
+            blastFilter.frequency.setValueAtTime(600, now);
+            blastFilter.frequency.exponentialRampToValueAtTime(150, now + 0.4);
+            blastFilter.Q.setValueAtTime(3, now);
+            blastGain.gain.setValueAtTime(0.4 + (powerRatio * 0.4), now);
+            blastGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+            blastNoise.connect(blastFilter);
+            blastFilter.connect(blastGain);
+            blastGain.connect(audioCtx.destination);
+
+            // 3. 지직거리는 불꽃 잔향
+            const sparkCount = Math.floor(12 + powerRatio * 20);
+            for (let i = 0; i < sparkCount; i++) {
+                const sparkDelay = Math.random() * 0.4 * (0.4 + powerRatio * 0.6);
+                const sparkTime = now + sparkDelay;
+                const sparkOsc = audioCtx.createOscillator();
+                const sparkGain = audioCtx.createGain();
+                const sparkFilter = audioCtx.createBiquadFilter();
+
+                sparkOsc.type = 'sawtooth'; 
+                sparkOsc.frequency.setValueAtTime(Math.random() * 3000 + 1500, sparkTime); 
+                sparkFilter.type = 'highpass'; 
+                sparkFilter.frequency.setValueAtTime(2500, sparkTime);
+
+                const sparkDuration = Math.random() * 0.04 + 0.01;
+                sparkGain.gain.setValueAtTime(Math.random() * 0.08 + 0.04, sparkTime);
+                sparkGain.gain.exponentialRampToValueAtTime(0.001, sparkTime + sparkDuration);
+
+                sparkOsc.connect(sparkFilter);
+                sparkFilter.connect(sparkGain);
+                sparkGain.connect(audioCtx.destination);
+
+                sparkOsc.start(sparkTime);
+                sparkOsc.stop(sparkTime + sparkDuration);
+            }
+
+            thudOsc.start(now);
+            blastNoise.start(now);
+            thudOsc.stop(now + 0.15);
+            blastNoise.stop(now + 0.5);
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * scale;
+            canvas.height = window.innerHeight * scale;
+            bgCanvas.width = canvas.width;
+            bgCanvas.height = canvas.height;
+            generateSunsetLakeBackground();
+            initStars();
+        }
+
+        function initStars() {
+            stars = [];
+            const horizon = bgCanvas.height * 0.58;
+            const starCount = 45; 
+            
+            for (let i = 0; i < starCount; i++) {
+                stars.push({
+                    x: Math.random() * bgCanvas.width,
+                    y: Math.random() * (horizon * 0.85),
+                    size: Math.random() * 0.9 + 0.4, 
+                    alpha: Math.random(), 
+                    speed: Math.random() * 0.02 + 0.01, 
+                    phase: Math.random() * Math.PI * 2 
+                });
+            }
+        }
+
+        function generateSunsetLakeBackground() {
+            const w = bgCanvas.width;
+            const h = bgCanvas.height;
+            const horizon = h * 0.58; 
+
+            let skyGrad = bgCtx.createLinearGradient(0, 0, 0, horizon);
+            skyGrad.addColorStop(0, '#010105');      
+            skyGrad.addColorStop(0.4, '#090518');     
+            skyGrad.addColorStop(0.75, '#230b2c');    
+            skyGrad.addColorStop(1, '#4a151b');       
+            bgCtx.fillStyle = skyGrad;
+            bgCtx.fillRect(0, 0, w, horizon);
+
+            // 🌕 [수정 포인트] 달의 크기 및 빛무리 영역 확장
+            const moonX = w * 0.82; 
+            const moonY = h * 0.15; // 커진 크기에 맞춰 Y축 위치 살짝 아래로 조정
+            bgCtx.save();
+            
+            // 빛무리(Glow) 반경을 25에서 55로 대폭 강화
+            let moonGlow = bgCtx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 55);
+            moonGlow.addColorStop(0, 'rgba(255, 236, 179, 0.4)');
+            moonGlow.addColorStop(0.3, 'rgba(255, 236, 179, 0.15)');
+            moonGlow.addColorStop(1, 'transparent');
+            bgCtx.fillStyle = moonGlow;
+            bgCtx.beginPath();
+            bgCtx.arc(moonX, moonY, 55, 0, Math.PI * 2);
+            bgCtx.fill();
+
+            // 실제 달 본체의 반지름을 8에서 15로 확장 (존재감 부여)
+            bgCtx.fillStyle = '#ffecb3';
+            bgCtx.beginPath();
+            bgCtx.arc(moonX, moonY, 15, 0, Math.PI * 2);
+            bgCtx.fill();
+            bgCtx.restore();
+
+            // 먼 산 실루엣
+            bgCtx.fillStyle = '#08040d';
+            bgCtx.beginPath();
+            bgCtx.moveTo(0, horizon);
+            let cx = 0;
+            while (cx < w) {
+                cx += Math.random() * 60 + 40;
+                let cy = horizon - (Math.random() * 12 + 6);
+                bgCtx.lineTo(cx, cy);
+            }
+            bgCtx.lineTo(w, horizon);
+            bgCtx.closePath();
+            bgCtx.fill();
+
+            // 호수 수면 그리기
+            let lakeGrad = bgCtx.createLinearGradient(0, horizon, 0, h);
+            lakeGrad.addColorStop(0, '#12040a');     
+            lakeGrad.addColorStop(0.15, '#030208');   
+            lakeGrad.addColorStop(1, '#000000');      
+            bgCtx.fillStyle = lakeGrad;
+            bgCtx.fillRect(0, horizon, w, h - horizon);
+
+            bgCtx.save();
+            // 달이 커짐에 따라 수면에 반사되는 빛무리의 폭(ellipse)도 함께 확장
+            let rippleGrad = bgCtx.createRadialGradient(moonX, horizon, 0, moonX, horizon, w * 0.2);
+            rippleGrad.addColorStop(0, 'rgba(255, 236, 179, 0.16)'); 
+            rippleGrad.addColorStop(1, 'transparent');
+            bgCtx.fillStyle = rippleGrad;
+            bgCtx.beginPath();
+            bgCtx.ellipse(moonX, horizon + (h - horizon) * 0.2, w * 0.2, (h - horizon) * 0.4, 0, 0, Math.PI * 2);
+            bgCtx.fill();
+
+            bgCtx.lineWidth = 1;
+            for (let i = 0; i < 20; i++) {
+                let ry = horizon + Math.random() * (h - horizon) * 0.7;
+                let rw = Math.random() * (w * 0.25) + 15;
+                let rx = (Math.random() > 0.4 ? moonX : w * 0.5) - rw * 0.5 + (Math.random() - 0.5) * 40;
+                
+                bgCtx.strokeStyle = Math.random() > 0.5 ? 'rgba(233, 30, 99, 0.05)' : 'rgba(255, 236, 179, 0.08)';
+                bgCtx.beginPath();
+                bgCtx.moveTo(rx, ry);
+                bgCtx.lineTo(rx + rw, ry);
+                bgCtx.stroke();
+            }
+            bgCtx.restore();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        const mouse = { x: 0, y: 0, px: 0, py: 0, isDown: false, isMoving: false };
+        let chargePower = 0;
+        const MAX_CHARGE = 60; 
+
+        const palettes = [
+            '#00ccff', '#ff0055', '#00ffaa', '#ffee00', '#d477ff', '#ff6600'
+        ];
+        let currentPaletteIndex = 0;
+
+        function getPaletteColor() {
+            return palettes[currentPaletteIndex];
+        }
+
+        class FluidParticle {
+            constructor(x, y, vx, vy, color) {
+                this.x = x; this.y = y;
+                this.vx = vx * 0.45 + (Math.random() - 0.5) * 0.5; 
+                this.vy = vy * 0.45 + (Math.random() - 0.5) * 0.5;
+                this.color = color;
+                this.alpha = 1.0;
+                this.decay = Math.random() * 0.016 + 0.015; 
+                this.baseSize = Math.random() * 3.5 + 2.5; 
+                this.angle = Math.atan2(vy, vx) + (Math.random() - 0.5) * 0.2; 
+                this.rotSpeed = (Math.random() - 0.5) * 0.03; 
+                this.stretch = Math.min(Math.sqrt(vx * vx + vy * vy) * 0.25 + 1.1, 2.5); 
+                this.skew = Math.random() * 0.3 + 0.4;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.vx *= 0.95; this.vy *= 0.95;
+                this.angle += this.rotSpeed;
+                this.vx += Math.cos(this.angle * 1.5) * 0.05;
+                this.vy += Math.sin(this.angle * 1.5) * 0.05;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.globalAlpha = this.alpha;
+
+                const length = this.baseSize * this.stretch;
+                const width = this.baseSize * this.skew;
+
+                let grad = ctx.createLinearGradient(-length * 0.2, 0, length, width * 0.3);
+                grad.addColorStop(0, this.color);
+                grad.addColorStop(0.4, this.color);
+                grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+
+                ctx.beginPath();
+                ctx.moveTo(-length * 0.3, 0);                 
+                ctx.quadraticCurveTo(0, -width * 0.6, length, -width * 0.1); 
+                ctx.lineTo(length * 0.8, width * 0.2);        
+                ctx.quadraticCurveTo(0, width * 0.7, -length * 0.3, 0);   
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Firework {
+            constructor(x, y, color, powerRatio) {
+                this.x = x; this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const force = (Math.random() * 13 + 3) * (0.4 + powerRatio * 1.5); 
+                this.vx = Math.cos(angle) * force;
+                this.vy = Math.sin(angle) * force;
+                this.color = color;
+                this.alpha = 1;
+                this.gravity = 0.14; 
+                this.friction = 0.94; 
+                this.size = (Math.random() * 2 + 1.2) * (1 + powerRatio * 0.3); 
+                this.angle = Math.random() * Math.PI;
+                this.rotSpeed = (Math.random() - 0.5) * 0.2;
+                this.decay = Math.random() * 0.015 + 0.018; 
+            }
+            update() {
+                this.vx *= this.friction; this.vy *= this.friction;
+                this.vy += this.gravity;
+                this.x += this.vx; this.y += this.vy;
+                this.angle += this.rotSpeed;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size);
+                ctx.lineTo(this.size * 0.6, 0);
+                ctx.lineTo(0, this.size);
+                ctx.lineTo(-this.size * 0.6, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        let particles = [];
+        let fireworks = [];
+        const MAX_PARTICLES = 900; 
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            ctx.save(); 
+
+            if (shakeIntensity > 0.1) {
+                const dx = (Math.random() - 0.5) * shakeIntensity;
+                const dy = (Math.random() - 0.5) * shakeIntensity;
+                ctx.translate(dx, dy); 
+                shakeIntensity *= SHAKE_DECAY; 
+            } else {
+                shakeIntensity = 0;
+            }
+
+            ctx.globalAlpha = 1.0; 
+            ctx.drawImage(bgCanvas, 0, 0);
+
+            // 실시간 별빛 렌더링
+            ctx.save();
+            for (let i = 0; i < stars.length; i++) {
+                let star = stars[i];
+                star.phase += star.speed;
+                let currentAlpha = 0.2 + (Math.sin(star.phase) + 1) * 0.4;
+                ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            }
+            ctx.restore();
+
+            if (mouse.isDown) {
+                const vx = mouse.x - mouse.px;
+                const vy = mouse.y - mouse.py;
+                const speed = Math.sqrt(vx * vx + vy * vy);
+
+                if (mouse.isMoving && speed > 1.2) {
+                    spawnFluid(mouse.x, mouse.y, vx, vy, getPaletteColor());
+                } else {
+                    if (chargePower < MAX_CHARGE) chargePower++;
+                    
+                    if (Math.random() < 0.4) {
+                        const r = (MAX_CHARGE - chargePower) * 0.5 + 6;
+                        const a = Math.random() * Math.PI * 2;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(mouse.x + Math.cos(a)*r, mouse.y + Math.sin(a)*r, 1.5, 1.5);
+                    }
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                fireworks[i].update();
+                fireworks[i].draw();
+                if (fireworks[i].alpha <= 0) fireworks.splice(i, 1);
+            }
+
+            ctx.restore(); 
+
+            mouse.px = mouse.x; mouse.py = mouse.y;
+            mouse.isMoving = false; 
+        }
+
+        function spawnFluid(x, y, vx, vy, color) {
+            if (particles.length > MAX_PARTICLES) return;
+            const speed = Math.sqrt(vx * vx + vy * vy);
+            
+            const count = Math.min(speed * 0.7, 5); 
+            for (let i = 0; i < count; i++) {
+                particles.push(new FluidParticle(
+                    x + (Math.random() - 0.5) * 4, 
+                    y + (Math.random() - 0.5) * 4, 
+                    vx + (Math.random() - 0.5) * 2, 
+                    vy + (Math.random() - 0.5) * 2, 
+                    color
+                ));
+            }
+        }
+
+        function triggerExplosion() {
+            if (chargePower > 5) {
+                const powerRatio = chargePower / MAX_CHARGE;
+                const count = Math.floor(80 + powerRatio * 220); 
+                const color = getPaletteColor(); 
+                
+                for(let i = 0; i < count; i++) {
+                    fireworks.push(new Firework(mouse.x, mouse.y, color, powerRatio));
+                }
+
+                playRealFireworkSound(powerRatio);
+                shakeIntensity = 4 + powerRatio * 10; 
+
+                currentPaletteIndex = (currentPaletteIndex + 1) % palettes.length;
+            } else {
+                currentPaletteIndex = (currentPaletteIndex + 1) % palettes.length;
+            }
+            chargePower = 0;
+        }
+
+        function updateMousePos(e) {
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            mouse.x = cx * scale; mouse.y = cy * scale;
+            mouse.isMoving = true; 
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            initAudio(); 
+            mouse.isDown = true;
+            chargePower = 0; 
+            updateMousePos(e);
+            mouse.px = mouse.x; mouse.y = mouse.y; 
+        });
+
+        window.addEventListener('mousemove', updateMousePos);
+        window.addEventListener('mouseup', () => {
+            if (mouse.isDown) { mouse.isDown = false; triggerExplosion(); }
+        });
+
+        window.addEventListener('touchstart', (e) => {
+            initAudio();
+            mouse.isDown = true; chargePower = 0; updateMousePos(e);
+            mouse.px = mouse.x; mouse.py = mouse.y;
+        });
+        window.addEventListener('touchmove', updateMousePos);
+        window.addEventListener('touchend', () => {
+            if (mouse.isDown) { mouse.isDown = false; triggerExplosion(); }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') { 
+                particles = []; fireworks = []; chargePower = 0; shakeIntensity = 0;
+                generateSunsetLakeBackground(); 
+                initStars(); 
+            }
+        });
+
+        setTimeout(() => { document.getElementById('info-ui').style.opacity = '0'; }, 5000);
+        
+        resizeCanvas();
+        animate();
+    </script>
+</body>
+</html>

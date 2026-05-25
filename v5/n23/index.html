@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>컬러 유채 미디어 아트 - 화면 흔들림 효과</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            cursor: pointer;
+        }
+        /* 화면 전체를 흔들기 위해 캔버스에 transform 스타일 적용 */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            transform: translate(var(--shake-x, 0px), var(--shake-y, 0px));
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="fluidCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('fluidCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const particles = [];
+        const maxParticles = 2000; 
+
+        const colors = [
+            'rgba(255, 30, 30, ',   
+            'rgba(255, 110, 0, ',   
+            'rgba(255, 230, 0, '    
+        ];
+
+        // --- 화면 흔들림(Shake) 제어 변수 ---
+        let shakeIntensity = 0; // 현재 흔들림 강도
+        const shakeDecay = 0.9;  // 흔들림이 잦아드는 속도 (매 프레임 감소율)
+
+        // 흔들림 강도를 추가하는 함수
+        function addShake(intensity) {
+            shakeIntensity += intensity;
+            if (shakeIntensity > 25) shakeIntensity = 25; // 최대 흔들림 제한
+        }
+
+        class FluidParticle {
+            constructor(x, y, vx, vy, isClick = false, isFragment = false) {
+                this.x = x;
+                this.y = y;
+                this.isFragment = isFragment;
+                this.hasExploded = false;
+
+                if (this.isFragment) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 13 + 3; 
+                    this.vx = Math.cos(angle) * speed;
+                    this.vy = Math.sin(angle) * speed;
+                    this.radius = Math.random() * 6 + 2; 
+                    this.decay = Math.random() * 0.03 + 0.015;
+                    this.gravity = 0.18; 
+                    this.friction = 0.91; 
+                } else if (isClick) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 5 + 2;
+                    this.vx = Math.cos(angle) * speed;
+                    this.vy = Math.sin(angle) * speed;
+                    this.radius = Math.random() * 20 + 15;
+                    this.decay = Math.random() * 0.02 + 0.015; 
+                    this.gravity = 0.03;
+                    this.friction = 0.96;
+                } else {
+                    this.vx = vx + (Math.random() - 0.5) * 2;
+                    this.vy = vy + (Math.random() - 0.5) * 2;
+                    this.radius = Math.random() * 15 + 5;
+                    this.decay = Math.random() * 0.015 + 0.01;
+                    this.gravity = 0; 
+                    this.friction = 0.96;
+                }
+
+                this.alpha = 1;
+                this.colorBase = colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                this.radius *= 0.98;
+                this.alpha -= this.decay;
+
+                // 2차 분열 폭발 시점
+                if (!this.isFragment && !this.hasExploded && this.alpha < 0.4 && this.alpha > 0) {
+                    this.explode();
+                }
+            }
+
+            explode() {
+                this.hasExploded = true;
+                
+                // 원들이 개별적으로 터질 때도 화면에 미세한 진동 유발
+                addShake(0.3);
+
+                const fragmentCount = Math.floor(Math.random() * 8) + 12; 
+                for (let i = 0; i < fragmentCount; i++) {
+                    if (particles.length < maxParticles) {
+                        particles.push(new FluidParticle(this.x, this.y, 0, 0, false, true));
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.beginPath();
+                
+                let gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                
+                if (this.isFragment && this.alpha > 0.7) {
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, ' + this.alpha + ')');
+                    gradient.addColorStop(0.2, this.colorBase + this.alpha + ')');
+                } else {
+                    gradient.addColorStop(0, this.colorBase + this.alpha + ')');
+                }
+                
+                gradient.addColorStop(0.5, this.colorBase + (this.alpha * 0.5) + ')');
+                gradient.addColorStop(1, 'rgba(0,0,0,0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        let lastX = null;
+        let lastY = null;
+
+        window.addEventListener('mousemove', (e) => {
+            if (lastX !== null && lastY !== null) {
+                const vx = (e.clientX - lastX) * 0.2;
+                const vy = (e.clientY - lastY) * 0.2;
+
+                for (let i = 0; i < 2; i++) {
+                    if (particles.length < maxParticles) {
+                        particles.push(new FluidParticle(e.clientX, e.clientY, vx, vy, false, false));
+                    }
+                }
+            }
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        // 마우스 클릭 시 (대형 폭탄 투하)
+        window.addEventListener('mousedown', (e) => {
+            // 클릭 즉시 화면에 강한 충격(진동 강도 15) 전달
+            addShake(15);
+
+            const clickParticleCount = 40; 
+            for (let i = 0; i < clickParticleCount; i++) {
+                if (particles.length < maxParticles) {
+                    particles.push(new FluidParticle(e.clientX, e.clientY, 0, 0, true, false));
+                }
+            }
+        });
+
+        window.addEventListener('mouseout', () => {
+            lastX = null;
+            lastY = null;
+        });
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // --- 흔들림(Shake) 효과 계산 및 CSS 변수 반영 ---
+            if (shakeIntensity > 0.1) {
+                // 난수를 발생시켜 상하좌우로 캔버스를 임의 좌표 이동시킴
+                const dx = (Math.random() - 0.5) * shakeIntensity;
+                const dy = (Math.random() - 0.5) * shakeIntensity;
+                canvas.style.setProperty('--shake-x', `${dx}px`);
+                canvas.style.setProperty('--shake-y', `${dy}px`);
+                
+                // 서서히 멈추도록 감쇠
+                shakeIntensity *= shakeDecay;
+            } else {
+                // 흔들림이 끝나면 제자리 고정
+                canvas.style.setProperty('--shake-x', '0px');
+                canvas.style.setProperty('--shake-y', '0px');
+                shakeIntensity = 0;
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                if (p.alpha <= 0 || p.radius < 0.5) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

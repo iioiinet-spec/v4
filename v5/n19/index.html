@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울 밤 빌딩숲과 노란 달 - 유체 미디어아트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #070b19 0%, #121a36 60%, #1a264d 100%); /* 깊은 서울의 밤하늘 그라데이션 */
+            font-family: sans-serif;
+            user-select: none;
+        }
+
+        /* [요청사항] 배경의 중심 위쪽에 노란색으로 은은하게 빛나는 달 */
+        .yellow-moon {
+            position: absolute;
+            top: 15%; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, #fffde6 20%, #ffdf6d 60%, #ffbb00 100%);
+            border-radius: 50%;
+            z-index: 1;
+            box-shadow: 0 0 5px #fff, 0 0 40px rgba(255, 223, 109, 0.8), 0 0 90px rgba(255, 187, 0, 0.5);
+            pointer-events: none;
+        }
+
+        /* [요청사항] 밑에서 전등으로 빛나는 건물들 레이어 */
+        .skyline-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 35%; /* 화면 아래쪽 35% 영역을 빌딩숲으로 채움 */
+            z-index: 2;
+            overflow: hidden;
+            pointer-events: none;
+            background: linear-gradient(to top, rgba(10, 15, 30, 0.9) 0%, rgba(10, 15, 30, 0.4) 100%);
+        }
+
+        /* 빌딩 실루엣 (어두운 건물 외벽) */
+        .building {
+            position: absolute;
+            bottom: 0;
+            background: #090d1a;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            /* 빌딩 내부 전등(창문) 불빛 레이아웃 */
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(4px, 1fr));
+            grid-template-rows: repeat(auto-fill, minmax(6px, 1fr));
+            gap: 4px;
+            padding: 10px 6px;
+        }
+
+        /* 건물 안에서 빛나는 전등 창문들 */
+        .window {
+            background: rgba(255, 230, 130, 0.75); /* 빛나는 전등색 기본값 */
+            box-shadow: 0 0 4px rgba(255, 210, 100, 0.5);
+            border-radius: 1px;
+        }
+        /* 불이 꺼진 전등 무작위 표현 */
+        .window.off {
+            background: rgba(255, 255, 255, 0.04);
+            box-shadow: none;
+        }
+
+        /* 인터랙션 캔버스 레이어 */
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3; /* 달과 건물 레이어 위에서 유체가 자유롭게 흐름 */
+        }
+
+        /* 상단 속도 조절 슬라이더 Bar UI */
+        .top-control-bar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 10px 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #fff;
+            font-size: 13px;
+            z-index: 10;
+        }
+        .top-control-bar input[type="range"] {
+            -webkit-appearance: none;
+            width: 150px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+        .top-control-bar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffcc00;
+            box-shadow: 0 0 10px #ffcc00;
+        }
+
+        /* 하단 조작 가이드 UI */
+        .ui-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 25px;
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            text-align: center;
+            pointer-events: none;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+            font-size: 12px;
+            z-index: 5;
+        }
+        h1 {
+            font-size: 15px;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+            background: linear-gradient(45deg, #ffcc00, #ff007f, #00f0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 은은하게 빛나는 노란색 보름달 -->
+    <div class="yellow-moon"></div>
+
+    <!-- 밑에서 전등으로 빛나는 건물들 배치 컨테이너 -->
+    <div class="skyline-container" id="skyline"></div>
+
+    <!-- 상단 컨트롤 바 -->
+    <div class="top-control-bar" id="controlBar">
+        <label for="speedSlider">✨ 유체 흐름 속도</label>
+        <input type="range" id="speedSlider" min="0.1" max="2.5" step="0.1" value="1.0">
+        <span id="speedValue">1.0x</span>
+    </div>
+
+    <!-- 미디어아트 캔버스 -->
+    <canvas id="fluidCanvas"></canvas>
+
+    <!-- 하단 설명 패널 -->
+    <div class="ui-panel">
+        <h1>Seoul City Grid Fluid Art</h1>
+        <div>
+            🖱️ <b>클릭 후 드래그</b>: 빌딩과 달 주변에 물감 뿌리기 | 💥 <b>클릭</b>: 1,000발 최적화 폭발<br>
+            [Space] 유체 초기화 | [C] 테마 변경 | [S] 스크린샷 저장
+        </div>
+    </div>
+
+    <script>
+        // --- 0. 배경 건물 및 전등(창문) 생성 스크립트 (이미지 파일 프리 최적화) ---
+        function generateSkyline() {
+            const skyline = document.getElementById('skyline');
+            skyline.innerHTML = ''; // 초기화
+            const screenWidth = window.innerWidth;
+            
+            let currentX = 0;
+            while (currentX < screenWidth) {
+                const bWidth = Math.floor(Math.random() * 60) + 50; // 건물 너비 랜덤
+                const bHeight = Math.floor(Math.random() * 180) + 70; // 건물 높이 랜덤
+                
+                const building = document.createElement('div');
+                building.className = 'building';
+                building.style.left = currentX + 'px';
+                building.style.width = bWidth + 'px';
+                building.style.height = bHeight + 'px';
+                
+                // 내부에 격자형 전등(창문) 무작위 배치
+                const totalWindows = Math.floor((bWidth / 8) * (bHeight / 10));
+                for (let i = 0; i < totalWindows; i++) {
+                    const win = document.createElement('div');
+                    // 랜덤으로 70%는 켜진 전등, 30%는 꺼진 전등으로 세팅하여 야경 연출
+                    if (Math.random() < 0.35) {
+                        win.className = 'window off';
+                    } else {
+                        win.className = 'window';
+                        // 전등 색상 다양화 (노란 조명, 오렌지 조명 등 흰빛 믹스)
+                        const r = Math.random();
+                        if (r < 0.2) win.style.background = 'rgba(255, 140, 50, 0.85)';
+                        else if (r < 0.4) win.style.background = 'rgba(255, 255, 255, 0.9)';
+                    }
+                    building.appendChild(win);
+                }
+                
+                skyline.appendChild(building);
+                currentX += bWidth - 4; // 건물들이 자연스럽게 겹치도록 설정
+            }
+        }
+
+        // --- 1. 글로벌 옵션 설정 (초경량 유지) ---
+        const canvas = document.getElementById('fluidCanvas');
+        const ctx = canvas.getContext('2d');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+
+        let globalSpeedMultiplier = 1.0;
+        let particles = [];
+        const MAX_PARTICLES = 2500; 
+        
+        const gridScale = 55; 
+        let gridCols, gridRows;
+        let velocityGrid = [];
+
+        const mouse = { x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, isDown: false };
+
+        const palettes = [
+            { name: "네온 사이버", colors: ["#00f0ff", "#ff007f", "#a020f0", "#39ff14", "#ffbc00"] },
+            { name: "오로라 드림", colors: ["#4facfe", "#00f2fe", "#7f00ff", "#ff007f"] },
+            { name: "화려한 불꽃", colors: ["#ff416c", "#ff4b2b", "#ffbc00", "#f15bb5"] }
+        ];
+        let currentPaletteIndex = 0;
+
+        function getRandomColor() {
+            const colors = palettes[currentPaletteIndex].colors;
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        speedSlider.addEventListener('input', (e) => {
+            globalSpeedMultiplier = parseFloat(e.target.value);
+            speedValue.innerText = globalSpeedMultiplier.toFixed(1) + 'x';
+        });
+
+        // --- 2. 초기화 설정 ---
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gridCols = Math.ceil(canvas.width / gridScale);
+            gridRows = Math.ceil(canvas.height / gridScale);
+            clearGrid();
+            generateSkyline(); // 화면 크기 바뀔 때 건물들도 다시 배치
+        }
+
+        function clearGrid() {
+            velocityGrid = [];
+            for (let i = 0; i < gridCols * gridRows; i++) {
+                velocityGrid.push({ x: 0, y: 0 });
+            }
+        }
+
+        function clearAll() {
+            particles = [];
+            clearGrid();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // --- 3. 경량 유체 입자 클래스 ---
+        class InkParticle {
+            constructor(x, y, color, isSpark = false) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.isSpark = isSpark;
+                
+                this.vx = (Math.random() - 0.5) * 3;
+                this.vy = (Math.random() - 0.5) * 3;
+                
+                this.radius = isSpark ? Math.random() * 0.8 + 0.4 : Math.random() * 1.3 + 0.6;
+                this.alpha = 1.0;
+                
+                // 생성 직후 고속 소멸하도록 설계 (완벽 렉 방지 핵심)
+                this.decay = isSpark ? Math.random() * 0.05 + 0.03 : Math.random() * 0.03 + 0.018;
+                this.viscosity = Math.random() * 0.08 + 0.04;
+            }
+
+            update() {
+                const tx = Math.floor(this.x / gridScale);
+                const ty = Math.floor(this.y / gridScale);
+                
+                if (tx >= 0 && tx < gridCols && ty >= 0 && ty < gridRows) {
+                    const idx = tx + ty * gridCols;
+                    this.vx += (velocityGrid[idx].x - this.vx) * this.viscosity;
+                    this.vy += (velocityGrid[idx].y - this.vy) * this.viscosity;
+                }
+
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+
+                this.x += this.vx * globalSpeedMultiplier;
+                this.y += this.vy * globalSpeedMultiplier;
+
+                this.alpha -= this.decay * (globalSpeedMultiplier * 0.4 + 0.6);
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                if (this.isSpark) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                } else {
+                    ctx.fillStyle = this.color;
+                }
+                ctx.fill();
+            }
+        }
+
+        // --- 4. 유체 가속 및 드래그 주입 ---
+        function injectFluid() {
+            if (!mouse.isDown) return; 
+
+            mouse.vx = mouse.x - mouse.px;
+            mouse.vy = mouse.y - mouse.py;
+            const speed = Math.sqrt(mouse.vx * mouse.vx + mouse.vy * mouse.vy);
+
+            const radius = 2; 
+            const mx = Math.floor(mouse.x / gridScale);
+            const my = Math.floor(mouse.y / gridScale);
+
+            for (let y = -radius; y <= radius; y++) {
+                for (let x = -radius; x <= radius; x++) {
+                    const cx = mx + x;
+                    const cy = my + y;
+                    if (cx >= 0 && cx < gridCols && cy >= 0 && cy < gridRows) {
+                        const idx = cx + cy * gridCols;
+                        const force = (radius - Math.sqrt(x*x + y*y)) / radius;
+                        if (force > 0) {
+                            velocityGrid[idx].x += mouse.vx * force * 0.25;
+                            velocityGrid[idx].y += mouse.vy * force * 0.25;
+                        }
+                    }
+                }
+            }
+
+            const spawnCount = speed > 1 ? 30 : 6;
+
+            for (let i = 0; i < spawnCount; i++) {
+                if (particles.length >= MAX_PARTICLES) particles.shift();
+
+                const pct = i / spawnCount;
+                const rx = mouse.px + mouse.vx * pct + (Math.random() - 0.5) * 12;
+                const ry = mouse.py + mouse.vy * pct + (Math.random() - 0.5) * 12;
+
+                const p = new InkParticle(rx, ry, getRandomColor(), false);
+                
+                const angle = Math.atan2(mouse.vy, mouse.vx) + (Math.random() - 0.5) * 0.6;
+                const pSpeed = speed * 0.35 * (Math.random() + 0.3);
+                p.vx = Math.cos(angle) * pSpeed;
+                p.vy = Math.sin(angle) * pSpeed;
+
+                particles.push(p);
+
+                if (Math.random() < 0.12) {
+                    particles.push(new InkParticle(rx, ry, '#ffffff', true));
+                }
+            }
+
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+        }
+
+        function updateFluidField() {
+            for (let i = 0; i < velocityGrid.length; i++) {
+                velocityGrid[i].x *= 0.94;
+                velocityGrid[i].y *= 0.94;
+                
+                velocityGrid[i].x += Math.sin(Date.now() * 0.0025 + i) * 0.02 * globalSpeedMultiplier;
+                velocityGrid[i].y += Math.cos(Date.now() * 0.0025 + i) * 0.02 * globalSpeedMultiplier;
+            }
+        }
+
+        // --- 5. 애니메이션 메인 루프 ---
+        function animate() {
+            // 배경 요소(달, 건물)들을 투명하게 유지하며 입자 잔상만 부드럽게 지우는 고속 공식
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            updateFluidField();
+            injectFluid();
+
+            // 배경 빛들과 네온 유체가 스크린 오버레이 효과를 내도록 합성 모드 가동
+            ctx.globalCompositeOperation = 'screen';
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                if (p.alpha <= 0 || p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- 6. 이벤트 제어 및 1,000개 최적화 폭발 시스템 ---
+        function updateMousePos(clientX, clientY) {
+            if (mouse.px === 0 && mouse.py === 0) {
+                mouse.px = clientX; mouse.py = clientY;
+            }
+            mouse.x = clientX; mouse.y = clientY;
+        }
+
+        document.getElementById('controlBar').addEventListener('mousedown', (e) => { e.stopPropagation(); });
+        document.getElementById('controlBar').addEventListener('touchstart', (e) => { e.stopPropagation(); });
+
+        window.addEventListener('mousemove', (e) => {
+            if (mouse.isDown) updateMousePos(e.clientX, e.clientY);
+        });
+        
+        window.addEventListener('mousedown', (e) => {
+            if(e.target.closest('#controlBar')) return;
+
+            mouse.isDown = true;
+            updateMousePos(e.clientX, e.clientY);
+            mouse.px = e.clientX; mouse.py = e.clientY;
+
+            // 정확히 1,000개 입자 대량 폭발 시스템
+            const burstColor = getRandomColor();
+            const count = 1000; 
+
+            for (let i = 0; i < count; i++) {
+                if (particles.length >= MAX_PARTICLES) particles.shift();
+                
+                const p = new InkParticle(mouse.x, mouse.y, burstColor, false);
+                
+                const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
+                const speed = Math.random() * 13 + 2; 
+                
+                p.vx = Math.cos(angle) * speed;
+                p.vy = Math.sin(angle) * speed;
+                p.decay = Math.random() * 0.055 + 0.025; 
+                
+                particles.push(p);
+
+                if (Math.random() < 0.15) {
+                    const spark = new InkParticle(mouse.x, mouse.y, '#ffffff', true);
+                    spark.vx = p.vx * 1.15;
+                    spark.vy = p.vy * 1.15;
+                    spark.decay = p.decay * 1.4;
+                    particles.push(spark);
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            mouse.isDown = false;
+            mouse.px = 0; mouse.py = 0;
+        });
+
+        // 모바일 터치 이벤트
+        window.addEventListener('touchmove', (e) => {
+            if (e.target.closest('#controlBar')) return;
+            if (mouse.isDown && e.touches.length > 0) updateMousePos(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.closest('#controlBar')) return;
+            mouse.isDown = true;
+            if (e.touches.length > 0) {
+                updateMousePos(e.touches[0].clientX, e.touches[0].clientY);
+                mouse.px = e.touches[0].clientX; mouse.py = e.touches[0].clientY;
+            }
+        });
+        window.addEventListener('touchend', () => { mouse.isDown = false; mouse.px = 0; mouse.py = 0; });
+
+        // 키보드 단축키
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                clearAll();
+            } else if (e.key === 'c' || e.key === 'C') {
+                currentPaletteIndex = (currentPaletteIndex + 1) % palettes.length;
+            } else if (e.key === 's' || e.key === 'S') {
+                const link = document.createElement('a');
+                link.download = `seoul-city-grid-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }
+        });
+
+        // 브라우저 윈도우 크기 조절 이벤트 대기
+        window.addEventListener('resize', resize);
+
+        // 시스템 전격 기동
+        resize();
+        clearAll();
+        animate();
+    </script>
+</body>
+</html>

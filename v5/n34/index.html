@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Responsive Cosmic Fluid Art</title>
+
+<style>
+html,body{
+    margin:0;
+    padding:0;
+    overflow:hidden;
+    background:#000;
+    width:100%;
+    height:100%;
+}
+
+canvas{
+    position:fixed;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+
+let W,H,dpr;
+
+// =========================
+// STAR SYSTEM
+// =========================
+
+// 🔥 핵심:
+// 화면 크기가 바뀌어도
+// 항상 화면 전체가 별로 가득 차게 함
+
+const STAR_DENSITY = 0.00055; // 면적 대비 별 밀도
+let stars = [];
+
+function createStars(){
+
+    stars = [];
+
+    // 화면 면적 기반으로 별 개수 자동 계산
+    const count = Math.floor(W * H * STAR_DENSITY);
+
+    for(let i=0;i<count;i++){
+
+        stars.push({
+
+            // ⭐ 정규화 좌표 사용
+            // resize 되어도 위치 비율 유지
+            nx: Math.random(),
+            ny: Math.random(),
+
+            r: Math.random()*1.8,
+            twinkle: 0.5 + Math.random()*2,
+            depth: Math.random()
+        });
+    }
+}
+
+// =========================
+// RESIZE
+// =========================
+
+function resize(){
+
+    dpr = devicePixelRatio || 1;
+
+    W = innerWidth;
+    H = innerHeight;
+
+    c.width = W * dpr;
+    c.height = H * dpr;
+
+    c.style.width = W + "px";
+    c.style.height = H + "px";
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    // ⭐ 화면 크기 바뀔 때마다 별 재생성
+    createStars();
+}
+
+addEventListener("resize",resize);
+resize();
+
+// =========================
+// COLORS
+// =========================
+
+const palettes = [
+["#4cc9f0","#4895ef","#4361ee","#3f37c9","#560bad"],
+["#f72585","#b5179e","#7209b7","#560bad","#480ca8"],
+["#43aa8b","#90be6d","#f9c74f","#f9844a","#f94144"],
+["#577590","#277da1","#4d908e","#90be6d","#f3722c"]
+];
+
+let pIndex = 0;
+
+function color(){
+    return palettes[pIndex][Math.random()*5|0];
+}
+
+// =========================
+// PARTICLES
+// =========================
+
+let pts = [];
+
+class P{
+
+    constructor(x,y,vx,vy,col,sizeBoost=1){
+
+        this.x=x;
+        this.y=y;
+
+        this.px=x;
+        this.py=y;
+
+        this.vx=vx;
+        this.vy=vy;
+
+        this.friction=0.90;
+
+        this.life=1;
+
+        this.decay=0.0025 + Math.random()*0.003;
+
+        this.col=col;
+
+        this.w=(1+Math.random()*2.5)*sizeBoost;
+    }
+
+    update(){
+
+        this.px=this.x;
+        this.py=this.y;
+
+        this.vx*=this.friction;
+        this.vy*=this.friction;
+
+        this.x+=this.vx;
+        this.y+=this.vy;
+
+        this.life-=this.decay;
+    }
+
+    draw(){
+
+        ctx.globalCompositeOperation="source-over";
+
+        ctx.globalAlpha=this.life*0.9;
+
+        ctx.strokeStyle=this.col;
+        ctx.lineWidth=this.w;
+
+        ctx.beginPath();
+        ctx.moveTo(this.px,this.py);
+        ctx.lineTo(this.x,this.y);
+        ctx.stroke();
+
+        ctx.globalAlpha=1;
+    }
+}
+
+// =========================
+// MOUSE
+// =========================
+
+let m={x:0,y:0,px:0,py:0};
+
+addEventListener("mousemove",e=>{
+
+    m.px=m.x;
+    m.py=m.y;
+
+    m.x=e.clientX;
+    m.y=e.clientY;
+
+    let dx=m.x-m.px;
+    let dy=m.y-m.py;
+
+    let speed=Math.sqrt(dx*dx+dy*dy);
+
+    let count=Math.min(3,speed*0.3);
+
+    for(let i=0;i<count;i++){
+
+        pts.push(
+            new P(
+                m.x,
+                m.y,
+                dx*0.5,
+                dy*0.5,
+                color()
+            )
+        );
+    }
+});
+
+// =========================
+// SUPERNOVA BURST
+// =========================
+
+addEventListener("mousedown",e=>{
+
+    let x=e.clientX;
+    let y=e.clientY;
+
+    let particles=320;
+
+    for(let i=0;i<particles;i++){
+
+        let angle=Math.random()*Math.PI*2;
+
+        let distance=Math.random();
+
+        let force=(1-distance)*16+4;
+
+        let vx=Math.cos(angle)*force;
+        let vy=Math.sin(angle)*force;
+
+        let sizeBoost=1+Math.pow(1-distance,2)*3;
+
+        pts.push(
+            new P(
+                x,y,
+                vx,vy,
+                color(),
+                sizeBoost
+            )
+        );
+    }
+
+    // 🌌 외곽 성운층
+    for(let i=0;i<140;i++){
+
+        let angle=Math.random()*Math.PI*2;
+
+        let force=Math.random()*6+2;
+
+        pts.push(
+            new P(
+                x,y,
+                Math.cos(angle)*force*0.5,
+                Math.sin(angle)*force*0.5,
+                color(),
+                0.8
+            )
+        );
+    }
+});
+
+// =========================
+// KEY CONTROL
+// =========================
+
+addEventListener("keydown",e=>{
+
+    if(e.code==="Space"){
+        pts=[];
+    }
+
+    if(e.key==="c"){
+        pIndex=(pIndex+1)%palettes.length;
+    }
+
+    if(e.key==="s"){
+
+        const a=document.createElement("a");
+
+        a.download="cosmic_fluid.png";
+
+        a.href=c.toDataURL("image/png");
+
+        a.click();
+    }
+});
+
+// =========================
+// DRAW STARS
+// =========================
+
+function drawStars(){
+
+    ctx.fillStyle="white";
+
+    for(let s of stars){
+
+        // ⭐ 정규화 좌표 → 현재 화면 크기로 변환
+        let x = s.nx * W;
+        let y = s.ny * H;
+
+        let flicker =
+            Math.sin(
+                Date.now()*0.002*s.twinkle + x
+            ) * 0.5 + 0.5;
+
+        ctx.globalAlpha =
+            (0.15 + flicker*0.6)
+            * (0.3 + s.depth);
+
+        let size =
+            s.r * (0.5 + s.depth);
+
+        ctx.beginPath();
+        ctx.arc(x,y,size,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    ctx.globalAlpha=1;
+}
+
+// =========================
+// LOOP
+// =========================
+
+function loop(){
+
+    // 🌌 우주 성운 배경
+
+    ctx.globalCompositeOperation="source-over";
+
+    let g =
+        ctx.createRadialGradient(
+            W/2,H/2,0,
+            W/2,H/2,W
+        );
+
+    g.addColorStop(
+        0,
+        "rgba(12,14,30,0.18)"
+    );
+
+    g.addColorStop(
+        0.5,
+        "rgba(5,8,20,0.25)"
+    );
+
+    g.addColorStop(
+        1,
+        "rgba(0,0,0,0.4)"
+    );
+
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,W,H);
+
+    // ✨ 별
+    drawStars();
+
+    // 🌊 유체
+    for(let i=pts.length-1;i>=0;i--){
+
+        let p=pts[i];
+
+        p.update();
+        p.draw();
+
+        if(p.life<=0){
+            pts.splice(i,1);
+        }
+    }
+
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>

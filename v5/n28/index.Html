@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>컬러 유채 미디어아트</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    font-family:'Arial',sans-serif;
+}
+
+canvas{
+    position:fixed;
+    inset:0;
+}
+
+#ui{
+    position:fixed;
+    bottom:10px;
+    left:50%;
+    transform:translateX(-50%);
+    display:flex;
+    gap:10px;
+    z-index:20;
+    backdrop-filter:blur(12px);
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.12);
+    padding:10px 15px;
+    border-radius:999px;
+}
+
+.btn{
+    padding:10px 14px;
+    border:none;
+    border-radius:999px;
+    cursor:pointer;
+    background:rgba(255,255,255,0.08);
+    color:white;
+    transition:0.25s;
+    font-size:14px;
+}
+
+.btn:hover{
+    transform:translateY(-2px) scale(1.05);
+    background:rgba(255,255,255,0.18);
+}
+
+#message{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    color:white;
+    font-size:80px;
+    font-weight:bold;
+    pointer-events:none;
+    opacity:0;
+    z-index:50;
+    text-shadow:
+    0 0 10px orange,
+    0 0 25px red,
+    0 0 45px gold;
+}
+
+.info{
+    position:fixed;
+    top:15px;
+    left:15px;
+    color:white;
+    z-index:10;
+    background:rgba(0,0,0,0.35);
+    padding:10px 14px;
+    border-radius:15px;
+    backdrop-filter:blur(10px);
+    line-height:1.7;
+    font-size:14px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div class="info">
+F = FIRE 모드<br>
+W = WATER 모드<br>
+SPACE = 초기화<br>
+C = 캡처 저장
+</div>
+
+<div id="message">FIRE!</div>
+
+<div id="ui">
+<button class="btn" onclick="setBackground(0)">오로라</button>
+<button class="btn" onclick="setBackground(1)">검정</button>
+<button class="btn" onclick="setBackground(2)">달</button>
+<button class="btn" onclick="setBackground(3)">도시야경</button>
+<button class="btn" onclick="setBackground(4)">야간바다</button>
+<button class="btn" onclick="setBackground(5)">연등회</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let w = canvas.width = innerWidth;
+let h = canvas.height = innerHeight;
+
+window.addEventListener('resize',()=>{
+    w = canvas.width = innerWidth;
+    h = canvas.height = innerHeight;
+});
+
+let particles = [];
+let ripples = [];
+let fishes = [];
+let smokes = [];
+let stars = [];
+
+let mouse = {x:w/2,y:h/2};
+
+let mode = "normal";
+let bgMode = 0;
+
+document.addEventListener('mousemove',e=>{
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+
+    for(let i=0;i<2;i++){
+        particles.push(new Particle(
+            mouse.x,
+            mouse.y,
+            randomColor(),
+            Math.random()*3-1.5,
+            Math.random()*3-1.5,
+            5+Math.random()*6
+        ));
+    }
+});
+
+document.addEventListener('click',e=>{
+    if(mode==="water"){
+        createRipple(e.clientX,e.clientY);
+        spawnFish(e.clientX,e.clientY);
+        playWaterSound();
+    }else{
+        firework(e.clientX,e.clientY);
+        createRipple(e.clientX,e.clientY,true);
+        playFireworkSound();
+
+        if(mode==="fire"){
+            createSmoke(e.clientX,e.clientY);
+            playFireSound();
+        }
+    }
+});
+
+document.addEventListener('keydown',e=>{
+
+    if(e.key==="f" || e.key==="F"){
+        mode="fire";
+        showFire();
+    }
+
+    if(e.key==="w" || e.key==="W"){
+        mode="water";
+    }
+
+    if(e.code==="Space"){
+        particles=[];
+        ripples=[];
+        fishes=[];
+        smokes=[];
+    }
+
+    if(e.key==="c" || e.key==="C"){
+        captureCanvas();
+    }
+});
+
+function captureCanvas(){
+    const link = document.createElement('a');
+    link.download = 'media-art.png';
+    link.href = canvas.toDataURL();
+    link.click();
+}
+
+function showFire(){
+    const msg = document.getElementById('message');
+    msg.style.opacity=1;
+
+    setTimeout(()=>{
+        msg.style.transition='1s';
+        msg.style.opacity=0;
+    },1500);
+}
+
+class Particle{
+    constructor(x,y,color,vx,vy,size){
+        this.x=x;
+        this.y=y;
+        this.color=color;
+        this.vx=vx;
+        this.vy=vy;
+        this.size=size;
+        this.life=100;
+    }
+
+    draw(){
+        ctx.beginPath();
+        ctx.fillStyle=this.color;
+        ctx.shadowBlur=20;
+        ctx.shadowColor=this.color;
+        ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    update(){
+        this.x+=this.vx;
+        this.y+=this.vy;
+        this.life--;
+        this.size*=0.98;
+        this.draw();
+    }
+}
+
+class Ripple{
+    constructor(x,y,color){
+        this.x=x;
+        this.y=y;
+        this.r=10;
+        this.alpha=1;
+        this.color=color;
+    }
+
+    draw(){
+        ctx.beginPath();
+        ctx.strokeStyle=`rgba(${this.color},${this.alpha})`;
+        ctx.lineWidth=3;
+        ctx.shadowBlur=20;
+        ctx.shadowColor=`rgba(${this.color},1)`;
+        ctx.arc(this.x,this.y,this.r,0,Math.PI*2);
+        ctx.stroke();
+    }
+
+    update(){
+        this.r+=4;
+        this.alpha-=0.01;
+        this.draw();
+    }
+}
+
+class Fish{
+    constructor(x,y){
+        this.x=x;
+        this.y=y;
+        this.vx=Math.random()*4+1;
+        this.vy=Math.random()*2-1;
+        this.size=15+Math.random()*15;
+        this.color=`hsl(${Math.random()*360},100%,70%)`;
+    }
+
+    draw(){
+        ctx.save();
+        ctx.translate(this.x,this.y);
+
+        ctx.fillStyle=this.color;
+        ctx.shadowBlur=20;
+        ctx.shadowColor=this.color;
+
+        ctx.beginPath();
+        ctx.ellipse(0,0,this.size,this.size/2,0,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(-this.size,0);
+        ctx.lineTo(-this.size-10,-10);
+        ctx.lineTo(-this.size-10,10);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    update(){
+        this.x+=this.vx;
+        this.y+=this.vy;
+        this.draw();
+    }
+}
+
+class Smoke{
+    constructor(x,y){
+        this.x=x;
+        this.y=y;
+        this.size=20;
+        this.alpha=1;
+        this.vy=-1-Math.random()*2;
+    }
+
+    draw(){
+        ctx.beginPath();
+        ctx.fillStyle=`rgba(255,120,0,${this.alpha})`;
+        ctx.shadowBlur=25;
+        ctx.shadowColor='orange';
+        ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    update(){
+        this.y+=this.vy;
+        this.alpha-=0.01;
+        this.size+=0.5;
+        this.draw();
+    }
+}
+
+class Star{
+    constructor(){
+        this.x=Math.random()*w;
+        this.y=Math.random()*h;
+        this.r=Math.random()*3;
+        this.vx=Math.random()*0.5-0.25;
+        this.vy=Math.random()*0.5-0.25;
+        this.color=randomColor();
+    }
+
+    draw(){
+        ctx.beginPath();
+        ctx.fillStyle=this.color;
+        ctx.shadowBlur=15;
+        ctx.shadowColor=this.color;
+        ctx.arc(this.x,this.y,this.r,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    update(){
+        this.x+=this.vx;
+        this.y+=this.vy;
+
+        if(this.x<0)this.x=w;
+        if(this.x>w)this.x=0;
+        if(this.y<0)this.y=h;
+        if(this.y>h)this.y=0;
+
+        this.draw();
+    }
+}
+
+for(let i=0;i<120;i++){
+    stars.push(new Star());
+}
+
+function randomColor(){
+    const colors=[
+        '#00ffff',
+        '#ff00ff',
+        '#00ff99',
+        '#ff8800',
+        '#aa66ff',
+        '#00aaff'
+    ];
+    return colors[Math.floor(Math.random()*colors.length)];
+}
+
+function firework(x,y){
+    for(let i=0;i<120;i++){
+        const angle=Math.random()*Math.PI*2;
+        const speed=Math.random()*8;
+
+        particles.push(new Particle(
+            x,y,
+            randomColor(),
+            Math.cos(angle)*speed,
+            Math.sin(angle)*speed,
+            4+Math.random()*5
+        ));
+    }
+}
+
+function createRipple(x,y,aurora=false){
+    const color = aurora ?
+    `${Math.random()*255},100,255`
+    :
+    `120,200,255`;
+
+    ripples.push(new Ripple(x,y,color));
+}
+
+function spawnFish(x,y){
+    const count = 1+Math.floor(Math.random()*5);
+
+    for(let i=0;i<count;i++){
+        fishes.push(new Fish(
+            x+Math.random()*80-40,
+            y+Math.random()*50-25
+        ));
+    }
+}
+
+function createSmoke(x,y){
+    for(let i=0;i<20;i++){
+        smokes.push(new Smoke(
+            x+Math.random()*40-20,
+            y+Math.random()*40-20
+        ));
+    }
+}
+
+function setBackground(id){
+    bgMode=id;
+}
+
+function drawBackground(){
+
+    if(bgMode===0){
+        const g=ctx.createLinearGradient(0,0,w,h);
+        g.addColorStop(0,'#050510');
+        g.addColorStop(0.5,'#120022');
+        g.addColorStop(1,'#001122');
+
+        ctx.fillStyle=g;
+        ctx.fillRect(0,0,w,h);
+
+        for(let i=0;i<5;i++){
+            ctx.beginPath();
+            ctx.strokeStyle=`hsla(${180+i*40},100%,60%,0.08)`;
+            ctx.lineWidth=120;
+            ctx.moveTo(0,h*Math.random());
+            ctx.bezierCurveTo(
+                w*0.3,h*Math.random(),
+                w*0.7,h*Math.random(),
+                w,h*Math.random()
+            );
+            ctx.stroke();
+        }
+    }
+
+    if(bgMode===1){
+        ctx.fillStyle='black';
+        ctx.fillRect(0,0,w,h);
+    }
+
+    if(bgMode===2){
+        ctx.fillStyle='#02030d';
+        ctx.fillRect(0,0,w,h);
+
+        ctx.beginPath();
+        ctx.fillStyle='rgba(255,255,220,0.9)';
+        ctx.shadowBlur=50;
+        ctx.shadowColor='white';
+        ctx.arc(w-180,120,60,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    if(bgMode===3){
+        ctx.fillStyle='#050510';
+        ctx.fillRect(0,0,w,h);
+
+        for(let i=0;i<15;i++){
+            let bw=50+Math.random()*80;
+            let bh=150+Math.random()*300;
+            let bx=i*100;
+
+            ctx.fillStyle='#111';
+            ctx.fillRect(bx,h-bh,bw,bh);
+
+            for(let j=0;j<25;j++){
+                ctx.fillStyle=Math.random()>0.5?'#ffd700':'#222';
+                ctx.fillRect(
+                    bx+10+Math.random()*(bw-20),
+                    h-bh+10+Math.random()*(bh-20),
+                    4,4
+                );
+            }
+        }
+
+        ctx.fillStyle='red';
+        ctx.fillRect(mouse.x-40,h-100,80,30);
+    }
+
+    if(bgMode===4){
+        ctx.fillStyle='#01081a';
+        ctx.fillRect(0,0,w,h);
+
+        ctx.fillStyle='#022';
+        ctx.fillRect(0,h*0.7,w,h);
+
+        ctx.beginPath();
+        ctx.fillStyle='white';
+        ctx.arc(w-180,100,50,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle='#ddd';
+        ctx.fillRect(w/2-120,h*0.65,240,40);
+
+        ctx.beginPath();
+        ctx.moveTo(w/2-140,h*0.65);
+        ctx.lineTo(w/2,h*0.58);
+        ctx.lineTo(w/2+140,h*0.65);
+        ctx.fill();
+    }
+
+    if(bgMode===5){
+        ctx.fillStyle='#120010';
+        ctx.fillRect(0,0,w,h);
+
+        for(let i=0;i<30;i++){
+            let x=(i*60 + performance.now()*0.02)%w;
+
+            ctx.beginPath();
+            ctx.fillStyle=`hsl(${i*12},100%,65%)`;
+            ctx.shadowBlur=25;
+            ctx.shadowColor=`hsl(${i*12},100%,65%)`;
+
+            ctx.arc(x,150+Math.sin(i)*50,10,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillRect(x-8,150,16,25);
+        }
+    }
+}
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+    ctx.clearRect(0,0,w,h);
+
+    drawBackground();
+
+    ctx.fillStyle='rgba(0,0,0,0.08)';
+    ctx.fillRect(0,0,w,h);
+
+    stars.forEach(s=>s.update());
+
+    particles = particles.filter(p=>p.life>0 && p.size>0.3);
+    particles.forEach(p=>p.update());
+
+    ripples = ripples.filter(r=>r.alpha>0);
+    ripples.forEach(r=>r.update());
+
+    fishes = fishes.filter(f=>f.x<w+100);
+    fishes.forEach(f=>f.update());
+
+    smokes = smokes.filter(s=>s.alpha>0);
+    smokes.forEach(s=>s.update());
+}
+
+animate();
+
+/* =========================
+   사운드
+========================= */
+
+const audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+
+function tone(freq,duration,type='sine',volume=0.05){
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = type;
+    osc.frequency.value = freq;
+
+    gain.gain.value = volume;
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioCtx.currentTime + duration
+    );
+
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function playFireworkSound(){
+    tone(120,0.5,'sawtooth',0.08);
+    tone(420,1.2,'sine',0.03);
+}
+
+function playWaterSound(){
+    tone(250,0.6,'triangle',0.03);
+    tone(520,0.2,'sine',0.02);
+}
+
+function playFireSound(){
+    tone(80,0.4,'square',0.05);
+    tone(180,0.5,'sawtooth',0.03);
+}
+</script>
+
+</body>
+</html>

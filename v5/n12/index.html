@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>NEON STRIKE</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+:root {
+  --cyan:#00f5ff; --pink:#ff00aa; --green:#00ff88;
+  --yellow:#ffee00; --orange:#ff6600; --purple:#aa00ff;
+  --gold:#ffd700; --bg:#020408;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--cyan);font-family:'Share Tech Mono',monospace;
+  overflow:hidden;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;}
+/* 16:9 비율 게임 래퍼 크기 */
+#gameWrapper{position:relative;width:1066px;height:600px;overflow:hidden;}
+#gameCanvas{display:block;border:2px solid var(--cyan);cursor:crosshair;background:var(--bg);
+  box-shadow:0 0 10px var(--cyan),0 0 30px rgba(0,245,255,0.3);width:100%;height:100%;}
+
+/* ── HUD ── */
+#hud{position:absolute;top:8px;left:8px;right:8px;display:flex;gap:8px;align-items:flex-start;pointer-events:none;}
+.hp{background:rgba(0,10,15,0.85);border:1px solid var(--cyan);box-shadow:0 0 8px rgba(0,245,255,0.4);
+  padding:5px 10px;border-radius:3px;min-width:155px;}
+.hp-lbl{color:var(--green);text-shadow:0 0 8px var(--green);font-size:10px;margin-bottom:3px;}
+.hp-bar{width:130px;height:9px;background:rgba(0,255,136,0.1);border:1px solid var(--green);border-radius:2px;overflow:hidden;}
+#hpFill{height:100%;width:100%;background:linear-gradient(90deg,#00ff88,#00ffcc);box-shadow:0 0 8px var(--green);transition:width .1s;}
+.hp-txt{color:var(--green);text-shadow:0 0 6px var(--green);font-size:10px;margin-top:2px;}
+.panel{background:rgba(0,10,15,0.85);border:1px solid var(--cyan);box-shadow:0 0 8px rgba(0,245,255,0.35);
+  padding:5px 10px;border-radius:3px;font-size:11px;}
+.gold-panel{border-color:var(--gold)!important;box-shadow:0 0 8px rgba(255,215,0,0.4)!important;color:var(--gold);text-shadow:0 0 8px var(--gold);}
+
+/* ── Skill bar ── */
+#skillHUD{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+  display:flex;gap:8px;align-items:flex-end;pointer-events:none;}
+.sk{width:58px;background:rgba(0,10,15,0.9);border:1px solid rgba(0,245,255,0.5);
+  border-radius:3px;padding:5px;text-align:center;font-size:9px;}
+.sk .k{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;margin-bottom:2px;}
+.sk .nm{color:rgba(200,230,255,0.7);font-size:8px;}
+.sk .cdb{width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin-top:3px;}
+.sk .cdf{height:100%;width:0%;border-radius:2px;transition:width .1s;}
+#skH{border-color:var(--pink);}  #skH .k{color:var(--pink);text-shadow:0 0 10px var(--pink);}  #skH .cdf{background:var(--pink);}
+#skF{border-color:var(--yellow);}#skF .k{color:var(--yellow);text-shadow:0 0 10px var(--yellow);}#skF .cdf{background:var(--yellow);}
+#skC{border-color:var(--purple);}#skC .k{color:var(--purple);text-shadow:0 0 10px var(--purple);}#skC .cdf{background:var(--purple);}
+
+#moveHint{position:absolute;bottom:8px;right:8px;font-size:9px;color:rgba(0,245,255,0.45);pointer-events:none;line-height:1.6;text-align:right;}
+
+/* ── Ulti banner ── */
+#ultiBanner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:'Orbitron',sans-serif;font-size:26px;font-weight:900;color:var(--purple);
+  text-shadow:0 0 20px var(--purple),0 0 40px var(--purple);letter-spacing:6px;pointer-events:none;display:none;
+  animation:ultiP .5s ease-in-out infinite alternate;}
+@keyframes ultiP{from{opacity:.7;transform:translate(-50%,-50%) scale(1);}to{opacity:1;transform:translate(-50%,-50%) scale(1.05);}}
+
+/* ── Float messages (킬 배너 디자인 강화) ── */
+#killMsg{position:absolute;top:48px;left:50%;transform:translateX(-50%);
+  font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:var(--yellow);
+  text-shadow:0 0 12px var(--yellow), 0 0 25px rgba(255,238,0,0.5);pointer-events:none;opacity:0;transition:opacity .2s;letter-spacing:3px;}
+#waveAnn{position:absolute;top:76px;left:50%;transform:translateX(-50%);
+  font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--pink);
+  text-shadow:0 0 16px var(--pink);pointer-events:none;opacity:0;letter-spacing:3px;}
+
+/* ── Overlay ── */
+#overlay{position:absolute;inset:0;background:rgba(2,4,8,0.93);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:'Orbitron',sans-serif;z-index:20;}
+#overlay h1{font-size:52px;font-weight:900;color:var(--cyan);
+  text-shadow:0 0 20px var(--cyan),0 0 60px rgba(0,245,255,.6),0 0 80px rgba(0,245,255,.3);
+  letter-spacing:10px;margin-bottom:8px;}
+.sub{color:var(--pink);font-size:14px;text-shadow:0 0 12px var(--pink);letter-spacing:4px;margin-bottom:24px;}
+.kl{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(180,220,240,.8);
+  line-height:1.85;background:rgba(0,245,255,.04);border:1px solid rgba(0,245,255,.2);
+  padding:14px 24px;border-radius:4px;margin-bottom:26px;columns:2;column-gap:32px;}
+.kl span{color:var(--yellow);text-shadow:0 0 6px var(--yellow);}
+.obtn{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--bg);
+  background:var(--cyan);border:none;padding:12px 42px;letter-spacing:5px;cursor:pointer;
+  box-shadow:0 0 25px var(--cyan);transition:all .2s;
+  clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);}
+.obtn:hover{background:#fff;box-shadow:0 0 45px var(--cyan);transform:scale(1.05);}
+
+/* ── SHOP overlay ── */
+#shopOverlay{position:absolute;inset:0;background:rgba(2,4,8,0.95);
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  font-family:'Orbitron',sans-serif;z-index:15;}
+#shopOverlay h2{font-size:32px;font-weight:900;color:var(--gold);
+  text-shadow:0 0 20px var(--gold),0 0 50px rgba(255,215,0,.4);
+  letter-spacing:6px;margin-bottom:6px;}
+.shop-sub{color:var(--cyan);font-size:11px;letter-spacing:2px;margin-bottom:20px;}
+.shop-gold{font-family:'Share Tech Mono',monospace;font-size:16px;color:var(--gold);
+  text-shadow:0 0 10px var(--gold);margin-bottom:24px;}
+.shop-items{display:flex;gap:18px;margin-bottom:28px;}
+.shop-card{width:190px;background:rgba(0,15,25,0.9);border:1px solid rgba(255,215,0,0.35);
+  border-radius:6px;padding:18px 14px;text-align:center;cursor:pointer;
+  transition:all .2s;position:relative;overflow:hidden;}
+.shop-card:hover:not(.sold-out){border-color:var(--gold);box-shadow:0 0 18px rgba(255,215,0,.5);transform:translateY(-3px);}
+.shop-card.sold-out{opacity:.4;cursor:not-allowed;}
+.shop-card .c-icon{font-size:28px;margin-bottom:8px;}
+.shop-card .c-name{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:var(--gold);
+  text-shadow:0 0 8px var(--gold);margin-bottom:6px;letter-spacing:1px;}
+.shop-card .c-desc{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(180,220,240,.75);
+  line-height:1.6;margin-bottom:10px;}
+.shop-card .c-price{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--gold);
+  text-shadow:0 0 8px var(--gold);}
+.shop-card .no-gold{position:absolute;inset:0;background:rgba(255,0,0,.12);display:none;
+  align-items:center;justify-content:center;font-size:11px;color:#ff4444;font-family:'Share Tech Mono',monospace;}
+#shopContinue{margin-top:0;}
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="1066" height="600"></canvas>
+
+  <div id="hud">
+    <div class="hp">
+      <div class="hp-lbl">▸ PLAYER HP</div>
+      <div class="hp-bar"><div id="hpFill"></div></div>
+      <div class="hp-txt" id="hpText">200 / 200</div>
+    </div>
+    <div class="panel" style="color:var(--yellow);text-shadow:0 0 8px var(--yellow);">KILL : <span id="scoreVal">0</span></div>
+    <div class="panel" style="color:var(--pink);text-shadow:0 0 8px var(--pink);">WAVE : <span id="waveVal">1</span> / 100</div>
+    <div class="panel" style="color:var(--orange);text-shadow:0 0 8px var(--orange);">ENEMY : <span id="enemyCount">0</span></div>
+    <div class="panel" style="color:var(--cyan);font-size:10px;">ATK <span id="dmgVal">20</span> / ULT <span id="ultDmgVal">40</span></div>
+    <div class="panel gold-panel">💰 <span id="goldVal">0</span>G</div>
+  </div>
+
+  <div id="skillHUD">
+    <div class="sk" id="skH"><div class="k">H</div><div class="nm">폭발</div><div class="cdb"><div class="cdf" id="cdH"></div></div></div>
+    <div class="sk" id="skF"><div class="k">F</div><div class="nm">마비</div><div class="cdb"><div class="cdf" id="cdF"></div></div></div>
+    <div class="sk" id="skC"><div class="k">C</div><div class="nm">궁극기</div><div class="cdb"><div class="cdf" id="cdC"></div></div></div>
+  </div>
+
+  <div id="moveHint">WASD : 이동<br>마우스 : 조준<br>LMB : 공격<br>F : 마비</div>
+
+  <div id="ultiBanner">⚡ OVERDRIVE ⚡</div>
+  <div id="killMsg"></div>
+  <div id="waveAnn"></div>
+
+  <div id="overlay">
+    <h1>NEON STRIKE</h1>
+    <div class="sub">SURVIVE THE NEON WAVES</div>
+    <div class="kl">
+      <span>WASD</span> — 이동<br>
+      <span>LMB</span>  — 일반 공격<br>
+      <span>H</span>    — 주변 적 폭발<br>
+      <span>F</span>    — 주변 적 마비<br>
+      <span>C</span>    — 궁극기 15초<br>
+      <span></span>     적 처치 시 기본 100G<br>
+      <span></span>     🔥 5초 내 연속 처치 시 보너스!
+    </div>
+    <button class="obtn" id="startBtn">LAUNCH MISSION</button>
+  </div>
+
+  <div id="shopOverlay">
+    <h2>🏪 SHOP</h2>
+    <div class="shop-sub">WAVE <span id="shopWaveNum">1</span> 클리어! 아이템 구매</div>
+    <div class="shop-gold">보유 골드 : 💰 <span id="shopGoldDisp">0</span>G</div>
+    <div class="shop-items">
+      <div class="shop-card" id="shopItem0" onclick="buyItem(0)">
+        <div class="c-icon">💊</div>
+        <div class="c-name">구원</div>
+        <div class="c-desc">HP를 20~100 사이<br>랜덤으로 즉시 회복</div>
+        <div class="c-price">💰 200G</div>
+        <div class="no-gold" id="noG0">골드 부족</div>
+      </div>
+      <div class="shop-card" id="shopItem1" onclick="buyItem(1)">
+        <div class="c-icon">💀</div>
+        <div class="c-name">파괴와 약화</div>
+        <div class="c-desc">2라운드 동안만 적의<br>공격력을 10 약화시킴</div>
+        <div class="c-price">💰 250G</div>
+        <div class="no-gold" id="noG1">골드 부족</div>
+      </div>
+    </div>
+    <button class="obtn" id="shopContinue" onclick="closeShop()">전투 계속 ▶</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ── Constants
+const MAX_HP = 200;
+const ENEMY_HP = 70;
+const BASE_DMG_START = 20;
+const ULTI_DMG_START = 40;
+const DMG_PER_WAVE   = 4;
+const ULTI_PER_WAVE  = 7;
+const ULTI_DUR = 15000;
+const PLAYER_SPD = 3.2;
+const SKILL_CD = { H:8000, F:10000, C:60000 };
+const GOLD_PER_KILL = 100;
+const SHOP_PRICES = [200, 250];
+const MAX_WAVE = 100;
+const MULTI_KILL_WINDOW = 5000; // 연속 킬 제한 시간 (5초)
+
+// ── State
+let state = 'menu';
+let player, enemies, bullets, particles, floatTexts;
+let score, wave, waveSpawning;
+let debuffRemainingRounds = 0; 
+let skills, ultiActive, ultiTimer;
+let gold;
+let mouseX = W/2, mouseY = H/2;
+let lastTime = 0;
+let keys = {};
+let currentBaseDmg, currentUltiDmg;
+let shakeIntensity = 0;
+
+// ── 연속 킬 시스템 변수
+let lastKillTime = 0;
+let currentStreak = 0;
+
+function initGame() {
+  player = { x:W/2, y:H/2, r:16, hp:MAX_HP, angle:0, trail:[], invul:0 };
+  enemies=[]; bullets=[]; particles=[]; floatTexts=[];
+  score=0; wave=1; waveSpawning=false; gold=0;
+  debuffRemainingRounds = 0;
+  shakeIntensity = 0;
+  lastKillTime = 0;
+  currentStreak = 0;
+  checkboxShopStatus();
+  clearTimeout(window.waveSpawningTimeout);
+  ultiActive=false; ultiTimer=0;
+  skills={H:0,F:0,C:0};
+  calcDmg();
+  spawnWave();
+  updateHUD();
+}
+
+function calcDmg() {
+  currentBaseDmg = BASE_DMG_START + (wave-1)*DMG_PER_WAVE;
+  currentUltiDmg = ULTI_DMG_START + (wave-1)*ULTI_PER_WAVE;
+}
+
+function randCount() { 
+  let count = 6 + Math.floor(wave * 1.5) + Math.floor(Math.random() * 3);
+  return Math.min(110, count); 
+}
+
+function spawnWave() {
+  calcDmg();
+  document.getElementById('waveVal').textContent   = wave;
+  document.getElementById('dmgVal').textContent    = currentBaseDmg;
+  document.getElementById('ultDmgVal').textContent = currentUltiDmg;
+  
+  if(debuffRemainingRounds > 0) {
+    showKillMsg(`약화 디버프 활성화 중! (${debuffRemainingRounds}R 남음)`);
+  }
+
+  const n = randCount();
+  for (let i=0;i<n;i++) spawnEnemy();
+  showWaveAnn('WAVE ' + wave);
+}
+
+function spawnEnemy() {
+  let x,y;
+  const side=Math.floor(Math.random()*4);
+  if(side===0){x=Math.random()*W;y=-22;}
+  else if(side===1){x=W+22;y=Math.random()*H;}
+  else if(side===2){x=Math.random()*W;y=H+22;}
+  else{x=-22;y=Math.random()*H;}
+  const roll=Math.random();
+  let type;
+  if(wave>=5&&roll<0.25) type='tank';
+  else if(wave>=3&&roll<0.45) type='fast';
+  else type='basic';
+  const isT=(type==='tank');
+  
+  let enemyBaseDmg = 30;
+  if(debuffRemainingRounds > 0) {
+    enemyBaseDmg = Math.max(1, enemyBaseDmg - 10);
+  }
+
+  enemies.push({
+    x,y, r:isT?18:12,
+    hp:isT?ENEMY_HP*2:ENEMY_HP,
+    maxHp:isT?ENEMY_HP*2:ENEMY_HP,
+    speed:type==='fast'?2.0:isT?0.85:1.2,
+    type, stunTimer:0, angle:0,
+    shootTimer:type==='basic'?2200+Math.random()*800:9999,
+    shootCd:type==='basic'?2800:9999,
+    dmg:enemyBaseDmg,
+    trail:[]
+  });
+}
+
+function loop(ts) {
+  if(state!=='play') return;
+  const dt=Math.min(ts-lastTime,50);
+  lastTime=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function update(dt) {
+  if (shakeIntensity > 0) {
+    shakeIntensity -= dt * 0.04;
+    if (shakeIntensity < 0) shakeIntensity = 0;
+  }
+
+  // 5초 지나면 연속 킬 스트릭 초기화
+  if (currentStreak > 0 && Date.now() - lastKillTime > MULTI_KILL_WINDOW) {
+    currentStreak = 0;
+  }
+
+  // Movement
+  let mvx=0,mvy=0;
+  if(keys['w']||keys['arrowup'])    mvy-=1;
+  if(keys['s']||keys['arrowdown'])  mvy+=1;
+  if(keys['a']||keys['arrowleft'])  mvx-=1;
+  if(keys['d']||keys['arrowright']) mvx+=1;
+  if(mvx&&mvy){mvx*=0.707;mvy*=0.707;}
+  player.x=Math.max(player.r,Math.min(W-player.r,player.x+mvx*PLAYER_SPD));
+  player.y=Math.max(player.r,Math.min(H-player.r,player.y+mvy*PLAYER_SPD));
+
+  player.angle=Math.atan2(mouseY-player.y,mouseX-player.x);
+  player.trail.push({x:player.x,y:player.y});
+  if(player.trail.length>12) player.trail.shift();
+
+  // Skill CD UI
+  for(const k of ['H','F','C']){
+    const rem=Math.max(0,skills[k]-Date.now());
+    document.getElementById('cd'+k).style.width=(100-rem/SKILL_CD[k]*100)+'%';
+  }
+
+  if(ultiActive){ultiTimer-=dt;if(ultiTimer<=0){ultiActive=false;document.getElementById('ultiBanner').style.display='none';}}
+  if(player.invul>0) player.invul-=dt;
+
+  // Bullets & Enemies
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.x+=Math.cos(b.angle)*b.speed;
+    b.y+=Math.sin(b.angle)*b.speed;
+    b.life-=dt;
+    if(b.life<=0||b.x<-10||b.x>W+10||b.y<-10||b.y>H+10){bullets.splice(i,1);continue;}
+    if(b.owner==='player'){
+      for(let j=enemies.length-1;j>=0;j--){
+        if(dist(b.x,b.y,enemies[j].x,enemies[j].y)<enemies[j].r+5){
+          hitEnemy(enemies[j],j,b.dmg);
+          spawnParticles(b.x,b.y,'#00f5ff',7,2);
+          bullets.splice(i,1);break;
+        }
+      }
+    } else {
+      if(player.invul<=0&&dist(b.x,b.y,player.x,player.y)<player.r+5){
+        player.hp-=b.dmg; player.invul=500;
+        spawnParticles(player.x,player.y,'#ff0044',10,2.5);
+        spawnText(player.x,player.y-20,'-'+b.dmg,'#ff4455');
+        bullets.splice(i,1);
+        updateHUD();
+        if(player.hp<=0){gameover();return;}
+      }
+    }
+  }
+
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    e.trail.push({x:e.x,y:e.y});
+    if(e.trail.length>8) e.trail.shift();
+    if(e.stunTimer>0){e.stunTimer-=dt;continue;}
+    const edx=player.x-e.x,edy=player.y-e.y;
+    const ed=Math.sqrt(edx*edx+edy*edy);
+    e.angle=Math.atan2(edy,edx);
+    if(ed>e.r+player.r){e.x+=(edx/ed)*e.speed;e.y+=(edy/ed)*e.speed;}
+    else{
+      if(player.invul<=0){
+        player.hp-=e.dmg; player.invul=600;
+        spawnParticles(player.x,player.y,'#ff0044',6,2);
+        spawnText(player.x,player.y-20,'-'+e.dmg,'#ff4455');
+        updateHUD();
+        if(player.hp<=0){gameover();return;}
+      }
+    }
+    e.shootTimer-=dt;
+    if(e.shootTimer<=0&&ed<320){
+      e.shootTimer=e.shootCd;
+      bullets.push({x:e.x,y:e.y,angle:e.angle,speed:3.5,life:2000,owner:'enemy',dmg:e.dmg});
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+  for(let i=floatTexts.length-1;i>=0;i--){
+    const t=floatTexts[i];t.y-=1;t.life-=dt;
+    if(t.life<=0)floatTexts.splice(i,1);
+  }
+
+  document.getElementById('enemyCount').textContent=enemies.length;
+
+  if(enemies.length===0&&!waveSpawning){
+    waveSpawning=true;
+    if(wave >= MAX_WAVE) {
+      setTimeout(()=>gameClear(),1000);
+    } else {
+      window.waveSpawningTimeout = setTimeout(()=>openShop(),1200);
+    }
+  }
+}
+
+// 처치 핸들러 및 연속 킬 판정 수식
+function handleKillLogic() {
+  score++;
+  let earnedGold = GOLD_PER_KILL;
+  const now = Date.now();
+  
+  // 5초 안에 재처치 시 연속 킬 카운트 상승
+  if (now - lastKillTime <= MULTI_KILL_WINDOW) {
+    currentStreak++;
+  } else {
+    currentStreak = 1;
+  }
+  lastKillTime = now;
+
+  // 연속 킬 단계별 메시지, 골드 보너스 및 진동 차등 조율
+  let killBannerMsg = '1 ELIMINATED';
+  let bonusGold = 0;
+  
+  if (currentStreak === 2) {
+    killBannerMsg = '🔥 DOUBLE KILL! 🔥';
+    bonusGold = 50;
+    shakeIntensity = 14;
+  } else if (currentStreak === 3) {
+    killBannerMsg = '⚡ TRIPLE KILL!! ⚡';
+    bonusGold = 100;
+    shakeIntensity = 18;
+  } else if (currentStreak === 4) {
+    killBannerMsg = '💀 QUADRA KILL!!! 💀';
+    bonusGold = 200;
+    shakeIntensity = 22;
+  } else if (currentStreak >= 5) {
+    killBannerMsg = '🏆 PENTAKILL!!!!! 🏆';
+    bonusGold = 400;
+    shakeIntensity = 32; // 펜타킬 달성 시 강력한 진동 이펙트
+  } else {
+    shakeIntensity = 9; // 단일 킬 기본 진동
+  }
+
+  gold += (earnedGold + bonusGold);
+  
+  if (bonusGold > 0) {
+    spawnText(player.x, player.y - 45, `+${bonusGold}G BONUS`, 'var(--gold)');
+  }
+
+  showKillMsg(killBannerMsg);
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('goldVal').textContent = gold;
+}
+
+function hitEnemy(e,idx,dmg){
+  e.hp-=dmg;
+  spawnText(e.x,e.y-e.r-8,'-'+dmg,'#ff6600');
+  if(e.hp<=0){
+    spawnParticles(e.x,e.y,eCol(e.type),15,3);
+    enemies.splice(idx,1);
+    handleKillLogic(); // 연동 분리
+  }
+}
+
+// ── Shop
+function checkboxShopStatus() {
+  const card = document.getElementById('shopItem1');
+  if(debuffRemainingRounds > 0) {
+    card.classList.add('sold-out');
+  } else {
+    card.classList.remove('sold-out');
+  }
+}
+
+function openShop(){
+  state='shop';
+  document.getElementById('shopWaveNum').textContent=wave;
+  document.getElementById('shopGoldDisp').textContent=gold;
+  document.getElementById('shopItem0').classList.remove('sold-out');
+  document.getElementById('noG0').style.display='none';
+  document.getElementById('noG1').style.display='none';
+  checkboxShopStatus();
+  document.getElementById('shopOverlay').style.display='flex';
+}
+
+function closeShop(){
+  document.getElementById('shopOverlay').style.display='none';
+  if(debuffRemainingRounds > 0) {
+    debuffRemainingRounds--;
+  }
+  wave++;
+  waveSpawning=false;
+  state='play';
+  spawnWave();
+  lastTime=performance.now();
+  requestAnimationFrame(loop);
+}
+
+function buyItem(idx){
+  if(state!=='shop') return;
+  const card=document.getElementById('shopItem'+idx);
+  if(card.classList.contains('sold-out')) return;
+  const price=SHOP_PRICES[idx];
+  if(gold<price){
+    const ng=document.getElementById('noG'+idx);
+    ng.style.display='flex';
+    setTimeout(()=>ng.style.display='none',1200);
+    return;
+  }
+  gold-=price;
+  document.getElementById('goldVal').textContent=gold;
+  document.getElementById('shopGoldDisp').textContent=gold;
+
+  if(idx===0){
+    const heal=20+Math.floor(Math.random()*81);
+    player.hp=Math.min(MAX_HP,player.hp+heal);
+    updateHUD();
+  } else if(idx===1){
+    debuffRemainingRounds = 2;
+    for(const e of enemies) e.dmg=Math.max(1, e.dmg-10);
+    card.classList.add('sold-out');
+    showKillMsg("적 공격력 10 감소 디버프 구매 완료!");
+  }
+}
+
+// ── Draw
+function draw(){
+  ctx.save();
+  if (shakeIntensity > 0) {
+    const dx = (Math.random() - 0.5) * shakeIntensity;
+    const dy = (Math.random() - 0.5) * shakeIntensity;
+    ctx.translate(dx, dy);
+  }
+
+  ctx.fillStyle='#020408'; ctx.fillRect(0,0,W,H);
+  drawGrid();
+  for(const p of particles){
+    const a=p.life/p.maxLife;
+    ctx.save();ctx.globalAlpha=a;ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+  for(const e of enemies) drawTrail(e.trail,eCol(e.type),0.15);
+  drawTrail(player.trail,ultiActive?'#aa00ff':'#00f5ff',0.18);
+  for(const b of bullets){
+    const col=b.owner==='player'?'#00f5ff':'#ff3355';
+    ctx.save();ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=14;
+    ctx.beginPath();ctx.arc(b.x,b.y,4,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+  for(const e of enemies) drawEnemy(e);
+  drawPlayer();
+  for(const t of floatTexts){
+    const a=t.life/t.maxLife;
+    ctx.save();ctx.globalAlpha=a;ctx.fillStyle=t.color;ctx.shadowColor=t.color;ctx.shadowBlur=10;
+    ctx.font='bold 13px "Share Tech Mono"';ctx.textAlign='center';
+    ctx.fillText(t.text,t.x,t.y);ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawGrid(){
+  ctx.save();ctx.strokeStyle='rgba(0,245,255,0.055)';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+}
+
+function drawPlayer(){
+  const p=player;
+  const col=ultiActive?'#dd00ff':'#00f5ff';
+  ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
+  if(ultiActive){
+    const g=ctx.createRadialGradient(0,0,p.r,0,0,p.r+20);
+    g.addColorStop(0,'rgba(170,0,255,0.3)');g.addColorStop(1,'rgba(170,0,255,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,p.r+20,0,Math.PI*2);ctx.fill();
+  }
+  ctx.strokeStyle=col;ctx.lineWidth=2;ctx.shadowColor=col;ctx.shadowBlur=22;
+  ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,20,40,0.8)';ctx.fill();ctx.stroke();
+  ctx.fillStyle=col;ctx.shadowBlur=12;
+  ctx.beginPath();
+  ctx.moveTo(p.r,0);ctx.lineTo(-p.r*.5,-p.r*.5);ctx.lineTo(-p.r*.3,0);ctx.lineTo(-p.r*.5,p.r*.5);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#fff';ctx.shadowBlur=6;
+  ctx.beginPath();ctx.arc(0,0,3,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  if(player.invul>0&&Math.floor(Date.now()/80)%2===0){
+    ctx.save();ctx.strokeStyle='#ff0044';ctx.lineWidth=3;ctx.shadowColor='#ff0044';ctx.shadowBlur=20;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r+4,0,Math.PI*2);ctx.stroke();ctx.restore();
+  }
+}
+
+function drawEnemy(e){
+  const col=e.stunTimer>0?'#ffee00':eCol(e.type);
+  ctx.save();ctx.translate(e.x,e.y);ctx.rotate(e.angle);
+  ctx.shadowColor=col;ctx.shadowBlur=15;ctx.strokeStyle=col;ctx.lineWidth=2;
+  if(e.type==='tank'){
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2-Math.PI/6;i===0?ctx.moveTo(Math.cos(a)*e.r,Math.sin(a)*e.r):ctx.lineTo(Math.cos(a)*e.r,Math.sin(a)*e.r);}
+    ctx.closePath();ctx.fillStyle='rgba(255,60,0,0.15)';ctx.fill();ctx.stroke();
+  } else if(e.type==='fast'){
+    ctx.beginPath();ctx.moveTo(e.r,0);ctx.lineTo(-e.r*.7,-e.r*.7);ctx.lineTo(-e.r*.7,e.r*.7);
+    ctx.closePath();ctx.fillStyle='rgba(255,0,170,0.15)';ctx.fill();ctx.stroke();
+  } else {
+    ctx.beginPath();ctx.moveTo(0,-e.r);ctx.lineTo(e.r,0);ctx.lineTo(0,e.r);ctx.lineTo(-e.r,0);
+    ctx.closePath();ctx.fillStyle='rgba(255,100,0,0.15)';ctx.fill();ctx.stroke();
+  }
+  ctx.rotate(-e.angle);
+  const bw=e.r*2.4,bh=4;
+  ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(-bw/2,-e.r-10,bw,bh);
+  const pct=e.hp/e.maxHp;
+  const hc=pct>.5?'#00ff88':pct>.25?'#ffee00':'#ff3333';
+  ctx.fillStyle=hc;ctx.shadowColor=hc;ctx.shadowBlur=6;ctx.fillRect(-bw/2,-e.r-10,bw*pct,bh);
+  ctx.restore();
+}
+
+function drawTrail(trail,color,ba){
+  for(let i=0;i<trail.length;i++){
+    const a=(i/trail.length)*ba;
+    ctx.save();ctx.globalAlpha=a;ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=8;
+    ctx.beginPath();ctx.arc(trail[i].x,trail[i].y,3*(i/trail.length),0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+
+function eCol(t){return t==='tank'?'#ff3300':t==='fast'?'#ff00aa':'#ff6600';}
+
+// ── Skills
+function fireSkill(key){
+  if(state!=='play') return;
+  if(Date.now()<skills[key]) return;
+  if(key==='H'){
+    const range=140;let killed=0;
+    for(let i=enemies.length-1;i>=0;i--){
+      if(dist(player.x,player.y,enemies[i].x,enemies[i].y)<range){
+        spawnParticles(enemies[i].x,enemies[i].y,'#ff00aa',20,4);
+        enemies.splice(i,1);
+        handleKillLogic(); // 연속 킬 추적 연동
+      }
+    }
+    spawnRing(player.x,player.y,range,'#ff00aa');
+    skills.H=Date.now()+SKILL_CD.H;
+  } else if(key==='F'){
+    const range=155;
+    for(const e of enemies) if(dist(player.x,player.y,e.x,e.y)<range) e.stunTimer=5000;
+    spawnRing(player.x,player.y,range,'#ffee00');
+    skills.F=Date.now()+SKILL_CD.F;
+  } else if(key==='C'){
+    ultiActive=true;ultiTimer=ULTI_DUR;
+    player.hp=MAX_HP;updateHUD();
+    document.getElementById('ultiBanner').style.display='block';
+    setTimeout(()=>document.getElementById('ultiBanner').style.display='none',3000);
+    spawnRing(player.x,player.y,200,'#aa00ff');
+    skills.C=Date.now()+SKILL_CD.C;
+  }
+}
+
+// ── Helpers
+function spawnRing(cx,cy,r,color){
+  for(let i=0;i<36;i++){
+    const a=(i/36)*Math.PI*2;
+    particles.push({x:cx+Math.cos(a)*r*.3,y:cy+Math.sin(a)*r*.3,vx:Math.cos(a)*3.5,vy:Math.sin(a)*3.5,r:3,color,life:600,maxLife:600});
+  }
+}
+function spawnParticles(cx,cy,color,count,spd){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2,s=Math.random()*spd;
+    particles.push({x:cx,y:cy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:2+Math.random()*2,color,life:500+Math.random()*300,maxLife:800});
+  }
+}
+function spawnText(x,y,text,color){floatTexts.push({x,y,text,color,life:900,maxLife:900});}
+function dist(ax,ay,bx,by){return Math.sqrt((ax-bx)**2+(ay-by)**2);}
+
+function firePlayerBullet(){
+  if(state!=='play') return;
+  const dmg=ultiActive?currentUltiDmg:currentBaseDmg;
+  bullets.push({x:player.x+Math.cos(player.angle)*20,y:player.y+Math.sin(player.angle)*20,
+    angle:player.angle+(Math.random()-.5)*.05,speed:9,life:1200,owner:'player',dmg});
+  spawnParticles(player.x+Math.cos(player.angle)*22,player.y+Math.sin(player.angle)*22,'#00f5ff',5,2);
+}
+
+function updateHUD(){
+  const pct=(player.hp/MAX_HP)*100;
+  document.getElementById('hpFill').style.width=Math.max(0,pct)+'%';
+  document.getElementById('hpText').textContent=Math.max(0,player.hp)+' / '+MAX_HP;
+  const f=document.getElementById('hpFill');
+  f.style.background=pct>60?'linear-gradient(90deg,#00ff88,#00ffcc)':pct>30?'linear-gradient(90deg,#ffee00,#ffcc00)':'linear-gradient(90deg,#ff3333,#ff6600)';
+}
+function showKillMsg(msg){
+  const el=document.getElementById('killMsg');el.textContent=msg;el.style.opacity='1';
+  clearTimeout(el._t);el._t=setTimeout(()=>el.style.opacity='0',1600);
+}
+function showWaveAnn(msg){
+  const el=document.getElementById('waveAnn');el.textContent=msg;el.style.opacity='1';el.style.transition='opacity .3s';
+  clearTimeout(el._t);el._t=setTimeout(()=>el.style.opacity='0',2000);
+}
+
+function gameover(){
+  state='dead';
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`
+    <div style="font-size:50px;font-weight:900;color:var(--pink);text-shadow:0 0 20px var(--pink);letter-spacing:6px;margin-bottom:14px;">GAME OVER</div>
+    <div style="font-family:'Share Tech Mono';color:var(--cyan);font-size:13px;margin-bottom:20px;">
+      WAVE ${wave} &nbsp;|&nbsp; KILL ${score} &nbsp;|&nbsp; ATK ${currentBaseDmg} &nbsp;|&nbsp; 💰 ${gold}G
+    </div>
+    <button class="obtn" onclick="restartGame()">RETRY</button>
+  `;
+  ov.style.display='flex';
+}
+
+function gameClear(){
+  state='clear';
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`
+    <div style="font-size:50px;font-weight:900;color:var(--green);text-shadow:0 0 20px var(--green);letter-spacing:6px;margin-bottom:14px;">MISSION CLEAR</div>
+    <div style="color:var(--yellow); font-size:18px; margin-bottom:15px; text-shadow:0 0 8px var(--yellow);">✨ 네온 웨이브 정복 완료! ✨</div>
+    <div style="font-family:'Share Tech Mono';color:var(--cyan);font-size:14px;margin-bottom:25px;line-height:1.8;">
+      최종 웨이브: ${wave} / 100<br>
+      총 처치 수: ${score}<br>
+      최종 공격력: ${currentBaseDmg}<br>
+      보유 골드: 💰 ${gold}G
+    </div>
+    <button class="obtn" onclick="restartGame()">PLAY AGAIN</button>
+  `;
+  ov.style.display='flex';
+}
+
+function restartGame(){
+  document.getElementById('overlay').style.display='none';
+  state='play';initGame();lastTime=performance.now();
+  requestAnimationFrame(loop);
+}
+
+// ── Input
+canvas.addEventListener('click',e=>{
+  if(state!=='play') return;
+  const r=canvas.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
+  firePlayerBullet();
+});
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
+});
+
+const skFired={};
+document.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(!skFired[k]){
+    skFired[k]=true;
+    const ku=k.toUpperCase();
+    if(['H','F','C'].includes(ku)){e.preventDefault();fireSkill(ku);}
+  }
+  keys[k]=true;
+});
+document.addEventListener('keyup',e=>{const k=e.key.toLowerCase();keys[k]=false;skFired[k]=false;});
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+  document.getElementById('overlay').style.display='none';
+  state='play';initGame();lastTime=performance.now();
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>

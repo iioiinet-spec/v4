@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>네온 우주 리듬 시뮬레이터 - 모드 독립 체인 에디션</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #000002; touch-action: none; font-family: sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; }
+        
+        #instruction { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px; font-weight: bold; pointer-events: none; text-align: center; line-height: 1.6; z-index: 10; text-shadow: 0 0 8px #00ffff, 0 0 15px #000; width: 90%; }
+        #score-board { position: absolute; top: 75px; left: 50%; transform: translateX(-50%); color: #00ffff; font-size: 19px; font-weight: bold; z-index: 10; font-family: monospace; text-shadow: 0 0 10px #00ffff; pointer-events: none; text-align: center; }
+        #mode-badge { font-size: 14px; display: block; margin-top: 4px; color: #ff00ff; text-shadow: 0 0 8px #ff00ff; }
+        
+        #controls { position: absolute; bottom: 135px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: 95%; }
+        .sector-btn { background: rgba(0, 0, 0, 0.6); color: #ccc; border: 1px solid rgba(255, 255, 255, 0.3); padding: 5px 10px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: all 0.2s; }
+        .sector-btn.active { background: #00ffff; color: #000; box-shadow: 0 0 10px #00ffff; border-color: #00ffff; font-weight: bold; }
+
+        #mobile-pads { 
+            position: absolute; 
+            bottom: 15px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 90%; 
+            max-width: 440px; 
+            height: 80px; 
+            z-index: 11; 
+            display: flex; 
+            gap: 6px; 
+            justify-content: space-between; 
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            transition: max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .pad { flex: 1; background: rgba(0, 255, 255, 0.04); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: rgba(0, 255, 255, 0.7); font-weight: bold; font-size: 16px; cursor: pointer; transition: all 0.08s; -webkit-user-select:none; user-select:none; }
+        .pad:active, .pad.hit-flash { background: rgba(0, 255, 255, 0.35); border-color: #00ffff; box-shadow: 0 0 12px #00ffff; color: #fff; text-shadow: 0 0 5px #00ffff; }
+        .pad span { font-size: 8px; opacity: 0.5; margin-top: 1px; }
+    </style>
+</head>
+<body>
+
+    <div id="instruction">
+        🌌 <span id="sector-title">1. 안드로메다 은하 섹터</span><br>
+        [일반 MAX 20+ ➔ H키: 하드 오픈] | [하드 MAX 10+ ➔ Q키: 슈퍼두퍼 오픈]<br>
+        ★ <b>G키</b>를 누르면 언제든 이전 단계 모드로 전환 가능! (Space: 리셋 | C: 색상반전)
+    </div>
+
+    <div id="score-board">
+        SCORE: 000000 | COMBO: 0 | MODE MAX: 0
+        <span id="mode-badge">MODE: NORMAL (4 KEYS)</span>
+    </div>
+
+    <div id="controls">
+        <button class="sector-btn active" onclick="changeSector(1)">1. 안드로메다</button>
+        <button class="sector-btn" onclick="changeSector(2)">2. 토성 고리</button>
+        <button class="sector-btn" onclick="changeSector(3)">3. 가르강튀아</button>
+        <button class="sector-btn" onclick="changeSector(4)">4. 오리온 성운</button>
+    </div>
+
+    <div id="mobile-pads"></div>
+
+    <canvas id="fluidCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('fluidCanvas');
+const ctx = canvas.getContext('2d');
+
+const gw = 96; const gh = 96; const total = gw * gh;
+let vx = new Float32Array(total); let vy = new Float32Array(total);
+let vx_old = new Float32Array(total); let vy_old = new Float32Array(total);
+let rDen = new Float32Array(total); let gDen = new Float32Array(total); let bDen = new Float32Array(total);
+let rDen_old = new Float32Array(total); let gDen_old = new Float32Array(total); let bDen_old = new Float32Array(total);
+
+let particles = []; let bgStars = [];
+let currentSector = 1; let isMoving = false; let lX = 0, lY = 0, sTime = 0;
+let isRainbow = true; let hue = 0;
+
+const blackHoleRadiusGrid = 2.0; const gravityLimitRadius = 18.0;
+
+// 🎹 리듬게임 변수 - 모드별 맥스 콤보 완전 독립화
+let notes = [];
+let gameScore = 0;
+let gameCombo = 0;
+
+let normalMaxCombo = 0; // 일반 모드 전용 최고 콤보
+let hardMaxCombo = 0;   // 하드 모드 전용 최고 콤보
+let superMaxCombo = 0;  // 슈퍼두퍼 모드 전용 최고 콤보
+
+let lastSpawnTime = 0;
+
+// 모드 상태: 0 = NORMAL, 1 = HARD, 2 = SUPER DUPER
+let gameMode = 0; 
+let noteSpeedDelay = 2000; 
+let maxLanes = 4;
+
+let currentKeyMap = {'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3};
+const keyLayouts = {
+    4: ['D', 'F', 'J', 'K'],
+    6: ['S', 'D', 'F', 'J', 'K', 'L']
+};
+
+let trackWidth = 440; let trackLeft = 0; let laneWidth = 0;
+
+function rebuildPads() {
+    const padContainer = document.getElementById('mobile-pads');
+    padContainer.innerHTML = '';
+    
+    if (maxLanes === 6) {
+        padContainer.style.maxWidth = "600px";
+    } else {
+        padContainer.style.maxWidth = "440px";
+    }
+    
+    const labels = keyLayouts[maxLanes];
+    for(let i=0; i<maxLanes; i++) {
+        const div = document.createElement('div');
+        div.className = 'pad';
+        div.id = `pad-${i}`;
+        div.innerHTML = `${labels[i]}<span>L${i+1}</span>`;
+        
+        div.addEventListener('mousedown', (e) => { e.preventDefault(); triggerButton(i); });
+        div.addEventListener('touchstart', (e) => { e.preventDefault(); triggerButton(i); });
+        padContainer.appendChild(div);
+    }
+    setSize();
+}
+
+function setSize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    trackWidth = Math.min(maxLanes === 6 ? 600 : 440, canvas.width * 0.95);
+    trackLeft = (canvas.width - trackWidth) / 2;
+    laneWidth = trackWidth / maxLanes;
+    
+    makeStars();
+}
+
+function makeStars() {
+    bgStars = [];
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const size = Math.min(canvas.width, canvas.height);
+    for(let i=0; i<(currentSector===2?1000:600); i++) {
+        let x=0, y=0, color='rgba(255,255,255,';
+        if(currentSector === 1) {
+            let a = Math.random()*Math.PI*2, d = Math.pow(Math.random(),2)*(size*0.6);
+            let sa = a + d*0.015; x = cx + Math.cos(sa)*d; y = cy + Math.sin(sa)*d;
+            color = d<80 ? 'rgba(255,255,180,' : (Math.random()>0.5 ? 'rgba(255,0,130,' : 'rgba(0,255,255,');
+        } else if(currentSector === 2) {
+            let a = Math.random()*Math.PI*2, w = Math.random()*(size*0.3)+(size*0.15);
+            let rx = Math.cos(a)*w, ry = Math.sin(a)*(w*0.25);
+            x = cx + (rx*Math.cos(0.3) - ry*Math.sin(0.3)); y = cy + (rx*Math.sin(0.3) + ry*Math.cos(0.3));
+            color = w > size*0.28 ? 'rgba(230,200,170,' : 'rgba(170,200,230,';
+        } else if(currentSector === 3) {
+            let a = Math.random()*Math.PI*2, d = Math.pow(Math.random(),1.2)*(size*0.45) + (size*0.04);
+            let sa = a + d*0.014; x = cx + Math.cos(sa)*d; y = cy + Math.sin(sa)*d;
+            color = d < size*0.12 ? 'rgba(255,240,180,' : 'rgba(255,100,10,';
+        } else {
+            x = Math.random()*canvas.width; y = Math.random()*canvas.height;
+            color = Math.random()>0.6 ? 'rgba(255,50,50,' : 'rgba(80,180,255,';
+        }
+        bgStars.push({x, y, sz: Math.random()*2+0.6, a: Math.random()*0.8+0.2, c: color});
+    }
+}
+
+function changeSector(num) {
+    currentSector = num;
+    const titles = ["1. 안드로메다 은하 섹터", "2. 토성 고리 섹터", "3. 가르강튀아 블랙홀 (★제한 중력)", "4. 오리온 성운 아기별"];
+    document.getElementById('sector-title').innerText = titles[num-1];
+    document.querySelectorAll('.sector-btn').forEach((b,i)=> b.classList.toggle('active', i===num-1));
+    particles = [];
+    makeStars();
+}
+
+function resetSpace() {
+    notes = []; 
+    particles = []; 
+    vx.fill(0); vy.fill(0); vx_old.fill(0); vy_old.fill(0);
+    rDen.fill(0); gDen.fill(0); bDen.fill(0); rDen_old.fill(0); gDen_old.fill(0); bDen_old.fill(0);
+    
+    gameScore = 0; gameCombo = 0; 
+    normalMaxCombo = 0; hardMaxCombo = 0; superMaxCombo = 0;
+    gameMode = 0; noteSpeedDelay = 2000; maxLanes = 4;
+    currentKeyMap = {'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3};
+    
+    rebuildPads();
+    updateScoreUI();
+}
+
+function updateScoreUI() {
+    const badges = [
+        "MODE: NORMAL (4 KEYS)",
+        "MODE: 🔥 HARD SPEED (4 KEYS)",
+        "MODE: 👑 SUPER DUPER (6 KEYS)"
+    ];
+    
+    // 현재 모드 상태에 따른 최고 콤보 매칭 출력
+    let currentMaxToShow = normalMaxCombo;
+    if(gameMode === 1) currentMaxToShow = hardMaxCombo;
+    if(gameMode === 2) currentMaxToShow = superMaxCombo;
+
+    document.getElementById('score-board').innerHTML = `SCORE: ${String(gameScore).padStart(6, '0')} | COMBO: ${gameCombo} | MODE MAX: ${currentMaxToShow}<span id="mode-badge">${badges[gameMode]}</span>`;
+}
+
+window.addEventListener('resize', setSize);
+
+function step(b, cur, old) {
+    let a = 0.12;
+    for(let k=0; k<3; k++) {
+        for(let j=1; j<gh-1; j++) {
+            for(let i=1; i<gw-1; i++) {
+                let idx = i+j*gw; cur[idx] = (old[idx] + a*(cur[idx+1]+cur[idx-1]+cur[idx+gw]+cur[idx-gw])) / (1+4*a);
+            }
+        }
+    }
+}
+function moveMat(b, cur, old, vX, vY) {
+    let dt = 1.4;
+    for(let j=1; j<gh-1; j++) {
+        for(let i=1; i<gw-1; i++) {
+            let idx = i+j*gw; let x = i - dt*vX[idx], y = j - dt*vY[idx];
+            if(x<0.5) x=0.5; if(x>gw-1.5) x=gw-1.5; if(y<0.5) y=0.5; if(y>gh-1.5) y=gh-1.5;
+            let i0=Math.floor(x), i1=i0+1, j0=Math.floor(y), j1=j0+1;
+            let s1=x-i0, s0=1-s1, t1=y-j0, t0=1-t1;
+            cur[idx] = s0*(t0*old[i0+j0*gw] + t1*old[i0+j1*gw]) + s1*(t0*old[i1+j0*gw] + t1*old[i1+j1*gw]);
+        }
+    }
+}
+function lockVel(vX, vY, p, div) {
+    for(let j=1; j<gh-1; j++) {
+        for(let i=1; i<gw-1; i++) {
+            let idx = i+j*gw; div[idx] = -0.4*(vX[idx+1]-vX[idx-1]+vY[idx+gw]-vY[idx-gw])/gw; p[idx] = 0;
+        }
+    }
+    for(let k=0; k<3; k++) {
+        for(let j=1; j<gh-1; j++) {
+            for(let i=1; i<gw-1; i++) {
+                let idx = i+j*gw; p[idx] = (div[idx]+(p[idx+1]+p[idx-1]+p[idx+gw]+p[idx-gw]))/4;
+            }
+        }
+    }
+    for(let j=1; j<gh-1; j++) {
+        for(let i=1; i<gw-1; i++) {
+            let idx = i+j*gw; vX[idx] -= 0.4*gw*(p[idx+1]-p[idx-1]); vY[idx] -= 0.4*gh*(p[idx+gw]-p[idx-gw]);
+        }
+    }
+}
+
+function updateSimulation() {
+    step(1, vx_old, vx); step(2, vy_old, vy); lockVel(vx_old, vy_old, vx, vy);
+    moveMat(1, vx, vx_old, vx_old, vy_old); moveMat(2, vy, vy_old, vx_old, vy_old); lockVel(vx, vy, vx_old, vy_old);
+    step(0, rDen_old, rDen); moveMat(0, rDen, rDen_old, vx, vy);
+    step(0, gDen_old, gDen); moveMat(0, gDen, gDen_old, vx, vy);
+    step(0, bDen_old, bDen); moveMat(0, bDen, bDen_old, vx, vy);
+
+    const rDecay = 0.94 + ((Math.random()*3+1)*0.01)*(1/Math.sqrt(2));
+    const finalDecay = Math.min(0.98, Math.max(0.94, rDecay));
+    const fcx = gw / 2, fcy = gh / 2;
+
+    for(let j=0; j<gh; j++) {
+        for(let i=0; i<gw; i++) {
+            let idx = i+j*gw;
+            if(currentSector === 3) {
+                let dx = fcx - i, dy = fcy - j, d = Math.sqrt(dx*dx + dy*dy);
+                if(d > 0.1) {
+                    if(d <= blackHoleRadiusGrid) { rDen[idx] *= 0.5; gDen[idx] *= 0.5; bDen[idx] *= 0.5; vx[idx] = vy[idx] = 0; continue; }
+                    else if(d <= gravityLimitRadius) {
+                        let forceRatio = (1.0 - (d / gravityLimitRadius));
+                        let pull = (0.45 / d) * forceRatio; let rotate = (1.8 / Math.sqrt(d)) * forceRatio;
+                        vx[idx] += (dx/d)*pull + (-dy/d)*rotate; vy[idx] += (dy/d)*pull + (dx/d)*rotate;
+                    }
+                }
+            }
+            rDen[idx] *= finalDecay; gDen[idx] *= finalDecay; bDen[idx] *= finalDecay;
+            vx[idx] *= 0.95; vy[idx] *= 0.95;
+        }
+    }
+}
+
+function pushForce(x, y, mx, my, exp=false) {
+    let cx = Math.floor((x/canvas.width)*gw), cy = Math.floor((y/canvas.height)*gh);
+    if(cx<0||cx>=gw||cy<0||cy>=gh) return;
+    let r = exp ? 7 : 3;
+    let c = {r:0, g:255, b:255};
+    if(isRainbow) {
+        let rad = (hue*Math.PI)/180;
+        c.r = Math.sin(rad)*127+128; c.g = Math.sin(rad+2.09)*127+128; c.b = Math.sin(rad+4.18)*127+128;
+    }
+    for(let dy=-r; dy<=r; dy++) {
+        for(let dx=-r; dx<=r; dx++) {
+            let tx=cx+dx, ty=cy+dy; if(tx<0||tx>=gw||ty<0||ty>=gh) continue;
+            let d = Math.sqrt(dx*dx+dy*dy);
+            if(d<=r) {
+                let idx = tx+ty*gw;
+                if(exp && d>0) { vx[idx] += (dx/d)*24; vy[idx] += (dy/d)*24; } 
+                else { vx[idx] += mx*1.2; vy[idx] += my*1.2; }
+                rDen[idx] = Math.min(255, rDen[idx]+c.r*(exp?4.5:2.5));
+                gDen[idx] = Math.min(255, gDen[idx]+c.g*(exp?4.5:2.5));
+                bDen[idx] = Math.min(255, bDen[idx]+c.b*(exp?4.5:2.5));
+            }
+        }
+    }
+    if(exp) { for(let i=0;i<35;i++) addSpark(x,y,true); } 
+    else if(Math.random()<0.4) addSpark(x,y,false);
+}
+
+function addSpark(x, y, fast) {
+    let ang = Math.random()*Math.PI*2, spd = fast?(Math.random()*4+2.5):(Math.random()*1.2+0.4);
+    particles.push({
+        x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd, sz: Math.random()*2+1.5, a: 1,
+        c: isRainbow ? `hsla(${hue},100%,60%,` : `rgba(0,255,255,`,
+        dc: (Math.random()*3+1)*0.0045*Math.sqrt(2)
+    });
+}
+
+function triggerButton(lineIndex) {
+    if(lineIndex >= maxLanes) return;
+    const pad = document.getElementById(`pad-${lineIndex}`);
+    if(pad) { pad.classList.add('hit-flash'); setTimeout(()=>pad.classList.remove('hit-flash'), 90); }
+
+    let targetY = canvas.height - 105; 
+    let targetX = trackLeft + (lineIndex * laneWidth) + (laneWidth / 2);
+
+    let now = performance.now();
+    let hitSuccess = false;
+
+    for(let i=0; i<notes.length; i++) {
+        let n = notes[i];
+        if(!n.hit && n.line === lineIndex) {
+            let elapsed = now - n.spawnTime;
+            let currentY = (elapsed / noteSpeedDelay) * targetY;
+            let diff = Math.abs(currentY - targetY);
+
+            if(diff < 55) { 
+                n.hit = true;
+                hitSuccess = true;
+                gameScore += 100 + gameCombo * 5;
+                gameCombo++;
+                
+                // ★ 현재 실행 중인 모드에 맞춰 독립적으로 최고 콤보 계산 기록
+                if(gameMode === 0 && gameCombo > normalMaxCombo) normalMaxCombo = gameCombo;
+                if(gameMode === 1 && gameCombo > hardMaxCombo) hardMaxCombo = gameCombo;
+                if(gameMode === 2 && gameCombo > superMaxCombo) superMaxCombo = gameCombo;
+                
+                updateScoreUI();
+                pushForce(targetX, targetY, 0, 0, true); 
+                break;
+            }
+        }
+    }
+
+    if(!hitSuccess) {
+        gameCombo = 0; 
+        updateScoreUI();
+        pushForce(targetX, targetY, 0, -4, false); 
+    }
+}
+
+window.addEventListener('keydown', e => {
+    if(e.code === 'Space') {
+        e.preventDefault();
+        resetSpace();
+    }
+    else if(e.code in currentKeyMap) { 
+        triggerButton(currentKeyMap[e.code]); 
+    }
+    // 🔥 [H키] 오직 일반 모드의 최고 콤보가 20 이상일 때만 하드 해금
+    else if(e.code === 'KeyH') {
+        if(normalMaxCombo >= 20 || gameMode === 1) {
+            gameCombo = 0; // 모드 변환 시 안전을 위해 현재 연속 콤보는 초기화
+            gameMode = 1; noteSpeedDelay = 1200; maxLanes = 4;
+            currentKeyMap = {'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3};
+            rebuildPads(); updateScoreUI();
+        }
+    }
+    // 👑 [Q키] 오직 하드 모드의 최고 콤보가 10 이상일 때만 슈퍼두퍼 해금
+    else if(e.code === 'KeyQ') {
+        if(hardMaxCombo >= 10 || gameMode === 2) {
+            gameCombo = 0;
+            gameMode = 2; noteSpeedDelay = 2000; maxLanes = 6;
+            currentKeyMap = {'KeyS': 0, 'KeyD': 1, 'KeyF': 2, 'KeyJ': 3, 'KeyK': 4, 'KeyL': 5};
+            rebuildPads(); updateScoreUI();
+        }
+    }
+    // 📉 [G키] 다운그레이드 / 일반 모드 및 하위 단계 전환 시스템
+    else if(e.code === 'KeyG') {
+        gameCombo = 0; // 전환 시 현재 콤보 초기화
+        if(gameMode === 2) { 
+            // 슈퍼두퍼(2) -> 하드(1) 전환
+            gameMode = 1; noteSpeedDelay = 1200; maxLanes = 4;
+            currentKeyMap = {'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3};
+        } else if(gameMode === 1) { 
+            // 하드(1) -> 일반(0) 전환
+            gameMode = 0; noteSpeedDelay = 2000; maxLanes = 4;
+            currentKeyMap = {'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3};
+        }
+        rebuildPads(); updateScoreUI();
+    }
+    else if(e.key==='c'||e.key==='C'||e.key==='ㅊ') isRainbow = !isRainbow;
+    else if(['1','2','3','4'].includes(e.key)) changeSector(parseInt(e.key));
+});
+
+function sAct(x,y){ isMoving=true; lX=x; lY=y; sTime=performance.now(); }
+function mAct(x,y){ if(!isMoving)return; pushForce(x, y, x-lX, y-lY, false); lX=x; lY=y; }
+function eAct(x,y){ if(!isMoving)return; isMoving=false; if(performance.now()-sTime<220) pushForce(x,y,0,0,true); }
+window.addEventListener('mousedown', e=>sAct(e.clientX,e.clientY));
+window.addEventListener('mousemove', e=>mAct(e.clientX,e.clientY));
+window.addEventListener('mouseup', e=>eAct(e.clientX,e.clientY));
+
+function draw() {
+    hue = (hue+0.8)%360;
+    let now = performance.now();
+
+    let spawnInterval = gameMode === 1 ? (250 + Math.random()*200) : (420 + Math.random()*260);
+    if(now - lastSpawnTime > spawnInterval) {
+        let randomLine = Math.floor(Math.random() * maxLanes);
+        notes.push({ line: randomLine, spawnTime: now, hit: false, missTriggered: false });
+        lastSpawnTime = now;
+    }
+
+    updateSimulation();
+
+    let cx = canvas.width/2, cy = canvas.height/2, size = Math.min(canvas.width, canvas.height);
+    ctx.fillStyle = '#000003'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.globalCompositeOperation = 'screen';
+
+    if(currentSector === 1) {
+        let g = ctx.createRadialGradient(cx,cy,0, cx,cy,size*0.5); g.addColorStop(0,'rgba(255,255,220,0.45)'); g.addColorStop(0.2,'rgba(190,0,255,0.15)'); g.addColorStop(1,'transparent');
+        ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    } else if(currentSector === 2) {
+        let g = ctx.createRadialGradient(cx-size*0.05,cy-size*0.05,0, cx,cy,size*0.25); g.addColorStop(0,'rgba(230,210,170,0.4)'); g.addColorStop(0.7,'rgba(100,80,60,0.1)'); g.addColorStop(1,'rgba(0,0,0,0.9)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx,cy,size*0.2,0,Math.PI*2); ctx.fill();
+    } else if(currentSector === 3) {
+        ctx.save(); ctx.translate(cx,cy); ctx.scale(1.0,0.38);
+        let g = ctx.createRadialGradient(0,0,size*0.02, 0,0,size*0.35); g.addColorStop(0,'rgba(255,255,255,0.85)'); g.addColorStop(0.12,'rgba(255,150,0,0.4)'); g.addColorStop(0.5,'rgba(255,40,0,0.1)'); g.addColorStop(1,'transparent');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0,0,size*0.35,0,Math.PI*2); ctx.fill(); ctx.restore();
+    } else {
+        let g1 = ctx.createRadialGradient(cx*0.3,cy*0.3,0, cx*0.3,cy*0.3,size*0.5); g1.addColorStop(0,'rgba(255,0,80,0.25)'); g1.addColorStop(1,'transparent'); ctx.fillStyle = g1; ctx.fillRect(0,0,canvas.width,canvas.height);
+        let g2 = ctx.createRadialGradient(cx*1.6,cy*1.4,0, cx*1.6,cy*1.4,size*0.6); g2.addColorStop(0,'rgba(0,100,255,0.25)'); g2.addColorStop(1,'transparent'); ctx.fillStyle = g2; ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+
+    for(let i=0; i<bgStars.length; i++) {
+        let s = bgStars[i];
+        if(currentSector === 3) {
+            let dx = cx - s.x, dy = cy - s.y, d = Math.sqrt(dx*dx+dy*dy);
+            if(d > size*0.02) {
+                let rotSpeed = 0.0012; let sA = Math.atan2(dy, dx) + rotSpeed; let newD = d - 0.03;
+                if(newD <= size*0.02) newD = size*0.42; s.x = cx + Math.cos(sA)*newD; s.y = cy + Math.sin(sA)*newD;
+            }
+        }
+        let tw = s.a + Math.sin(Date.now()*0.006+i)*0.25;
+        ctx.fillStyle = s.c + Math.max(0.05, tw) + ')'; ctx.fillRect(s.x, s.y, s.sz, s.sz);
+    }
+
+    let cw = canvas.width/gw, ch = canvas.height/gh;
+    for(let j=0; j<gh; j++) {
+        for(let i=0; i<gw; i++) {
+            let idx = i+j*gw; let r=Math.floor(rDen[idx]), g=Math.floor(gDen[idx]), b=Math.floor(bDen[idx]);
+            if(r>1||g>1||b>1) { ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(i*cw, j*ch, cw+0.6, ch+0.6); }
+        }
+    }
+
+    if(currentSector === 3) {
+        ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000001';
+        ctx.beginPath(); ctx.arc(cx, cy, blackHoleRadiusGrid*cw, 0, Math.PI*2); ctx.fill();
+        ctx.globalCompositeOperation = 'screen'; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, blackHoleRadiusGrid*cw+0.5, 0, Math.PI*2); 
+        ctx.stroke(); 
+    }
+
+    let targetLineY = canvas.height - 105;
+
+    ctx.strokeStyle = gameMode === 2 ? 'rgba(255, 0, 255, 0.4)' : 'rgba(0, 255, 255, 0.25)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(trackLeft, 0); ctx.lineTo(trackLeft, canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(trackLeft + trackWidth, 0); ctx.lineTo(trackLeft + trackWidth, canvas.height); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for(let i=1; i<maxLanes; i++) {
+        ctx.beginPath(); ctx.moveTo(trackLeft + i * laneWidth, 0); ctx.lineTo(trackLeft + i * laneWidth, canvas.height); ctx.stroke();
+    }
+
+    ctx.fillStyle = gameMode === 2 ? 'rgba(255, 0, 255, 0.01)' : 'rgba(0, 255, 255, 0.015)';
+    ctx.fillRect(trackLeft, 0, trackWidth, canvas.height);
+
+    ctx.strokeStyle = gameMode === 2 ? 'rgba(255, 0, 255, 0.7)' : 'rgba(0, 255, 255, 0.5)';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(trackLeft, targetLineY); ctx.lineTo(trackLeft + trackWidth, targetLineY); ctx.stroke();
+
+    for(let i = notes.length - 1; i >= 0; i--) {
+        let n = notes[i];
+        if(!n) continue;
+        let elapsed = now - n.spawnTime;
+        let progressY = (elapsed / noteSpeedDelay) * targetLineY; 
+        let currentX = trackLeft + (n.line * laneWidth) + (laneWidth / 2);
+
+        if(!n.hit && progressY > targetLineY + 15) {
+            if(!n.missTriggered) {
+                n.missTriggered = true;
+                gameCombo = 0; 
+                updateScoreUI();
+                pushForce(currentX, progressY, 0, 4.5, false); 
+            }
+        }
+
+        if(progressY > canvas.height + 50 || n.hit) { notes.splice(i, 1); continue; }
+
+        if(!n.hit) {
+            let hueColor = (hue + n.line * (35 / (maxLanes/4))) % 360;
+            ctx.fillStyle = gameMode === 2 ? `hsla(${hueColor}, 100%, 70%, 0.95)` : `hsla(${hueColor}, 100%, 65%, 0.95)`;
+            ctx.shadowBlur = gameMode === 1 ? 20 : 14; 
+            ctx.shadowColor = `hsla(${hueColor}, 100%, 65%, 1)`;
+            
+            ctx.beginPath();
+            ctx.roundRect(currentX - (laneWidth * 0.43), progressY - 9, laneWidth * 0.86, 18, 5);
+            ctx.fill();
+            ctx.shadowBlur = 0; 
+        }
+    }
+
+    for(let i=particles.length-1; i >= 0; i--) {
+        let p = particles[i]; p.x += p.vx; p.y += p.vy;
+        let fx = Math.floor((p.x/canvas.width)*gw), fy = Math.floor((p.y/canvas.height)*gh);
+        if(fx>=0 && fx<gw && fy>=0 && fy<gh) { let fidx = fx+fy*gw; p.x += vx[fidx]*0.09; p.y += vy[fidx]*0.09; }
+        
+        if(currentSector === 3) {
+            let pdx = cx - p.x, pdy = cy - p.y, pd = Math.sqrt(pdx*pdx + pdy*pdy);
+            if(pd < blackHoleRadiusGrid*cw) { particles.splice(i,1); continue; }
+            let pdGrid = pd / cw;
+            if(pdGrid <= gravityLimitRadius) {
+                let pRatio = (1.0 - (pdGrid / gravityLimitRadius));
+                let pPull = (0.15 + (3.0 / pdGrid)) * pRatio; let pRot = (0.7 + (2.0 / Math.sqrt(pdGrid))) * pRatio;
+                p.x += (pdx/pd)*pPull * cw + (-pdy/pd)*pRot * cw; p.y += (pdy/pd)*pPull * cw + (pdx/pd)*pRot * cw;
+                p.vx *= 0.95; p.vy *= 0.95;
+            }
+        }
+        p.a -= p.dc;
+        if(p.a<=0||p.x<0||p.x>canvas.width||p.y<0||p.y>canvas.height) { particles.splice(i,1); continue; }
+        ctx.fillStyle = p.c + p.a + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, p.sz, 0, Math.PI*2); ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(draw);
+}
+
+rebuildPads();
+draw();
+</script>
+</body>
+</html>

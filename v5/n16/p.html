@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>리얼 피아노 & 페달 시뮬레이터</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #3a3d40; 
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            user-select: none;
+        }
+
+        h1 {
+            color: #ffffff;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        p {
+            color: #ccc;
+            margin-bottom: 25px;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 25px;
+            background: #2b2d30;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 95%;
+            max-width: 1100px;
+        }
+
+        /* 상단 메뉴 및 페달 표시 영역 */
+        .top-panel {
+            display: flex;
+            width: 100%;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        .playlist, .pedal-board {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            box-sizing: border-box;
+        }
+
+        .playlist h3, .pedal-board h3 {
+            margin: 0;
+            color: #fff;
+            font-size: 15px;
+            margin-right: 10px;
+            white-space: nowrap;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover { background-color: #0056b3; }
+        .btn:disabled { background-color: #555; cursor: not-allowed; color: #888; }
+        .btn-stop { background-color: #dc3545; }
+        .btn-stop:hover { background-color: #bd2130; }
+
+        /* 페달 스타일 */
+        .pedal {
+            background: #444;
+            color: #aaa;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            border: 2px solid #555;
+            transition: all 0.1s;
+        }
+        .pedal.active {
+            background: #f1c40f;
+            color: #000;
+            border-color: #f39c12;
+            box-shadow: 0 0 10px #f1c40f;
+            transform: translateY(2px);
+        }
+
+        /* 피아노 건반 스타일 */
+        .piano-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .piano {
+            display: flex;
+            position: relative;
+            background: #1a1a1a;
+            padding: 25px 15px 15px 15px;
+            border-radius: 10px;
+            box-shadow: inset 0 5px 25px rgba(0,0,0,0.8);
+            width: 1020px;
+            margin: 0 auto;
+        }
+
+        .key {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .white-key {
+            width: 68px;
+            height: 260px;
+            background: linear-gradient(to bottom, #eeeeee 0%, #ffffff 100%);
+            border: 1px solid #bbb;
+            border-radius: 0 0 6px 6px;
+            box-shadow: 0 5px 5px rgba(0,0,0,0.3);
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .white-key.active {
+            background: linear-gradient(to bottom, #999 0%, #e0e0e0 100%);
+            height: 255px;
+            margin-top: 5px;
+            box-shadow: 0 2px 2px rgba(0,0,0,0.4);
+        }
+
+        .black-key {
+            width: 42px;
+            height: 155px;
+            background: linear-gradient(to bottom, #444 0%, #111 100%);
+            border-radius: 0 0 4px 4px;
+            position: absolute;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 12px;
+            box-sizing: border-box;
+            color: white;
+            box-shadow: 0 4px 4px rgba(0,0,0,0.4);
+        }
+
+        .black-key.active {
+            background: linear-gradient(to bottom, #222 0%, #555 100%);
+            height: 151px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.4);
+        }
+
+        /* 흑건 위치 조정 */
+        .key[data-note="C4#"] { left: 49px; }
+        .key[data-note="D4#"] { left: 121px; }
+        .key[data-note="F4#"] { left: 261px; }
+        .key[data-note="G4#"] { left: 332px; }
+        .key[data-note="A4#"] { left: 403px; }
+        .key[data-note="C5#"] { left: 541px; }
+        .key[data-note="D5#"] { left: 612px; }
+        .key[data-note="F5#"] { left: 752px; }
+        .key[data-note="G5#"] { left: 823px; }
+        .key[data-note="A5#"] { left: 894px; }
+
+        .key-info {
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            pointer-events: none;
+            line-height: 1.4;
+        }
+        
+        .white-key .key-info { color: #333; }
+        .black-key .key-info { color: #fff; font-size: 11px; }
+
+        .char-key {
+            display: block;
+            font-size: 14px;
+            color: #d63031;
+            font-weight: 900;
+            margin-top: 3px;
+        }
+        .black-key .char-key { color: #00cec9; }
+    </style>
+</head>
+<body>
+
+    <h1>🎹 리얼 피아노 & 페달 시뮬레이터</h1>
+    <p>건반을 꾹 누르면 소리가 유지됩니다. 숫자키 1, 2, 3으로 페달을 밟아보세요!</p>
+
+    <div class="main-container">
+        <div class="top-panel">
+            <!-- 자동 음악 재생 -->
+            <div class="playlist">
+                <h3>⚡ 자동 연주</h3>
+                <button class="btn" onclick="playSong('mario')">🍄 마리오 테마</button>
+                <button class="btn" onclick="playSong('birthday')">🎂 생일 축하</button>
+                <button class="btn" onclick="playSong('canon')">🎻 캐논 고속</button>
+                <button class="btn btn-stop" id="stopBtn" onclick="stopSong()" disabled>정지</button>
+            </div>
+
+            <!-- 페달 보드 상태 표시 -->
+            <div class="pedal-board">
+                <h3>🦶 페달 (숫자키 1,2,3)</h3>
+                <div class="pedal" id="pedal3">3: 소프트 (음량작게)</div>
+                <div class="pedal" id="pedal2">2: 소스텐누토</div>
+                <div class="pedal" id="pedal1">1: 서스테인 (울림)</div>
+            </div>
+        </div>
+
+        <!-- 피아노 건반 영역 -->
+        <div class="piano-wrapper">
+            <div class="piano" id="piano">
+                <!-- 1옥타브 백건 -->
+                <div class="key white-key" data-note="C4" data-key="a"><span class="key-info">도<span class="char-key">A</span></span></div>
+                <div class="key white-key" data-note="D4" data-key="s"><span class="key-info">레<span class="char-key">S</span></span></div>
+                <div class="key white-key" data-note="E4" data-key="d"><span class="key-info">미<span class="char-key">D</span></span></div>
+                <div class="key white-key" data-note="F4" data-key="f"><span class="key-info">파<span class="char-key">F</span></span></div>
+                <div class="key white-key" data-note="G4" data-key="g"><span class="key-info">솔<span class="char-key">G</span></span></div>
+                <div class="key white-key" data-note="A4" data-key="h"><span class="key-info">라<span class="char-key">H</span></span></div>
+                <div class="key white-key" data-note="B4" data-key="j"><span class="key-info">시<span class="char-key">J</span></span></div>
+
+                <!-- 2옥타브 백건 -->
+                <div class="key white-key" data-note="C5" data-key="k"><span class="key-info">도2<span class="char-key">K</span></span></div>
+                <div class="key white-key" data-note="D5" data-key="l"><span class="key-info">레2<span class="char-key">L</span></span></div>
+                <div class="key white-key" data-note="E5" data-key=";"><span class="key-info">미2<span class="char-key">;</span></span></div>
+                <div class="key white-key" data-note="F5" data-key="'"><span class="key-info">파2<span class="char-key">'</span></span></div>
+                <div class="key white-key" data-note="G5" data-key="z"><span class="key-info">솔2<span class="char-key">Z</span></span></div>
+                <div class="key white-key" data-note="X5" data-key="x"><span class="key-info">라2<span class="char-key">X</span></span></div>
+                <div class="key white-key" data-note="B5" data-key="c"><span class="key-info">시2<span class="char-key">C</span></span></div>
+                <div class="key white-key" data-note="C6" data-key="v"><span class="key-info">도3<span class="char-key">V</span></span></div>
+
+                <!-- 1옥타브 흑건 -->
+                <div class="key black-key" data-note="C4#" data-key="w"><span class="key-info">도#<span class="char-key">W</span></span></div>
+                <div class="key black-key" data-note="D4#" data-key="e"><span class="key-info">레#<span class="char-key">E</span></span></div>
+                <div class="key black-key" data-note="F4#" data-key="t"><span class="key-info">파#<span class="char-key">T</span></span></div>
+                <div class="key black-key" data-note="G4#" data-key="y"><span class="key-info">솔#<span class="char-key">Y</span></span></div>
+                <div class="key black-key" data-note="A4#" data-key="u"><span class="key-info">라#<span class="char-key">U</span></span></div>
+
+                <!-- 2옥타브 흑건 -->
+                <div class="key black-key" data-note="C5#" data-key="o"><span class="key-info">도2#<span class="char-key">O</span></span></div>
+                <div class="key black-key" data-note="D5#" data-key="p"><span class="key-info">레2#<span class="char-key">P</span></span></div>
+                <div class="key black-key" data-note="F5#" data-key="b"><span class="key-info">파2#<span class="char-key">B</span></span></div>
+                <div class="key black-key" data-note="G5#" data-key="n"><span class="key-info">솔2#<span class="char-key">N</span></span></div>
+                <div class="key black-key" data-note="A5#" data-key="m"><span class="key-info">라2#<span class="char-key">M</span></span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        const frequencies = {
+            'C4': 261.63, 'C4#': 277.18, 'D4': 293.66, 'D4#': 311.13, 'E4': 329.63, 'F4': 349.23, 'F4#': 369.99, 'G4': 392.00, 'G4#': 415.30, 'A4': 440.00, 'A4#': 466.16, 'B4': 493.88,
+            'C5': 523.25, 'C5#': 554.37, 'D5': 587.33, 'D5#': 622.25, 'E5': 659.25, 'F5': 698.46, 'F5#': 739.99, 'G5': 783.99, 'G5#': 830.61, 'X5': 880.00, 'A5#': 932.33, 'B5': 987.77,
+            'C6': 1046.50
+        };
+
+        const TEMPO = 100; 
+        let isPlaying = false;
+        let timeouts = [];
+        
+        // 현재 연주 중인 노드들을 관리하기 위한 객체
+        let activeNodes = {}; 
+
+        // 페달 상태 변수
+        let pedals = { 1: false, 2: false, 3: false };
+        // 소스텐누토(2번 페달)용 래치된 음 저장
+        let sostenutoNotes = new Set();
+
+        // 소리 내기 시작 (노트 On)
+        function startNote(note) {
+            if (!frequencies[note]) return;
+            if (activeNodes[note]) return; // 이미 소리나고 있다면 중복 생성 방지
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'triangle'; 
+            oscillator.frequency.value = frequencies[note];
+            
+            // 3번 소프트 페달이 켜져있으면 볼륨을 절반(0.15)으로, 아니면 기본(0.3)
+            let volume = pedals[3] ? 0.12 : 0.3;
+            gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+
+            // 추후 손을 뗄 때 제어하기 위해 저장
+            activeNodes[note] = {
+                oscillator: oscillator,
+                gainNode: gainNode,
+                volume: volume
+            };
+
+            const keyEl = document.querySelector(`.key[data-note="${note}"]`);
+            if (keyEl) keyEl.classList.add('active');
+        }
+
+        // 소리 끄기 (노트 Off)
+        function endNote(note) {
+            if (!activeNodes[note]) return;
+
+            // 1번 서스테인 페달이 밟혀있거나, 2번 소스텐누토 페달에 걸려있는 음이면 소리를 끄지 않고 유지
+            if (pedals[1] || sostenutoNotes.has(note)) {
+                return; 
+            }
+
+            const node = activeNodes[note];
+            const gain = node.gainNode.gain;
+            
+            // 손을 떼면 부드럽게 감쇠(Fade out)
+            gain.setValueAtTime(gain.value, audioCtx.currentTime);
+            gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+            
+            node.oscillator.stop(audioCtx.currentTime + 0.4);
+            
+            // 건반 그래픽 제거
+            const keyEl = document.querySelector(`.key[data-note="${note}"]`);
+            if (keyEl) keyEl.classList.remove('active');
+            
+            delete activeNodes[note];
+        }
+
+        // 페달에서 발을 뗄 때 쌓여있던 지속 음들을 한 번에 정리하는 함수
+        function releaseSustainedNotes() {
+            for (const note in activeNodes) {
+                // 현재 실제로 키보드가 눌려있지 않은 상태의 노음만 골라 끔
+                const keyEl = document.querySelector(`.key[data-note="${note}"]`);
+                const isPhysicallyPressed = pressedKeys.has(keyEl?.getAttribute('data-key'));
+
+                if (!isPhysicallyPressed && !pedals[1] && !sostenutoNotes.has(note)) {
+                    const node = activeNodes[note];
+                    node.gainNode.gain.setValueAtTime(node.gainNode.gain.value, audioCtx.currentTime);
+                    node.gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                    node.oscillator.stop(audioCtx.currentTime + 0.4);
+                    if (keyEl) keyEl.classList.remove('active');
+                    delete activeNodes[note];
+                }
+            }
+        }
+
+        // 현재 물리적으로 눌려있는 키보드 추적용 Set
+        const pressedKeys = new Set();
+
+        // 마우스 및 터치 이벤트
+        document.querySelectorAll('.key').forEach(key => {
+            const note = key.getAttribute('data-note');
+            key.addEventListener('mousedown', () => {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                startNote(note);
+            });
+            window.addEventListener('mouseup', () => {
+                endNote(note);
+            });
+        });
+
+        // 컴퓨터 키보드 이벤트
+        window.addEventListener('keydown', (e) => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const key = e.key.toLowerCase();
+
+            // 페달 조작 (1, 2, 3)
+            if (['1', '2', '3'].includes(key)) {
+                if (!pedals[key]) {
+                    pedals[key] = true;
+                    document.getElementById(`pedal${key}`).classList.add('active');
+                    
+                    // 2번 페달을 밟는 순간 켜져있던 음들을 고정(래치)
+                    if (key === '2') {
+                        Object.keys(activeNodes).forEach(n => sostenutoNotes.add(n));
+                    }
+                }
+                return;
+            }
+
+            if (e.repeat) return;
+            pressedKeys.add(key);
+
+            const keyEl = document.querySelector(`.key[data-key="${key}"]`);
+            if (keyEl) {
+                startNote(keyEl.getAttribute('data-note'));
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+
+            // 페달 떼기
+            if (['1', '2', '3'].includes(key)) {
+                pedals[key] = false;
+                document.getElementById(`pedal${key}`).classList.remove('active');
+                if (key === '2') sostenutoNotes.clear(); // 소스텐누토 해제
+                releaseSustainedNotes();
+                return;
+            }
+
+            pressedKeys.delete(key);
+            const keyEl = document.querySelector(`.key[data-key="${key}"]`);
+            if (keyEl) {
+                endNote(keyEl.getAttribute('data-note'));
+            }
+        });
+
+        // 자동 음악 악보 (음표, 박자길이, 누르고있을시간(ms))
+        const songs = {
+            mario: [
+                {note: 'E5', d: 1.2, duration: 150}, {note: 'E5', d: 1.2, duration: 150}, {note: '', d: 1.2}, {note: 'E5', d: 1.2, duration: 150}, {note: '', d: 1.2}, {note: 'C5', d: 1.2, duration: 150}, {note: 'E5', d: 1.2, duration: 150}, {note: '', d: 1.2},
+                {note: 'G5', d: 2.4, duration: 300}, {note: '', d: 2.4}, {note: 'G4', d: 2.4, duration: 300}, {note: '', d: 2.4},
+                {note: 'C5', d: 2.4, duration: 250}, {note: '', d: 1.2}, {note: 'G4', d: 1.2, duration: 150}, {note: '', d: 2.4}, {note: 'E4', d: 2.4, duration: 250},
+                {note: '', d: 1.2}, {note: 'X5', d: 1.2, duration: 150}, {note: '', d: 1.2}, {note: 'B4', d: 1.2, duration: 150}, {note: '', d: 1.2}, {note: 'A4#', d: 1.2, duration: 150}, {note: 'X5', d: 2.4, duration: 250},
+                {note: 'G4', d: 1.5, duration: 200}, {note: 'E5', d: 1.5, duration: 200}, {note: 'G5', d: 1.5, duration: 200}, {note: 'X5', d: 2.4, duration: 250}, {note: 'F5', d: 1.2, duration: 150}, {note: 'G5', d: 1.2, duration: 150},
+                {note: '', d: 1.2}, {note: 'E5', d: 2.4, duration: 250}, {note: 'C5', d: 1.2, duration: 150}, {note: 'D5', d: 1.2, duration: 150}, {note: 'B4', d: 3.6, duration: 400}
+            ],
+            birthday: [
+                {note: 'C4', d: 1.5, duration: 150}, {note: 'C4', d: 1.5, duration: 150}, {note: 'D4', d: 3, duration: 300}, {note: 'C4', d: 3, duration: 300}, {note: 'F4', d: 3, duration: 300}, {note: 'E4', d: 6, duration: 600},
+                {note: 'C4', d: 1.5, duration: 150}, {note: 'C4', d: 1.5, duration: 150}, {note: 'D4', d: 3, duration: 300}, {note: 'C4', d: 3, duration: 300}, {note: 'G4', d: 3, duration: 300}, {note: 'F4', d: 6, duration: 600},
+                {note: 'C4', d: 1.5, duration: 150}, {note: 'C4', d: 1.5, duration: 150}, {note: 'C5', d: 3, duration: 300}, {note: 'X5', d: 3, duration: 300}, {note: 'F4', d: 3, duration: 300}, {note: 'E4', d: 3, duration: 300}, {note: 'D4', d: 3, duration: 300},
+                {note: 'A4#', d: 1.5, duration: 150}, {note: 'A4#', d: 1.5, duration: 150}, {note: 'X5', d: 3, duration: 300}, {note: 'F4', d: 3, duration: 300}, {note: 'G4', d: 3, duration: 300}, {note: 'F4', d: 6, duration: 600}
+            ],
+            canon: [
+                {note: 'E5', d: 2, duration: 200}, {note: 'D5', d: 2, duration: 200}, {note: 'C5', d: 2, duration: 200}, {note: 'B4', d: 2, duration: 200},
+                {note: 'A4', d: 2, duration: 200}, {note: 'G4', d: 2, duration: 200}, {note: 'A4', d: 2, duration: 200}, {note: 'B4', d: 2, duration: 200},
+                {note: 'C5', d: 1, duration: 100}, {note: 'E5', d: 1, duration: 100}, {note: 'D5', d: 1, duration: 100}, {note: 'C5', d: 1, duration: 100}, 
+                {note: 'B4', d: 1, duration: 100}, {note: 'G4', d: 1, duration: 100}, {note: 'A4', d: 1, duration: 100}, {note: 'B4', d: 1, duration: 100},
+                {note: 'C5', d: 1, duration: 100}, {note: 'A4', d: 1, duration: 100}, {note: 'C5', d: 1, duration: 100}, {note: 'E5', d: 1, duration: 100},
+                {note: 'D5', d: 1, duration: 100}, {note: 'C5', d: 1, duration: 100}, {note: 'B4', d: 1, duration: 100}, {note: 'A4', d: 1, duration: 100},
+                {note: 'A4', d: 1, duration: 100}, {note: 'C5', d: 1, duration: 100}, {note: 'B4', d: 1, duration: 100}, {note: 'A4', d: 1, duration: 100},
+                {note: 'G4', d: 1, duration: 100}, {note: 'F4', d: 1, duration: 100}, {note: 'G4', d: 1, duration: 100}, {note: 'A4', d: 1, duration: 100},
+                {note: 'C5', d: 4, duration: 400}, {note: 'D5', d: 4, duration: 400}, {note: 'E5', d: 6, duration: 600}
+            ]
+        };
+
+        // 자동 음악 연주 소스
+        function playSong(songName) {
+            if (isPlaying) stopSong();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            isPlaying = true;
+            document.getElementById('stopBtn').disabled = false;
+            const song = songs[songName];
+            let accumulatedTime = 0;
+
+            song.forEach((step) => {
+                const timeoutId = setTimeout(() => {
+                    if (step.note) {
+                        startNote(step.note);
+                        // 지정된 시간만큼 누른 후 떼기 처리
+                        setTimeout(() => {
+                            if(isPlaying) endNote(step.note);
+                        }, step.duration);
+                    }
+                }, accumulatedTime);
+                timeouts.push(timeoutId);
+                accumulatedTime += (step.d * TEMPO); 
+            });
+
+            const endTimeoutId = setTimeout(() => {
+                stopSong();
+            }, accumulatedTime + 1000);
+            timeouts.push(endTimeoutId);
+        }
+
+        function stopSong() {
+            isPlaying = false;
+            document.getElementById('stopBtn').disabled = true;
+            timeouts.forEach(id => clearTimeout(id));
+            timeouts = [];
+            
+            // 모든 연주 강제 종료
+            for(const note in activeNodes) {
+                activeNodes[note].oscillator.stop();
+            }
+            activeNodes = {};
+            document.querySelectorAll('.key').forEach(key => key.classList.remove('active'));
+        }
+    </script>
+</body>
+</html>

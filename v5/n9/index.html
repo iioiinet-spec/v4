@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle Media Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #080810; /* 깊고 어두운 밤하늘 느낌의 배경 */
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* 조작 가이드 안내 UI */
+        #ui-guide {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-family: 'Malgun Gothic', sans-serif;
+            font-size: 12px;
+            line-height: 1.8;
+            pointer-events: none; /* 마우스 클릭 통과 */
+            user-select: none;
+            transition: opacity 0.5s;
+        }
+        #ui-guide strong {
+            color: rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-guide">
+        <strong>[Media Art Control Guide]</strong><br>
+        • Mouse Move / Drag : 소용돌이 선 파티클 생성<br>
+        • Mouse Click : 방향 전환 후 Ease-out 폭발<br>
+        • Spacebar : 화면 초기화<br>
+        • C Key : 파티클 색상 테마 변경 (현재: <span id="current-color" style="color: #4da6ff;">푸른색</span>)<br>
+        • S Key : 아트워크 스크린샷 저장
+    </div>
+
+    <canvas id="artCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('artCanvas');
+        const ctx = canvas.getContext('2d');
+        const colorText = document.getElementById('current-color');
+
+        // 캔버스 크기 설정 (화면 전체)
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 상태 관리 변수
+        const particles = [];
+        const maxParticles = 1500; // 성능 최적화를 위한 최대 파티클 제한
+        let mouse = { x: null, y: null, px: null, py: null, isDown: false };
+        let colorTheme = 'blue'; // 'blue' 또는 'red'
+
+        // 색상 바인딩 (몽환적인 그라데이션용 네온 컬러 세트)
+        const colors = {
+            blue: ['#4da6ff', '#00ffff', '#8000ff', '#002266', '#ffffff'],
+            red: ['#ff4d4d', '#ff007f', '#ff8000', '#660011', '#ffffff']
+        };
+
+        // 마우스 속도 및 방향 계산을 위한 헬퍼
+        window.addEventListener('mousemove', (e) => {
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+
+            // 마우스를 움직일 때 소용돌이 파티클 생성
+            if(mouse.px !== null) {
+                createTrailParticles(mouse.x, mouse.y, mouse.x - mouse.px, mouse.y - mouse.py);
+            }
+        });
+
+        window.addEventListener('mousedown', () => mouse.isDown = true);
+        window.addEventListener('mouseup', () => mouse.isDown = false);
+        window.addEventListener('mouseleave', () => { mouse.x = null; mouse.y = null; });
+
+        // 마우스 클릭 시 폭발 예약 (Ease-out 후 폭발할 미사일 오브젝트)
+        window.addEventListener('click', (e) => {
+            if (mouse.px !== null) {
+                const vx = (mouse.x - mouse.px) * 1.5;
+                const vy = (mouse.y - mouse.py) * 1.5;
+                createRocket(mouse.x, mouse.y, vx, vy);
+            } else {
+                createRocket(e.clientX, e.clientY, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
+            }
+        });
+
+        // 키보드 조작
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                // 화면 초기화
+                particles.length = 0;
+                ctx.fillStyle = '#080810';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (e.key === 'c' || e.key === 'C') {
+                // 색상 변경
+                colorTheme = colorTheme === 'blue' ? 'red' : 'blue';
+                colorText.textContent = colorTheme === 'blue' ? '푸른색' : '붉은색';
+                colorText.style.color = colorTheme === 'blue' ? '#4da6ff' : '#ff4d4d';
+            } else if (e.key === 's' || e.key === 'S') {
+                // 스크린샷 저장
+                saveScreenshot();
+            }
+        });
+
+        // 파티클 클래스 정의
+        class Particle {
+            constructor(x, y, vx, vy, type = 'trail') {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.type = type; // 'trail'(드래그 선) 또는 'burst'(폭발 잔해)
+                
+                const theme = colors[colorTheme];
+                this.color = theme[Math.floor(Math.random() * theme.length)];
+                
+                this.alpha = 1;
+                // 잔해는 천천히 사라지고, 일반 트레일은 몽환적으로 빠르게 번짐
+                this.decay = type === 'burst' ? Math.random() * 0.015 + 0.005 : Math.random() * 0.03 + 0.02; 
+                this.size = type === 'burst' ? Math.random() * 12 + 6 : Math.random() * 25 + 10; // 선의 길이
+                this.lineWidth = type === 'burst' ? Math.random() * 1.5 + 0.5 : Math.random() * 1.0 + 0.2; // 극도로 얇은 선
+                
+                // 자연스러운 흐트러짐을 위한 마찰력 및 중력(폭죽 잔해용) 효과
+                this.friction = type === 'burst' ? 0.96 : 0.93;
+                this.gravity = type === 'burst' ? 0.15 : 0.02; 
+                this.wobble = (Math.random() - 0.5) * 0.3; // 곡선 유도 유동성
+            }
+
+            update() {
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+                this.vy += this.gravity;
+                
+                // 소용돌이 및 자연스러운 흐트러짐을 위한 미세 벡터 추가
+                this.vx += Math.sin(this.y * 0.05) * this.wobble;
+                this.vy += Math.cos(this.x * 0.05) * this.wobble;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.lineWidth;
+                
+                // 글로우 및 블러 효과 (Glow)
+                ctx.shadowBlur = this.type === 'burst' ? 12 : 6;
+                ctx.shadowColor = this.color;
+
+                ctx.beginPath();
+                // 움직이는 방향으로 얇은 직선 파티클 구현
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.vx * this.size * 0.2, this.y - this.vy * this.size * 0.2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // 마우스 무브 / 드래그 시 소용돌이 파티클 생성 함수
+        function createTrailParticles(x, y, mx, my) {
+            // 마우스 속도 연산
+            const speed = Math.hypot(mx, my);
+            const count = mouse.isDown ? 8 : 3; // 드래그 시 더 풍성하게 생성
+            
+            for (let i = 0; i < count; i++) {
+                // 마우스 진행 방향 기반 + 소용돌이(Angle 회전) 효과 부여
+                const angle = Math.atan2(my, mx) + (Math.random() - 0.5) * 1.5;
+                const force = (speed * 0.2) + Math.random() * 3;
+                
+                // 드래그(isDown) 시 소용돌이 반경 회전력 강화
+                const vx = Math.cos(angle) * force + (mouse.isDown ? Math.sin(Date.now() * 0.01) * 3 : 0);
+                const vy = Math.sin(angle) * force + (mouse.isDown ? Math.cos(Date.now() * 0.01) * 3 : 0);
+
+                if(particles.length < maxParticles) {
+                    particles.push(new Particle(x, y, vx, vy, 'trail'));
+                }
+            }
+        }
+
+        // 클릭 시 발사되어 Ease-out 후 터지는 로켓 객체 관리용
+        class Rocket {
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx * 1.2;
+                this.vy = vy * 1.2;
+                this.friction = 0.90; // 강력한 Ease-out을 위한 마찰력
+                this.life = 1.0;
+            }
+            update() {
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 가상의 속도가 거의 0에 수렴하면 폭죽 폭발 촉발
+                if (Math.hypot(this.vx, this.vy) < 0.3) {
+                    explode(this.x, this.y);
+                    return false; // 삭제 프로세스
+                }
+                
+                // 미사일이 날아가는 동안에도 미세한 잔상 유도
+                if(Math.random() > 0.3 && particles.length < maxParticles) {
+                    particles.push(new Particle(this.x, this.y, (Math.random()-0.5)*2, (Math.random()-0.5)*2, 'trail'));
+                }
+                return true;
+            }
+        }
+        const rockets = [];
+        function createRocket(x, y, vx, vy) {
+            rockets.push(new Rocket(x, y, vx, vy));
+        }
+
+        // 클릭 지점(Ease-out 종점)에서 폭죽 대량 발생
+        function explode(x, y) {
+            const count = Math.style = 80 + Math.floor(Math.random() * 40); // 80~120개 파티클 폭발
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 8 + 2; // 사방으로 퍼지는 속도
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+
+                if(particles.length < maxParticles) {
+                    particles.push(new Particle(x, y, vx, vy, 'burst'));
+                }
+            }
+        }
+
+        // 스크린샷 기능 (UI를 제외한 캔버스 데이터만 저장)
+        function saveScreenshot() {
+            const link = document.createElement('a');
+            link.download = `media_art_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // 메인 미디어아트 루프 렌더러
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 중요: 자연스러운 잔상 효과 및 페이드아웃 (화면이 지저분해지지 않도록 연하게 덮음)
+            // 투명도가 낮을수록 잔상이 길게 남고, 높을수록 깔끔해집니다. 미디어아트에는 0.08~0.1이 이상적입니다.
+            ctx.fillStyle = 'rgba(8, 8, 16, 0.08)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 로켓(폭죽 전 단계) 업데이트
+            for (let i = rockets.length - 1; i >= 0; i--) {
+                if (!rockets[i].update()) {
+                    rockets.splice(i, 1);
+                }
+            }
+
+            // 파티클 업데이트 및 드로잉
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                // 알파값이 0 이하로 떨어지면 배열에서 완전 제거 (메모리 최적화)
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // 아트 시작
+        animate();
+    </script>
+</body>
+</html>

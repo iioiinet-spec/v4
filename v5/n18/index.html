@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fluid Media Art</title>
+
+<style>
+/* ======================================================
+   기본 스타일
+====================================================== */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#03040a;
+    font-family:Arial, Helvetica, sans-serif;
+}
+
+/* 메인 캔버스 */
+canvas{
+    width:100%;
+    height:100%;
+    display:block;
+    cursor:crosshair;
+}
+
+/* 상단 문구 */
+.top-text{
+    position:fixed;
+    top:14px;
+    width:100%;
+    text-align:center;
+
+    font-size:11px;
+    letter-spacing:4px;
+
+    color:rgba(255,255,255,0.65);
+
+    text-transform:uppercase;
+
+    pointer-events:none;
+
+    text-shadow:
+        0 0 10px rgba(255,255,255,0.4),
+        0 0 30px rgba(0,255,255,0.2);
+}
+
+/* 조작 설명 */
+.info{
+    position:fixed;
+    left:18px;
+    bottom:18px;
+
+    color:rgba(255,255,255,0.55);
+
+    font-size:12px;
+    line-height:1.8;
+
+    pointer-events:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="top-text">
+    move your mouse to paint the fluid
+</div>
+
+<div class="info">
+    Drag : Fluid Paint<br>
+    Click : Color Explosion<br>
+    Space : Clear Screen<br>
+    C : Change Palette<br>
+    S : Save Screenshot
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+/* ======================================================
+   마우스로 만드는 컬러 유체 미디어아트
+   ------------------------------------------------------
+   순수 HTML + CSS + JavaScript
+   외부 라이브러리 사용 없음
+   WebGL 없이 Canvas2D만 사용
+
+   실제 유체처럼 보이게 하기 위해 구현한 요소:
+   ------------------------------------------------------
+   1. 속도장(velocity field)
+   2. 점성(viscosity)
+   3. 확산(diffusion)
+   4. 소용돌이(vorticity)
+   5. 잔상(trails)
+   6. additive blending
+   7. glow + blur 느낌
+====================================================== */
+
+
+/* ======================================================
+   Canvas 설정
+====================================================== */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+/* 화면 크기 */
+let width;
+let height;
+
+/* 화면 리사이즈 */
+function resizeCanvas(){
+
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+}
+
+resizeCanvas();
+
+window.addEventListener("resize", resizeCanvas);
+
+
+/* ======================================================
+   컬러 팔레트
+====================================================== */
+
+const palettes = [
+
+    /* 네온 */
+    [
+        "#00bbff",
+        "#6a5cff",
+        "#ff4fd8",
+        "#5dffd0",
+        "#ffe45e"
+    ],
+
+    /* 오로라 */
+    [
+        "#00f5d4",
+        "#00bbf9",
+        "#9b5de5",
+        "#f15bb5",
+        "#fee440"
+    ],
+
+    /* 우주 */
+    [
+        "#4cc9f0",
+        "#7209b7",
+        "#f72585",
+        "#560bad",
+        "#80ffdb"
+    ],
+
+    /* 불꽃 */
+    [
+        "#ff4800",
+        "#ff8500",
+        "#ffd60a",
+        "#ff006e",
+        "#ff5400"
+    ]
+];
+
+let currentPaletteIndex = 0;
+let currentPalette = palettes[currentPaletteIndex];
+
+/* 랜덤 컬러 */
+function randomColor(){
+
+    return currentPalette[
+        Math.floor(Math.random() * currentPalette.length)
+    ];
+}
+
+
+/* ======================================================
+   마우스 정보
+====================================================== */
+
+const mouse = {
+
+    x:0,
+    y:0,
+
+    prevX:0,
+    prevY:0,
+
+    velocityX:0,
+    velocityY:0,
+
+    isDown:false
+};
+
+
+/* ======================================================
+   입자 저장 배열
+====================================================== */
+
+const fluidParticles = [];
+const sparkleParticles = [];
+
+
+/* ======================================================
+   FluidParticle 클래스
+====================================================== */
+
+class FluidParticle{
+
+    constructor(x, y, vx, vy, color, size){
+
+        /* 위치 */
+        this.x = x;
+        this.y = y;
+
+        /* 속도 */
+        this.vx = vx;
+        this.vy = vy;
+
+        /* 가속도 */
+        this.ax = 0;
+        this.ay = 0;
+
+        this.color = color;
+
+        this.size = size;
+
+        /* 생명력 */
+        this.life = 1;
+
+        /* 서서히 사라지는 속도 */
+        this.fade = 0.002 + Math.random() * 0.006;
+
+        /* 소용돌이 각도 */
+        this.angle = Math.random() * Math.PI * 2;
+
+        /* 회전 속도 */
+        this.spin = (Math.random() - 0.5) * 0.35;
+
+        /* 유체 퍼짐 */
+        this.diffusion = Math.random() * 0.3;
+
+        /* 점성 */
+        this.viscosity = 0.985;
+
+        /* 랜덤 흐름 */
+        this.noiseOffset = Math.random() * 1000;
+    }
+
+
+    /* --------------------------------------------------
+       유체 물리 업데이트
+    -------------------------------------------------- */
+    update(){
+
+        /* ----------------------------------------------
+           소용돌이 효과
+           ----------------------------------------------
+           입자가 회전하면서 흐르는 느낌 생성
+        ---------------------------------------------- */
+
+        this.angle += this.spin;
+
+        this.ax += Math.cos(this.angle) * 0.04;
+        this.ay += Math.sin(this.angle) * 0.04;
+
+
+        /* ----------------------------------------------
+           마우스 주변에서 살아 움직이는 느낌
+        ---------------------------------------------- */
+
+        const dx = mouse.x - this.x;
+        const dy = mouse.y - this.y;
+
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if(distance < 150){
+
+            /* 마우스 방향 따라 흐르기 */
+            this.ax += mouse.velocityX * 0.0007;
+            this.ay += mouse.velocityY * 0.0007;
+
+            /* 살짝 끌리는 느낌 */
+            this.ax += dx * 0.00003;
+            this.ay += dy * 0.00003;
+        }
+
+
+        /* ----------------------------------------------
+           확산(Diffusion)
+           ----------------------------------------------
+           물감이 자연스럽게 퍼지는 느낌
+        ---------------------------------------------- */
+
+        this.ax += (Math.random() - 0.5) * this.diffusion;
+        this.ay += (Math.random() - 0.5) * this.diffusion;
+
+
+        /* ----------------------------------------------
+           속도장(Flow Field)
+           ----------------------------------------------
+           화면 전체에 흐르는 유체 방향 생성
+        ---------------------------------------------- */
+
+        const flow =
+            Math.sin(
+                (this.y + this.noiseOffset) * 0.01
+            ) *
+            Math.cos(
+                (this.x + this.noiseOffset) * 0.01
+            );
+
+        this.ax += Math.cos(flow * 5) * 0.02;
+        this.ay += Math.sin(flow * 5) * 0.02;
+
+
+        /* ----------------------------------------------
+           가속도 적용
+        ---------------------------------------------- */
+
+        this.vx += this.ax;
+        this.vy += this.ay;
+
+
+        /* ----------------------------------------------
+           점성(Viscosity)
+           ----------------------------------------------
+           속도를 부드럽게 감소
+        ---------------------------------------------- */
+
+        this.vx *= this.viscosity;
+        this.vy *= this.viscosity;
+
+
+        /* ----------------------------------------------
+           위치 이동
+        ---------------------------------------------- */
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+
+        /* ----------------------------------------------
+           유체가 점점 퍼짐
+        ---------------------------------------------- */
+
+        this.size *= 1.002;
+
+
+        /* ----------------------------------------------
+           생명력 감소
+        ---------------------------------------------- */
+
+        this.life -= this.fade;
+
+
+        /* 가속도 초기화 */
+        this.ax = 0;
+        this.ay = 0;
+    }
+
+
+    /* --------------------------------------------------
+       그리기
+    -------------------------------------------------- */
+    draw(){
+
+        ctx.save();
+
+        /* additive blending */
+        ctx.globalCompositeOperation = "lighter";
+
+        /* glow */
+        ctx.shadowBlur = 35;
+        ctx.shadowColor = this.color;
+
+        /* 투명도 */
+        ctx.globalAlpha = this.life;
+
+
+        /* ----------------------------------------------
+           부드러운 blur 형태
+        ---------------------------------------------- */
+
+        const gradient = ctx.createRadialGradient(
+            this.x,
+            this.y,
+            0,
+            this.x,
+            this.y,
+            this.size
+        );
+
+        gradient.addColorStop(0, this.color);
+
+        gradient.addColorStop(0.2, this.color + "dd");
+
+        gradient.addColorStop(0.5, this.color + "55");
+
+        gradient.addColorStop(1, this.color + "00");
+
+
+        ctx.fillStyle = gradient;
+
+        /* 원이 너무 딱딱하지 않게 */
+        ctx.beginPath();
+
+        ctx.ellipse(
+            this.x,
+            this.y,
+
+            this.size *
+            (1 + Math.abs(this.vx) * 0.04),
+
+            this.size *
+            (1 + Math.abs(this.vy) * 0.04),
+
+            Math.atan2(this.vy, this.vx),
+
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+
+/* ======================================================
+   반짝이 입자
+====================================================== */
+
+class Sparkle{
+
+    constructor(x, y, color){
+
+        this.x = x;
+        this.y = y;
+
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+
+        this.size = Math.random() * 2 + 1;
+
+        this.life = 1;
+
+        this.color = color;
+    }
+
+    update(){
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        this.life -= 0.02;
+    }
+
+    draw(){
+
+        ctx.save();
+
+        ctx.globalCompositeOperation = "lighter";
+
+        ctx.globalAlpha = this.life;
+
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+
+        ctx.fillStyle = this.color;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            this.x,
+            this.y,
+            this.size,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+
+/* ======================================================
+   유체 생성 함수
+====================================================== */
+
+function createFluid(x, y, moveX, moveY, power){
+
+    const amount = 10 + power * 5;
+
+    for(let i = 0; i < amount; i++){
+
+        const angle = Math.random() * Math.PI * 2;
+
+        const speed =
+            Math.random() * 3 + power * 0.5;
+
+        /* 마우스 방향 따라 흐름 */
+        const vx =
+            Math.cos(angle) * speed +
+            moveX * 0.15;
+
+        const vy =
+            Math.sin(angle) * speed +
+            moveY * 0.15;
+
+        const size =
+            Math.random() * 35 + 10;
+
+        const color = randomColor();
+
+        fluidParticles.push(
+
+            new FluidParticle(
+                x,
+                y,
+                vx,
+                vy,
+                color,
+                size
+            )
+        );
+
+        /* 반짝이 생성 */
+        if(Math.random() < 0.6){
+
+            sparkleParticles.push(
+
+                new Sparkle(
+                    x,
+                    y,
+                    color
+                )
+            );
+        }
+    }
+
+
+    /* 성능 최적화 */
+    if(fluidParticles.length > 1800){
+
+        fluidParticles.splice(0, 300);
+    }
+
+    if(sparkleParticles.length > 1000){
+
+        sparkleParticles.splice(0, 200);
+    }
+}
+
+
+/* ======================================================
+   클릭 폭발 효과
+====================================================== */
+
+function createExplosion(x, y){
+
+    for(let i = 0; i < 160; i++){
+
+        const angle =
+            Math.random() * Math.PI * 2;
+
+        const speed =
+            Math.random() * 14;
+
+        const vx =
+            Math.cos(angle) * speed;
+
+        const vy =
+            Math.sin(angle) * speed;
+
+        fluidParticles.push(
+
+            new FluidParticle(
+                x,
+                y,
+                vx,
+                vy,
+                randomColor(),
+                Math.random() * 50 + 15
+            )
+        );
+    }
+}
+
+
+/* ======================================================
+   마우스 이벤트
+====================================================== */
+
+/* 클릭 */
+canvas.addEventListener("mousedown", (event)=>{
+
+    mouse.isDown = true;
+
+    createExplosion(
+        event.clientX,
+        event.clientY
+    );
+});
+
+/* 클릭 해제 */
+window.addEventListener("mouseup", ()=>{
+
+    mouse.isDown = false;
+});
+
+
+/* 마우스 이동 */
+canvas.addEventListener("mousemove", (event)=>{
+
+    mouse.x = event.clientX;
+    mouse.y = event.clientY;
+
+    mouse.velocityX =
+        mouse.x - mouse.prevX;
+
+    mouse.velocityY =
+        mouse.y - mouse.prevY;
+
+    const speed =
+        Math.sqrt(
+            mouse.velocityX * mouse.velocityX +
+            mouse.velocityY * mouse.velocityY
+        );
+
+    /* 드래그 또는 빠른 이동 */
+    if(mouse.isDown || speed > 4){
+
+        createFluid(
+            mouse.x,
+            mouse.y,
+            mouse.velocityX,
+            mouse.velocityY,
+            Math.min(speed * 0.08, 7)
+        );
+    }
+
+    mouse.prevX = mouse.x;
+    mouse.prevY = mouse.y;
+});
+
+
+/* ======================================================
+   키보드 조작
+====================================================== */
+
+window.addEventListener("keydown", (event)=>{
+
+    /* 화면 초기화 */
+    if(event.code === "Space"){
+
+        fluidParticles.length = 0;
+        sparkleParticles.length = 0;
+    }
+
+    /* 컬러 팔레트 변경 */
+    if(event.key === "c" || event.key === "C"){
+
+        currentPaletteIndex++;
+
+        if(currentPaletteIndex >= palettes.length){
+
+            currentPaletteIndex = 0;
+        }
+
+        currentPalette =
+            palettes[currentPaletteIndex];
+    }
+
+    /* 스크린샷 저장 */
+    if(event.key === "s" || event.key === "S"){
+
+        saveScreenshot();
+    }
+});
+
+
+/* ======================================================
+   스크린샷 저장
+====================================================== */
+
+function saveScreenshot(){
+
+    const link = document.createElement("a");
+
+    link.download = "fluid-media-art.png";
+
+    link.href = canvas.toDataURL();
+
+    link.click();
+}
+
+
+/* ======================================================
+   메인 애니메이션
+====================================================== */
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+
+    /* --------------------------------------------------
+       잔상 효과
+       --------------------------------------------------
+       완전히 지우지 않고 어둡게 덮어서
+       자연스러운 페이드 생성
+    -------------------------------------------------- */
+
+    ctx.fillStyle =
+        "rgba(3,4,10,0.045)";
+
+    ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+
+    /* --------------------------------------------------
+       유체 입자 업데이트
+    -------------------------------------------------- */
+
+    for(
+        let i = fluidParticles.length - 1;
+        i >= 0;
+        i--
+    ){
+
+        const particle =
+            fluidParticles[i];
+
+        particle.update();
+        particle.draw();
+
+        /* 사라지면 제거 */
+        if(particle.life <= 0){
+
+            fluidParticles.splice(i, 1);
+        }
+    }
+
+
+    /* --------------------------------------------------
+       반짝이 업데이트
+    -------------------------------------------------- */
+
+    for(
+        let i = sparkleParticles.length - 1;
+        i >= 0;
+        i--
+    ){
+
+        const sparkle =
+            sparkleParticles[i];
+
+        sparkle.update();
+        sparkle.draw();
+
+        if(sparkle.life <= 0){
+
+            sparkleParticles.splice(i, 1);
+        }
+    }
+
+
+    /* --------------------------------------------------
+       마우스 주변 오라 효과
+    -------------------------------------------------- */
+
+    const aura =
+        ctx.createRadialGradient(
+            mouse.x,
+            mouse.y,
+            0,
+            mouse.x,
+            mouse.y,
+            100
+        );
+
+    aura.addColorStop(
+        0,
+        "rgba(255,255,255,0.08)"
+    );
+
+    aura.addColorStop(
+        1,
+        "rgba(255,255,255,0)"
+    );
+
+    ctx.fillStyle = aura;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        mouse.x,
+        mouse.y,
+        100,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+
+/* 애니메이션 시작 */
+animate();
+
+</script>
+</body>
+</html>

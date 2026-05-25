@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>네온 컬러 유체 미디어 아트 (섬광탄 핀 & 연막탄 투톤 완벽 고증)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-family: sans-serif;
+            font-size: 13px;
+            text-align: center;
+            pointer-events: none;
+            line-height: 1.6;
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+        #flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+    <div id="flash-overlay"></div>
+    <div id="info-panel">
+        [마우스 드래그] 부드러운 네온 유체 (연막 안에서는 생성 차단) <br>
+        [E키] 라이벌 섬광탄 투척 (길게 늘어진 핀) | [R키] 연막탄 투척 (상하단 진한 회색 캡) | [엔터키] 컬러 팔레트 변경
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const flashOverlay = document.getElementById('flash-overlay');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const palettes = [
+            ['#ff0055', '#00ffcc', '#9900ff', '#ffcc00'], 
+            ['#00f0ff', '#ff007f', '#7000ff', '#33ff00'], 
+            ['#ff4e50', '#f9d423', '#e1f5fe', '#ff007f']
+        ];
+        let currentPaletteIndex = 0;
+
+        let particles = [];
+        let sparks = [];
+        let flashbangs = [];
+        let smokeParticles = []; 
+        let activeSmokeZones = []; 
+        
+        let mouseX = 0, mouseY = 0;
+        let lastMouse = { x: 0, y: 0, time: 0 };
+        let isDragging = false;
+        
+        let clickCount = 0;
+        let lastClickTime = 0;
+
+        const MAX_PARTICLES = 150;
+        const MAX_SPARKS = 60;
+
+        const textureCache = {};
+        function getCachedTexture(color) {
+            if (textureCache[color]) return textureCache[color];
+
+            const size = 120;
+            const tCanvas = document.createElement('canvas');
+            tCanvas.width = size;
+            tCanvas.height = size;
+            const tCtx = tCanvas.getContext('2d');
+
+            let grad = tCtx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+            grad.addColorStop(0, color);
+            grad.addColorStop(0.2, color);
+            grad.addColorStop(1, 'transparent');
+
+            tCtx.fillStyle = grad;
+            tCtx.fillRect(0, 0, size, size);
+
+            textureCache[color] = tCanvas;
+            return tCanvas;
+        }
+
+        function isInSmokeZone(x, y) {
+            for (let zone of activeSmokeZones) {
+                const dx = x - zone.x;
+                const dy = y - zone.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < zone.currentRadius) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        class FluidParticle {
+            constructor(x, y, vx, vy, color) {
+                this.x = x; this.y = y;
+                this.vx = vx * 0.8 + (Math.random() - 0.5) * 2;
+                this.vy = vy * 0.8 + (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 30 + 25;
+                this.color = color;
+                this.texture = getCachedTexture(color);
+                this.alpha = 1.0;
+                this.decay = Math.random() * 0.012 + 0.008; 
+                this.wobbleSpeed = Math.random() * 0.03 + 0.01;
+                this.wobbleAngle = Math.random() * Math.PI * 2;
+            }
+            update() {
+                this.vx *= 0.96; this.vy *= 0.96;
+                this.wobbleAngle += this.wobbleSpeed;
+                this.vx += Math.sin(this.wobbleAngle) * 0.08;
+                this.vy += Math.cos(this.wobbleAngle) * 0.08;
+                this.x += this.vx; this.y += this.vy;
+                this.alpha -= this.decay;
+                this.radius += 0.5;
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.globalAlpha = this.alpha;
+                ctx.drawImage(this.texture, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+            }
+        }
+
+        class Spark {
+            constructor(x, y, vx, vy, color) {
+                this.x = x; this.y = y;
+                this.vx = vx * 0.4 + (Math.random() - 0.5) * 4;
+                this.vy = vy * 0.4 + (Math.random() - 0.5) * 4;
+                this.size = Math.random() * 2 + 1;
+                this.color = color;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.015;
+            }
+            update() {
+                this.vx *= 0.97; this.vy *= 0.97;
+                this.x += this.vx; this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            }
+        }
+
+        class SmokeParticle {
+            constructor(x, y) {
+                this.x = x + (Math.random() - 0.5) * 30;
+                this.y = y + (Math.random() - 0.5) * 30;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 1.5 - 0.2; 
+                this.radius = Math.random() * 20 + 20;
+                this.maxRadius = Math.random() * 60 + 130; 
+                this.life = 5000; 
+                this.spawnTime = performance.now();
+                this.alpha = 0.75;
+                const grey = Math.floor(Math.random() * 25 + 185);
+                this.color = `rgba(${grey}, ${grey}, ${grey}, `;
+            }
+            update() {
+                const elapsed = performance.now() - this.spawnTime;
+                this.vx *= 0.99; this.vy *= 0.99;
+                this.x += this.vx; this.y += this.vy;
+                if (this.radius < this.maxRadius) this.radius += 1.8;
+                if (elapsed > this.life) {
+                    const fadeProgress = (elapsed - this.life) / 800;
+                    this.alpha = 0.75 * (1 - fadeProgress);
+                } else {
+                    this.alpha = 0.75;
+                }
+            }
+            draw() {
+                if (this.alpha <= 0) return;
+                ctx.globalAlpha = this.alpha;
+                let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                grad.addColorStop(0, this.color + '0.9)');
+                grad.addColorStop(0.5, this.color + '0.5)');
+                grad.addColorStop(1, this.color + '0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class RobloxRivalsFlashbang {
+            constructor(startX, startY, targetX, targetY, type = 'flash') {
+                this.x = startX;
+                this.y = canvas.height;
+                this.targetX = targetX;
+                this.targetY = targetY;
+                this.type = type; 
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const steps = this.type === 'smoke' ? 38 : 22; 
+                this.vx = dx / steps;
+                this.vy = dy / steps;
+                this.rotation = 0;
+                this.isDead = false;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.type === 'smoke' ? 0.12 : 0.18;
+                const dist = Math.sqrt(Math.pow(this.targetX - this.x, 2) + Math.pow(this.targetY - this.y, 2));
+                if (dist < 15 || this.vy > 0) { 
+                    this.explode();
+                    this.isDead = true;
+                }
+            }
+            
+            drawHex(cx, cy, size) {
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const x = cx + Math.cos(angle) * size;
+                    const y = cy + Math.sin(angle) * size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // --- 1. 안전핀 및 레버 고증 파트 ---
+                ctx.strokeStyle = '#7f8c8d'; 
+                ctx.lineWidth = 1.8;
+                
+                if (this.type === 'flash') {
+                    // 고증: 섬광탄의 핀은 손잡이 레버를 따라 밑으로 길게 늘어져 있음
+                    ctx.beginPath();
+                    ctx.arc(-4, -19, 4, 0, Math.PI * 2); // 기본 원형 핀
+                    ctx.stroke();
+                    
+                    // 밑으로 길게 늘어지는 가느다란 안전핀 바(Bar) 라인
+                    ctx.beginPath();
+                    ctx.moveTo(-6, -15);
+                    ctx.lineTo(-7, 6); 
+                    ctx.stroke();
+                } else {
+                    // 연막탄의 일반 상단 고리
+                    ctx.beginPath();
+                    ctx.arc(-4, -19, 4, 0, Math.PI * 2); 
+                    ctx.stroke();
+                }
+                
+                // 핀 고정대 베이스
+                ctx.fillStyle = '#555';
+                ctx.fillRect(-2, -17, 4, 2);
+
+                // --- 2. 메인 바디 및 투톤 마감 고증 파트 ---
+                // 몸통 기본색 메인 렌더링
+                ctx.fillStyle = this.type === 'smoke' ? '#4a5568' : '#2d6a4f'; 
+                ctx.fillRect(-8, -16, 16, 32);
+                
+                // 고증: 연막탄 위쪽과 아래쪽은 그냥 색보다 조금 진한 회색 마감 캡 적용
+                ctx.fillStyle = this.type === 'smoke' ? '#2a303c' : '#1b4332'; // #2a303c = 진한 회색 고증색
+                ctx.fillRect(-8, -16, 16, 3.5); // 상단 캡
+                ctx.fillRect(-8, 12.5, 16, 3.5); // 하단 캡
+                
+                // --- 3. 중앙 띠 스킨 및 무늬 패턴 ---
+                ctx.fillStyle = this.type === 'smoke' ? '#e2e8f0' : '#ffdd00';
+                ctx.fillRect(-8, -4, 16, 8);
+                
+                ctx.fillStyle = this.type === 'smoke' ? '#718096' : '#5c4d02'; 
+                
+                const hexSize = 2.8;   
+                const spacing = 8.5;   
+                
+                this.drawHex(0, 0, hexSize);
+                this.drawHex(-spacing, 0, hexSize);
+                this.drawHex(spacing, 0, hexSize);
+
+                ctx.restore();
+            }
+            explode() {
+                if (this.type === 'flash') {
+                    flashOverlay.style.transition = 'none';
+                    flashOverlay.style.opacity = '1';
+                    particles = [];
+                    sparks = [];
+                    setTimeout(() => {
+                        flashOverlay.style.transition = 'opacity 3s ease-out';
+                        flashOverlay.style.opacity = '0';
+                    }, 50);
+                } else {
+                    const zone = {
+                        x: this.x,
+                        y: this.y,
+                        maxRadius: 180, 
+                        currentRadius: 20,
+                        spawnTime: performance.now(),
+                        life: 5800 
+                    };
+                    activeSmokeZones.push(zone);
+
+                    for (let i = 0; i < 65; i++) {
+                        smokeParticles.push(new SmokeParticle(this.x, this.y));
+                    }
+                }
+            }
+        }
+
+        function getRandomColor() {
+            const currentPalette = palettes[currentPaletteIndex];
+            return currentPalette[Math.floor(Math.random() * currentPalette.length)];
+        }
+
+        function handleMove(nx, ny) {
+            mouseX = nx; mouseY = ny;
+            const now = performance.now();
+            const dt = now - lastMouse.time;
+            
+            if (dt > 0 && isDragging) {
+                if (isInSmokeZone(nx, ny)) {
+                    lastMouse.x = nx; lastMouse.y = ny; lastMouse.time = now;
+                    return;
+                }
+
+                const vx = (nx - lastMouse.x) / dt * 12;
+                const vy = (ny - lastMouse.y) / dt * 12;
+                const speed = Math.sqrt(vx * vx + vy * vy);
+
+                const spawnCount = Math.min(Math.floor(speed * 0.4) + 1, 4);
+                for (let i = 0; i < spawnCount; i++) {
+                    if (particles.length >= MAX_PARTICLES) particles.shift();
+                    
+                    const color = getRandomColor();
+                    const rx = nx + (Math.random() - 0.5) * 15;
+                    const ry = ny + (Math.random() - 0.5) * 15;
+                    
+                    particles.push(new FluidParticle(rx, ry, vx, vy, color));
+                    
+                    if (Math.random() > 0.5 && sparks.length < MAX_SPARKS) {
+                        sparks.push(new Spark(rx, ry, vx, vy, color));
+                    }
+                }
+            }
+            lastMouse.x = nx; lastMouse.y = ny; lastMouse.time = now;
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+            lastMouse.time = performance.now();
+
+            const now = performance.now();
+            if (now - lastClickTime < 400) {
+                clickCount++;
+            } else {
+                clickCount = 1;
+            }
+            lastClickTime = now;
+
+            if (clickCount >= 3) {
+                if (!isInSmokeZone(e.clientX, e.clientY)) {
+                    triggerStarExplosion(e.clientX, e.clientY);
+                }
+                clickCount = 0;
+            }
+        });
+        window.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        function triggerStarExplosion(cx, cy) {
+            const points = 5;
+            const inset = 0.5;
+            const totalParticles = 60; 
+            
+            for (let i = 0; i < totalParticles; i++) {
+                const angle = (i / totalParticles) * Math.PI * 2;
+                let speed = Math.random() * 4 + 4;
+                const starAngle = angle * points;
+                const mod = Math.abs(Math.cos(starAngle / 2)) * (1 - inset) + inset;
+                
+                const vx = Math.cos(angle) * speed * (1 / mod);
+                const vy = Math.sin(angle) * speed * (1 / mod);
+                const color = getRandomColor();
+
+                if (particles.length >= MAX_PARTICLES) particles.shift();
+                const p = new FluidParticle(cx, cy, vx, vy, color);
+                p.radius = Math.random() * 20 + 15;
+                particles.push(p);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const targetX = mouseX || (window.innerWidth / 2);
+            const targetY = mouseY || (window.innerHeight / 2);
+
+            if (e.key === 'e' || e.key === 'E' || e.key === 'ㄷ') { 
+                e.preventDefault();
+                flashbangs.push(new RobloxRivalsFlashbang(targetX + (Math.random() - 0.5) * 80, window.innerHeight, targetX, targetY, 'flash'));
+            } 
+            else if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') { 
+                e.preventDefault();
+                flashbangs.push(new RobloxRivalsFlashbang(targetX + (Math.random() - 0.5) * 80, window.innerHeight, targetX, targetY, 'smoke'));
+            }
+            else if (e.code === 'Enter') {
+                currentPaletteIndex = (currentPaletteIndex + 1) % palettes.length;
+            }
+        });
+
+        let autoAnimateAngle = 0;
+        function injectBackgroundFluid() {
+            autoAnimateAngle += 0.02;
+            if (particles.length < 12) { 
+                const cx = window.innerWidth / 2 + Math.sin(autoAnimateAngle * 0.7) * (window.innerWidth * 0.25);
+                const cy = window.innerHeight / 2 + Math.cos(autoAnimateAngle * 0.5) * (window.innerHeight * 0.25);
+                
+                if (!isInSmokeZone(cx, cy)) {
+                    particles.push(new FluidParticle(cx, cy, Math.cos(autoAnimateAngle) * 2, Math.sin(autoAnimateAngle) * 2, getRandomColor()));
+                }
+            }
+        }
+
+        function loop() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const now = performance.now();
+            for (let i = activeSmokeZones.length - 1; i >= 0; i--) {
+                const zone = activeSmokeZones[i];
+                if (now - zone.spawnTime > zone.life) {
+                    activeSmokeZones.splice(i, 1); 
+                } else {
+                    if (zone.currentRadius < zone.maxRadius) zone.currentRadius += 3.5; 
+                }
+            }
+
+            injectBackgroundFluid();
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                const s = sparks[i];
+                s.update();
+                s.draw();
+                if (s.alpha <= 0) sparks.splice(i, 1);
+            }
+            ctx.restore();
+
+            ctx.save();
+            for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                const sm = smokeParticles[i];
+                sm.update();
+                sm.draw();
+                if (sm.alpha <= 0) smokeParticles.splice(i, 1);
+            }
+            ctx.restore();
+
+            for (let i = flashbangs.length - 1; i >= 0; i--) {
+                const fb = flashbangs[i];
+                fb.update();
+                fb.draw();
+                if (fb.isDead) flashbangs.splice(i, 1);
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

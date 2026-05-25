@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wave Media Art</title>
+
+<style>
+html,body{
+    margin:0;
+    overflow:hidden;
+    background:black;
+    width:100%;
+    height:100%;
+    font-family:monospace;
+}
+canvas{
+    display:block;
+}
+
+/* HEX 표시 */
+#topInfo{
+    position:fixed;
+    top:12px;
+    left:50%;
+    transform:translateX(-50%);
+    color:white;
+    font-size:18px;
+    letter-spacing:2px;
+    z-index:10;
+    pointer-events:none;
+    text-shadow:0 0 10px white;
+}
+
+/* 파동 수 */
+#waveCount{
+    position:fixed;
+    top:42px;
+    left:50%;
+    transform:translateX(-50%);
+    color:white;
+    opacity:0;
+    transition:.3s;
+    z-index:10;
+}
+
+/* 메뉴창 */
+#guide{
+    position:fixed;
+    right:18px;
+    bottom:18px;
+
+    color:white;
+    font-size:14px;
+
+    z-index:10;
+
+    padding:14px 18px;
+
+    border:1px solid rgba(255,255,255,0.15);
+
+    background:rgba(255,255,255,0.05);
+
+    backdrop-filter:blur(8px);
+
+    border-radius:12px;
+
+    line-height:1.9;
+
+    text-align:left;
+
+    pointer-events:none;
+
+    box-shadow:
+        0 0 20px rgba(255,255,255,0.08);
+}
+
+/* 키 강조 */
+.key{
+    color:#8BE9FD;
+    text-shadow:
+        0 0 8px #8BE9FD;
+}
+
+/* =========================
+   즉시 플래시
+========================= */
+#flash{
+    position:fixed;
+    inset:0;
+    background:white;
+    opacity:0;
+    pointer-events:none;
+    z-index:999;
+}
+</style>
+</head>
+<body>
+
+<div id="topInfo">#FFFFFF</div>
+<div id="waveCount">파동 수 : 0</div>
+
+<div id="guide">
+    <div><span class="key">A</span> : 파동 개수 표시</div>
+    <div><span class="key">B</span> : 화면 플래시</div>
+    <div><span class="key">SPACE</span> : 초기화</div>
+</div>
+
+<div id="flash"></div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+}
+resize();
+
+addEventListener("resize", resize);
+
+const topInfo = document.getElementById("topInfo");
+const waveCount = document.getElementById("waveCount");
+const flash = document.getElementById("flash");
+
+let waves = [];
+let total = 0;
+
+let mx=0,my=0,pmx=0,pmy=0;
+let dragging=false;
+
+/* =========================
+   랜덤 색상
+========================= */
+function randomColor(){
+
+    const c =
+        Math.floor(Math.random()*16777215)
+        .toString(16)
+        .padStart(6,"0")
+        .toUpperCase();
+
+    return "#" + c;
+}
+
+/* =========================
+   최대 반지름
+========================= */
+function maxRadius(x,y){
+
+    return Math.max(
+        Math.hypot(x,y),
+        Math.hypot(innerWidth-x,y),
+        Math.hypot(x,innerHeight-y),
+        Math.hypot(innerWidth-x,innerHeight-y)
+    );
+}
+
+/* =========================
+   파동 생성
+========================= */
+function createWave(x,y,split=false){
+
+    const color = randomColor();
+
+    topInfo.textContent = color;
+    topInfo.style.color = color;
+
+    waves.push({
+
+        x,y,
+        color,
+
+        radius:0,
+
+        max:maxRadius(x,y),
+
+        life:0,
+
+        expand:0.2,
+        fade:0.3,
+
+        split,
+
+        vx:mx-pmx,
+        vy:my-pmy
+    });
+
+    total++;
+
+    if(waves.length > 120){
+        waves.shift();
+    }
+}
+
+/* =========================
+   마우스
+========================= */
+canvas.addEventListener("mousedown",e=>{
+
+    dragging=true;
+
+    mx=e.clientX;
+    my=e.clientY;
+
+    pmx=mx;
+    pmy=my;
+
+    createWave(mx,my,false);
+});
+
+canvas.addEventListener("mousemove",e=>{
+
+    pmx=mx;
+    pmy=my;
+
+    mx=e.clientX;
+    my=e.clientY;
+
+    if(dragging){
+
+        createWave(mx,my,true);
+
+        /* 파동 섞기 */
+        for(let w of waves){
+
+            const dx=w.x-mx;
+            const dy=w.y-my;
+
+            const d=Math.sqrt(dx*dx+dy*dy);
+
+            if(d<160){
+
+                const dragX=mx-pmx;
+                const dragY=my-pmy;
+
+                w.x += dragX*0.15;
+                w.y += dragY*0.15;
+
+                w.x += dy*0.015;
+                w.y -= dx*0.015;
+            }
+        }
+    }
+});
+
+addEventListener("mouseup",()=>{
+    dragging=false;
+});
+
+/* =========================
+   키보드
+========================= */
+addEventListener("keydown",e=>{
+
+    // SPACE 초기화
+    if(e.code==="Space"){
+
+        waves=[];
+
+        ctx.clearRect(
+            0,0,
+            canvas.width,
+            canvas.height
+        );
+    }
+
+    // A 파동 수
+    if(e.key.toLowerCase()==="a"){
+
+        waveCount.textContent =
+            "파동 수 : " + total;
+
+        waveCount.style.opacity=1;
+
+        setTimeout(()=>{
+            waveCount.style.opacity=0;
+        },2000);
+    }
+
+    // =====================
+    // B 즉시 플래시
+    // =====================
+    if(e.key.toLowerCase()==="b"){
+
+        // 이전 transition 제거
+        flash.style.transition="none";
+
+        // 즉시 밝게
+        flash.style.opacity="0.9";
+
+        // 강제 리플로우
+        void flash.offsetWidth;
+
+        // 바로 페이드 시작
+        flash.style.transition=
+            "opacity 1s ease-out";
+
+        flash.style.opacity="0";
+    }
+});
+
+/* =========================
+   점선 원
+========================= */
+function drawCircle(
+    x,y,r,color,a
+){
+
+    const count=40;
+
+    ctx.strokeStyle=color;
+    ctx.globalAlpha=a;
+
+    ctx.lineWidth=2;
+
+    ctx.shadowBlur=12;
+    ctx.shadowColor=color;
+
+    for(let i=0;i<count;i++){
+
+        const start=
+            (Math.PI*2/count)*i;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            x,y,r,
+            start,
+            start+0.06
+        );
+
+        ctx.stroke();
+    }
+}
+
+/* =========================
+   분리 파동
+========================= */
+function drawSplit(
+    w,p,a
+){
+
+    const angle =
+        Math.atan2(w.vy,w.vx);
+
+    const split =
+        Math.sin(p*Math.PI)*35;
+
+    const ox =
+        Math.cos(angle+Math.PI/2)
+        *split;
+
+    const oy =
+        Math.sin(angle+Math.PI/2)
+        *split;
+
+    drawCircle(
+        w.x-ox,
+        w.y-oy,
+        w.radius,
+        w.color,
+        a
+    );
+
+    drawCircle(
+        w.x+ox,
+        w.y+oy,
+        w.radius,
+        w.color,
+        a
+    );
+}
+
+/* =========================
+   애니메이션
+========================= */
+let last=0;
+
+function animate(t){
+
+    const dt=(t-last)/1000;
+    last=t;
+
+    ctx.fillStyle="rgba(0,0,0,0.1)";
+    ctx.fillRect(
+        0,0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.globalCompositeOperation=
+        "lighter";
+
+    for(let i=waves.length-1;i>=0;i--){
+
+        const w=waves[i];
+
+        w.life += dt;
+
+        const p =
+            Math.min(
+                w.life/w.expand,
+                1
+            );
+
+        w.radius =
+            w.max*p;
+
+        let alpha=1;
+
+        if(w.life>w.expand){
+
+            alpha =
+                1 -
+                (
+                    (w.life-w.expand)
+                    / w.fade
+                );
+        }
+
+        if(!w.split){
+
+            drawCircle(
+                w.x,
+                w.y,
+                w.radius,
+                w.color,
+                alpha
+            );
+        }
+        else{
+
+            drawSplit(
+                w,
+                p,
+                alpha
+            );
+        }
+
+        if(
+            w.life >
+            w.expand+w.fade
+        ){
+            waves.splice(i,1);
+        }
+    }
+
+    ctx.globalCompositeOperation=
+        "source-over";
+
+    requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+
+</script>
+
+</body>
+</html>
