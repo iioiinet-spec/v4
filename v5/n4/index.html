@@ -1,496 +1,302 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Fluid Dynamics Web Simulator</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #030305; font-family: sans-serif; color: #fff; user-select: none; }
-        canvas { display: block; cursor: crosshair; }
-        
-        /* 왼쪽 설명 스크린 및 탭 인터페이스 디자인 */
-        #panel-left {
-            position: absolute; top: 10px; left: 10px; width: 320px;
-            background: rgba(10, 10, 15, 0.9); border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden; z-index: 10;
-        }
-        .tab-header { display: flex; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .tab-btn {
-            flex: 1; padding: 10px; background: none; border: none; color: #888;
-            font-size: 11px; font-weight: bold; cursor: pointer; text-align: center; transition: 0.2s;
-        }
-        .tab-btn.active { color: #00ffc8; background: rgba(255,255,255,0.05); }
-        .tab-content { padding: 15px; display: none; max-height: 400px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #aaa; }
-        .tab-content.active { display: block; }
-        .tab-content strong { color: #fff; }
-        
-        /* 우측 컨트롤러 디자인 */
-        #panel-right {
-            position: absolute; top: 10px; right: 10px; width: 220px;
-            background: rgba(10, 10, 15, 0.9); border: 1px solid rgba(255,255,255,0.08);
-            padding: 15px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 13px; z-index: 10;
-        }
-        .control-group { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
-        .control-group label { width: 55px; font-size: 11px; font-weight: bold; }
-        .control-group input { flex: 1; margin-left: 10px; cursor: pointer; }
-        .control-group select { flex: 1; margin-left: 10px; padding: 3px 6px; background: #14141c; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; outline: none; }
-        .value-tag { font-size: 10px; font-family: monospace; color: #fff; background: rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 3px; min-width: 22px; text-align: center; }
-        #colorPreview { height: 6px; border-radius: 3px; margin-top: 12px; background-color: rgb(0, 255, 200); }
-        .section-title { font-size: 11px; color: #888; margin: 12px 0 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; font-weight: bold; }
-        #statusTag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: #2f9e44; color: #fff; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>쉬운 슈퍼 점프맵</title>
+
+<style>
+
+body{
+    margin:0;
+    overflow:hidden;
+    background:linear-gradient(#6ec6ff,#ffffff);
+    font-family:sans-serif;
+}
+
+#game{
+    width:100vw;
+    height:100vh;
+    overflow:hidden;
+    position:relative;
+}
+
+#world{
+    position:absolute;
+    width:4000px;
+    height:1200px;
+}
+
+.platform{
+    position:absolute;
+    border-radius:12px;
+    border:4px solid #222;
+}
+
+.normal{
+    background:#4CAF50;
+}
+
+.bounce{
+    background:#ffe66d;
+}
+
+.ice{
+    background:#8be9fd;
+}
+
+#player{
+    position:absolute;
+    width:45px;
+    height:45px;
+    background:red;
+    border-radius:10px;
+    z-index:999;
+}
+
+#goal{
+    position:absolute;
+    width:80px;
+    height:80px;
+    background:gold;
+    border-radius:50%;
+    border:6px solid orange;
+}
+
+#ui{
+    position:fixed;
+    top:10px;
+    left:10px;
+    color:white;
+    background:rgba(0,0,0,0.5);
+    padding:12px;
+    border-radius:12px;
+    z-index:9999;
+    line-height:1.8;
+}
+
+</style>
 </head>
+
 <body>
 
-    <!-- 왼쪽: 문서 기술용 페이지형 탭 -->
-    <div id="panel-left">
-        <div class="tab-header">
-            <button class="tab-btn active" onclick="switchTab('tab-science')">FLUID SCIENCE</button>
-            <button class="tab-btn" onclick="switchTab('tab-guide')">PROGRAM GUIDE</button>
-        </div>
-        
-        <!-- 탭 1: 일반 유체 역학 개론 설명문 (영문) -->
-        <div id="tab-science" class="tab-content active">
-            <strong>General Fluid Dynamics</strong><br>
-            A fluid is a substance that continually deforms (flows) under an applied shear stress. Unlike solids, fluids (liquids and gases) cannot sustain a static shear force and will move in accordance with the laws of classical physics.<br><br>
-            <strong>Key Principles:</strong><br>
-            • <strong>Navier-Stokes Equations:</strong> The fundamental mathematical framework describing how velocity, pressure, temperature, and density of a moving fluid are interrelated.<br>
-            • <strong>Continuity & Conservation:</strong> Mass cannot be created or destroyed within the flow field. This simulation forces an incompressible volume match to generate stable vortices.<br>
-            • <strong>Viscosity & Turbulence:</strong> Internal friction determines whether a flow is smooth (laminar) or chaotic (turbulent). Micro-eddies naturally dissolve in thin air.
-        </div>
-        
-        <!-- 탭 2: 프로그램 구조 및 조작 설명문 + 업데이트된 Credits (영문) -->
-        <div id="tab-guide" class="tab-content">
-            <strong>Simulation Architecture</strong><br>
-            This system implements a real-time 2D Eulerian fluid grid algorithm natively in JavaScript.<br><br>
-            <strong>Interactive Controls:</strong><br>
-            • <strong>[Mouse Drag]</strong> Inject vector force and dye density into the fixed grid.<br>
-            • <strong>[Z Key]</strong> Trigger an explosive paint splash at the current pointer location.<br>
-            • <strong>[Spacebar]</strong> Toggle Pause / Resume simulation thread.<br>
-            • <strong>[C Key]</strong> Clear all active fields and canvas buffers.<br><br>
-            <strong>Graphics Calibration:</strong><br>
-            • Features <strong>Linear Interpolation</strong> to bridge sampling gaps during high-speed mouse sweeps.<br>
-            • Utilizes <strong>Bilinear Upscaling</strong> and glow effects to blur rigid pixel grids into organic smoke structures.<br><br>
-            <strong>Credits:</strong><br>
-            • There were 2 Inspirations. I don't know who but thank you for being it.<br>
-            • creator: jingami
-        </div>
+<div id="ui">
+🎮 쉬운 점프맵<br>
+← → 이동<br>
+스페이스 = 점프<br><br>
+
+🟩 일반 발판<br>
+🟨 슈퍼 점프 발판<br>
+🟦 얼음 발판
+</div>
+
+<div id="game">
+
+    <div id="world">
+
+        <div id="player"></div>
+
+        <div id="goal"></div>
+
     </div>
 
-    <!-- 오른쪽: 컨트롤러 패널 -->
-    <div id="panel-right">
-        <div class="section-title" style="margin-top:0;">BASE COLOR</div>
-        <div class="control-group"><label style="color:#ff6b6b;">RED</label><span id="valR" class="value-tag">0</span><input type="range" id="slideR" min="0" max="255" value="0"></div>
-        <div class="control-group"><label style="color:#51cf66;">GREEN</label><span id="valG" class="value-tag">0</span><input type="range" id="slideG" min="0" max="255" value="230"></div>
-        <div class="control-group"><label style="color:#339af0;">BLUE</label><span id="valB" class="value-tag">0</span><input type="range" id="slideB" min="0" max="255" value="255"></div>
-        <div id="colorPreview"></div>
+</div>
 
-        <div class="section-title">PHYSICS & BRUSH</div>
-        <div class="control-group"><label style="color:#fcc419;">SPEED</label><span id="valSpeed" class="value-tag">0</span><input type="range" id="slideSpeed" min="0.5" max="1.5" step="0.05" value="1.0"></div>
-        <div class="control-group"><label style="color:#da77f2;">SIZE</label><span id="valBrushSize" class="value-tag">0</span><input type="range" id="slideBrushSize" min="1" max="4" step="1" value="2"></div>
-        <div class="control-group"><label style="color:#4dabf7;">DIFFUSE</label><span id="valDiffusion" class="value-tag">0</span><input type="range" id="slideDiffusion" min="0.95" max="0.99" step="0.005" value="0.98"></div>
-        <div class="control-group"><label style="color:#00ffc8;">OPACITY</label><span id="valOpacity" class="value-tag">0</span><input type="range" id="slideOpacity" min="0" max="50" step="1" value="25"></div>
-        
-        <div class="control-group">
-            <label style="color:#adb5bd;">BG COLOR</label>
-            <select id="selectBG">
-                <option value="rgba(3, 3, 5, 0.15)">Deep Black</option>
-                <option value="rgba(55, 55, 55, 0.15)">Gray</option>
-                <option value="rgba(235, 232, 205, 0.15)">Warm Ivory</option>
-                <option value="rgba(10, 20, 58, 0.15)">Midnight Navy</option>
-            </select>
-        </div>
-        
-        <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>ENGINE STATUS</span>
-            <span id="statusTag">RUNNING</span>
-        </div>
-    </div>
+<script>
 
-    <canvas id="fluidCanvas"></canvas>
+const world = document.getElementById("world");
+const player = document.getElementById("player");
+const goal = document.getElementById("goal");
 
-    <script>
-        const canvas = document.getElementById('fluidCanvas');
-        const ctx = canvas.getContext('2d');
+let x = 100;
+let y = 300;
 
-        // UI 매핑 및 이벤트 연동
-        const slideR = document.getElementById('slideR'), slideG = document.getElementById('slideG'), slideB = document.getElementById('slideB');
-        const slideSpeed = document.getElementById('slideSpeed'), slideBrushSize = document.getElementById('slideBrushSize'), slideDiffusion = document.getElementById('slideDiffusion');
-        const slideOpacity = document.getElementById('slideOpacity');
-        const selectBG = document.getElementById('selectBG');
-        const colorPreview = document.getElementById('colorPreview'), statusTag = document.getElementById('statusTag');
+let vx = 0;
+let vy = 0;
 
-        // 수치 표시 태그 매핑
-        const valR = document.getElementById('valR'), valG = document.getElementById('valG'), valB = document.getElementById('valB');
-        const valSpeed = document.getElementById('valSpeed'), valBrushSize = document.getElementById('valBrushSize'), valDiffusion = document.getElementById('valDiffusion');
-        const valOpacity = document.getElementById('valOpacity');
+let jumping = false;
 
-        let colorR = parseInt(slideR.value), colorG = parseInt(slideG.value), colorB = parseInt(slideB.value);
-        let speedMultiplier = parseFloat(slideSpeed.value), brushRadiusSetting = parseInt(slideBrushSize.value), fluidDiffusionSetting = parseFloat(slideDiffusion.value);
-        let opacitySetting = parseInt(slideOpacity.value);
-        let bgSelection = selectBG.value;
-        let isPaused = false;
+const gravity = 0.8;
 
-        // 슬라이더 텍스트 수치 동기화 헬퍼 함수
-        function updateSliderValues() {
-            valR.textContent = slideR.value;
-            valG.textContent = slideG.value;
-            valB.textContent = slideB.value;
-            valSpeed.textContent = Number(slideSpeed.value).toFixed(2);
-            valBrushSize.textContent = slideBrushSize.value;
-            valDiffusion.textContent = Number(slideDiffusion.value).toFixed(3);
-            valOpacity.textContent = slideOpacity.value;
+const keys = {};
+
+document.addEventListener("keydown",(e)=>{
+
+    keys[e.code] = true;
+
+    // 높은 점프
+    if(e.code==="Space" && !jumping){
+
+        vy = -24;
+        jumping = true;
+
+    }
+
+});
+
+document.addEventListener("keyup",(e)=>{
+
+    keys[e.code] = false;
+
+});
+
+const platforms = [
+
+    // 간격 줄인 쉬운 맵
+    {x:0,y:600,w:300,h:50,type:"normal"},
+
+    {x:350,y:560,w:180,h:40,type:"bounce"},
+
+    {x:600,y:520,w:180,h:40,type:"ice"},
+
+    {x:850,y:560,w:200,h:40,type:"normal"},
+
+    {x:1100,y:500,w:220,h:40,type:"bounce"},
+
+    {x:1400,y:450,w:240,h:40,type:"ice"},
+
+    {x:1700,y:520,w:240,h:40,type:"normal"},
+
+    {x:2000,y:460,w:260,h:40,type:"bounce"},
+
+    {x:2350,y:420,w:260,h:40,type:"ice"},
+
+    {x:2700,y:500,w:280,h:40,type:"normal"},
+
+    {x:3050,y:440,w:280,h:40,type:"bounce"},
+
+    {x:3400,y:380,w:320,h:50,type:"normal"}
+
+];
+
+// 플랫폼 생성
+platforms.forEach(p=>{
+
+    const div = document.createElement("div");
+
+    div.className = "platform " + p.type;
+
+    div.style.left = p.x + "px";
+    div.style.top = p.y + "px";
+    div.style.width = p.w + "px";
+    div.style.height = p.h + "px";
+
+    world.appendChild(div);
+
+});
+
+// 골
+goal.style.left = "3500px";
+goal.style.top = "250px";
+
+function reset(){
+
+    x = 100;
+    y = 300;
+
+    vx = 0;
+    vy = 0;
+
+}
+
+function update(){
+
+    // 좌우 이동
+    if(keys["ArrowRight"]){
+
+        vx += 0.6;
+
+    }
+
+    if(keys["ArrowLeft"]){
+
+        vx -= 0.6;
+
+    }
+
+    // 마찰
+    vx *= 0.9;
+
+    // 중력
+    vy += gravity;
+
+    x += vx;
+    y += vy;
+
+    // 플랫폼 충돌
+    platforms.forEach(p=>{
+
+        if(
+            x + 45 > p.x &&
+            x < p.x + p.w &&
+            y + 45 > p.y &&
+            y + 45 < p.y + p.h + 20 &&
+            vy >= 0
+        ){
+
+            y = p.y - 45;
+
+            vy = 0;
+
+            jumping = false;
+
+            // 슈퍼 점프 발판
+            if(p.type==="bounce"){
+
+                vy = -35;
+
+            }
+
+            // 얼음 발판
+            if(p.type==="ice"){
+
+                vx *= 1.03;
+
+            }
+
         }
 
-        function updateColor() {
-            colorR = parseInt(slideR.value); colorG = parseInt(slideG.value); colorB = parseInt(slideB.value);
-            colorPreview.style.backgroundColor = `rgb(${colorR}, ${colorG}, ${colorB})`;
-            updateSliderValues();
-        }
-        [slideR, slideG, slideB].forEach(s => s.addEventListener('input', updateColor));
+    });
 
-        slideSpeed.addEventListener('input', () => { speedMultiplier = parseFloat(slideSpeed.value); updateSliderValues(); });
-        slideBrushSize.addEventListener('input', () => { brushRadiusSetting = parseInt(slideBrushSize.value); updateSliderValues(); });
-        slideDiffusion.addEventListener('input', () => { fluidDiffusionSetting = parseFloat(slideDiffusion.value); updateSliderValues(); });
-        slideOpacity.addEventListener('input', () => { opacitySetting = parseInt(slideOpacity.value); updateSliderValues(); });
-        
-        selectBG.addEventListener('change', () => { 
-            bgSelection = selectBG.value; 
-            let pureRGB = bgSelection.replace('rgba', 'rgb').split(',').slice(0,3).join(',') + ')';
-            document.body.style.backgroundColor = pureRGB; 
-        });
+    // 떨어지면 리셋
+    if(y > 1100){
 
-        // 초기 수치 주입 호출
-        updateColor();
+        reset();
 
-        // 탭 전환 메커니즘
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            if (event && event.target) {
-                event.target.classList.add('active');
-            }
-            document.getElementById(tabId).classList.add('active');
-        }
+    }
 
-        // 시뮬레이션 물리 모델 코어 (96x96 고정 격자)
-        const NX = 96, NY = 96, size = NX * NY;
-        let u = new Float32Array(size), v = new Float32Array(size);    
-        let u_prev = new Float32Array(size), v_prev = new Float32Array(size);
-        let d = new Float32Array(size), d_prev = new Float32Array(size), curl = new Float32Array(size);
-        let isMouseDown = false, lastMouseX = 0, lastMouseY = 0, noiseTime = 0;
+    // 플레이어 위치
+    player.style.left = x + "px";
+    player.style.top = y + "px";
 
-        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-        window.addEventListener('resize', resize); resize();
+    // 카메라
+    const cameraX = -x + window.innerWidth / 3;
 
-        function IX(x, y) { return Math.max(0, Math.min(NX-1, x)) + Math.max(0, Math.min(NY-1, y)) * NX; }
+    world.style.transform =
+    `translateX(${cameraX}px)`;
 
-        function clearFluid() {
-            u.fill(0); v.fill(0); u_prev.fill(0); v_prev.fill(0); d.fill(0); d_prev.fill(0);
-            ctx.fillStyle = bgSelection.replace('rgba', 'rgb').split(',').slice(0,3).join(',') + ')';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+    // 클리어
+    if(
+        x + 45 > 3500 &&
+        y + 45 > 250 &&
+        x < 3580 &&
+        y < 330
+    ){
 
-        function diffuse(b, x, x0, diff, dt) {
-            const a = dt * diff * NX * NY, c = 1 + 4 * a;
-            for (let k = 0; k < 20; k++) {
-                for (let j = 1; j < NY - 1; j++) {
-                    for (let i = 1; i < NX - 1; i++) {
-                        x[IX(i, j)] = (x0[IX(i, j)] + a * (x[IX(i+1, j)] + x[IX(i-1, j)] + x[IX(i, j+1)] + x[IX(i, j-1)])) / c;
-                    }
-                }
-                set_bnd(b, x);
-            }
-        }
+        alert("🏆 쉬운 점프맵 클리어!");
 
-        function advect(b, dfield, d0, ufield, vfield, dt) {
-            const dt0 = dt * Math.max(NX, NY);
-            for (let j = 1; j < NY - 1; j++) {
-                for (let i = 1; i < NX - 1; i++) {
-                    let x = i - dt0 * ufield[IX(i, j)], y = j - dt0 * vfield[IX(i, j)];
-                    x = Math.max(0.5, Math.min(NX - 1.5, x)); y = Math.max(0.5, Math.min(NY - 1.5, y));
-                    const i0 = Math.floor(x), i1 = i0 + 1, j0 = Math.floor(y), j1 = j0 + 1;
-                    const s1 = x - i0, s0 = 1 - s1, t1 = y - j0, t0 = 1 - t1;
-                    dfield[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) + s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
-                }
-            }
-            set_bnd(b, dfield);
-        }
+        reset();
 
-        function project(ufield, vfield, p, div) {
-            for (let j = 1; j < NY - 1; j++) {
-                for (let i = 1; i < NX - 1; i++) {
-                    div[IX(i, j)] = -0.5 * (ufield[IX(i+1, j)] - ufield[IX(i-1, j)] + vfield[IX(i, j+1)] - vfield[IX(i, j-1)]) / Math.max(NX, NY);
-                    p[IX(i, j)] = 0;
-                }
-            }
-            set_bnd(0, div); set_bnd(0, p);
-            for (let k = 0; k < 20; k++) {
-                for (let j = 1; j < NY - 1; j++) {
-                    for (let i = 1; i < NX - 1; i++) {
-                        p[IX(i, j)] = (div[IX(i, j)] + p[IX(i+1, j)] + p[IX(i-1, j)] + p[IX(i, j+1)] + p[IX(i, j-1)]) / 4;
-                    }
-                }
-                set_bnd(0, p);
-            }
-            for (let j = 1; j < NY - 1; j++) {
-                for (let i = 1; i < NX - 1; i++) {
-                    ufield[IX(i, j)] -= 0.5 * Math.max(NX, NY) * (p[IX(i+1, j)] - p[IX(i-1, j)]);
-                    vfield[IX(i, j)] -= 0.5 * Math.max(NX, NY) * (p[IX(i, j+1)] - p[IX(i, j-1)]);
-                }
-            }
-            set_bnd(1, ufield); set_bnd(2, vfield);
-        }
+    }
 
-        function confineVorticity(dt) {
-            for (let j = 1; j < NY - 1; j++) {
-                for (let i = 1; i < NX - 1; i++) {
-                    curl[IX(i, j)] = (u[IX(i, j+1)] - u[IX(i, j-1)]) - (v[IX(i+1, j)] - v[IX(i-1, j)]);
-                }
-            }
-            const scale = dt * 0.7;
-            for (let j = 2; j < NY - 2; j++) {
-                for (let i = 2; i < NX - 2; i++) {
-                    let nx = Math.abs(curl[IX(i+1, j)]) - Math.abs(curl[IX(i-1, j)]);
-                    let ny = Math.abs(curl[IX(i, j+1)]) - Math.abs(curl[IX(i, j-1)]);
-                    let len = Math.sqrt(nx * nx + ny * ny) + 0.0001; nx /= len; ny /= len;
-                    u[IX(i, j)] += ny * curl[IX(i, j)] * scale; v[IX(i, j)] -= nx * curl[IX(i, j)] * scale;
-                }
-            }
-        }
+    requestAnimationFrame(update);
 
-        function set_bnd(b, x) {
-            for (let i = 1; i < NX - 1; i++) {
-                x[IX(i, 0)] = b === 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
-                x[IX(i, NY-1)] = b === 2 ? -x[IX(i, NY-2)] : x[IX(i, NY-2)];
-            }
-            for (let j = 1; j < NY - 1; j++) {
-                x[IX(0, j)] = b === 1 ? -x[IX(1, j)] : x[IX(1, j)];
-                x[IX(NX-1, j)] = b === 1 ? -x[IX(NX-2, j)] : x[IX(NX-2, j)];
-            }
-            x[IX(0, 0)]       = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
-            x[IX(0, NY-1)]    = 0.5 * (x[IX(1, NY-1)] + x[IX(0, NY-2)]);
-            x[IX(NX-1, 0)]    = 0.5 * (x[IX(NX-2, 0)] + x[IX(NX-1, 1)]);
-            x[IX(NX-1, NY-1)] = 0.5 * (x[IX(NX-2, NY-1)] + x[IX(NX-1, NY-2)]);
-        }
+}
 
-        function step(dt) {
-            if (isPaused) return;
-            const adjustedDt = dt * speedMultiplier;
+update();
 
-            diffuse(1, u_prev, u, 0.0001, adjustedDt); diffuse(2, v_prev, v, 0.0001, adjustedDt); project(u_prev, v_prev, u, v);
-            advect(1, u, u_prev, u_prev, v_prev, adjustedDt); advect(2, v, v_prev, u_prev, v_prev, adjustedDt); project(u, v, u_prev, v_prev);
-            confineVorticity(adjustedDt);
+</script>
 
-            noiseTime += 0.05 * speedMultiplier;
-            for (let j = 1; j < NY - 1; j++) {
-                for (let i = 1; i < NX - 1; i++) {
-                    const idx = IX(i, j);
-                    if (d[idx] > 0.1) {
-                        u[idx] += Math.sin(i * 0.3 + noiseTime) * Math.cos(j * 0.2) * 0.15 * speedMultiplier;
-                        v[idx] += Math.cos(i * 0.2) * Math.sin(j * 0.3 + noiseTime) * 0.15 * speedMultiplier;
-                    }
-                }
-            }
-
-            diffuse(0, d_prev, d, 0.001, adjustedDt); advect(0, d, d_prev, u, v, adjustedDt);
-            const decayFactor = Math.pow(fluidDiffusionSetting, speedMultiplier);
-            const frictionFactor = Math.pow(0.98, speedMultiplier);
-
-            for(let i=0; i<size; i++) { d[i] *= decayFactor; u[i] *= frictionFactor; v[i] *= frictionFactor; }
-        }
-
-        function render() {
-            if (!isPaused) { 
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = bgSelection.replace('rgba', 'rgb').split(',').slice(0,3).join(',') + ')';
-                ctx.fillRect(0, 0, canvas.width, canvas.height); 
-            }
-            
-            const imgData = ctx.createImageData(NX, NY);
-            for (let j = 0; j < NY; j++) {
-                for (let i = 0; i < NX; i++) {
-                    const idx = IX(i, j), density = d[idx], pixelIdx = (i + j * NX) * 4;
-                    if (density > 0.02) {
-                        const rainbowShift = Math.sin(density * 5 + Math.sqrt(u[idx]*u[idx] + v[idx]*v[idx]) * 0.5) * 28;
-                        imgData.data[pixelIdx + 0] = Math.max(0, Math.min(255, colorR + rainbowShift));
-                        imgData.data[pixelIdx + 1] = Math.max(0, Math.min(255, colorG + Math.sin(density * 3) * 20));
-                        imgData.data[pixelIdx + 2] = Math.max(0, Math.min(255, colorB - rainbowShift * 0.5));
-                        imgData.data[pixelIdx + 3] = Math.max(0, Math.min(255, Math.floor(density * opacitySetting * 8.4)));
-                    }
-                }
-            }
-
-            const tempCanvas = document.createElement('canvas'); tempCanvas.width = NX; tempCanvas.height = NY;
-            tempCanvas.getContext('2d').putImageData(imgData, 0, 0);
-
-            ctx.imageSmoothingEnabled = true; 
-            ctx.imageSmoothingQuality = 'high';
-            
-            ctx.globalCompositeOperation = 'screen'; 
-            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
-            
-            ctx.globalCompositeOperation = 'lighter'; 
-            ctx.shadowBlur = 15; 
-            ctx.shadowColor = `rgb(${colorR}, ${colorG}, ${colorB})`;
-            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
-            
-            ctx.globalCompositeOperation = 'source-over'; 
-            ctx.shadowBlur = 0;
-        }
-
-        // 360도 전 방향 물감 대량 살포용 스플래시 연산 엔진
-        function triggerSplash(mx, my) {
-            const rect = canvas.getBoundingClientRect();
-            const i = Math.floor(((mx - rect.left) / rect.width) * NX);
-            const j = Math.floor(((my - rect.top) / rect.height) * NY);
-            
-            // 격자 테두리 이탈 예외 방지 안전망
-            if (i <= 4 || i >= NX - 5 || j <= 4 || j >= NY - 5) return;
-
-            const splashRadius = brushRadiusSetting * 3 + 2; // 드래그 브러시보다 거대한 폭발 반경 설정
-
-            for (let rj = -splashRadius; rj <= splashRadius; rj++) {
-                for (let ri = -splashRadius; ri <= splashRadius; ri++) {
-                    const dist = Math.sqrt(ri * ri + rj * rj);
-                    if (dist > splashRadius + 0.5) continue;
-
-                    const idx = IX(i + ri, j + rj);
-                    const weight = Math.max(0, 1 - dist / splashRadius);
-
-                    if (dist === 0) {
-                        u[idx] += (Math.random() - 0.5) * 5.0;
-                        v[idx] += (Math.random() - 0.5) * 5.0;
-                    } else {
-                        // 중심점으로부터 바깥 사방으로 강하게 뿜어져 나가는 원형 밀쳐내기 벡터장 생성
-                        u[idx] += (ri / dist) * weight * 12.0 * speedMultiplier;
-                        v[idx] += (rj / dist) * weight * 12.0 * speedMultiplier;
-                    }
-                    // 스플래시 전용 대량 밀도 충전
-                    d[idx] += weight * 15.0;
-                }
-            }
-        }
-
-        function handleMove(currentX, currentY) {
-            // 마우스 드래그를 안 하더라도 Z키 호출용 실시간 포인터 좌표 최신 동기화
-            lastMouseX = currentX; lastMouseY = currentY;
-            if (!isMouseDown) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const pX = lastMouseX - rect.left, pY = lastMouseY - rect.top, cX = currentX - rect.left, cY = currentY - rect.top;
-            const dx = cX - pX, dy = cY - pY, distance = Math.sqrt(dx * dx + dy * dy);
-            const steps = Math.max(1, Math.floor(distance / (rect.width / NX)));
-
-            const rawFX = currentX - lastMouseX, rawFY = currentY - lastMouseY, speed = Math.sqrt(rawFX*rawFX + rawFY*rawFY);
-            const forceX = rawFX * 0.4, forceY = rawFY * 0.4;
-            const radius = speed > 25 ? brushRadiusSetting + 1 : brushRadiusSetting;
-
-            for (let s = 0; s <= steps; s++) {
-                const t = s / steps, i = Math.floor(((pX + dx * t) / rect.width) * NX), j = Math.floor(((pY + dy * t) / rect.height) * NY);
-                if (i > 3 && i < NX - 4 && j > 3 && j < NY - 4) {
-                    for (let rj = -radius; rj <= radius; rj++) {
-                        for (let ri = -radius; ri <= radius; ri++) {
-                            const dist = Math.sqrt(ri*ri + rj*rj); if (dist > radius + 0.5) continue;
-                            const weight = dist === 0 ? 1.2 : (0.4 / dist), idx = IX(i + ri, j + rj);
-                            u[idx] += forceX * weight; v[idx] += forceY * weight; d[idx] += (speed > 25 ? 2.5 : 1.5) * weight;
-                        }
-                    }
-                }
-            }
-        }
-
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault(); isPaused = !isPaused;
-                statusTag.textContent = isPaused ? 'PAUSED' : 'RUNNING';
-                statusTag.style.backgroundColor = isPaused ? '#e03131' : '#2f9e44';
-            }
-            if (e.key === 'c' || e.key === 'C' || e.key === 'ㅊ') clearFluid();
-            
-            // 한글 키보드 매핑('ㅋ') 상태까지 완벽 대응한 Z키 스플래시 핸들러 바인딩
-            if (e.key === 'z' || e.key === 'Z' || e.key === 'ㅋ') {
-                triggerSplash(lastMouseX, lastMouseY);
-            }
-        });
-
-        const preventUI = (e) => e.target.closest('#panel-left') || e.target.closest('#panel-right');
-        
-        canvas.addEventListener('mousedown', (e) => { if (preventUI(e)) return; isMouseDown = true; lastMouseX = e.clientX; lastMouseY = e.clientY; handleMove(e.clientX, e.clientY); });
-        window.addEventListener('mouseup', () => isMouseDown = false);
-        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
-
-        canvas.addEventListener('touchstart', (e) => { if (preventUI(e)) return; isMouseDown = true; lastMouseX = e.touches.clientX; lastMouseY = e.touches.clientY; handleMove(e.touches.clientX, e.touches.clientY); });
-        window.addEventListener('touchend', () => isMouseDown = false);
-        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if(e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
-
-        // 포인터 실시간 위치 추적 (Z키 스플래시 연동용)
-        let currentMouseX = 0, currentMouseY = 0;
-        window.addEventListener('mousemove', (e) => { currentMouseX = e.clientX; currentMouseY = e.clientY; });
-        canvas.addEventListener('touchmove', (e) => { if(e.touches.length === 1) { currentMouseX = e.touches[0].clientX; currentMouseY = e.touches[0].clientY; } });
-
-        // Z키 포인터 위치 기반 물감 스플래시(Splash) 고속 주입 엔진
-        function triggerSplash(mx, my) {
-            const rect = canvas.getBoundingClientRect();
-            const centerX = Math.floor(((mx - rect.left) / rect.width) * NX);
-            const centerY = Math.floor(((my - rect.top) / rect.height) * NY);
-            
-            // 안전 경계선 예외 처리
-            if (centerX <= 4 || centerX >= NX - 5 || centerY <= 4 || centerY >= NY - 5) return;
-
-            const splashRadius = brushRadiusSetting * 2.5; // 일반 브러시보다 거대한 반경
-            const forceMultiplier = speedMultiplier * 12.0; // 사방으로 뿜어지는 강력한 벡터 가속도
-
-            for (let rj = -splashRadius; rj <= splashRadius; rj++) {
-                for (let ri = -splashRadius; ri <= splashRadius; ri++) {
-                    const nx = centerX + ri;
-                    const ny = centerY + rj;
-                    
-                    if (nx > 0 && nx < NX - 1 && ny > 0 && ny < NY - 1) {
-                        const dist = Math.sqrt(ri * ri + rj * rj);
-                        if (dist > splashRadius) continue;
-
-                        // 중심부에서 외곽으로 퍼져나가는 방사형 확률 밀도 수식
-                        const weight = Math.max(0, 1.0 - (dist / splashRadius));
-                        const angle = Math.atan2(rj, ri) + (Math.random() - 0.5) * 0.5; // 불규칙한 각도 분산 노이즈
-                        const idx = IX(nx, ny);
-
-                        // 사방으로 파편처럼 튀는 폭발적 벡터 힘 주입
-                        u[idx] += Math.cos(angle) * forceMultiplier * weight * (0.8 + Math.random() * 0.4);
-                        v[idx] += Math.sin(angle) * forceMultiplier * weight * (0.8 + Math.random() * 0.4);
-                        
-                        // 순간 밀도 집약 주입 (스플래시 파편 질감 유도)
-                        if (Math.random() < 0.85) {
-                            d[idx] += (4.0 + Math.random() * 3.0) * weight;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 키보드 이벤트 청취 (Spacebar, C, Z 키 단축키 모듈)
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault(); isPaused = !isPaused;
-                statusTag.textContent = isPaused ? 'PAUSED' : 'RUNNING';
-                statusTag.style.backgroundColor = isPaused ? '#e03131' : '#2f9e44';
-            }
-            if (e.key === 'c' || e.key === 'C' || e.key === 'ㅊ') {
-                clearFluid();
-            }
-            // Z 또는 ㅋ 키 입력 시 현재 마우스/터치 포인터 좌표에 폭발적인 물감 스플래시 발생
-            if (e.key === 'z' || e.key === 'Z' || e.key === 'ㅋ') {
-                triggerSplash(currentMouseX, currentMouseY);
-            }
-        });
-
-        // 60FPS 실시간 시뮬레이션 메인 루프 실행
-        function loop() { 
-            step(0.12); 
-            render(); 
-            requestAnimationFrame(loop); 
-        }
-        loop();
-    </script>
 </body>
 </html>
-
