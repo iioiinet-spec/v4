@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>레트로 8비트 농사 타이쿤 (후반 인플레 안정화 버전)</title>
+    <style>
+        body {
+            font-family: 'Courier New', 'Malgun Gothic', monospace;
+            background-color: #2c2c2c;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            user-select: none;
+            image-rendering: pixelated;
+        }
+
+        /* 8비트 스타일 상단바 */
+        #status-bar {
+            background: #1a1a1a;
+            padding: 15px 30px;
+            border: 4px solid #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #a1db58;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            box-shadow: 4px 4px 0px #000;
+        }
+
+        #farm-scenery {
+            width: 100%;
+            max-width: 950px;
+            height: 100px;
+            background: #4a90e2;
+            border: 4px solid #ffffff;
+            margin-bottom: 20px;
+            position: relative;
+            box-shadow: 4px 4px 0px #000;
+            overflow: hidden;
+        }
+        .scenery-element { position: absolute; bottom: 5px; font-size: 45px; }
+        #visual-home { left: 5%; font-size: 60px; }
+        #visual-scarecrow { left: 35%; display: none; }
+        #visual-sprinkler { left: 50%; display: none; font-size: 35px; bottom: 10px;}
+        #visual-statue { left: 65%; display: none; }
+        #visual-gamble { left: 85%; bottom: 5px; font-size: 50px; display: block; z-index: 10; }
+        
+        .cloud { position: absolute; top: 10px; font-size: 20px; animation: floatCloud 25s infinite linear; color: white; }
+        @keyframes floatCloud { 0% { transform: translateX(-100px); } 100% { transform: translateX(1100px); } }
+
+        /* 게임 메인 레이아웃 */
+        #game-container {
+            display: flex;
+            gap: 20px;
+            max-width: 950px;
+            width: 100%;
+            justify-content: center;
+        }
+        
+        .panel {
+            background: #1a1a1a;
+            padding: 15px;
+            border: 4px solid #ffffff;
+            box-shadow: 4px 4px 0px #000;
+        }
+        .panel h3 { margin-top: 0; margin-bottom: 10px; border-bottom: 4px solid #333; padding-bottom: 5px; color: #ffeb3b; font-size: 14px;}
+
+        /* 상점 사이드바 */
+        #sidebar-left { width: 340px; display: flex; flex-direction: column; gap: 15px; }
+        .shop-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+        .tab-btn { flex: 1; padding: 6px; font-size: 12px; font-weight: bold; cursor: pointer; border: 2px solid #fff; background: #333; color: #fff; }
+        .tab-btn.active { background: #ffeb3b; color: #000; border-color: #ffeb3b; }
+        .shop-content { display: none; max-height: 260px; overflow-y: auto; padding-right: 5px; }
+        .shop-content.active { display: block; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px; padding: 4px 0; border-bottom: 2px dashed #333; }
+        
+        .buy-btn { background: #4caf50; border: 2px solid #fff; color: white; padding: 4px 8px; cursor: pointer; font-weight: bold; font-family: monospace; }
+        .buy-btn:hover { background: #388e3c; }
+        .buy-btn:disabled { background: #555; color: #aaa; cursor: not-allowed; border-color: #555; }
+
+        /* 인벤토리 */
+        #inventory-list { max-height: 200px; overflow-y: auto; }
+
+        /* 메인 콘텐츠 */
+        #main-content-area { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        
+        .main-category-tabs { display: flex; gap: 8px; width: 100%; }
+        .category-btn {
+            flex: 1; padding: 12px; font-size: 13px; font-weight: bold; cursor: pointer;
+            border: 4px solid #fff; background: #333; color: #fff; font-family: monospace;
+            box-shadow: 4px 4px 0px #000;
+        }
+        .category-btn.active { background: #4caf50; color: white; transform: translate(2px, 2px); box-shadow: 2px 2px 0px #000; }
+
+        .content-window { display: none; width: 100%; min-height: 420px; box-sizing: border-box; }
+        .content-window.active { display: flex; flex-direction: column; align-items: center; }
+
+        /* 농사 마당 */
+        #tools { display: flex; gap: 8px; margin-bottom: 15px; }
+        .tool-btn { background: #333; border: 3px solid #fff; color: #fff; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer; }
+        .tool-btn.active { background-color: #ff9800; color: #000; }
+        
+        #farm-grid-container {
+            position: relative;
+            background: #111; 
+            padding: 15px; 
+            border: 4px solid #fff;
+        }
+        #farm-grid { 
+            display: grid; 
+            gap: 8px; 
+        }
+        .plot { 
+            width: 100px; 
+            height: 100px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            font-weight: bold; 
+            font-size: 11px; 
+            text-align: center; 
+            border: 3px solid #333;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .grass { background-color: #2e7d32; border-color: #1b5e20; color: #fff; }
+        .soil { background-color: #5d4037; border-color: #3e2723; color: #fff; }
+        .seeded { background-color: #795548; border-color: #3e2723; color: #ffe082; }
+        .watered { background-color: #006064; border-color: #00363a; color: #81d4fa; }
+        .ripe { background-color: #fbc02d; border-color: #f57f17; color: #000; font-weight: 900; }
+        .timer-display { font-size: 9px; margin-top: 4px; color: #ffeb3b; }
+
+        /* 플레이어 캐릭터 아바타 */
+        #field-player {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: #00e5ff;
+            border: 2px solid #fff;
+            box-shadow: 2px 2px 0px #000;
+            z-index: 50;
+            transition: left 0.1s ease, top 0.1s ease;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .player-eye {
+            position: absolute;
+            width: 4px;
+            height: 6px;
+            background: #000;
+            top: 10px;
+        }
+
+        /* 카지노 */
+        #casino-window { background: #004d40; justify-content: center !important; }
+        .gamble-box { font-size: 40px; background: #00251a; border: 4px dashed #fff; color: white; width: 140px; height: 100px; line-height: 100px; margin: 15px auto; font-weight: bold; text-align: center; }
+        .bet-input { width: 120px; padding: 6px; text-align: center; border: 2px solid #fff; background: #000; color: #fff; font-weight: bold; font-size: 14px; }
+        .casino-btns { display: flex; gap: 10px; justify-content: center; margin-top: 15px;}
+        .casino-btn { background: #d32f2f; color: white; border: 3px solid #fff; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; }
+        .casino-btn.even { background: #1976d2; }
+
+        /* 미니 점프 게임장 */
+        #arcade-window { background: #120024; justify-content: center !important; position: relative;}
+        #jump-canvas-container { position: relative; width: 340px; height: 260px; background: #000; border: 4px solid #fff; overflow: hidden; margin-top: 5px; }
+        #jump-canvas { background: #0f001a; display: block; image-rendering: pixelated; }
+        .jump-ui-row { display: flex; justify-content: space-between; width: 340px; margin-top: 5px; font-size: 12px; font-weight: bold; color: #fff; }
+        .gauge-bar-bg { width: 100%; height: 12px; background: #222; border: 2px solid #fff; margin-top: 4px; overflow: hidden; }
+        .gauge-bar-fill { width: 0%; height: 100%; background: #ff0055; }
+        .jump-btn { background: #333; color: #ffeb3b; border: 3px solid #fff; padding: 10px 20px; font-size: 12px; font-weight: bold; width: 340px; margin-top: 5px; }
+
+        /* 업적창 */
+        #achieve-window { background: #222; overflow-y: auto; display: none; }
+        .achieve-item { background: #111; padding: 12px; border: 3px solid #444; margin-bottom: 10px; font-size: 12px; width: 95%; box-sizing: border-box; }
+        .achieve-item.clear { border-color: #ffeb3b; background: #2a2a00; }
+        .achieve-title { font-weight: bold; color: #ff9800; display: flex; justify-content: space-between; font-size: 13px; }
+        .achieve-hint { color: #bbb; font-style: italic; margin: 4px 0; font-size: 11px; }
+        .achieve-reward { color: #4caf50; font-weight: bold; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">
+        <div>💰 소지금: <span id="gold-display">50</span>골드</div>
+        <div>🏠 집: <span id="home-display">텐트 ⛺</span></div>
+        <div>✨ 버프: <span id="buff-display">+0%</span></div>
+        <div style="color: #ffb300; font-size:13px;" id="sys-msg">📢 [후반 밸런스 패치] 지나치게 높았던 후반 작물의 판매 단가를 하향 조정했습니다.</div>
+    </div>
+
+    <div id="farm-scenery">
+        <div class="cloud" style="left: 10%; animation-duration: 25s;">☁️</div>
+        <div class="cloud" style="left: 50%; animation-duration: 18s;">☁️</div>
+        <div id="visual-home" class="scenery-element">⛺</div>
+        <div id="visual-scarecrow" class="scenery-element">🪵</div>
+        <div id="visual-sprinkler" class="scenery-element">🚰</div>
+        <div id="visual-statue" class="scenery-element">🔱</div>
+        <div id="visual-gamble" class="scenery-element">🎰</div>
+    </div>
+
+    <div id="game-container">
+        <div id="sidebar-left">
+            <div class="panel">
+                <h3>🛒 격차 통제 상점</h3>
+                <div class="shop-tabs">
+                    <button class="tab-btn active" onclick="switchShopTab('seeds', event)">씨앗 구매</button>
+                    <button class="tab-btn" onclick="switchShopTab('deco', event)">설치 가구</button>
+                    <button class="tab-btn" onclick="switchShopTab('upgrade', event)">부동산</button>
+                </div>
+                <div id="tab-seeds" class="shop-content active"></div>
+                <div id="tab-deco" class="shop-content">
+                    <div class="item-row"><span>허수아비 🪵 (수확량 +10%)</span><button class="buy-btn" id="buy-scarecrow" onclick="buyDeco('scarecrow', 500)">500g</button></div>
+                    <div class="item-row"><span>스프링클러 🚰 (성장속도 +25%)</span><button class="buy-btn" id="buy-sprinkler" onclick="buyDeco('sprinkler', 5000)">5000g</button></div>
+                    <div class="item-row"><span>황금 신상 🔱 (수확량 +20%)</span><button class="buy-btn" id="buy-statue" onclick="buyDeco('statue', 50000)">50,000g</button></div>
+                </div>
+                <div id="tab-upgrade" class="shop-content">
+                    <div class="item-row"><span>🏠 주거지 업그레이드</span><button class="buy-btn" id="btn-home-up" onclick="upgradeHome()">300g</button></div>
+                    <div class="item-row"><span>🗺️ 영토 확장 (<span id="grid-now">3x3</span>)</span><button class="buy-btn" id="btn-land-up" onclick="expandLand()">500g</button></div>
+                </div>
+            </div>
+            <div class="panel">
+                <h3>🎒 내 가방 (인벤토리)</h3>
+                <div id="inventory-list"></div>
+            </div>
+        </div>
+
+        <div id="main-content-area">
+            <div class="main-category-tabs">
+                <button class="category-btn active" id="nav-farm" onclick="switchMainWindow('farm', event)">🌾 농사 마당 (방향키 조작)</button>
+                <button class="category-btn" id="nav-casino" onclick="switchMainWindow('casino', event)">🃏 고액 홀짝 도박장</button>
+                <button class="category-btn" id="nav-arcade" onclick="switchMainWindow('arcade', event)">🕹️ 점프 킹 미니게임</button>
+                <button class="category-btn" id="nav-achieve" onclick="switchMainWindow('achieve', event)">🏆 국가 보조금</button>
+            </div>
+
+            <div id="farm-window" class="content-window active">
+                <div id="tools">
+                    <button class="tool-btn active" id="btn-hoe" onclick="selectTool('hoe')">⛏️ 괭이질 모드</button>
+                    <button class="tool-btn" id="btn-water" onclick="selectTool('water')">💧 물주기 모드</button>
+                    <button class="tool-btn" id="btn-harvest" onclick="selectTool('harvest')">🧺 수확 및 판매</button>
+                    <button class="tool-btn" id="btn-plant-indicator" style="display:none; background:#ff9800; color:#000;" disabled>🌱 씨앗 배치중</button>
+                </div>
+                <div id="farm-grid-container">
+                    <div id="field-player">
+                        <div class="player-eye" style="left: 10px;" id="p-eye-l"></div>
+                        <div class="player-eye" style="left: 22px;" id="p-eye-r"></div>
+                    </div>
+                    <div id="farm-grid"></div>
+                </div>
+            </div>
+
+            <div id="casino-window" class="content-window panel">
+                <h2 style="color:#fff; margin:0 0 5px 0; font-size:18px;">🃏 한탕주의 홀짝 시스템</h2>
+                <div class="gamble-box" id="casino-box-txt">❓</div>
+                <div>
+                    <span style="font-size:12px; font-weight:bold;">배팅 금액 입력:</span>
+                    <input type="number" id="bet-amount" class="bet-input" value="20" min="10">
+                </div>
+                <div class="casino-btns">
+                    <button class="casino-btn even" onclick="playPureGamble('EVEN')">짝수에 올인</button>
+                    <button class="casino-btn" onclick="playPureGamble('ODD')">홀수에 올인</button>
+                </div>
+            </div>
+
+            <div id="arcade-window" class="content-window panel">
+                <h2 style="color:#ffeb3b; margin:0 0 3px 0; font-size:18px;">👑 픽셀 점프 킹 (초반 자본줄)</h2>
+                <div class="jump-ui-row">
+                    <div>현재 등반: <span id="jump-score" style="color:#ffeb3b">0층</span></div>
+                    <div>최고 기록: <span id="jump-high" style="color:#4caf50">0층</span></div>
+                </div>
+                <div id="jump-canvas-container">
+                    <canvas id="jump-canvas" width="340" height="260"></canvas>
+                </div>
+                <div class="gauge-bar-bg">
+                    <div id="jump-gauge" class="gauge-bar-fill"></div>
+                </div>
+                <button id="jump-trigger-btn" class="jump-btn">🕹️ [Space] 길게 누르기 = 힘 조절 / 방향키 = 이동</button>
+            </div>
+
+            <div id="achieve-window" class="content-window panel">
+                <h2 style="color:#ff9800; margin:0 0 10px 0; font-size:18px;">🏆 업적 보상 시스템</h2>
+                <div id="achieve-list" style="width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ★ [후반 소득 하향 조정 밸런스 데이터]
+        const seedData = {
+            wheat:     { name: "밀 씨앗",       buy: 10,         sell: 12,          time: 3,  emoji: "🌾" },
+            potato:    { name: "감자 씨앗",     buy: 100,        sell: 150,         time: 5,  emoji: "🥔" },
+            carrot:    { name: "당근 씨앗",     buy: 1000,       sell: 2200,        time: 7,  emoji: "🥕" },
+            beet:      { name: "비트 씨앗",     buy: 10000,      sell: 35000,       time: 9,  emoji: "🥗" },
+            ironSeed:  { name: "철 씨앗",       buy: 100000,     sell: 250000,      time: 12, emoji: "⛓️" }, // sell 45만 -> 25만 하향
+            goldSeed:  { name: "금 씨앗",       buy: 1000000,    sell: 2200000,     time: 15, emoji: "🪙" }, // sell 600만 -> 220만 하향
+            diamond:   { name: "다이아 씨앗",   buy: 20000000,   sell: 45000000,    time: 20, emoji: "💎" }, // sell 1.8억 -> 4500만 하향
+            gorani:    { name: "고라니 씨앗",   buy: 500000000,  sell: 850000000,   time: 25, emoji: "🦌" }  // sell 99억 -> 8.5억 하향
+        };
+
+        // 목표 부동산 가격도 하향 수치에 맞춰 전면 재조정
+        const homeTiers = [
+            { name: "텐트 ⛺", emoji: "⛺", price: 300 }, 
+            { name: "오두막 🪵", emoji: "🪵", price: 5000 },
+            { name: "벽돌집 🏡", emoji: "🏡", price: 150000 }, 
+            { name: "대저택 🏰", emoji: "🏰", price: 15000000 },
+            { name: "초호화 우주 정거장 🚀", emoji: "🚀", price: 900000000 }, // 9억 골드로 도달 가능한 최종 목표 설정
+            { name: "우주 대제국 🌌", emoji: "🌌", price: null }
+        ];
+
+        const landTiers = [
+            { size: 3, price: 500,       label: "3x3" }, 
+            { size: 4, price: 15000,     label: "4x4" },
+            { size: 5, price: 800000,    label: "5x5" }, 
+            { size: 6, price: null,      label: "6x6 (최대)" }
+        ];
+
+        let gold = 50;
+        let inventory = { wheat: 3, potato: 0, carrot: 0, beet: 0, ironSeed: 0, goldSeed: 0, diamond: 0, gorani: 0 };
+        let currentTool = 'hoe'; let selectedSeedType = '';
+        let homeIndex = 0; let landIndex = 0; let gridSize = 3;
+        let decos = { scarecrow: false, sprinkler: false, statue: false };
+        
+        let plots = Array(36).fill(null).map(() => ({ state: 'grass', cropType: null, timer: 0 }));
+        let stats = { totalHarvests: 0, carrotHarvests: 0, casinoWins: 0 };
+
+        let playerGrid = { r: 0, c: 0 };
+        let currentActiveWindow = 'farm';
+
+        const achievements = [
+            { id: "harv_5",    title: "🌱 흙수저 탈출단",     hint: "조건: 작물을 종류 불문하고 총 5번 수확하세요.",            check: () => stats.totalHarvests >= 5, reward: 50,   cleared: false },
+            { id: "harv_25",   title: "🚜 자본가 진입",        hint: "조건: 필드에서 총 25번의 농작물 수확을 완료하세요.",    check: () => stats.totalHarvests >= 25, reward: 2000, cleared: false },
+            { id: "casino_3",  title: "🃏 인생 역전의 주인공", hint: "조건: 홀짝 도박장에서 승리를 3회 기록하세요.",          check: () => stats.casinoWins >= 3,    reward: 500, cleared: false },
+            { id: "gold_2000", title: "👑 백만장자의 시작",   hint: "조건: 잔고에 10,000골드 이상을 달성하세요.",       check: () => gold >= 10000,             reward: 3000, cleared: false }
+        ];
+
+        let canvas, ctx;
+        let playerObj = { x: 160, y: 224, vx: 0, vy: 0, size: 16, isGrounded: true, lookDir: 'right' };
+        let targetPlatform = { x: 140, y: 160, w: 70, h: 14 };
+        let basePlatform = { x: 0, y: 240, w: 340, h: 20 };
+        let jumpCharge = 0; let isCharging = false;
+        let jumpScore = 0; let jumpHighScore = 0;
+        let gameActive = false;
+        let keys = { Left: false, Right: false, Space: false };
+
+        function logMsg(txt) {
+            document.getElementById('sys-msg').innerText = "📢 " + txt;
+        }
+
+        function formatNum(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        function switchMainWindow(windowId, event) {
+            currentActiveWindow = windowId;
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.content-window').forEach(win => win.classList.remove('active'));
+            
+            if(event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                document.getElementById(`nav-${windowId}`).classList.add('active');
+            }
+            
+            document.getElementById(`${windowId}-window`).classList.add('active');
+            document.getElementById('achieve-window').style.display = (windowId === 'achieve') ? 'block' : 'none';
+
+            if(windowId === 'arcade') {
+                if(!gameActive) { gameActive = true; requestAnimationFrame(updateJumpGame); }
+            } else { gameActive = false; }
+            if(windowId === 'farm') { updatePlayerDOMPosition(); }
+        }
+
+        function switchShopTab(tabId, event) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.shop-content').forEach(content => content.classList.remove('active'));
+            if(event && event.target) event.target.classList.add('active');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (currentActiveWindow === 'farm') {
+                let moved = false;
+                if (e.code === "ArrowUp" || e.code === "KeyW") { if(playerGrid.r > 0) { playerGrid.r--; moved = true; } }
+                if (e.code === "ArrowDown" || e.code === "KeyS") { if(playerGrid.r < gridSize - 1) { playerGrid.r++; moved = true; } }
+                if (e.code === "ArrowLeft" || e.code === "KeyA") { 
+                    if(playerGrid.c > 0) { playerGrid.c--; moved = true; }
+                    document.getElementById('p-eye-l').style.left = "4px";
+                    document.getElementById('p-eye-r').style.left = "14px";
+                }
+                if (e.code === "ArrowRight" || e.code === "KeyD") { 
+                    if(playerGrid.c < gridSize - 1) { playerGrid.c++; moved = true; }
+                    document.getElementById('p-eye-l').style.left = "20px";
+                    document.getElementById('p-eye-r').style.left = "30px";
+                }
+                if (e.code === "Space") {
+                    e.preventDefault();
+                    let targetIndex = playerGrid.r * gridSize + playerGrid.c;
+                    executeFarmAction(targetIndex);
+                }
+                if(moved) { updatePlayerDOMPosition(); }
+            }
+
+            if (currentActiveWindow === 'arcade' && gameActive) {
+                if (e.code === "ArrowLeft" || e.code === "KeyA") { keys.Left = true; playerObj.lookDir = 'left'; }
+                if (e.code === "ArrowRight" || e.code === "KeyD") { keys.Right = true; playerObj.lookDir = 'right'; }
+                if (e.code === "Space") {
+                    e.preventDefault();
+                    if (!keys.Space && playerObj.isGrounded && !isCharging) { keys.Space = true; startCharging(); }
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (currentActiveWindow === 'arcade' && gameActive) {
+                if (e.code === "ArrowLeft" || e.code === "KeyA") keys.Left = false;
+                if (e.code === "ArrowRight" || e.code === "KeyD") keys.Right = false;
+                if (e.code === "Space") {
+                    if (keys.Space && isCharging) { keys.Space = false; releaseJump(); }
+                }
+            }
+        });
+
+        function updatePlayerDOMPosition() {
+            const playerEl = document.getElementById('field-player');
+            if(!playerEl) return;
+            let targetLeft = 15 + (playerGrid.c * 108) + 30; 
+            let targetTop = 15 + (playerGrid.r * 108) + 30;  
+            playerEl.style.left = targetLeft + "px";
+            playerEl.style.top = targetTop + "px";
+        }
+
+        function executeFarmAction(index) {
+            let plot = plots[index];
+            if (currentTool === 'hoe' && plot.state === 'grass') { plot.state = 'soil'; }
+            else if (currentTool === 'plant' && plot.state === 'soil') {
+                if (inventory[selectedSeedType] > 0) {
+                    inventory[selectedSeedType]--; plot.state = 'seeded'; plot.cropType = selectedSeedType;
+                    if(inventory[selectedSeedType] === 0) selectTool('hoe');
+                }
+            }
+            else if (currentTool === 'water' && plot.state === 'seeded') {
+                plot.state = 'watered';
+                let baseTime = seedData[plot.cropType].time;
+                if (decos.sprinkler) baseTime = Math.ceil(baseTime * 0.75);
+                plot.timer = baseTime;
+            }
+            else if (currentTool === 'harvest' && plot.state === 'ripe') {
+                let buffMultiplier = 1.0;
+                if (decos.scarecrow) buffMultiplier += 0.1; if (decos.statue) buffMultiplier += 0.2;
+                let revenue = Math.floor(seedData[plot.cropType].sell * buffMultiplier);
+                gold += revenue; stats.totalHarvests++;
+                if (plot.cropType === 'carrot') stats.carrotHarvests++;
+
+                logMsg(`🧺 수확 완료! [${seedData[plot.cropType].name}]을(를) 판매하여 +${formatNum(revenue)}골드 획득.`);
+                
+                plot.state = (Math.random() < 0.25) ? 'grass' : 'soil';
+                plot.cropType = null; plot.timer = 0;
+                checkAchievements();
+            }
+            updateUI();
+        }
+
+        function buySeed(type) {
+            if (gold >= seedData[type].buy) { gold -= seedData[type].buy; inventory[type]++; updateUI(); }
+            else { alert("골드가 부족합니다! 자금을 더 모아오세요."); }
+        }
+        function buyDeco(id, price) {
+            if (gold >= price && !decos[id]) { 
+                gold -= price; decos[id] = true; 
+                document.getElementById(`visual-${id}`).style.display = "block";
+                updateUI(); 
+            } else { alert("골드가 부족하거나 이미 보유 중입니다!"); }
+        }
+        function upgradeHome() {
+            let currentPrice = homeTiers[homeIndex].price;
+            if (currentPrice && gold >= currentPrice) { 
+                gold -= currentPrice; homeIndex++; 
+                document.getElementById('visual-home').innerText = homeTiers[homeIndex].emoji;
+                updateUI(); 
+            } else { alert("소지금이 부족하거나 최종 단계입니다!"); }
+        }
+        function expandLand() {
+            let currentTier = landTiers[landIndex];
+            if (currentTier.price && gold >= currentTier.price) { 
+                gold -= currentTier.price; landIndex++; gridSize = landTiers[landIndex].size; updateUI(); 
+                if(playerGrid.r >= gridSize) playerGrid.r = gridSize-1;
+                if(playerGrid.c >= gridSize) playerGrid.c = gridSize-1;
+                updatePlayerDOMPosition();
+            } else { alert("더 이상 확장할 수 없거나 돈이 부족합니다!"); }
+        }
+        function selectTool(tool) {
+            currentTool = tool; selectedSeedType = '';
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-plant-indicator').style.display = 'none';
+            if(tool !== 'plant') document.getElementById(`btn-${tool}`).classList.add('active');
+        }
+        function selectSeedToPlant(type) {
+            if (inventory[type] <= 0) { alert("해당 씨앗이 없습니다!"); return; }
+            switchMainWindow('farm'); currentTool = 'plant'; selectedSeedType = type; 
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            const indicator = document.getElementById('btn-plant-indicator');
+            indicator.style.display = 'block'; indicator.innerText = `🌱 [${seedData[type].name}] 배치 모드`;
+            updateUI();
+        }
+
+        function playPureGamble(userChoice) {
+            let betInput = document.getElementById('bet-amount');
+            let bet = parseInt(betInput.value);
+            if (isNaN(bet) || bet <= 0 || gold < bet) { alert("배팅액이 부족하거나 올바르지 않습니다!"); return; }
+            let diceValue = Math.floor(Math.random() * 6) + 1;
+            let resultType = (diceValue % 2 === 0) ? 'EVEN' : 'ODD';
+            let displayResult = (diceValue % 2 === 0) ? `짝수(${diceValue})` : `홀수(${diceValue})`;
+            gold -= bet; document.getElementById('casino-box-txt').innerText = diceValue;
+            if (userChoice === resultType) {
+                let prize = bet * 2; gold += prize; stats.casinoWins++;
+                logMsg(`🃏 승리! 결과 [${displayResult}] 배팅액 2배 획득! (+${formatNum(prize)}g)`);
+            } else { logMsg(`🃏 패배! 결과 [${displayResult}] 배팅액 상실 (-${formatNum(bet)}g)`); }
+            checkAchievements(); updateUI();
+            setTimeout(() => { document.getElementById('casino-box-txt').innerText = "❓"; }, 2000);
+        }
+
+        function initJumpGame() {
+            canvas = document.getElementById('jump-canvas'); ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false; generateNextPlatform();
+        }
+        function startCharging() {
+            if (!playerObj.isGrounded || isCharging) return;
+            if (jumpScore === 0 && basePlatform.y === 240) {
+                if (gold < 5) { alert("게임 참가비 5골드가 필요합니다!"); isCharging = false; keys.Space = false; return; }
+                gold -= 5; updateUI();
+            }
+            isCharging = true; jumpCharge = 0;
+        }
+        function releaseJump() {
+            if (!isCharging) return;
+            isCharging = false;
+            let powerY = 3.5 + (jumpCharge / 100) * 8.5; 
+            let powerX = 1.0 + (jumpCharge / 100) * 2.5;
+            playerObj.vy = -powerY; playerObj.vx = keys.Left ? -powerX : (keys.Right ? powerX : 0);
+            playerObj.isGrounded = false; jumpCharge = 0;
+            document.getElementById('jump-gauge').style.width = '0%';
+        }
+        function generateNextPlatform() {
+            targetPlatform.x = Math.random() * (245 - 25) + 25;
+            targetPlatform.y = Math.random() * (155 - 90) + 90;
+            targetPlatform.w = Math.max(45, 80 - jumpScore * 2.5); 
+        }
+        function resetJumpGame(failed) {
+            if(failed && jumpScore > 0) { 
+                let reward = jumpScore * 15; 
+                gold += reward; logMsg(`🏃 등반 실패! 도달 점수 보상으로 +${formatNum(reward)}골드를 받았습니다.`); updateUI(); 
+            }
+            if (jumpScore > jumpHighScore) { jumpHighScore = jumpScore; document.getElementById('jump-high').innerText = jumpHighScore + "층"; }
+            jumpScore = 0; document.getElementById('jump-score').innerText = "0층";
+            playerObj.x = 160; playerObj.y = 224; playerObj.vx = 0; playerObj.vy = 0; playerObj.isGrounded = true;
+            basePlatform.x = 0; basePlatform.y = 240; basePlatform.w = 340; playerObj.y = basePlatform.y - playerObj.size;
+            keys.Left = false; keys.Right = false; keys.Space = false; generateNextPlatform();
+        }
+        function drawPixelBlock(x, y, w, h, primaryColor, shadowColor, highlightColor) {
+            ctx.fillStyle = primaryColor; ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = shadowColor; ctx.fillRect(x, y + h - 3, w, 3); ctx.fillRect(x + w - 3, y, 3, h);
+            ctx.fillStyle = highlightColor; ctx.fillRect(x, y, w, 3); ctx.fillRect(x, y, 3, h);
+        }
+        function updateJumpGame() {
+            if (!gameActive) return;
+            if (isCharging) { jumpCharge += 3.5; if (jumpCharge > 100) jumpCharge = 100; document.getElementById('jump-gauge').style.width = jumpCharge + '%'; }
+            if (playerObj.isGrounded && !isCharging) {
+                let walkSpeed = 1.8;
+                if (keys.Left) { playerObj.x -= walkSpeed; if (playerObj.x < basePlatform.x) playerObj.x = basePlatform.x; }
+                if (keys.Right) { playerObj.x += walkSpeed; if (playerObj.x + playerObj.size > basePlatform.x + basePlatform.w) playerObj.x = basePlatform.x + basePlatform.w - playerObj.size; }
+            }
+            if (!playerObj.isGrounded) {
+                playerObj.vy += 0.32; playerObj.x += playerObj.vx; playerObj.y += playerObj.vy;
+                if (playerObj.x < 0) { playerObj.x = 0; playerObj.vx *= -0.7; }
+                if (playerObj.x + playerObj.size > canvas.width) { playerObj.x = canvas.width - playerObj.size; playerObj.vx *= -0.7; }
+                if (playerObj.vy >= 0) {
+                    if (playerObj.x + playerObj.size >= targetPlatform.x && playerObj.x <= targetPlatform.x + targetPlatform.w &&
+                        playerObj.y + playerObj.size >= targetPlatform.y && playerObj.y + playerObj.size <= targetPlatform.y + targetPlatform.h + 6) {
+                        playerObj.y = targetPlatform.y - playerObj.size; playerObj.vy = 0; playerObj.vx = 0; playerObj.isGrounded = true;
+                        jumpScore++; document.getElementById('jump-score').innerText = jumpScore + "층";
+                        basePlatform.x = targetPlatform.x; basePlatform.y = 240; basePlatform.w = targetPlatform.w;
+                        playerObj.y = basePlatform.y - playerObj.size; generateNextPlatform();
+                    }
+                    else if (playerObj.x + playerObj.size >= basePlatform.x && playerObj.x <= basePlatform.x + basePlatform.w &&
+                             playerObj.y + playerObj.size >= basePlatform.y && playerObj.y + playerObj.size <= basePlatform.y + basePlatform.h + 6) {
+                        playerObj.y = basePlatform.y - playerObj.size; playerObj.vy = 0; playerObj.vx = 0; playerObj.isGrounded = true;
+                    }
+                }
+                if (playerObj.y > canvas.height) resetJumpGame(true);
+            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.15)"; ctx.fillRect(30, 40, 4, 4); ctx.fillRect(120, 80, 4, 4);
+            drawPixelBlock(basePlatform.x, basePlatform.y, basePlatform.w, basePlatform.h, "#5e35b1", "#311b92", "#7e57c2");
+            drawPixelBlock(targetPlatform.x, targetPlatform.y, targetPlatform.w, targetPlatform.h, "#ff5722", "#e64a19", "#ff7043");
+            drawPixelBlock(playerObj.x, playerObj.y, playerObj.size, playerObj.size, "#00e5ff", "#00b8d4", "#33f0ff");
+            requestAnimationFrame(updateJumpGame);
+        }
+
+        function updateUI() {
+            document.getElementById('gold-display').innerText = formatNum(gold);
+            document.getElementById('home-display').innerText = homeTiers[homeIndex].name;
+            
+            let currentBuff = 0;
+            if (decos.scarecrow) currentBuff += 10;
+            if (decos.statue) currentBuff += 20;
+            document.getElementById('buff-display').innerText = `+${currentBuff}%`;
+
+            let seedShopHTML = '';
+            for (let key in seedData) {
+                seedShopHTML += `
+                    <div class="item-row">
+                        <span>${seedData[key].emoji} ${seedData[key].name}<br><small style="color:#aaa">구매: ${formatNum(seedData[key].buy)}g / 판매: ${formatNum(seedData[key].sell)}g</small></span>
+                        <button class="buy-btn" onclick="buySeed('${key}')">구매</button>
+                    </div>`;
+            }
+            document.getElementById('tab-seeds').innerHTML = seedShopHTML;
+
+            let invHTML = '';
+            for (let key in inventory) {
+                invHTML += `
+                    <div class="item-row">
+                        <span>${seedData[key].emoji} ${seedData[key].name}: <b>${inventory[key]}</b>개</span>
+                        ${inventory[key] > 0 ? `<button class="buy-btn" style="background:#ff9800" onclick="selectSeedToPlant('${key}')">🌱 심기</button>` : ''}
+                    </div>`;
+            }
+            document.getElementById('inventory-list').innerHTML = invHTML;
+
+            document.getElementById('grid-now').innerText = `${gridSize}x3`;
+            
+            let nHome = homeTiers[homeIndex];
+            document.getElementById('btn-home-up').disabled = (nHome.price === null || gold < nHome.price);
+            document.getElementById('btn-home-up').innerText = nHome.price ? `${formatNum(nHome.price)}g` : '최대';
+            
+            let nLand = landTiers[landIndex];
+            document.getElementById('btn-land-up').disabled = (nLand.price === null || gold < nLand.price);
+            document.getElementById('btn-land-up').innerText = nLand.price ? `${formatNum(nLand.price)}g` : '최대';
+            
+            document.getElementById('buy-scarecrow').disabled = decos.scarecrow;
+            if(decos.scarecrow) document.getElementById('buy-scarecrow').innerText = "보유중";
+            document.getElementById('buy-sprinkler').disabled = decos.sprinkler;
+            if(decos.sprinkler) document.getElementById('buy-sprinkler').innerText = "보유중";
+            document.getElementById('buy-statue').disabled = decos.statue;
+            if(decos.statue) document.getElementById('buy-statue').innerText = "보유중";
+
+            const gridEl = document.getElementById('farm-grid');
+            gridEl.style.gridTemplateColumns = `repeat(${gridSize}, 100px)`;
+            
+            let gridHTML = '';
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    let idx = r * gridSize + c;
+                    let plot = plots[idx];
+                    let text = '';
+                    if (plot.state === 'grass') text = '🍀<br>풀숲';
+                    if (plot.state === 'soil') text = '🟫<br>농지';
+                    if (plot.state === 'seeded') text = `${seedData[plot.cropType].emoji}<br>물부족`;
+                    if (plot.state === 'watered') text = `💧<br>성장중<span class="timer-display">(${plot.timer}s)</span>`;
+                    if (plot.state === 'ripe') text = `✨${seedData[plot.cropType].emoji}✨<br><span style="color:#d32f2f">수확가능</span>`;
+                    gridHTML += `<div class="plot ${plot.state}">${text}</div>`;
+                }
+            }
+            gridEl.innerHTML = gridHTML;
+            updatePlayerDOMPosition();
+        }
+
+        function checkAchievements() {
+            let listHTML = '';
+            achievements.forEach(ach => {
+                if (!ach.cleared && ach.check()) {
+                    ach.cleared = true; gold += ach.reward;
+                    logMsg(`🏆 업적 해제! [${ach.title}] 지원금 +${formatNum(ach.reward)}g 지급!`);
+                }
+                listHTML += `
+                    <div class="achieve-item ${ach.cleared ? 'clear' : ''}">
+                        <div class="achieve-title"><span>${ach.title}</span><span>${ach.cleared ? '✅ 수령완료' : '🔒 대기중'}</span></div>
+                        <div class="achieve-hint">${ach.hint}</div>
+                        <div class="achieve-reward">🎁 보상: +${formatNum(ach.reward)}골드</div>
+                    </div>`;
+            });
+            document.getElementById('achieve-list').innerHTML = listHTML;
+        }
+
+        setInterval(() => {
+            plots.forEach(plot => {
+                if (plot.state === 'watered' && plot.timer > 0) {
+                    plot.timer--;
+                    if (plot.timer <= 0) plot.state = 'ripe';
+                }
+            });
+            if (currentActiveWindow === 'farm') { updateUI(); }
+        }, 1000);
+
+        window.onload = () => { updateUI(); initJumpGame(); checkAchievements(); };
+    </script>
+</body>
+</html>
