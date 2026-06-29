@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>에임 트레이너</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#08081a;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;user-select:none;}
+#game{width:100vw;height:100vh;position:relative;}
+canvas{display:block;width:100%;height:100%;cursor:none;}
+#stg, #stg *{cursor:default !important;}
+#stg button, #stg input, #stg .toggle, #stg .dot, #stg .gbtn{cursor:pointer !important;}
+
+/* HUD */
+#hud{position:absolute;top:16px;left:18px;display:flex;gap:8px;pointer-events:none;}
+.stat{background:rgba(8,8,26,0.82);border:1px solid rgba(127,119,221,0.28);border-radius:8px;padding:5px 13px;text-align:center;}
+.stat-lbl{font-size:10px;color:rgba(175,169,236,0.55);letter-spacing:.05em;}
+.stat-val{font-size:19px;font-weight:700;color:#fff;line-height:1.25;}
+
+/* Mode bar */
+#mode-bar{position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;gap:5px;}
+.mode-btn{background:rgba(8,8,26,0.82);border:1px solid rgba(127,119,221,0.22);border-radius:7px;padding:6px 15px;font-size:13px;color:rgba(255,255,255,0.45);cursor:pointer;transition:all .13s;}
+.mode-btn:hover{color:#fff;border-color:rgba(127,119,221,0.55);}
+.mode-btn.active{background:rgba(83,74,183,0.45);border-color:#7F77DD;color:#c8c3ff;}
+
+/* Start btn */
+#start-btn{position:absolute;top:16px;right:72px;background:#534AB7;border:none;border-radius:8px;padding:7px 22px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;display:none;}
+#start-btn:hover{background:#3C3489;}
+#start-btn.visible{display:block;}
+
+/* Settings toggle */
+#stg-btn{position:absolute;bottom:18px;right:18px;width:42px;height:42px;background:rgba(8,8,26,0.85);border:1px solid rgba(127,119,221,0.38);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:background .14s;}
+#stg-btn:hover,#stg-btn.open{background:rgba(83,74,183,0.55);border-color:#7F77DD;}
+#stg-btn svg{width:20px;height:20px;stroke:#AFA9EC;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+/* Settings panel */
+#stg{position:absolute;bottom:70px;right:18px;width:310px;background:rgba(9,9,22,0.97);border:1px solid rgba(127,119,221,0.32);border-radius:14px;padding:0;z-index:299;display:none;max-height:calc(100vh - 110px);overflow-y:auto;}
+#stg.open{display:block;}
+#stg::-webkit-scrollbar{width:4px;}
+#stg::-webkit-scrollbar-track{background:transparent;}
+#stg::-webkit-scrollbar-thumb{background:rgba(127,119,221,0.3);border-radius:2px;}
+
+.stg-header{padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between;}
+.stg-header span{font-size:13px;font-weight:700;color:#AFA9EC;letter-spacing:.03em;}
+.stg-close{background:none;border:none;color:rgba(255,255,255,0.3);font-size:18px;cursor:pointer;line-height:1;}
+.stg-close:hover{color:#fff;}
+
+.sec{padding:12px 16px;}
+.sec+.sec{border-top:1px solid rgba(127,119,221,0.12);}
+.sec-title{font-size:10px;font-weight:700;letter-spacing:.08em;color:rgba(127,119,221,0.65);text-transform:uppercase;margin-bottom:10px;}
+
+/* Slider row */
+.sr{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.sr:last-child{margin-bottom:0;}
+.sr-lbl{font-size:12px;color:rgba(255,255,255,0.5);width:80px;flex-shrink:0;}
+.sr input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:rgba(127,119,221,0.22);border-radius:2px;outline:none;cursor:pointer;}
+.sr input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#7F77DD;cursor:pointer;}
+.sr-val{font-size:12px;font-weight:700;color:#fff;width:38px;text-align:right;flex-shrink:0;}
+
+/* Toggle row */
+.tr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.tr:last-child{margin-bottom:0;}
+.tr-lbl{font-size:12px;color:rgba(255,255,255,0.5);}
+.tr-lbl small{display:block;font-size:10px;color:rgba(255,255,255,0.25);margin-top:1px;}
+.toggle{width:34px;height:18px;background:rgba(127,119,221,0.2);border-radius:9px;position:relative;cursor:pointer;border:1px solid rgba(127,119,221,0.3);flex-shrink:0;transition:background .15s;}
+.toggle.on{background:#534AB7;border-color:#7F77DD;}
+.toggle::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .15s;}
+.toggle.on::after{left:18px;}
+
+/* Grid buttons */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px;}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:8px;}
+.gbtn{background:rgba(255,255,255,0.05);border:1px solid rgba(127,119,221,0.18);border-radius:7px;padding:6px 4px;font-size:11px;color:rgba(255,255,255,0.45);cursor:pointer;text-align:center;transition:all .12s;}
+.gbtn:hover{border-color:rgba(127,119,221,0.5);color:#fff;}
+.gbtn.active{background:rgba(83,74,183,0.38);border-color:#7F77DD;color:#c8c3ff;}
+
+/* Crosshair preview inside button */
+.ch-btn{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.ch-btn canvas{display:block;}
+
+/* Color dots */
+.dots{display:flex;gap:6px;flex-wrap:wrap;}
+.dot{width:21px;height:21px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .12s;flex-shrink:0;}
+.dot.active{border-color:#fff;}
+
+/* Number input */
+.ni{display:flex;align-items:center;gap:6px;}
+.ni button{width:22px;height:22px;background:rgba(127,119,221,0.18);border:1px solid rgba(127,119,221,0.3);border-radius:5px;color:#AFA9EC;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0;}
+.ni-val{font-size:13px;font-weight:700;color:#fff;width:30px;text-align:center;}
+
+/* Sensitivity display */
+.sens-display{background:rgba(127,119,221,0.08);border:1px solid rgba(127,119,221,0.18);border-radius:8px;padding:8px 12px;margin-top:6px;display:flex;justify-content:space-between;}
+.sens-item{text-align:center;}
+.sens-item-lbl{font-size:10px;color:rgba(175,169,236,0.5);}
+.sens-item-val{font-size:13px;font-weight:700;color:#AFA9EC;}
+
+/* Crosshair live preview */
+#ch-live{display:flex;justify-content:center;padding:10px 0 4px;}
+#ch-live canvas{background:rgba(0,0,0,0.5);border-radius:8px;}
+
+/* ── Menu ── */
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(4,4,16,0.96);z-index:200;}
+#menu{width:min(980px,96vw);display:flex;flex-direction:column;gap:28px;}
+#menu-header{text-align:center;}
+#menu-logo{font-size:42px;font-weight:900;color:#fff;letter-spacing:.04em;}
+#menu-logo span{color:#7F77DD;}
+#menu-sub{font-size:14px;color:rgba(175,169,236,0.5);margin-top:4px;}
+#menu-body{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:18px;align-items:start;}
+.menu-col-title{font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(127,119,221,0.65);text-transform:uppercase;margin-bottom:12px;}
+#menu-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.menu-mode{background:rgba(255,255,255,0.04);border:1px solid rgba(127,119,221,0.18);border-radius:10px;padding:12px 10px;cursor:pointer;transition:all .15s;text-align:center;}
+.menu-mode:hover{border-color:rgba(127,119,221,0.5);background:rgba(83,74,183,0.18);}
+.menu-mode.active{background:rgba(83,74,183,0.35);border-color:#7F77DD;}
+.menu-mode-icon{font-size:22px;margin-bottom:4px;}
+.menu-mode-name{font-size:13px;font-weight:700;color:#fff;}
+.menu-mode-desc{font-size:10px;color:rgba(255,255,255,0.35);margin-top:2px;}
+.menu-col-center{display:flex;flex-direction:column;align-items:center;gap:16px;}
+.menu-quick{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(127,119,221,0.18);border-radius:12px;padding:14px 16px;}
+.mq-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.mq-row:last-child{margin-bottom:0;}
+.mq-lbl{font-size:12px;color:rgba(255,255,255,0.45);width:70px;flex-shrink:0;}
+.mq-row input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:rgba(127,119,221,0.22);border-radius:2px;outline:none;cursor:pointer;}
+.mq-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#7F77DD;cursor:pointer;}
+.mq-val{font-size:12px;font-weight:700;color:#fff;width:36px;text-align:right;flex-shrink:0;}
+#ov-start{background:#534AB7;border:none;border-radius:10px;padding:13px 52px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;transition:background .13s;}
+#ov-start:hover{background:#3C3489;}
+.menu-record-item{background:rgba(127,119,221,0.07);border:1px solid rgba(127,119,221,0.15);border-radius:8px;padding:9px 12px;margin-bottom:7px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;}
+.mr-mode{font-size:10px;font-weight:700;color:#7F77DD;background:rgba(83,74,183,0.3);border-radius:4px;padding:2px 6px;}
+.mr-stats{font-size:11px;color:rgba(255,255,255,0.4);}
+.mr-score{font-size:18px;font-weight:800;color:#fff;}
+.mr-grade{font-size:13px;font-weight:800;}
+.no-record{font-size:12px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;}
+.best-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(127,119,221,0.1);}
+.best-row:last-child{border-bottom:none;}
+.best-mode{font-size:11px;color:rgba(255,255,255,0.4);}
+.best-score{font-size:14px;font-weight:800;color:#EF9F27;}
+
+
+/* Result overlay */
+#result{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,4,16,0.92);z-index:200;}
+#result.show{display:flex;}
+#result h2{font-size:30px;font-weight:800;color:#fff;margin-bottom:20px;}
+.rg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
+.rc{background:rgba(127,119,221,0.1);border:1px solid rgba(127,119,221,0.22);border-radius:10px;padding:12px 16px;text-align:center;min-width:100px;}
+.rc-lbl{font-size:11px;color:rgba(175,169,236,0.55);margin-bottom:3px;}
+.rc-val{font-size:24px;font-weight:800;color:#fff;}
+#retry{background:#534AB7;border:none;border-radius:10px;padding:11px 38px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;}
+#retry:hover{background:#3C3489;}
+#go-menu{background:rgba(255,255,255,0.07);border:1px solid rgba(127,119,221,0.35);border-radius:10px;padding:11px 38px;font-size:15px;font-weight:700;color:#AFA9EC;cursor:pointer;}
+#go-menu:hover{background:rgba(127,119,221,0.2);color:#fff;}
+
+/* Timer */
+#tbar{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(127,119,221,0.12);}
+#tb{height:100%;background:#7F77DD;transition:width .95s linear;}
+
+/* Sensitivity cursor indicator */
+#sens-cursor{position:absolute;width:6px;height:6px;background:#ff4655;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);z-index:50;display:none;}
+</style>
+</head>
+<body>
+<div id="game">
+<canvas id="c"></canvas>
+<div id="sens-cursor"></div>
+
+<div id="hud">
+  <div class="stat"><div class="stat-lbl">점수</div><div class="stat-val" id="h-score">0</div></div>
+  <div class="stat"><div class="stat-lbl">정확도</div><div class="stat-val" id="h-acc">—</div></div>
+  <div class="stat"><div class="stat-lbl">반응속도</div><div class="stat-val" id="h-react">—</div></div>
+  <div class="stat"><div class="stat-lbl">남은 시간</div><div class="stat-val" id="h-time">—</div></div>
+  <div class="stat"><div class="stat-lbl">KPS</div><div class="stat-val" id="h-kps">0</div></div>
+</div>
+
+
+
+<button id="start-btn">시작하기</button>
+
+<!-- Settings toggle -->
+<div id="stg-btn" title="설정">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</div>
+
+<!-- Settings panel -->
+<div id="stg">
+  <div class="stg-header">
+    <span>설정</span>
+    <button class="stg-close" id="stg-close">✕</button>
+  </div>
+
+  <!-- 감도 -->
+  <div class="sec">
+    <div class="sec-title">감도</div>
+    <div class="sr"><span class="sr-lbl">감도</span><input type="range" id="s-sens" min="0.01" max="5" value="1.0" step="0.01"><span class="sr-val" id="sv-sens">1.00</span></div>
+  </div>
+
+  <!-- 타겟 -->
+  <div class="sec">
+    <div class="sec-title">타겟 설정</div>
+    <div class="sr"><span class="sr-lbl">타겟 크기</span><input type="range" id="s-size" min="6" max="60" value="22" step="1"><span class="sr-val" id="sv-size">22px</span></div>
+    <div class="sr"><span class="sr-lbl">이동 속도</span><input type="range" id="s-spd" min="1" max="10" value="3" step="1"><span class="sr-val" id="sv-spd">3</span></div>
+    <div class="sr"><span class="sr-lbl">타겟 수</span><input type="range" id="s-cnt" min="1" max="10" value="1" step="1"><span class="sr-val" id="sv-cnt">1</span></div>
+    <div class="sr"><span class="sr-lbl">타겟 수명</span><input type="range" id="s-ttl" min="200" max="2000" value="700" step="100"><span class="sr-val" id="sv-ttl">0.7s</span></div>
+    <div class="sr"><span class="sr-lbl">스폰 딜레이</span><input type="range" id="s-delay" min="0" max="1000" value="100" step="50"><span class="sr-val" id="sv-delay">100ms</span></div>
+    <div class="tr">
+      <div class="tr-lbl">타겟 랜덤 크기<small>다양한 크기로 등장</small></div>
+      <div class="toggle" id="t-randsize"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">타겟 크기 변화<small>맞기 전까지 줄어듦</small></div>
+      <div class="toggle" id="t-shrink"></div>
+    </div>
+  </div>
+
+  <!-- 세션 -->
+  <div class="sec">
+    <div class="sec-title">세션 설정</div>
+    <div class="sr"><span class="sr-lbl">세션 시간</span><input type="range" id="s-dur" min="10" max="180" value="30" step="5"><span class="sr-val" id="sv-dur">30s</span></div>
+    <div class="sr"><span class="sr-lbl">워밍업</span><input type="range" id="s-wu" min="0" max="30" value="0" step="5"><span class="sr-val" id="sv-wu">끄기</span></div>
+    <div class="tr">
+      <div class="tr-lbl">카운트다운 3초<small>시작 전 3초 대기</small></div>
+      <div class="toggle" id="t-countdown"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">무한 모드<small>시간 제한 없음</small></div>
+      <div class="toggle" id="t-infinite"></div>
+    </div>
+  </div>
+
+  <!-- 크로스헤어 종류 -->
+  <div class="sec">
+    <div class="sec-title">크로스헤어 종류</div>
+    <div class="grid4" id="ch-types">
+      <button class="gbtn ch-btn active" data-ch="classic"><canvas id="pv-classic" width="36" height="36"></canvas><span>클래식</span></button>
+      <button class="gbtn ch-btn" data-ch="dot"><canvas id="pv-dot" width="36" height="36"></canvas><span>점</span></button>
+      <button class="gbtn ch-btn" data-ch="cross"><canvas id="pv-cross" width="36" height="36"></canvas><span>십자</span></button>
+      <button class="gbtn ch-btn" data-ch="circle"><canvas id="pv-circle" width="36" height="36"></canvas><span>원</span></button>
+      <button class="gbtn ch-btn" data-ch="tcross"><canvas id="pv-tcross" width="36" height="36"></canvas><span>T자</span></button>
+      <button class="gbtn ch-btn" data-ch="angle"><canvas id="pv-angle" width="36" height="36"></canvas><span>꺾임</span></button>
+      <button class="gbtn ch-btn" data-ch="lines"><canvas id="pv-lines" width="36" height="36"></canvas><span>라인</span></button>
+      <button class="gbtn ch-btn" data-ch="x"><canvas id="pv-x" width="36" height="36"></canvas><span>X</span></button>
+    </div>
+  </div>
+
+  <!-- 크로스헤어 세부 -->
+  <div class="sec">
+    <div class="sec-title">크로스헤어 세부 설정</div>
+    <div id="ch-live"><canvas id="ch-preview" width="120" height="80"></canvas></div>
+    <div class="sr"><span class="sr-lbl">색상</span>
+      <div class="dots" id="ch-colors">
+        <div class="dot active" data-c="#00ff88" style="background:#00ff88"></div>
+        <div class="dot" data-c="#ff4655" style="background:#ff4655"></div>
+        <div class="dot" data-c="#ffffff" style="background:#ccc"></div>
+        <div class="dot" data-c="#ffcc00" style="background:#ffcc00"></div>
+        <div class="dot" data-c="#00bfff" style="background:#00bfff"></div>
+        <div class="dot" data-c="#ff6fff" style="background:#ff6fff"></div>
+        <div class="dot" data-c="#ff8c00" style="background:#ff8c00"></div>
+        <div class="dot" data-c="#7F77DD" style="background:#7F77DD"></div>
+      </div>
+    </div>
+    <div class="sr"><span class="sr-lbl">두께</span><input type="range" id="s-chw" min="1" max="6" value="2" step="1"><span class="sr-val" id="sv-chw">2px</span></div>
+    <div class="sr"><span class="sr-lbl">길이</span><input type="range" id="s-chs" min="2" max="30" value="11" step="1"><span class="sr-val" id="sv-chs">11</span></div>
+    <div class="sr"><span class="sr-lbl">간격</span><input type="range" id="s-chg" min="0" max="16" value="4" step="1"><span class="sr-val" id="sv-chg">4</span></div>
+    <div class="sr"><span class="sr-lbl">투명도</span><input type="range" id="s-cha" min="30" max="100" value="100" step="5"><span class="sr-val" id="sv-cha">100%</span></div>
+    <div class="tr">
+      <div class="tr-lbl">외곽선<small>크로스헤어 테두리</small></div>
+      <div class="toggle" id="t-chout"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">사격 시 벌어짐<small>클릭할 때 간격 증가</small></div>
+      <div class="toggle on" id="t-spread"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">움직임 시 벌어짐<small>이동 시 간격 증가</small></div>
+      <div class="toggle" id="t-movspr"></div>
+    </div>
+    <div class="sr"><span class="sr-lbl">사격 벌어짐</span><input type="range" id="s-firespr" min="0" max="20" value="6" step="1"><span class="sr-val" id="sv-firespr">6</span></div>
+  </div>
+
+  <!-- 배경 -->
+  <div class="sec">
+    <div class="sec-title">배경 / 환경</div>
+    <div class="grid4" id="bg-btns">
+      <button class="gbtn active" data-bg="dark">어두운</button>
+      <button class="gbtn" data-bg="grid">격자</button>
+      <button class="gbtn" data-bg="range">사격장</button>
+      <button class="gbtn" data-bg="void">공허</button>
+      <button class="gbtn" data-bg="blue">블루</button>
+      <button class="gbtn" data-bg="warm">웜톤</button>
+      <button class="gbtn" data-bg="neon">네온</button>
+      <button class="gbtn" data-bg="white">화이트</button>
+    </div>
+    <div class="sr"><span class="sr-lbl">밝기</span><input type="range" id="s-bright" min="30" max="100" value="100" step="5"><span class="sr-val" id="sv-bright">100%</span></div>
+  </div>
+
+  <!-- 이펙트 -->
+  <div class="sec">
+    <div class="sec-title">이펙트 / 피드백</div>
+    <div class="tr">
+      <div class="tr-lbl">히트 이펙트<small>맞출 때 원형 효과</small></div>
+      <div class="toggle on" id="t-hfx"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">미스 표시<small>빗나갈 때 X 표시</small></div>
+      <div class="toggle on" id="t-mfx"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">타겟 히트마커<small>맞을 때 타겟 반짝임</small></div>
+      <div class="toggle on" id="t-flash"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">화면 흔들림<small>미스 시 화면 흔들기</small></div>
+      <div class="toggle" id="t-shake"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">점수 팝업<small>타겟마다 점수 표시</small></div>
+      <div class="toggle on" id="t-scorepop"></div>
+    </div>
+    <div class="sr"><span class="sr-lbl">이펙트 크기</span><input type="range" id="s-fxsize" min="50" max="200" value="100" step="10"><span class="sr-val" id="sv-fxsize">100%</span></div>
+  </div>
+
+  <!-- 오디오 -->
+  <div class="sec">
+    <div class="sec-title">오디오</div>
+    <div class="tr">
+      <div class="tr-lbl">히트 사운드<small>맞출 때 효과음</small></div>
+      <div class="toggle on" id="t-hitsound"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">미스 사운드<small>빗나갈 때 효과음</small></div>
+      <div class="toggle" id="t-misssound"></div>
+    </div>
+    <div class="sr"><span class="sr-lbl">볼륨</span><input type="range" id="s-vol" min="0" max="100" value="60" step="5"><span class="sr-val" id="sv-vol">60%</span></div>
+    <div class="sec-title" style="margin-top:8px;">사운드 종류</div>
+    <div class="grid3" id="sound-btns">
+      <button class="gbtn active" data-snd="beep">비프</button>
+      <button class="gbtn" data-snd="click">클릭</button>
+      <button class="gbtn" data-snd="tick">틱</button>
+    </div>
+  </div>
+
+  <!-- 통계 -->
+  <div class="sec">
+    <div class="sec-title">통계 표시</div>
+    <div class="tr">
+      <div class="tr-lbl">실시간 KPS<small>초당 클릭 수 표시</small></div>
+      <div class="toggle on" id="t-kps"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">연속 명중<small>콤보 카운터 표시</small></div>
+      <div class="toggle on" id="t-combo"></div>
+    </div>
+    <div class="tr">
+      <div class="tr-lbl">정확도 그래프<small>실시간 정확도 바</small></div>
+      <div class="toggle on" id="t-accbar"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Menu Overlay -->
+<div id="overlay">
+  <div id="menu">
+    <!-- Header -->
+    <div id="menu-header">
+      <div id="menu-logo">AIM <span>TRAINER</span></div>
+      <div id="menu-sub">반응속도와 정확도를 향상시키세요</div>
+    </div>
+
+    <div id="menu-body">
+      <!-- Left: Mode select -->
+      <div class="menu-col">
+        <div class="menu-col-title">모드 선택</div>
+        <div id="menu-modes">
+          <div class="menu-mode active" data-mode="click">
+            <div class="menu-mode-icon">🎯</div>
+            <div class="menu-mode-name">Click</div>
+            <div class="menu-mode-desc">정확하게 타겟을 클릭</div>
+          </div>
+          <div class="menu-mode" data-mode="tracking">
+            <div class="menu-mode-icon">🔄</div>
+            <div class="menu-mode-name">Tracking</div>
+            <div class="menu-mode-desc">움직이는 타겟 추적</div>
+          </div>
+          <div class="menu-mode" data-mode="flick">
+            <div class="menu-mode-icon">⚡</div>
+            <div class="menu-mode-name">Flick</div>
+            <div class="menu-mode-desc">빠른 플리킹 연습</div>
+          </div>
+          <div class="menu-mode" data-mode="micro">
+            <div class="menu-mode-icon">🔬</div>
+            <div class="menu-mode-name">Micro</div>
+            <div class="menu-mode-desc">미세한 조준 훈련</div>
+          </div>
+          <div class="menu-mode" data-mode="multi">
+            <div class="menu-mode-icon">💥</div>
+            <div class="menu-mode-name">Multi</div>
+            <div class="menu-mode-desc">여러 타겟 동시 처리</div>
+          </div>
+          <div class="menu-mode" data-mode="scatter">
+            <div class="menu-mode-icon">🌀</div>
+            <div class="menu-mode-name">Scatter</div>
+            <div class="menu-mode-desc">랜덤 배치 타겟</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Start -->
+      <div class="menu-col menu-col-center">
+        <button id="ov-start">시작하기</button>
+        <div class="hint">SPACE — 시작 &nbsp;|&nbsp; ESC — 종료</div>
+      </div>
+
+      <!-- Right: Score records -->
+      <div class="menu-col">
+        <div class="menu-col-title">최근 기록</div>
+        <div id="menu-records">
+          <div class="no-record">아직 기록이 없어요</div>
+        </div>
+        <div id="menu-best" style="display:none">
+          <div class="menu-col-title" style="margin-top:14px;">베스트</div>
+          <div id="menu-best-inner"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Result -->
+<div id="result">
+  <h2 id="result-title">결과</h2>
+  <div class="rg" id="rg"></div>
+  <div style="display:flex;gap:10px;">
+    <button id="retry">다시 시작</button>
+    <button id="go-menu">메인으로</button>
+  </div>
+</div>
+
+<!-- Timer bar -->
+<div id="tbar"><div id="tb" style="width:100%"></div></div>
+
+
+<div id="acc-bar-wrap" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:200px;display:none;">
+  <div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+    <div id="acc-bar" style="height:100%;background:#1D9E75;width:0%;transition:width .3s;"></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function getAudio(){ if(!audioCtx) audioCtx = new AudioCtx(); return audioCtx; }
+function playSound(type, isHit) {
+  if(!cfg.hitsound && isHit) return;
+  if(!cfg.misssound && !isHit) return;
+  try {
+    const ac = getAudio();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    const vol = cfg.vol / 100 * 0.3;
+    if(cfg.snd === 'beep'){ o.frequency.value = isHit ? 880 : 220; o.type='sine'; g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+0.08); }
+    else if(cfg.snd === 'click'){ o.frequency.value = isHit ? 1200 : 300; o.type='square'; g.gain.value=vol*0.5; g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+0.04); }
+    else { o.frequency.value = isHit ? 600 : 180; o.type='triangle'; g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+0.05); }
+    o.start(); o.stop(ac.currentTime+0.1);
+  } catch(e){}
+}
+
+// Config
+const cfg = {
+  mode:'click', size:22, spd:3, cnt:1, ttl:700, delay:100,
+  randsize:false, shrink:false,
+  dur:30, wu:0, countdown:false, infinite:false,
+  chType:'classic', chColor:'#00ff88', chW:2, chS:11, chG:4, chA:1, chOut:false, spread:true, movspr:false, firespr:6,
+  bg:'dark', bright:1,
+  hfx:true, mfx:true, flash:true, shake:false, scorepop:true, fxsize:1,
+  hitsound:true, misssound:false, vol:60, snd:'beep',
+  kps:true, combo:true, accbar:true,
+  rawInput:true, accel:false, sens:1.0, dpi:800, igs:7, scope:100
+};
+
+// State
+let running=false, score=0, shots=0, hits=0, timeLeft=30, combo=0, maxCombo=0;
+let targets=[], trackTargets=[], hitFlash=[], missFlash=[], scorePops=[];
+let reactStart=0, reactTimes=[], animId=null, ticker=null, flickTimer=null;
+let mx=window.innerWidth/2, my=window.innerHeight/2, clickTimestamps=[], screenShake=0;
+let spreadAmt=0, moveSprAmt=0;
+
+// Sliders
+function sl(id, key, outId, fmt) {
+  const el=document.getElementById(id), out=document.getElementById(outId);
+  el.addEventListener('input', ()=>{ cfg[key]=+el.value; out.textContent=fmt?fmt(+el.value):el.value; drawPreviews(); });
+}
+sl('s-sens','sens','sv-sens', v=>(+v).toFixed(2));
+sl('s-size','size','sv-size', v=>v+'px');
+sl('s-spd','spd','sv-spd');
+sl('s-cnt','cnt','sv-cnt');
+sl('s-ttl','ttl','sv-ttl', v=>(v/1000).toFixed(1)+'s');
+sl('s-delay','delay','sv-delay', v=>v+'ms');
+sl('s-dur','dur','sv-dur', v=>v+'s');
+sl('s-wu','wu','sv-wu', v=>v?v+'s':'끄기');
+sl('s-chw','chW','sv-chw', v=>v+'px');
+sl('s-chs','chS','sv-chs');
+sl('s-chg','chG','sv-chg');
+sl('s-cha','chA','sv-cha', v=>{ cfg.chA=v/100; return v+'%'; });
+sl('s-firespr','firespr','sv-firespr');
+sl('s-bright','bright','sv-bright', v=>{ cfg.bright=v/100; return v+'%'; });
+sl('s-fxsize','fxsize','sv-fxsize', v=>{ cfg.fxsize=v/100; return v+'%'; });
+sl('s-vol','vol','sv-vol', v=>v+'%');
+
+
+
+// Toggles
+function tog(id, key) {
+  const el=document.getElementById(id);
+  el.classList.toggle('on', cfg[key]);
+  el.addEventListener('click',()=>{ cfg[key]=!cfg[key]; el.classList.toggle('on',cfg[key]); updateUI(); });
+}
+tog('t-randsize','randsize');
+tog('t-shrink','shrink'); tog('t-countdown','countdown'); tog('t-infinite','infinite');
+tog('t-chout','chOut'); tog('t-spread','spread'); tog('t-movspr','movspr');
+tog('t-hfx','hfx'); tog('t-mfx','mfx'); tog('t-flash','flash');
+tog('t-shake','shake'); tog('t-scorepop','scorepop');
+tog('t-hitsound','hitsound'); tog('t-misssound','misssound');
+tog('t-kps','kps'); tog('t-combo','combo'); tog('t-accbar','accbar');
+
+function updateUI() {
+  const comboWrap = document.getElementById('combo-wrap');
+  if(comboWrap) comboWrap.style.display = cfg.combo ? 'flex' : 'none';
+  document.getElementById('acc-bar-wrap').style.display = cfg.accbar ? 'block' : 'none';
+}
+updateUI();
+
+// Mode buttons
+document.querySelectorAll('.mode-btn').forEach(b=>b.addEventListener('click',()=>{ if(running)return; document.querySelectorAll('.mode-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); cfg.mode=b.dataset.mode; }));
+
+// BG buttons
+document.querySelectorAll('#bg-btns .gbtn').forEach(b=>b.addEventListener('click',()=>{ document.querySelectorAll('#bg-btns .gbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); cfg.bg=b.dataset.bg; }));
+
+// Sound buttons
+document.querySelectorAll('#sound-btns .gbtn').forEach(b=>b.addEventListener('click',()=>{ document.querySelectorAll('#sound-btns .gbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); cfg.snd=b.dataset.snd; }));
+
+// CH type buttons
+document.querySelectorAll('#ch-types .gbtn').forEach(b=>b.addEventListener('click',()=>{ document.querySelectorAll('#ch-types .gbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); cfg.chType=b.dataset.ch; drawPreviews(); }));
+
+// Color dots
+document.querySelectorAll('#ch-colors .dot').forEach(d=>d.addEventListener('click',()=>{ document.querySelectorAll('#ch-colors .dot').forEach(x=>x.classList.remove('active')); d.classList.add('active'); cfg.chColor=d.dataset.c; drawPreviews(); }));
+
+// Settings panel
+const stgBtn=document.getElementById('stg-btn'), stgPanel=document.getElementById('stg');
+stgBtn.addEventListener('click',()=>{ stgPanel.classList.toggle('open'); stgBtn.classList.toggle('open'); });
+document.getElementById('stg-close').addEventListener('click',()=>{ stgPanel.classList.remove('open'); stgBtn.classList.remove('open'); });
+
+// Menu mode select
+document.querySelectorAll('.menu-mode').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.menu-mode').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); cfg.mode=b.dataset.mode;
+}));
+
+
+// Menu open state flag
+let menuOpen = true;
+
+function showMenu(){
+  menuOpen = true;
+  document.getElementById('overlay').style.display='flex';
+}
+function hideMenu(){
+  menuOpen = false;
+  document.getElementById('overlay').style.display='none';
+}
+const records = JSON.parse(localStorage.getItem('aim_records')||'[]');
+const modeNames = {click:'Click',tracking:'Tracking',flick:'Flick',micro:'Micro',multi:'Multi',scatter:'Scatter'};
+const gradeColors = {S:'#EF9F27',A:'#1D9E75',B:'#7F77DD',C:'#D85A30',D:'#888'};
+
+function renderRecords(){
+  const el=document.getElementById('menu-records');
+  const bestEl=document.getElementById('menu-best');
+  const bestInner=document.getElementById('menu-best-inner');
+  if(!records.length){ el.innerHTML='<div class="no-record">아직 기록이 없어요</div>'; bestEl.style.display='none'; return; }
+  const recent=records.slice(-5).reverse();
+  el.innerHTML=recent.map(r=>`
+    <div class="menu-record-item">
+      <span class="mr-mode">${modeNames[r.mode]||r.mode}</span>
+      <span class="mr-stats">${r.acc}% · ${r.react?r.react+'ms':'—'}</span>
+      <span class="mr-score">${r.score} <span class="mr-grade" style="color:${gradeColors[r.grade]||'#888'}">${r.grade}</span></span>
+    </div>`).join('');
+  // Best per mode
+  const bests={};
+  records.forEach(r=>{ if(!bests[r.mode]||r.score>bests[r.mode].score) bests[r.mode]=r; });
+  bestInner.innerHTML=Object.values(bests).map(r=>`
+    <div class="best-row"><span class="best-mode">${modeNames[r.mode]||r.mode}</span><span class="best-score">${r.score} <span style="font-size:11px;color:${gradeColors[r.grade]}">${r.grade}</span></span></div>`).join('');
+  bestEl.style.display='block';
+}
+renderRecords();
+
+// Start / stop
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('ov-start').addEventListener('click', startGame);
+document.getElementById('retry').addEventListener('click',()=>{ document.getElementById('result').classList.remove('show'); startGame(); });
+document.getElementById('go-menu').addEventListener('click',()=>{ document.getElementById('result').classList.remove('show'); showMenu(); renderRecords(); });
+document.addEventListener('keydown', e=>{ if(e.code==='Space'){e.preventDefault(); if(running)stopGame(); else if(!menuOpen) startGame();} if(e.code==='Escape'&&running)stopGame(); });
+
+// Crosshair preview
+function drawCH(c, type, color, w, s, gap, alpha, outline) {
+  const cx2=c.getContext('2d'), cw=c.width, ch=c.height, px=cw/2, py=ch/2;
+  cx2.clearRect(0,0,cw,ch);
+  cx2.globalAlpha=alpha??1;
+  if(outline){ cx2.strokeStyle='rgba(0,0,0,0.6)'; cx2.lineWidth=w+2; drawCHShape(cx2,type,px,py,s,gap,w); }
+  cx2.strokeStyle=color; cx2.fillStyle=color; cx2.lineWidth=w;
+  drawCHShape(cx2,type,px,py,s,gap,w);
+  cx2.globalAlpha=1;
+}
+function drawCHShape(c2, type, px, py, s, gap, w) {
+  const g=gap??4;
+  if(type==='classic'||type==='lines'){
+    c2.beginPath(); c2.moveTo(px-s,py);c2.lineTo(px-g,py); c2.moveTo(px+g,py);c2.lineTo(px+s,py); c2.moveTo(px,py-s);c2.lineTo(px,py-g); c2.moveTo(px,py+g);c2.lineTo(px,py+s); c2.stroke();
+    if(type==='classic'){c2.beginPath();c2.arc(px,py,1.5,0,Math.PI*2);c2.fill();}
+  } else if(type==='dot'){
+    c2.beginPath();c2.arc(px,py,w+2,0,Math.PI*2);c2.fill();
+  } else if(type==='cross'){
+    c2.beginPath();c2.moveTo(px-s,py);c2.lineTo(px+s,py);c2.moveTo(px,py-s);c2.lineTo(px,py+s);c2.stroke();
+  } else if(type==='circle'){
+    c2.beginPath();c2.arc(px,py,s*0.7,0,Math.PI*2);c2.stroke();c2.beginPath();c2.arc(px,py,2,0,Math.PI*2);c2.fill();
+  } else if(type==='tcross'){
+    c2.beginPath();c2.moveTo(px-s,py);c2.lineTo(px-g,py);c2.moveTo(px+g,py);c2.lineTo(px+s,py);c2.moveTo(px,py-s);c2.lineTo(px,py-g);c2.stroke();
+    c2.beginPath();c2.arc(px,py,1.5,0,Math.PI*2);c2.fill();
+  } else if(type==='angle'){
+    c2.beginPath();c2.moveTo(px-s,py-s);c2.lineTo(px-g,py);c2.lineTo(px,py-g);c2.stroke();
+    c2.beginPath();c2.moveTo(px+s,py-s);c2.lineTo(px+g,py);c2.lineTo(px,py-g);c2.stroke();
+  } else if(type==='x'){
+    const d=s*0.7;
+    c2.beginPath();c2.moveTo(px-d,py-d);c2.lineTo(px+d,py+d);c2.moveTo(px+d,py-d);c2.lineTo(px-d,py+d);c2.stroke();
+  }
+}
+
+function drawPreviews() {
+  [['classic','pv-classic'],['dot','pv-dot'],['cross','pv-cross'],['circle','pv-circle'],['tcross','pv-tcross'],['angle','pv-angle'],['lines','pv-lines'],['x','pv-x']].forEach(([t,id])=>{
+    const el=document.getElementById(id); if(el) drawCH(el,t,cfg.chColor,cfg.chW,cfg.chS,cfg.chG,cfg.chA,cfg.chOut);
+  });
+  const pv=document.getElementById('ch-preview');
+  drawCH(pv, cfg.chType, cfg.chColor, cfg.chW, cfg.chS+2, cfg.chG, cfg.chA, cfg.chOut);
+}
+drawPreviews();
+
+// Mouse
+canvas.addEventListener('mousemove', e=>{
+  mx=e.clientX; my=e.clientY;
+  document.getElementById('sens-cursor').style.left=mx+'px';
+  document.getElementById('sens-cursor').style.top=my+'px';
+  if(cfg.movspr) moveSprAmt=Math.min(cfg.firespr, moveSprAmt+1);
+  else moveSprAmt=Math.max(0,moveSprAmt-0.5);
+});
+canvas.addEventListener('click', onShot);
+
+// Game
+function rnd(a,b){return Math.random()*(b-a)+a;}
+function safeX(r){return rnd(r+40,W-r-40);}
+function safeY(r){return rnd(r+70,H-r-70);}
+function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
+
+function mkTarget(){
+  let r=cfg.size;
+  if(cfg.mode==='micro') r=Math.max(6,cfg.size*0.38);
+  if(cfg.randsize) r=rnd(r*0.5,r*1.5);
+  const t={x:safeX(r),y:safeY(r),r,born:Date.now(),origR:r};
+  if(cfg.mode==='flick') t.ttl=cfg.ttl;
+  return t;
+}
+
+function startGame(){
+  running=true; score=0; shots=0; hits=0; combo=0; maxCombo=0;
+  targets=[]; trackTargets=[]; hitFlash=[]; missFlash=[]; scorePops=[]; reactTimes=[];
+  spreadAmt=0; moveSprAmt=0;
+  hideMenu();
+  document.getElementById('result').classList.remove('show');
+  document.getElementById('start-btn').classList.add('visible');
+  stgPanel.classList.remove('open'); stgBtn.classList.remove('open');
+  timeLeft=cfg.dur;
+  updateHUD();
+  document.getElementById('tb').style.width='100%';
+  document.getElementById('tb').style.transition=`width ${cfg.dur}s linear`;
+  setTimeout(()=>document.getElementById('tb').style.width='0%',50);
+
+  if(cfg.mode==='click'||cfg.mode==='micro'){targets.push(mkTarget());reactStart=Date.now();}
+  if(cfg.mode==='multi'||cfg.mode==='scatter'){for(let i=0;i<cfg.cnt;i++)targets.push(mkTarget());}
+  if(cfg.mode==='tracking'){for(let i=0;i<Math.max(1,cfg.cnt);i++)spawnTrack();}
+  if(cfg.mode==='flick')scheduleFlick();
+
+  ticker=setInterval(()=>{
+    timeLeft--;
+    document.getElementById('h-time').textContent=timeLeft;
+    if(timeLeft<=0&&!cfg.infinite)stopGame();
+  },1000);
+  document.getElementById('h-time').textContent=timeLeft;
+  animId=requestAnimationFrame(draw);
+}
+
+function spawnTrack(){
+  const r=cfg.size, sp=0.6+cfg.spd*0.5;
+  trackTargets.push({x:safeX(r),y:safeY(r),r,vx:rnd(sp*0.5,sp)*(Math.random()<.5?1:-1),vy:rnd(sp*0.5,sp)*(Math.random()<.5?1:-1),hit:false});
+}
+
+function scheduleFlick(){
+  if(!running)return;
+  flickTimer=setTimeout(()=>{
+    if(!running)return;
+    targets.push(mkTarget()); reactStart=Date.now();
+  },rnd(cfg.delay,cfg.delay+1000));
+}
+
+function stopGame(){
+  running=false; clearInterval(ticker); cancelAnimationFrame(animId);
+  if(flickTimer)clearTimeout(flickTimer);
+  targets=[]; trackTargets=[];
+  document.getElementById('tb').style.transition='none';
+  document.getElementById('tb').style.width='0%';
+  document.getElementById('start-btn').classList.remove('visible');
+  showResults();
+}
+
+// KPS tracking
+setInterval(()=>{
+  if(!running)return;
+  const now=Date.now();
+  clickTimestamps=clickTimestamps.filter(t=>now-t<1000);
+  document.getElementById('h-kps').textContent=clickTimestamps.length;
+},100);
+
+function onShot(e){
+  if(!running)return;
+  shots++; clickTimestamps.push(Date.now());
+  const px=e.clientX, py=e.clientY;
+  if(cfg.spread){spreadAmt=cfg.firespr; setTimeout(()=>spreadAmt=Math.max(0,spreadAmt-cfg.firespr),120);}
+  let hit=false;
+
+  if(cfg.mode==='tracking'){
+    for(const t of trackTargets){
+      if(dist(px,py,t.x,t.y)<t.r){
+        hits++;score+=5;hit=true;combo++;if(combo>maxCombo)maxCombo=combo;
+        t.hit=true; if(cfg.hfx)hitFlash.push({x:t.x,y:t.y,t:Date.now()});
+        if(cfg.scorepop)scorePops.push({x:t.x,y:t.y-t.r,v:'+5',t:Date.now()});
+        setTimeout(()=>t.hit=false,130); break;
+      }
+    }
+  } else {
+    for(let i=targets.length-1;i>=0;i--){
+      const t=targets[i];
+      if(dist(px,py,t.x,t.y)<t.r){
+        hits++;score+=10;hit=true;combo++;if(combo>maxCombo)maxCombo=combo;
+        const rt=Date.now()-reactStart; reactTimes.push(rt);
+        if(cfg.hfx)hitFlash.push({x:t.x,y:t.y,t:Date.now()});
+        if(cfg.scorepop)scorePops.push({x:t.x,y:t.y-t.r,v:'+10',t:Date.now()});
+        targets.splice(i,1);
+        if(cfg.mode==='click'||cfg.mode==='micro') setTimeout(()=>{if(running){targets.push(mkTarget());reactStart=Date.now();}},cfg.delay);
+        if(cfg.mode==='multi'||cfg.mode==='scatter') setTimeout(()=>{if(running)targets.push(mkTarget());},cfg.delay);
+        if(cfg.mode==='flick')scheduleFlick();
+        playSound(cfg.snd,true); break;
+      }
+    }
+  }
+  if(!hit){
+    combo=0;
+    if(cfg.mfx)missFlash.push({x:px,y:py,t:Date.now()});
+    if(cfg.shake)screenShake=8;
+    playSound(cfg.snd,false);
+  }
+  updateHUD();
+}
+
+function updateHUD(){
+  document.getElementById('h-score').textContent=score;
+  const a=shots?Math.round(hits/shots*100):0;
+  document.getElementById('h-acc').textContent=shots?a+'%':'—';
+  const avg=reactTimes.length?Math.round(reactTimes.reduce((a,b)=>a+b,0)/reactTimes.length):null;
+  document.getElementById('h-react').textContent=avg?avg+'ms':'—';
+  const hCombo=document.getElementById('h-combo'); if(hCombo) hCombo.textContent=combo;
+  if(cfg.accbar)document.getElementById('acc-bar').style.width=a+'%';
+}
+
+// Draw
+function drawBG(){
+  const b=cfg.bright;
+  ctx.globalAlpha=1;
+  if(cfg.bg==='dark'){ctx.fillStyle=`rgb(${Math.round(8*b)},${Math.round(8*b)},${Math.round(26*b)})`;ctx.fillRect(0,0,W,H);ctx.strokeStyle=`rgba(255,255,255,${0.025*b})`;ctx.lineWidth=1;for(let x=0;x<W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  else if(cfg.bg==='grid'){ctx.fillStyle=`rgb(${Math.round(11*b)},${Math.round(13*b)},${Math.round(26*b)})`;ctx.fillRect(0,0,W,H);ctx.strokeStyle=`rgba(127,119,221,${0.1*b})`;ctx.lineWidth=.5;for(let x=0;x<W;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.strokeStyle=`rgba(127,119,221,${0.22*b})`;ctx.lineWidth=1;for(let x=0;x<W;x+=96){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=96){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  else if(cfg.bg==='range'){ctx.fillStyle='#101820';ctx.fillRect(0,0,W,H);ctx.fillStyle='#0a1018';ctx.fillRect(0,H*.68,W,H*.32);ctx.strokeStyle='rgba(200,200,150,0.06)';ctx.lineWidth=1;for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x,H*.68);ctx.lineTo(x+24,H);ctx.stroke();}ctx.strokeStyle='rgba(255,210,120,0.07)';ctx.strokeRect(W*.12,H*.1,W*.76,H*.55);ctx.strokeRect(W*.06,H*.06,W*.88,H*.63);}
+  else if(cfg.bg==='void'){ctx.fillStyle='#050508';ctx.fillRect(0,0,W,H);}
+  else if(cfg.bg==='blue'){ctx.fillStyle=`rgb(${Math.round(4*b)},${Math.round(12*b)},${Math.round(30*b)})`;ctx.fillRect(0,0,W,H);ctx.strokeStyle=`rgba(56,138,221,${0.08*b})`;ctx.lineWidth=1;for(let x=0;x<W;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  else if(cfg.bg==='warm'){ctx.fillStyle=`rgb(${Math.round(22*b)},${Math.round(14*b)},${Math.round(8*b)})`;ctx.fillRect(0,0,W,H);ctx.strokeStyle=`rgba(239,159,39,${0.07*b})`;ctx.lineWidth=1;for(let x=0;x<W;x+=55){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=55){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  else if(cfg.bg==='neon'){ctx.fillStyle='#060310';ctx.fillRect(0,0,W,H);ctx.strokeStyle='rgba(0,255,136,0.06)';ctx.lineWidth=1;for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}ctx.strokeStyle='rgba(127,119,221,0.06)';for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  else if(cfg.bg==='white'){ctx.fillStyle=`rgb(${Math.round(240*b)},${Math.round(240*b)},${Math.round(245*b)})`;ctx.fillRect(0,0,W,H);ctx.strokeStyle='rgba(0,0,0,0.04)';ctx.lineWidth=1;for(let x=0;x<W;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}for(let y=0;y<H;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+}
+
+function drawTarget(x,y,r,color,alpha){
+  ctx.globalAlpha=alpha??1;
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,r*0.2,0,Math.PI*2);ctx.fill();
+  ctx.lineWidth=1.5;const g=r*.42,ext=r+7;
+  ctx.beginPath();ctx.moveTo(x-ext,y);ctx.lineTo(x-g,y);ctx.moveTo(x+g,y);ctx.lineTo(x+ext,y);ctx.moveTo(x,y-ext);ctx.lineTo(x,y-g);ctx.moveTo(x,y+g);ctx.lineTo(x,y+ext);ctx.stroke();
+  ctx.globalAlpha=1;
+}
+
+function drawCrosshairCanvas(x,y,extraGap){
+  const g=cfg.chG+(extraGap||0);
+  const save=cfg.chG; cfg.chG=g;
+  ctx.globalAlpha=cfg.chA;
+  if(cfg.chOut){ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.fillStyle='rgba(0,0,0,0.6)';ctx.lineWidth=cfg.chW+2;drawCHShape(ctx,cfg.chType,x,y,cfg.chS,g,cfg.chW);}
+  ctx.strokeStyle=cfg.chColor;ctx.fillStyle=cfg.chColor;ctx.lineWidth=cfg.chW;
+  drawCHShape(ctx,cfg.chType,x,y,cfg.chS,g,cfg.chW);
+  ctx.globalAlpha=1; cfg.chG=save;
+}
+
+function draw(){
+  if(!running)return;
+  const now=Date.now();
+  ctx.save();
+  if(screenShake>0){ctx.translate(rnd(-screenShake,screenShake),rnd(-screenShake,screenShake));screenShake=Math.max(0,screenShake-1);}
+  ctx.clearRect(-20,-20,W+40,H+40);
+  drawBG();
+
+  const tColors={click:'#AFA9EC',micro:'#ff6fff',flick:'#EF9F27',multi:'#5DCAA5',scatter:'#5DCAA5',tracking:'#AFA9EC'};
+
+  if(cfg.mode==='tracking'){
+    for(const t of trackTargets){
+      t.x+=t.vx*cfg.spd*0.45; t.y+=t.vy*cfg.spd*0.45;
+      if(t.x<t.r||t.x>W-t.r)t.vx*=-1;
+      if(t.y<t.r+55||t.y>H-t.r-20)t.vy*=-1;
+      drawTarget(t.x,t.y,t.r,t.hit&&cfg.flash?'#7affb0':tColors.tracking);
+    }
+  }
+
+  targets=targets.filter(t=>!t.ttl||now-t.born<t.ttl);
+  for(const t of targets){
+    if(cfg.shrink)t.r=Math.max(4,t.origR*(1-(now-t.born)/(t.ttl||2000)*0.5));
+    const age=now-t.born;
+    const alpha=t.ttl?Math.max(0.15,1-age/t.ttl*0.6):1;
+    drawTarget(t.x,t.y,t.r,tColors[cfg.mode]||'#AFA9EC',alpha);
+  }
+
+  // Effects
+  missFlash=missFlash.filter(m=>now-m.t<280);
+  for(const m of missFlash){const a=1-(now-m.t)/280;ctx.globalAlpha=a;ctx.strokeStyle='#E24B4A';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(m.x-8,m.y-8);ctx.lineTo(m.x+8,m.y+8);ctx.stroke();ctx.beginPath();ctx.moveTo(m.x+8,m.y-8);ctx.lineTo(m.x-8,m.y+8);ctx.stroke();ctx.globalAlpha=1;}
+  const fxs=cfg.fxsize;
+  hitFlash=hitFlash.filter(h=>now-h.t<220);
+  for(const h of hitFlash){const a=(1-(now-h.t)/220)*.65;ctx.globalAlpha=a;ctx.strokeStyle='#7affb0';ctx.lineWidth=2;ctx.beginPath();ctx.arc(h.x,h.y,(18+(now-h.t)*.12)*fxs,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;}
+
+  // Score pops
+  scorePops=scorePops.filter(s=>now-s.t<600);
+  for(const s of scorePops){const a=1-(now-s.t)/600;const oy=(now-s.t)/600*30;ctx.globalAlpha=a;ctx.fillStyle='#ffcc00';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText(s.v,s.x,s.y-oy);ctx.globalAlpha=1;ctx.textAlign='left';}
+
+  // Crosshair
+  const eg=(spreadAmt+moveSprAmt);
+  drawCrosshairCanvas(mx,my,eg);
+  if(eg>0){spreadAmt=Math.max(0,spreadAmt-0.8);}
+
+  ctx.restore();
+  animId=requestAnimationFrame(draw);
+}
+
+function showResults(){
+  const acc=shots?Math.round(hits/shots*100):0;
+  const avgR=reactTimes.length?Math.round(reactTimes.reduce((a,b)=>a+b,0)/reactTimes.length):null;
+  const bestR=reactTimes.length?Math.min(...reactTimes):null;
+  const grade=acc>=90?'S':acc>=75?'A':acc>=60?'B':acc>=45?'C':'D';
+  const gc={S:'#EF9F27',A:'#1D9E75',B:'#7F77DD',C:'#D85A30',D:'#888'};
+
+  // Save record
+  records.push({mode:cfg.mode, score, acc, react:avgR, grade, date:Date.now()});
+  if(records.length>50) records.shift();
+  localStorage.setItem('aim_records', JSON.stringify(records));
+
+  const items=[
+    {l:'최종 점수',v:score,c:'#7F77DD'},{l:'정확도',v:acc+'%',c:acc>=75?'#1D9E75':'#D85A30'},
+    {l:'평균 반응',v:avgR?avgR+'ms':'—',c:null},{l:'최고 반응',v:bestR?bestR+'ms':'—',c:'#00ff88'},
+    {l:'총 클릭',v:shots,c:null},{l:'명중',v:hits,c:null},
+    {l:'미스',v:shots-hits,c:shots-hits>0?'#E24B4A':null},{l:'최대 콤보',v:maxCombo,c:'#EF9F27'},
+    {l:'등급',v:grade,c:gc[grade]},
+  ];
+  document.getElementById('rg').innerHTML=items.map(i=>`<div class="rc"><div class="rc-lbl">${i.l}</div><div class="rc-val" style="${i.c?'color:'+i.c:''}">${i.v}</div></div>`).join('');
+  document.getElementById('result').classList.add('show');
+}
+
+// KPS tracking always on
+setInterval(()=>{
+  if(!running)return;
+  const now=Date.now();
+  clickTimestamps=clickTimestamps.filter(t=>now-t<1000);
+  document.getElementById('h-kps').textContent=clickTimestamps.length;
+},100);
+</script>
+</body>
+</html>
