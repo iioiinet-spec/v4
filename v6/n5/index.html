@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>웹 멀티 악기 (신스 & 바이올린)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: radial-gradient(circle at 50% 30%, #2b2b36 0%, #121212 70%);
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #app-selector {
+            background: rgba(26, 26, 26, 0.8);
+            backdrop-filter: blur(5px);
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            border-bottom: 2px solid #222;
+            z-index: 20;
+        }
+        .nav-btn {
+            background: #2a2a2a;
+            color: #aaa;
+            border: 1px solid #444;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .nav-btn.active {
+            background: #00ffcc;
+            color: #000;
+            border-color: #00ffcc;
+            box-shadow: 0 0 15px rgba(0,255,204,0.5);
+        }
+
+        #synth-controls {
+            background: rgba(30, 30, 30, 0.8);
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            border-bottom: 1px solid #333;
+            z-index: 10;
+        }
+        .control-panel {
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            align-items: center;
+        }
+        .label {
+            color: #00ffcc;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+        }
+        .control-panel label {
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #ddd;
+        }
+        .control-panel input[type="radio"] { accent-color: #00ffcc; }
+
+        #visualizer-container {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        #start-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; cursor: pointer; gap: 15px;
+        }
+        #start-overlay h1 { font-size: 1.6rem; color: #00ffcc; text-align: center; }
+        #start-overlay p { font-size: 1rem; color: #ccc; }
+        #start-btn {
+            padding: 15px 30px; font-size: 1.2rem; font-weight: bold;
+            background: #00ffcc; color: #000; border: none; border-radius: 30px;
+            cursor: pointer; box-shadow: 0 0 20px rgba(0,255,204,0.4);
+        }
+
+        #interface-container {
+            height: 40vh;
+            background: #2c2c2c;
+            position: relative;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+        }
+
+        #keyboard { width: 100%; height: 100%; display: flex; padding: 10px; gap: 2px; }
+        .key-white {
+            flex: 1; background-color: #f0f0f0; border-radius: 0 0 5px 5px; border: 1px solid #ccc;
+            position: relative; cursor: pointer; transition: background-color 0.1s;
+        }
+        .key-white.active { background-color: #d4d4d4; transform: translateY(2px); }
+        .key-black {
+            width: 7%; height: 60%; background-color: #1a1a1a; position: absolute; top: 10px;
+            transform: translateX(-50%); border-radius: 0 0 4px 4px; z-index: 10;
+            cursor: pointer; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+        }
+        .key-black.active { background-color: #4a4a4a; box-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
+
+        #violin-fretboard {
+            width: 100%; height: 100%; display: none; 
+            background: linear-gradient(to right, #2e1a10, #4a2a18, #2e1a10);
+            flex-direction: column; justify-content: space-around; padding: 20px 0;
+            border-top: 4px solid #1a0f08;
+        }
+        .violin-string {
+            width: 100%; height: 25%; display: flex; align-items: center; position: relative;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent, rgba(0,0,0,0.4));
+        }
+        .violin-string::before {
+            content: ''; position: absolute; left: 0; right: 0; height: 3px;
+            background: linear-gradient(to bottom, #eee, #999); box-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+        .violin-note-pad {
+            flex: 1; height: 90%; margin: 0 2px; background: rgba(255,255,255,0.03);
+            border-left: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; justify-content: center; font-size: 0.8rem;
+            color: rgba(255,255,255,0.3); cursor: pointer; border-radius: 4px;
+            z-index: 5; transition: background 0.1s;
+        }
+        .violin-note-pad.active {
+            background: rgba(212, 143, 56, 0.4); border: 1px solid #d48f38; color: #fff;
+            box-shadow: 0 0 10px rgba(212, 143, 56, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-selector">
+        <button id="btn-synth" class="nav-btn active" onclick="switchInstrument('synth')">🎹 신디사이저 룸</button>
+        <button id="btn-violin" class="nav-btn" onclick="switchInstrument('violin')">🎻 바이올린 룸</button>
+    </div>
+
+    <div id="synth-controls">
+        <div class="control-panel">
+            <span class="label">SOUND</span>
+            <label><input type="radio" name="instrument" value="piano" checked> 신스 피아노</label>
+            <label><input type="radio" name="instrument" value="guitar"> 기타(Pluck)</label>
+            <label><input type="radio" name="instrument" value="drum"> 드럼 패드</label>
+        </div>
+    </div>
+
+    <div id="visualizer-container">
+        <div id="start-overlay" onclick="initAudio()">
+            <h1>오디오 엔진이 꺼져 있습니다 😴</h1>
+            <p>브라우저 보안 정책상 화면을 한 번 클릭해야 소리가 납니다.</p>
+            <button id="start-btn">엔진 켜기 (Click / Enter)</button>
+        </div>
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div id="interface-container">
+        <div id="keyboard"></div>
+        <div id="violin-fretboard">
+            <div class="violin-string" data-string="D"></div>
+            <div class="violin-string" data-string="A"></div>
+        </div>
+    </div>
+
+    <script>
+        let audioCtx;
+        let analyser;
+        let currentMode = 'synth';
+        
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        const overlay = document.getElementById('start-overlay');
+        const keyboardEl = document.getElementById('keyboard');
+        const violinEl = document.getElementById('violin-fretboard');
+        const synthCtrlEl = document.getElementById('synth-controls');
+        
+        const activeOscillators = {};
+        let currentVisualFrequency = 440; 
+
+        const notes = [
+            { note: 'C4', freq: 261.63, type: 'white' }, { note: 'C#4', freq: 277.18, type: 'black', pos: 1 },
+            { note: 'D4', freq: 293.66, type: 'white' }, { note: 'D#4', freq: 311.13, type: 'black', pos: 2 },
+            { note: 'E4', freq: 329.63, type: 'white' }, { note: 'F4', freq: 349.23, type: 'white' },
+            { note: 'F#4', freq: 369.99, type: 'black', pos: 4 }, { note: 'G4', freq: 392.00, type: 'white' },
+            { note: 'G#4', freq: 415.30, type: 'black', pos: 5 }, { note: 'A4', freq: 440.00, type: 'white' },
+            { note: 'A#4', freq: 466.16, type: 'black', pos: 6 }, { note: 'B4', freq: 493.88, type: 'white' },
+            { note: 'C5', freq: 523.25, type: 'white' }, { note: 'C#5', freq: 554.37, type: 'black', pos: 8 }, 
+            { note: 'D5', freq: 587.33, type: 'white' }           
+        ];
+
+        const violinNotes = {
+            D: [
+                { note: 'D4', freq: 293.66 }, { note: 'E4', freq: 329.63 }, 
+                { note: 'F4', freq: 349.23 }, { note: 'G4', freq: 392.00 }, { note: 'A4', freq: 440.00 }
+            ],
+            A: [
+                { note: 'A4', freq: 440.00 }, { note: 'B4', freq: 493.88 }, 
+                { note: 'C5', freq: 523.25 }, { note: 'D5', freq: 587.33 }, { note: 'E5', freq: 659.25 }
+            ]
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') initAudio();
+        });
+
+        function initAudio() {
+            if (audioCtx) return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.connect(audioCtx.destination);
+
+                overlay.style.display = 'none';
+                console.log("🎵 오디오 엔진 활성화 완료!");
+                
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                drawVisualizer();
+            } catch(e) {
+                console.error("오디오 엔진 시작 실패:", e);
+                alert("웹 브라우저가 오디오 기능을 지원하지 않거나 오류가 발생했습니다.");
+            }
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+
+        function switchInstrument(mode) {
+            currentMode = mode;
+            Object.keys(activeOscillators).forEach(key => {
+                try { activeOscillators[key].osc.stop(); } catch(e){}
+                delete activeOscillators[key];
+            });
+            document.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+
+            if (mode === 'synth') {
+                document.getElementById('btn-synth').classList.add('active');
+                document.getElementById('btn-violin').classList.remove('active');
+                keyboardEl.style.display = 'flex';
+                violinEl.style.display = 'none';
+                synthCtrlEl.style.display = 'flex';
+            } else {
+                document.getElementById('btn-synth').classList.remove('active');
+                document.getElementById('btn-violin').classList.add('active');
+                keyboardEl.style.display = 'none';
+                violinEl.style.display = 'flex';
+                synthCtrlEl.style.display = 'none';
+            }
+        }
+        
+        function createInterfaces() {
+            let whiteKeysCount = notes.filter(n => n.type === 'white').length;
+            notes.forEach(note => {
+                const key = document.createElement('div');
+                key.className = note.type === 'white' ? 'key-white' : 'key-black';
+                if (note.type === 'black') {
+                    key.style.left = `calc(${(note.pos / whiteKeysCount) * 100}% + 10px)`;
+                }
+                setupEvents(key, note, 'synth');
+                keyboardEl.appendChild(key);
+            });
+
+            const stringElements = document.querySelectorAll('.violin-string');
+            stringElements.forEach(strEl => {
+                const stringName = strEl.dataset.string;
+                const stringNotes = violinNotes[stringName];
+                
+                stringNotes.forEach(noteData => {
+                    const pad = document.createElement('div');
+                    pad.className = 'violin-note-pad';
+                    pad.innerText = noteData.note;
+                    setupEvents(pad, noteData, 'violin');
+                    strEl.appendChild(pad);
+                });
+            });
+        }
+
+        function setupEvents(element, noteData, instType) {
+            element.addEventListener('mousedown', (e) => startNote(e, noteData, instType));
+            element.addEventListener('touchstart', (e) => startNote(e, noteData, instType));
+            element.addEventListener('mouseup', (e) => stopNote(e, noteData, instType));
+            element.addEventListener('mouseleave', (e) => stopNote(e, noteData, instType));
+            element.addEventListener('touchend', (e) => stopNote(e, noteData, instType));
+            element.addEventListener('touchcancel', (e) => stopNote(e, noteData, instType));
+        }
+
+        function playDrum(noteData) {
+            const time = audioCtx.currentTime;
+            const freq = noteData.freq;
+            const gainNode = audioCtx.createGain();
+            gainNode.connect(analyser);
+
+            if (freq < 320) { 
+                const osc = audioCtx.createOscillator(); osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, time); osc.frequency.exponentialRampToValueAtTime(0.001, time + 0.2);
+                gainNode.gain.setValueAtTime(1, time); gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+                osc.connect(gainNode); osc.start(time); osc.stop(time + 0.2);
+            } else if (freq >= 320 && freq < 400) { 
+                const osc = audioCtx.createOscillator(); osc.type = 'triangle'; osc.frequency.setValueAtTime(250, time);
+                const toneGain = audioCtx.createGain(); toneGain.gain.setValueAtTime(0.5, time); toneGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+                osc.connect(toneGain); toneGain.connect(gainNode);
+                
+                const bufferSize = audioCtx.sampleRate * 0.2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
+                const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = 'highpass'; noiseFilter.frequency.value = 1000;
+                const noiseGain = audioCtx.createGain(); noiseGain.gain.setValueAtTime(1, time); noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(gainNode);
+                osc.start(time); osc.stop(time + 0.2); noise.start(time);
+            } else { 
+                const bufferSize = audioCtx.sampleRate * 0.05;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
+                const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 10000;
+                gainNode.gain.setValueAtTime(0.8, time); gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+                noise.connect(noiseFilter); noiseFilter.connect(gainNode); noise.start(time);
+            }
+        }
+
+        function startNote(event, noteData, instType) {
+            event.preventDefault();
+            if (!audioCtx) return;
+
+            let synthSelection = 'piano';
+            const checkedRadio = document.querySelector('input[name="instrument"]:checked');
+            if(checkedRadio) synthSelection = checkedRadio.value;
+
+            if (activeOscillators[noteData.note] && synthSelection !== 'drum') return;
+
+            event.target.classList.add('active');
+            currentVisualFrequency = noteData.freq;
+
+            if (instType === 'synth' && synthSelection === 'drum') {
+                playDrum(noteData);
+                setTimeout(() => event.target.classList.remove('active'), 100);
+                return;
+            }
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            if (instType === 'violin') {
+                osc.type = 'sawtooth'; 
+                const violinFilter = audioCtx.createBiquadFilter();
+                violinFilter.type = 'lowpass';
+                violinFilter.frequency.setValueAtTime(noteData.freq * 2.5, audioCtx.currentTime);
+
+                const lfo = audioCtx.createOscillator();
+                const lfoGain = audioCtx.createGain();
+                lfo.type = 'sine'; lfo.frequency.value = 6; lfoGain.gain.value = 4;   
+                lfo.connect(lfoGain); lfoGain.connect(osc.frequency); lfo.start();
+
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.15); 
+
+                osc.connect(violinFilter); violinFilter.connect(gainNode);
+                activeOscillators[noteData.note] = { osc, gainNode, lfo };
+            } 
+            else {
+                if (synthSelection === 'piano') {
+                    osc.type = 'sine';
+                    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+                    osc.connect(gainNode);
+                } else if (synthSelection === 'guitar') {
+                    osc.type = 'triangle';
+                    const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(noteData.freq * 4, audioCtx.currentTime);
+                    filter.frequency.exponentialRampToValueAtTime(noteData.freq, audioCtx.currentTime + 0.3);
+                    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 0.02);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+                    osc.connect(filter); filter.connect(gainNode);
+                }
+                activeOscillators[noteData.note] = { osc, gainNode };
+            }
+
+            gainNode.connect(analyser);
+            osc.frequency.setValueAtTime(noteData.freq, audioCtx.currentTime);
+            osc.start();
+        }
+
+        function stopNote(event, noteData, instType) {
+            event.preventDefault();
+            event.target.classList.remove('active');
+
+            const activeData = activeOscillators[noteData.note];
+            if (!activeData) return;
+
+            const { osc, gainNode, lfo } = activeData;
+            const releaseTime = instType === 'violin' ? 0.25 : 0.1;
+            
+            gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + releaseTime);
+            osc.stop(audioCtx.currentTime + releaseTime);
+            
+            if (lfo) lfo.stop(audioCtx.currentTime + releaseTime);
+            delete activeOscillators[noteData.note];
+        }
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = 'rgba(18, 18, 18, 0.4)';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            canvasCtx.lineWidth = 4;
+            const minFreq = 261; const maxFreq = 659;
+            const hue = ((currentVisualFrequency - minFreq) / (maxFreq - minFreq)) * 240; 
+            
+            canvasCtx.lineCap = 'round'; canvasCtx.lineJoin = 'round';
+            const isPlaying = Object.keys(activeOscillators).length > 0;
+
+            if (!isPlaying) {
+                canvasCtx.strokeStyle = 'rgba(100, 100, 100, 0.5)';
+            } else {
+                canvasCtx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+                canvasCtx.shadowBlur = 12;
+                canvasCtx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+            }
+
+            canvasCtx.beginPath();
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0; 
+                const y = v * canvas.height / 2;
+
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+            canvasCtx.shadowBlur = 0;
+        }
+
+        createInterfaces();
+    </script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SONATA: Final Edition</title>
+    <style>
+        body { margin: 0; background: #050505; color: white; overflow: hidden; touch-action: none; font-family: 'Arial', sans-serif; }
+        .screen { position: absolute; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: #000; }
+        .hidden { display: none; }
+        .btn { padding: 15px 40px; margin: 10px; border: 2px solid #00f5ff; background: transparent; color: #00f5ff; border-radius: 50px; cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
+        .btn:hover { background: #00f5ff; color: #000; }
+        #ui { position: absolute; top: 20px; left: 20px; font-size: 1.5rem; pointer-events: none; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="menu" class="screen">
+    <h1>SONATA Pro</h1>
+    <button class="btn" onclick="showGuide('Super Easy', 3, 1200)">Super Easy</button>
+    <button class="btn" onclick="showGuide('Easy', 5, 900)">Easy</button>
+    <button class="btn" onclick="showGuide('Normal', 7, 600)">Normal</button>
+    <button class="btn" onclick="showGuide('Hard', 10, 400)">Hard</button>
+    <button class="btn" onclick="showGuide('Super Hard', 16, 200)">Super Hard</button>
+</div>
+
+<div id="guide" class="screen hidden">
+    <h2>조작 방법</h2>
+    <p>PC: [D, F, J, K] / 모바일: 하단 4개 구역 터치</p>
+    <p style="color: #ff0055;">3번 놓치면 게임 종료!</p>
+    <button class="btn" onclick="startEngine()">게임 시작!</button>
+</div>
+
+<div id="game" class="screen hidden">
+    <div id="ui">SCORE: <span id="score">0</span> | MISS: <span id="miss">0</span>/3</div>
+    <canvas id="canvas"></canvas>
+</div>
+
+<audio id="bgm" loop></audio>
+
+<script>
+    let notes = [], score = 0, missCount = 0, gameActive = false, settings;
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const bgm = document.getElementById('bgm');
+
+    // 다양한 배경음악 리스트 (실제 MP3 파일 경로로 교체 가능)
+    const musicList = [
+        "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+        "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+        "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+        "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
+    ];
+
+    function showGuide(diffName, speed, rate) {
+        settings = { speed, rate };
+        document.getElementById('menu').classList.add('hidden');
+        document.getElementById('guide').classList.remove('hidden');
+    }
+
+    function startEngine() {
+        document.getElementById('guide').classList.add('hidden');
+        document.getElementById('game').classList.remove('hidden');
+        
+        bgm.src = musicList[Math.floor(Math.random() * musicList.length)];
+        bgm.play();
+        
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        gameActive = true;
+        requestAnimationFrame(loop);
+        setInterval(spawnNote, settings.rate);
+    }
+
+    function spawnNote() {
+        if(gameActive) notes.push({ lane: Math.floor(Math.random()*4), y: -50, hit: false });
+    }
+
+    function loop() {
+        if(!gameActive) return; // 게임 중단 시 루프 완전 탈출
+        ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const JUDGE_Y = canvas.height - 120;
+        ctx.strokeStyle = '#00f5ff'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(0, JUDGE_Y); ctx.lineTo(canvas.width, JUDGE_Y); ctx.stroke();
+
+        notes.forEach((n, i) => {
+            n.y += settings.speed;
+            if(!n.hit) {
+                ctx.fillStyle = '#00f5ff';
+                ctx.fillRect(n.lane * (canvas.width/4) + 10, n.y, (canvas.width/4)-20, 20);
+            }
+            if(n.y > JUDGE_Y + 50 && !n.hit) {
+                n.hit = true;
+                missCount++;
+                document.getElementById('miss').innerText = missCount;
+                if(missCount >= 3) gameOver();
+            }
+            if(n.y > canvas.height) notes.splice(i, 1);
+        });
+        requestAnimationFrame(loop);
+    }
+
+    function gameOver() {
+        gameActive = false; // 게임 상태 비활성화
+        bgm.pause(); // 음악 중지
+        bgm.currentTime = 0; // 음악 초기화
+        setTimeout(() => alert("GAME OVER! 최종 점수: " + score + "\n다시 시작하려면 새로고침하세요."), 100);
+    }
+
+    function checkHit(lane) {
+        if(!gameActive) return;
+        const JUDGE_Y = canvas.height - 120;
+        const hitNote = notes.find(n => n.lane === lane && Math.abs(n.y - JUDGE_Y) < 60 && !n.hit);
+        if(hitNote) {
+            hitNote.hit = true;
+            score += 100;
+            document.getElementById('score').innerText = score;
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        const keys = {'d': 0, 'f': 1, 'j': 2, 'k': 3};
+        const pressed = e.key.toLowerCase();
+        if(keys[pressed] !== undefined) checkHit(keys[pressed]);
+    });
+
+    window.addEventListener('touchstart', (e) => {
+        const lane = Math.floor(e.touches[0].clientX / (window.innerWidth / 4));
+        checkHit(lane);
+    });
+</script>
+</body>
+</html>

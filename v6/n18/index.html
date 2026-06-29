@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ultimate Smooth Violin Simulator v5</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        
+        body {
+            background: 
+                radial-gradient(circle at center, rgba(139, 69, 19, 0.45) 0%, rgba(43, 17, 4, 0.9) 80%, #0c0401 100%),
+                linear-gradient(90deg, rgba(255, 180, 100, 0.02) 1px, transparent 1px),
+                linear-gradient(0deg, rgba(0, 0, 0, 0.15) 2px, transparent 2px),
+                #4a1c09;
+            background-size: auto, 8px 100vh, 100vw 4px, auto;
+            color: #fcefe3;
+            font-family: 'Georgia', serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        body::before, body::after {
+            content: "𝆃";
+            position: absolute;
+            font-size: 24rem;
+            color: rgba(12, 4, 1, 0.85);
+            font-family: serif;
+            pointer-events: none;
+            z-index: 1;
+            text-shadow: 0 0 15px rgba(184, 91, 31, 0.1);
+        }
+        body::before { left: 5%; top: 15%; transform: rotate(-15deg) scaleX(-1); }
+        body::after { right: 5%; top: 15%; transform: rotate(15deg); }
+
+        header {
+            text-align: center;
+            padding: 20px 15px;
+            background: linear-gradient(to bottom, rgba(43, 17, 4, 0.85), rgba(43, 17, 4, 0.3));
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 2px solid #6b3118;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.7);
+            z-index: 10;
+        }
+        header h1 {
+            font-size: 1.8rem;
+            color: #f6b36e;
+            letter-spacing: 5px;
+            text-shadow: 0 3px 15px rgba(246,179,110,0.4);
+            font-weight: bold;
+        }
+        header p {
+            font-size: 0.85rem;
+            color: #dec4b1;
+            margin-top: 6px;
+            font-family: sans-serif;
+            letter-spacing: 0.5px;
+        }
+
+        .visualizer-container {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            background: transparent;
+            z-index: 5;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .violin-container {
+            width: 90%;
+            max-width: 900px;
+            height: 280px;
+            margin: 0 auto 30px auto;
+            background: linear-gradient(to bottom, #1a110d 0%, #0a0604 50%, #1a110d 100%);
+            border: 5px solid #6e361b;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.95), inset 0 0 30px rgba(0,0,0,1);
+            position: relative;
+            z-index: 10;
+        }
+
+        .string-row {
+            flex: 1;
+            display: flex;
+            position: relative;
+            border-bottom: 1px solid rgba(110, 54, 27, 0.4);
+            width: 100%;
+        }
+        .string-row:last-child { border-bottom: none; }
+
+        .string-line {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 100%;
+            pointer-events: none;
+            z-index: 1;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.6);
+            transform: translateY(-50%);
+        }
+        .string-row[data-string="E"] .string-line { height: 1.5px; background: linear-gradient(to bottom, #ffffff, #b0b0b0); }
+        .string-row[data-string="A"] .string-line { height: 2.2px; background: linear-gradient(to bottom, #fff3cc, #d1af4b); } 
+        .string-row[data-string="D"] .string-line { height: 3.0px; background: linear-gradient(to bottom, #f5f5f5, #9c9c9c); }
+        .string-row[data-string="G"] .string-line { height: 3.8px; background: linear-gradient(to bottom, #e8e8e8, #737373); }
+
+        .position {
+            flex: 1;
+            height: 100%;
+            border-right: 1px dashed rgba(246, 179, 110, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            color: rgba(252, 239, 227, 0.75);
+            font-weight: bold;
+            z-index: 2;
+            gap: 6px;
+            font-family: sans-serif;
+            transition: background 0.05s, color 0.05s;
+            cursor: pointer;
+        }
+        .position:last-child { border-right: none; }
+        
+        .key-hint {
+            font-size: 0.75rem;
+            color: #f6b36e;
+            background: rgba(0,0,0,0.85);
+            padding: 3px 9px;
+            border-radius: 4px;
+            border: 1px solid rgba(246, 179, 110, 0.4);
+            font-weight: bold;
+        }
+        
+        .position.active {
+            background: linear-gradient(to bottom, rgba(246, 179, 110, 0.4), rgba(184, 91, 31, 0.6)) !important;
+            color: #ffffff !important;
+            box-shadow: inset 0 0 15px rgba(246, 179, 110, 0.7);
+        }
+        .position.active .key-hint {
+            background: #f6b36e;
+            color: #1a0b04;
+        }
+
+        #audio-activator {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.25);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .touch-notice {
+            background: rgba(43, 17, 4, 0.95);
+            border: 2px solid #f6b36e;
+            padding: 15px 30px;
+            border-radius: 30px;
+            color: #f6b36e;
+            font-size: 1.1rem;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            pointer-events: none;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.03); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="audio-activator">
+        <div class="touch-notice">🎻 화면을 터치/클릭하면 바이올린 연주가 시작됩니다</div>
+    </div>
+
+    <header>
+        <h1>ULTIMATE SMOOTH VIOLIN</h1>
+        <p>요청하신 키 배열[12345 / QWERT / ASDFG / ZXCVB]로 세팅되었습니다. 편하게 연주하세요!</p>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="violin-container" id="fingerboard">
+        <div class="string-row" data-idx="0" data-string="E"><div class="string-line"></div>
+            <div class="position" id="key-1" data-freq="659.25"><span>E5</span><span class="key-hint">1</span></div>
+            <div class="position" id="key-2" data-freq="698.46"><span>F5</span><span class="key-hint">2</span></div>
+            <div class="position" id="key-3" data-freq="783.99"><span>G5</span><span class="key-hint">3</span></div>
+            <div class="position" id="key-4" data-freq="880.00"><span>A5</span><span class="key-hint">4</span></div>
+            <div class="position" id="key-5" data-freq="987.77"><span>B5</span><span class="key-hint">5</span></div>
+        </div>
+        <div class="string-row" data-idx="1" data-string="A"><div class="string-line"></div>
+            <div class="position" id="key-Q" data-freq="440.00"><span>A4</span><span class="key-hint">Q</span></div>
+            <div class="position" id="key-W" data-freq="493.88"><span>B4</span><span class="key-hint">W</span></div>
+            <div class="position" id="key-E" data-freq="523.25"><span>C5</span><span class="key-hint">E</span></div>
+            <div class="position" id="key-R" data-freq="587.33"><span>D5</span><span class="key-hint">R</span></div>
+            <div class="position" id="key-T" data-freq="659.25"><span>E5</span><span class="key-hint">T</span></div>
+        </div>
+        <div class="string-row" data-idx="2" data-string="D"><div class="string-line"></div>
+            <div class="position" id="key-A" data-freq="293.66"><span>D4</span><span class="key-hint">A</span></div>
+            <div class="position" id="key-S" data-freq="329.63"><span>E4</span><span class="key-hint">S</span></div>
+            <div class="position" id="key-D" data-freq="349.23"><span>F4</span><span class="key-hint">D</span></div>
+            <div class="position" id="key-F" data-freq="392.00"><span>G4</span><span class="key-hint">F</span></div>
+            <div class="position" id="key-G" data-freq="440.00"><span>A4</span><span class="key-hint">G</span></div>
+        </div>
+        <div class="string-row" data-idx="3" data-string="G"><div class="string-line"></div>
+            <div class="position" id="key-Z" data-freq="196.00"><span>G3</span><span class="key-hint">Z</span></div>
+            <div class="position" id="key-X" data-freq="220.00"><span>A3</span><span class="key-hint">X</span></div>
+            <div class="position" id="key-C" data-freq="246.94"><span>B3</span><span class="key-hint">C</span></div>
+            <div class="position" id="key-V" data-freq="261.63"><span>C4</span><span class="key-hint">V</span></div>
+            <div class="position" id="key-B" data-freq="293.66"><span>D4</span><span class="key-hint">B</span></div>
+        </div>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let analyser = null;
+        const activeBows = {}; 
+        const pressedKeys = {}; 
+        let isPointerDown = false;
+        let currentActivePosId = null;
+
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        const fingerboard = document.getElementById('fingerboard');
+        const activator = document.getElementById('audio-activator');
+
+        const keyMap = {
+            '1': { id: 'key-1', string: 'E', freq: 659.25 },
+            '2': { id: 'key-2', string: 'E', freq: 698.46 },
+            '3': { id: 'key-3', string: 'E', freq: 783.99 },
+            '4': { id: 'key-4', string: 'E', freq: 880.00 },
+            '5': { id: 'key-5', string: 'E', freq: 987.77 },
+            'q': { id: 'key-Q', string: 'A', freq: 440.00 },
+            'w': { id: 'key-W', string: 'A', freq: 493.88 },
+            'e': { id: 'key-E', string: 'A', freq: 523.25 },
+            'r': { id: 'key-R', string: 'A', freq: 587.33 },
+            't': { id: 'key-T', string: 'A', freq: 659.25 },
+            'a': { id: 'key-A', string: 'D', freq: 293.66 },
+            's': { id: 'key-S', string: 'D', freq: 329.63 },
+            'd': { id: 'key-D', string: 'D', freq: 349.23 },
+            'f': { id: 'key-F', string: 'D', freq: 392.00 },
+            'g': { id: 'key-G', string: 'D', freq: 440.00 },
+            'z': { id: 'key-Z', string: 'G', freq: 196.00 },
+            'x': { id: 'key-X', string: 'G', freq: 220.00 },
+            'c': { id: 'key-C', string: 'G', freq: 246.94 },
+            'v': { id: 'key-V', string: 'G', freq: 261.63 },
+            'b': { id: 'key-B', string: 'G', freq: 293.66 }
+        };
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function initAudioEngine() {
+            if (audioCtx) return;
+            try {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContextClass();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 512; 
+                analyser.connect(audioCtx.destination);
+                
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                drawOscilloscope();
+
+                if (activator) activator.style.display = 'none';
+            } catch(e) {
+                console.error("오디오 하드웨어 시작 오류", e);
+            }
+        }
+
+        activator.addEventListener('click', initAudioEngine);
+        activator.addEventListener('pointerdown', initAudioEngine);
+
+        function startBowing(stringId, frequency) {
+            if (!audioCtx) initAudioEngine(); 
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const now = audioCtx.currentTime;
+
+            if (activeBows[stringId]) {
+                activeBows[stringId].oscillators.forEach(osc => {
+                    osc.frequency.setTargetAtTime(frequency, now, 0.03);
+                });
+                activeBows[stringId].frequency = frequency;
+                return;
+            }
+
+            const oscMain = audioCtx.createOscillator();   
+            oscMain.type = 'sawtooth'; 
+            oscMain.frequency.setValueAtTime(frequency, now);
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(frequency * 2.3, now); 
+            filter.Q.setValueAtTime(1.2, now);
+
+            const lfo = audioCtx.createOscillator();
+            const lfoGain = audioCtx.createGain();
+            lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(6.0, now); 
+            lfoGain.gain.setValueAtTime(frequency * 0.007, now); 
+
+            lfo.connect(lfoGain);
+            lfoGain.connect(oscMain.frequency); 
+
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.18, now + 0.05); 
+            
+            oscMain.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(analyser);
+
+            lfo.start(now);
+            oscMain.start(now);
+
+            activeBows[stringId] = {
+                oscillators: [oscMain],
+                lfo: lfo,
+                gainNode: gainNode,
+                frequency: frequency
+            };
+        }
+
+        function stopBowing(stringId) {
+            if (!audioCtx || !activeBows[stringId]) return;
+
+            const now = audioCtx.currentTime;
+            const bow = activeBows[stringId];
+            
+            bow.gainNode.gain.cancelScheduledValues(now);
+            bow.gainNode.gain.setValueAtTime(bow.gainNode.gain.value, now);
+            bow.gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.12); 
+
+            setTimeout(() => {
+                try {
+                    bow.oscillators.forEach(osc => osc.stop());
+                    bow.lfo.stop();
+                } catch(e){}
+                if (activeBows[stringId] === bow) {
+                    delete activeBows[stringId];
+                }
+            }, 140);
+        }
+
+        // ⚡ [씹힘 방지 보강] 마우스/터치 연속 포인터 트래킹 로직의 조건 처리 정밀화
+        function updatePointerInteraction(e) {
+            if (!isPointerDown) return;
+            
+            const element = document.elementFromPoint(e.clientX, e.clientY);
+            if (!element) return;
+            
+            const posEl = element.closest('.position');
+            const rowEl = element.closest('.string-row');
+
+            if (posEl && rowEl) {
+                const targetId = posEl.id;
+                
+                if (currentActivePosId !== targetId) {
+                    clearAllActivePositionsExceptKeys();
+                    
+                    currentActivePosId = targetId;
+                    posEl.classList.add('active');
+                    
+                    const stringId = rowEl.getAttribute('data-string');
+                    const freq = parseFloat(posEl.getAttribute('data-freq'));
+                    startBowing(stringId, freq);
+
+                    Object.keys(activeBows).forEach(s => {
+                        if (s !== stringId && !isStringActiveByKeyboard(s)) {
+                            stopBowing(s);
+                        }
+                    });
+                }
+            } else {
+                if (currentActivePosId) {
+                    clearAllActivePositionsExceptKeys();
+                    currentActivePosId = null;
+                    resetAllBowsExceptKeys();
+                }
+            }
+        }
+
+        function isStringActiveByKeyboard(stringId) {
+            for (let k in keyMap) {
+                if (pressedKeys[k] && keyMap[k].string === stringId) return true;
+            }
+            return false;
+        }
+
+        function clearAllActivePositionsExceptKeys() {
+            document.querySelectorAll('.position.active').forEach(el => {
+                const keyAttr = el.id.replace('key-', '').toLowerCase();
+                if (!pressedKeys[keyAttr]) {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function resetAllBowsExceptKeys() {
+            Object.keys(activeBows).forEach(s => {
+                if (!isStringActiveByKeyboard(s)) stopBowing(s);
+            });
+        }
+
+        fingerboard.addEventListener('pointerdown', (e) => {
+            isPointerDown = true;
+            fingerboard.setPointerCapture(e.pointerId); 
+            updatePointerInteraction(e);
+        });
+
+        fingerboard.addEventListener('pointermove', updatePointerInteraction);
+
+        const endPointerHandler = (e) => {
+            if (!isPointerDown) return;
+            isPointerDown = false;
+            try { fingerboard.releasePointerCapture(e.pointerId); } catch(err){}
+            currentActivePosId = null;
+            clearAllActivePositionsExceptKeys();
+            resetAllBowsExceptKeys();
+        };
+
+        fingerboard.addEventListener('pointerup', endPointerHandler);
+        fingerboard.addEventListener('pointercancel', endPointerHandler);
+
+        // ⚡ [씹힘 방지 보강] 브라우저 입력 버퍼 딜레이 및 동시 입력 상태를 더 즉각적으로 수집하도록 개선
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return; 
+            
+            const key = e.key.toLowerCase();
+            if (keyMap[key]) {
+                if (!audioCtx) initAudioEngine();
+                pressedKeys[key] = true; 
+                
+                const target = keyMap[key];
+                const el = document.getElementById(target.id);
+                if (el) el.classList.add('active');
+                startBowing(target.string, target.freq);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (keyMap[key]) {
+                pressedKeys[key] = false; 
+                
+                const target = keyMap[key];
+                const el = document.getElementById(target.id);
+                if (el && currentActivePosId !== target.id) el.classList.remove('active');
+                
+                let stringStillActive = false;
+                let nextFreq = 0;
+                for (let k in keyMap) {
+                    if (pressedKeys[k] && keyMap[k].string === target.string) {
+                        stringStillActive = true;
+                        nextFreq = keyMap[k].freq;
+                    }
+                }
+
+                if (stringStillActive) {
+                    startBowing(target.string, nextFreq);
+                } else {
+                    let mousePlayingThisString = false;
+                    if (isPointerDown && currentActivePosId) {
+                        const activePosEl = document.getElementById(currentActivePosId);
+                        if (activePosEl && activePosEl.closest('.string-row').getAttribute('data-string') === target.string) {
+                            mousePlayingThisString = true;
+                        }
+                    }
+                    if (!mousePlayingThisString) {
+                        stopBowing(target.string);
+                    }
+                }
+            }
+        });
+
+        function drawOscilloscope() {
+            requestAnimationFrame(drawOscilloscope);
+            if (!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            canvasCtx.lineWidth = 3.5;
+            
+            let hasSound = Object.keys(activeBows).length > 0;
+            canvasCtx.strokeStyle = hasSound ? 'rgba(246, 179, 110, 0.85)' : 'rgba(246, 179, 110, 0.12)';
+            if(hasSound) {
+                canvasCtx.shadowBlur = 12;
+                canvasCtx.shadowColor = '#f6b36e';
+            } else {
+                canvasCtx.shadowBlur = 0;
+            }
+
+            canvasCtx.beginPath();
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+        }
+    </script>
+</body>
+</html>

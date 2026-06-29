@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>인터랙티브 기타 & 주파수 시각화</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; /* 모바일 브라우저 기본 스크롤/바운스 방지 */
+        }
+
+        body {
+            background-color: #121214;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 15px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #e0e0e0;
+        }
+
+        #app-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* 시각화 캔버스 영역 (배경) */
+        #visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 기타 줄 인터페이스 영역 */
+        #guitar-body {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            padding: 40px 0;
+        }
+
+        .string-wrapper {
+            height: 40px;
+            display: flex;
+            align-items: center;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .string-line {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.8), rgba(255,255,255,0.2));
+            box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+            transition: transform 0.1s ease;
+            pointer-events: none;
+        }
+
+        /* 줄별 두께 차이 표현 (낮은 음일수록 두껍게) */
+        .string-wrapper:nth-child(1) .string-line { height: 4px; }
+        .string-wrapper:nth-child(2) .string-line { height: 3.5px; }
+        .string-wrapper:nth-child(3) .string-line { height: 3px; }
+        .string-wrapper:nth-child(4) .string-line { height: 2.5px; }
+        .string-wrapper:nth-child(5) .string-line { height: 2px; }
+        .string-wrapper:nth-child(6) .string-line { height: 1.5px; }
+
+        .string-label {
+            position: absolute;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            pointer-events: none;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        /* 안내 메시지 */
+        #instruction {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.4);
+            z-index: 3;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Web Audio Guitar & Visualizer</h1>
+    </header>
+
+    <div id="app-container">
+        <canvas id="visualizer"></canvas>
+        
+        <div id="guitar-body">
+            <div class="string-wrapper" data-note="E2" data-freq="82.41">
+                <span class="string-label">6E (82.4Hz)</span>
+                <div class="string-line"></div>
+            </div>
+            <div class="string-wrapper" data-note="A2" data-freq="110.00">
+                <span class="string-label">5A (110.0Hz)</span>
+                <div class="string-line"></div>
+            </div>
+            <div class="string-wrapper" data-note="D3" data-freq="146.83">
+                <span class="string-label">4D (146.8Hz)</span>
+                <div class="string-line"></div>
+            </div>
+            <div class="string-wrapper" data-note="G3" data-freq="196.00">
+                <span class="string-label">3G (196.0Hz)</span>
+                <div class="string-line"></div>
+            </div>
+            <div class="string-wrapper" data-note="B3" data-freq="246.94">
+                <span class="string-label">2B (246.9Hz)</span>
+                <div class="string-line"></div>
+            </div>
+            <div class="string-wrapper" data-note="E4" data-freq="329.63">
+                <span class="string-label">1E (329.6Hz)</span>
+                <div class="string-line"></div>
+            </div>
+        </div>
+
+        <div id="instruction">화면의 기타줄을 마우스나 손가락으로 드래그(긁기)해 보세요.</div>
+    </div>
+
+    <script>
+        // --- 1. 초기화 및 모바일 대응 설정 ---
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const guitarBody = document.getElementById('guitar-body');
+        const strings = document.querySelectorAll('.string-wrapper');
+
+        // 리사이즈 대응 및 고해상도(Retina) 디스플레이 최적화
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            ctx.scale(dpr, dpr);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- 2. Web Audio API 엔진 설정 ---
+        let audioCtx = null;
+        let analyser = null;
+
+        function initAudio() {
+            if (audioCtx) return;
+            // 모바일 오디오 지연 최소화 및 컨텍스트 생성
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+                latencyHint: 'interactive'
+            });
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.connect(audioCtx.destination);
+        }
+
+        // 브라우저 Autoplay 차단 정책 우회용 잠금 해제 코드 추가
+        const unlockAudio = () => {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        };
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+
+        // 기타 플러킹(Plucking) 음색 구현 함수
+        function playNote(frequency, color) {
+            initAudio();
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const now = audioCtx.currentTime;
+            
+            // 주 오실레이터 (기본 주파수 - 삼각파로 부드러운 현악기 느낌 유도)
+            const osc = audioCtx.createOscillator();
+            // 배음 오실레이터 (기타 특유의 명료한 배음 추가)
+            const overtone = audioCtx.createOscillator();
+            
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(frequency, now);
+
+            overtone.type = 'sine';
+            overtone.frequency.setValueAtTime(frequency * 2, now); // 2차 배음
+
+            // 앰플리투드 엔벨로프 (기타줄을 튕긴 후 서서히 감쇠하는 곡선)
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.01); // 튕기는 순간 (Attack)
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // 잔향 (Decay/Release)
+
+            // 노드 연결
+            osc.connect(gainNode);
+            overtone.connect(gainNode);
+            gainNode.connect(analyser);
+
+            // 재생 및 자동 종료
+            osc.start(now);
+            overtone.start(now);
+            osc.stop(now + 1.5);
+            overtone.stop(now + 1.5);
+        }
+
+        // --- 3. 인터랙티브 드래그(트래킹) 로직 ---
+        let activePointers = new Map();
+        let lastPositions = new Map();
+
+        // [수정] 드래그 판정 범위 및 충돌 로직 고도화
+        function checkStringCollision(x, y, pointerId) {
+            const lastPos = lastPositions.get(pointerId);
+            if (!lastPos) {
+                lastPositions.set(pointerId, { x, y });
+                return;
+            }
+
+            strings.forEach(string => {
+                const rect = string.getBoundingClientRect();
+                const stringY = rect.top + rect.height / 2;
+
+                // 상하 15픽셀 보정값(Buffer)을 적용하여 빠른 드래그 스킵 방지
+                const buffer = 15; 
+                const minY = Math.min(lastPos.y, y) - buffer;
+                const maxY = Math.max(lastPos.y, y) + buffer;
+
+                // 이동 경로가 기타줄 판정 범위를 교차했는지 확인
+                if (stringY >= minY && stringY <= maxY) {
+                    // 가로 범위 내에 있을 때만 작동
+                    if (x >= rect.left && x <= rect.right) {
+                        triggerStringVisualEffect(string);
+                        
+                        const freq = parseFloat(string.dataset.freq);
+                        // 주파수 기반 HSL 색상 생성
+                        const hue = (freq * 0.7) % 360; 
+                        const color = `hsl(${hue}, 90%, 60%)`;
+                        
+                        playNote(freq, color);
+                        string.dataset.currentColor = color; // 시각화용 색상 저장
+                    }
+                }
+            });
+
+            lastPositions.set(pointerId, { x, y });
+        }
+
+        // 줄 튕김 애니메이션 효과
+        function triggerStringVisualEffect(stringEl) {
+            const line = stringEl.querySelector('.string-line');
+            line.style.transform = 'translateY(-6px)';
+            setTimeout(() => {
+                line.style.transform = 'translateY(6px)';
+                setTimeout(() => {
+                    line.style.transform = 'translateY(0)';
+                }, 50);
+            }, 50);
+        }
+
+        // 포인터 이벤트 리스너 (마우스, 터치 통합)
+        window.addEventListener('pointerdown', (e) => {
+            activePointers.set(e.pointerId, true);
+            lastPositions.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!activePointers.has(e.pointerId)) return;
+            checkStringCollision(e.clientX, e.clientY, e.pointerId);
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            activePointers.delete(e.pointerId);
+            lastPositions.delete(e.pointerId);
+        });
+
+        window.addEventListener('pointercancel', (e) => {
+            activePointers.delete(e.pointerId);
+            lastPositions.delete(e.pointerId);
+        });
+
+
+        // --- 4. 실시간 주파수 및 파동 시각화 (Canvas) ---
+        function draw() {
+            requestAnimationFrame(draw);
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            // 잔상 효과
+            ctx.fillStyle = 'rgba(18, 18, 20, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!analyser) return;
+
+            // 시간 도메인 데이터(파형) 가져오기
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            // 기본 활성화 색상
+            let activeColor = '#00f0ff';
+            strings.forEach(s => {
+                if(s.dataset.currentColor) activeColor = s.dataset.currentColor;
+            });
+
+            // 오디오 파동 그리기
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = activeColor;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = activeColor;
+            ctx.beginPath();
+
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // 애니메이션 루프 시작
+        draw();
+    </script>
+</body>
+</html>

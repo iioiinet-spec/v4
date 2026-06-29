@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터랙티브 악기 & 주파수 시각화</title>
+    <style>
+        :root {
+            /* 하늘 테마 색상 정의 */
+            --sky-gradient: linear-gradient(135deg, #73a6fb 0%, #a4c9fc 50%, #e2ebf0 100%);
+            --panel-bg: rgba(30, 41, 59, 0.7); /* 반투명한 다크 글래스모피즘 */
+            --canvas-bg: rgba(15, 23, 42, 0.9);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--sky-gradient);
+            background-attachment: fixed;
+            color: #ffffff;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .app-container {
+            width: 90%;
+            max-width: 850px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.6rem;
+            letter-spacing: 2px;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+
+        /* 시각화 캔버스 패널 */
+        .visualizer-container {
+            width: 100%;
+            height: 240px;
+            background: var(--canvas-bg);
+            border-radius: 14px;
+            margin-bottom: 25px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 건반 영역 컨트롤 */
+        .keyboard-wrapper {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 20px 15px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .keyboard {
+            display: flex;
+            justify-content: center;
+            position: relative;
+            height: 200px;
+            width: 100%;
+        }
+
+        .key {
+            cursor: pointer;
+            transition: background 0.1s ease, transform 0.05s ease;
+        }
+
+        .key.white {
+            width: calc(100% / 8); /* 8개 백건 비율 분할 */
+            height: 100%;
+            background: linear-gradient(to bottom, #ffffff 0%, #f3f4f6 80%, #e5e7eb 100%);
+            border: 1px solid #d1d5db;
+            border-radius: 0 0 6px 6px;
+            z-index: 1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 10px;
+            box-sizing: border-box;
+            color: #4b5563;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .key.white:active, .key.white.active {
+            background: linear-gradient(to bottom, #e5e7eb 0%, #d1d5db 100%);
+            transform: translateY(2px);
+            height: calc(100% - 2px);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+        }
+
+        .key.black {
+            width: calc((100% / 8) * 0.65); /* 백건 너비의 65% */
+            height: 60%;
+            background: linear-gradient(to bottom, #374151 0%, #111827 100%);
+            border: 1px solid #000000;
+            border-radius: 0 0 4px 4px;
+            position: absolute;
+            z-index: 2;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 8px;
+            box-sizing: border-box;
+            color: #d1d5db;
+            font-size: 0.7rem;
+        }
+
+        .key.black:active, .key.black.active {
+            background: linear-gradient(to bottom, #1f2937 0%, #030712 100%);
+            height: calc(60% - 2px);
+            transform: translateY(2px);
+        }
+
+        /* 8개 백건 기준 고정 위치 오프셋 계산 (정밀 정렬) */
+        .key[data-note="C#4"] { left: calc((100% / 8) * 0.68); }
+        .key[data-note="D#4"] { left: calc((100% / 8) * 1.72); }
+        .key[data-note="F#4"] { left: calc((100% / 8) * 3.68); }
+        .key[data-note="G#4"] { left: calc((100% / 8) * 4.72); }
+        .key[data-note="A#4"] { left: calc((100% / 8) * 5.76); }
+
+        /* 하단 정보 표시바 */
+        .status-bar {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            font-weight: 500;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        .status-bar span {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h1>Interactive Instrument & Frequency Visualizer</h1>
+    
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="keyboard-wrapper">
+        <div class="keyboard" id="keyboard">
+            <div class="key white" data-note="C4" data-freq="261.63">C4</div>
+            <div class="key black" data-note="C#4" data-freq="277.18">C#</div>
+            <div class="key white" data-note="D4" data-freq="293.66">D4</div>
+            <div class="key black" data-note="D#4" data-freq="311.13">D#</div>
+            <div class="key white" data-note="E4" data-freq="329.63">E4</div>
+            <div class="key white" data-note="F4" data-freq="349.23">F4</div>
+            <div class="key black" data-note="F#4" data-freq="369.99">F#</div>
+            <div class="key white" data-note="G4" data-freq="392.00">G4</div>
+            <div class="key black" data-note="G#4" data-freq="415.30">G#</div>
+            <div class="key white" data-note="A4" data-freq="440.00">A4</div>
+            <div class="key black" data-note="A#4" data-freq="466.16">A#</div>
+            <div class="key white" data-note="B4" data-freq="493.88">B4</div>
+            <div class="key white" data-note="C5" data-freq="523.25">C5</div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span id="audio-status">AUDIO: READY</span>
+        <span id="freq-status">FREQ: 0.00 Hz</span>
+    </div>
+</div>
+
+<script>
+    // --- 1. Web Audio API 엔진 구성 ---
+    let audioCtx = null;
+    let analyser = null;
+    const activeOscillators = {}; 
+
+    const audioStatusEl = document.getElementById('audio-status');
+    const freqStatusEl = document.getElementById('freq-status');
+
+    function initAudio() {
+        if (audioCtx) return;
+        
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048; // 부드러운 오실로스코프 곡선을 위한 고해상도 할당
+        analyser.connect(audioCtx.destination);
+        audioStatusEl.textContent = "AUDIO: ACTIVE";
+    }
+
+    function playTone(freq, note) {
+        initAudio();
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        if (activeOscillators[note]) return;
+
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        // 부드러운 사인파(정현파) 오실레이터 설정
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        // 오디오 팝 왜곡 노이즈(Pop/Click Noise) 차단을 위한 정밀 엔벨로프 처리
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.015); // 완만한 시작
+
+        osc.connect(gainNode);
+        gainNode.connect(analyser);
+        osc.start();
+
+        activeOscillators[note] = { osc, gainNode, frequency: freq };
+        updateStatusDisplay();
+    }
+
+    function stopTone(note) {
+        if (!activeOscillators[note]) return;
+
+        const { osc, gainNode } = activeOscillators[note];
+        
+        // 부드러운 테일 아웃 페이드 처리로 끝부분 잡음 제거
+        gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+
+        setTimeout(() => {
+            try {
+                osc.stop();
+                osc.disconnect();
+                gainNode.disconnect();
+            } catch(e) {}
+        }, 70);
+
+        delete activeOscillators[note];
+        updateStatusDisplay();
+    }
+
+    function updateStatusDisplay() {
+        const keys = Object.keys(activeOscillators);
+        if (keys.length > 0) {
+            const currentFreq = activeOscillators[keys[keys.length - 1]].frequency;
+            freqStatusEl.textContent = `FREQ: ${currentFreq.toFixed(2)} Hz`;
+        } else {
+            freqStatusEl.textContent = "FREQ: 0.00 Hz";
+        }
+    }
+
+    // --- 2. 마우스 및 멀티터치 바인딩 ---
+    const keyboard = document.getElementById('keyboard');
+
+    function handleStart(e) {
+        if (e.target.classList.contains('key')) {
+            const freq = parseFloat(e.target.dataset.freq);
+            const note = e.target.dataset.note;
+            e.target.classList.add('active');
+            playTone(freq, note);
+        }
+    }
+
+    function handleEnd(e) {
+        if (e.target.classList.contains('key')) {
+            const note = e.target.dataset.note;
+            e.target.classList.remove('active');
+            stopTone(note);
+        }
+    }
+
+    // 데스크톱 마우스 대응 인터랙션
+    keyboard.addEventListener('mousedown', handleStart);
+    window.addEventListener('mouseup', () => {
+        document.querySelectorAll('.key').forEach(key => {
+            if (key.classList.contains('active')) {
+                key.classList.remove('active');
+                stopTone(key.dataset.note);
+            }
+        });
+    });
+
+    // 모바일 및 태블릿 멀티 터치 하이재킹 가드 및 이벤트 구현
+    keyboard.addEventListener('touchstart', (e) => {
+        e.preventDefault(); 
+        const touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            const target = document.elementFromPoint(touches[i].clientX, touches[i].clientY);
+            if (target && target.classList.contains('key')) {
+                handleStart({ target });
+            }
+        }
+    }, { passive: false });
+
+    keyboard.addEventListener('touchend', (e) => {
+        const touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            const target = document.elementFromPoint(touches[i].clientX, touches[i].clientY);
+            if (target && target.classList.contains('key')) {
+                handleEnd({ target });
+            }
+        }
+    });
+
+    // --- 3. Canvas API 활용 실시간 오실로스코프 애니메이션 ---
+    const canvas = document.getElementById('visualizer');
+    const canvasCtx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function draw() {
+        requestAnimationFrame(draw);
+
+        // 1단계: 캔버스 클리어링 
+        canvasCtx.fillStyle = 'rgba(15, 23, 42, 1)';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 오디오 상태가 아닐 때의 정지된 디폴트 수평선 드로잉
+        if (!analyser) {
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(0, canvas.height / 2);
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+            return;
+        }
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // 타임 도메인 파동 물리 데이터 복사
+        analyser.getByteTimeDomainData(dataArray);
+
+        // 2단계: 실시간 동적 주파수 연산 및 HSL 색상 매핑
+        const activeKeys = Object.keys(activeOscillators);
+        let avgFreq = 261.63; // 입력 없을 시 기본 도(C4) 주파수 매핑기준
+
+        if (activeKeys.length > 0) {
+            const sum = activeKeys.reduce((acc, note) => acc + activeOscillators[note].frequency, 0);
+            avgFreq = sum / activeKeys.length;
+        }
+
+        // 가시 음역 범위(C4: 261Hz ~ C5: 523Hz)를 기반으로 변하는 색상 스펙트럼
+        // 저음: 시안/블루(190deg) -> 고음: 마젠타/레드(340deg)
+        let hue = ((avgFreq - 261.63) / (523.25 - 261.63)) * 150 + 190;
+        if (activeKeys.length === 0) hue = 200; // 대기 상태의 연한 스카이 블루 톤
+
+        // 3단계: 파형 곡선 드로잉 설정 (글로우 네온 레이어 구성)
+        canvasCtx.lineWidth = 3;
+        canvasCtx.strokeStyle = `hsl(${hue}, 95%, 65%)`;
+        canvasCtx.shadowBlur = 12;
+        canvasCtx.shadowColor = `hsl(${hue}, 95%, 55%)`;
+
+        canvasCtx.beginPath();
+        const sliceWidth = canvas.width * 1.0 / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0; // 진폭 표준화 값
+            const y = (v * canvas.height) / 2;
+
+            if (i === 0) {
+                canvasCtx.moveTo(x, y);
+            } else {
+                canvasCtx.lineTo(x, y);
+            }
+            x += sliceWidth;
+        }
+
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+        canvasCtx.shadowBlur = 0; // 그림자 메모리 해제
+    }
+
+    // 실시간 드로잉 루프 가동
+    draw();
+</script>
+
+</body>
+</html>

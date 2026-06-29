@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>키보드 지원 초최적화 피아노</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        body {
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            font-family: system-ui, -apple-system, sans-serif;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        .top-section {
+            height: 45%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+        }
+
+        header {
+            text-align: center;
+            padding-bottom: 8px;
+        }
+
+        header h1 {
+            font-size: 1.3rem;
+            color: #38bdf8;
+        }
+
+        header p {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .visualizer-container {
+            flex: 1;
+            width: 100%;
+            background: #111827;
+            border-radius: 12px;
+            border: 2px solid #1e293b;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .piano-container {
+            height: 50%;
+            width: 100%;
+            display: flex;
+            background-color: #020617;
+            padding: 8px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            position: relative;
+        }
+
+        .white-key {
+            flex: 1;
+            background: linear-gradient(to bottom, #ffffff 0%, #f8fafc 85%, #cbd5e1 100%);
+            border: 1px solid #94a3b8;
+            border-radius: 0 0 8px 8px;
+            position: relative;
+            cursor: pointer;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 15px;
+            color: #64748b;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .white-key.active {
+            background: linear-gradient(to bottom, #cbd5e1 0%, #94a3b8 100%);
+            color: #0f172a;
+        }
+
+        .black-key {
+            position: absolute;
+            left: 65%;
+            width: 70%;
+            height: 60%;
+            background: linear-gradient(to bottom, #334155 0%, #0f172a 80%, #020617 100%);
+            border: 1px solid #000;
+            border-radius: 0 0 6px 6px;
+            z-index: 10;
+            cursor: pointer;
+            box-shadow: 0 6px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 10px;
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
+
+        .black-key.active {
+            background: linear-gradient(to bottom, #64748b 0%, #1e293b 100%);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-section">
+        <header>
+            <h1>오실로스코프 피아노 (키보드 지원)</h1>
+            <p>⌨️ 키보드 자판 [ A S D F G H J K ] 키로 편하게 연주하세요!</p>
+        </header>
+        <div class="visualizer-container">
+            <canvas id="visualizer"></canvas>
+        </div>
+    </div>
+
+    <div class="piano-container" id="piano"></div>
+
+    <script>
+        // 1. 피아노 구조 및 키보드 매핑 데이터 설정 (key: 컴퓨터 자판 코드)
+        const pianoStructure = [
+            { 
+                white: { name: 'C4', freq: 261.63, key: 'KeyA', label: 'A' }, 
+                black: { name: 'C#4', freq: 277.18, key: 'KeyW', label: 'W' } 
+            },
+            { 
+                white: { name: 'D4', freq: 293.66, key: 'KeyS', label: 'S' }, 
+                black: { name: 'D#4', freq: 311.13, key: 'KeyE', label: 'E' } 
+            },
+            { 
+                white: { name: 'E4', freq: 329.63, key: 'KeyD', label: 'D' }, 
+                black: null 
+            },
+            { 
+                white: { name: 'F4', freq: 349.23, key: 'KeyF', label: 'F' }, 
+                black: { name: 'F#4', freq: 369.99, key: 'KeyT', label: 'T' } 
+            },
+            { 
+                white: { name: 'G4', freq: 392.00, key: 'KeyG', label: 'G' }, 
+                black: { name: 'G#4', freq: 415.30, key: 'KeyY', label: 'Y' } 
+            },
+            { 
+                white: { name: 'A4', freq: 440.00, key: 'KeyH', label: 'H' }, 
+                black: { name: 'A#4', freq: 466.16, key: 'KeyU', label: 'U' } 
+            },
+            { 
+                white: { name: 'B4', freq: 493.88, key: 'KeyJ', label: 'J' }, 
+                black: null 
+            },
+            { 
+                white: { name: 'C5', freq: 523.25, key: 'KeyK', label: 'K' }, 
+                black: null 
+            }
+        ];
+
+        // 키보드 입력을 주파수 및 DOM 엘리먼트와 빠르게 연결하기 위한 맵
+        const keyMap = new Map();
+
+        // 2. Web Audio API 및 상태 관리
+        let audioCtx = null;
+        let analyser = null;
+        const activeNotes = new Map();
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 1024;
+                analyser.connect(audioCtx.destination);
+                startVisualizer();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // 3. 사운드 재생/중지 엔진
+        function playTone(freq) {
+            initAudio();
+            if (activeNotes.has(freq)) return; 
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.005);
+
+            osc.connect(gain);
+            gain.connect(analyser);
+            osc.start();
+
+            activeNotes.set(freq, { osc, gain });
+        }
+
+        function stopTone(freq) {
+            if (activeNotes.has(freq)) {
+                const { osc, gain } = activeNotes.get(freq);
+                activeNotes.delete(freq);
+
+                try {
+                    gain.gain.setValueAtTime(gain.gain.value, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
+                    
+                    setTimeout(() => {
+                        osc.stop();
+                        osc.disconnect();
+                        gain.disconnect();
+                    }, 50);
+                } catch (e) {}
+            }
+        }
+
+        // 4. UI 생성 및 이벤트 바인딩
+        const pianoContainer = document.getElementById('piano');
+
+        pianoStructure.forEach(group => {
+            const whiteKey = document.createElement('div');
+            whiteKey.className = 'white-key';
+            whiteKey.innerText = group.white.label; // 자판 가이드 표시
+
+            // 키 맵에 등록
+            keyMap.set(group.white.key, { element: whiteKey, freq: group.white.freq });
+
+            if (group.black) {
+                const blackKey = document.createElement('div');
+                blackKey.className = 'black-key';
+                blackKey.innerText = group.black.label;
+                
+                keyMap.set(group.black.key, { element: blackKey, freq: group.black.freq });
+                bindKeyEvents(blackKey, group.black.freq);
+                whiteKey.appendChild(blackKey);
+            }
+
+            bindKeyEvents(whiteKey, group.white.freq);
+            pianoContainer.appendChild(whiteKey);
+        });
+
+        // 마우스 및 터치 입력 처리
+        function bindKeyEvents(element, freq) {
+            element.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                element.classList.add('active');
+                playTone(freq);
+            });
+
+            const stopHandler = (e) => {
+                e.stopPropagation();
+                element.classList.remove('active');
+                stopTone(freq);
+            };
+
+            element.addEventListener('pointerup', stopHandler);
+            element.addEventListener('pointerleave', stopHandler);
+            element.addEventListener('pointercancel', stopHandler);
+        }
+
+        // 5. ⭐️ 물리 키보드 이벤트 리스너 추가
+        window.addEventListener('keydown', (e) => {
+            // 키보드를 꾹 누르고 있을 때 발생하는 연속 트리거(렉 유발) 방지
+            if (e.repeat) return; 
+            
+            if (keyMap.has(e.code)) {
+                const { element, freq } = keyMap.get(e.code);
+                element.classList.add('active');
+                playTone(freq);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keyMap.has(e.code)) {
+                const { element, freq } = keyMap.get(e.code);
+                element.classList.remove('active');
+                stopTone(freq);
+            }
+        });
+
+        // 6. 오실로스코프 시각화
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function getWaveColor() {
+            if (activeNotes.size === 0) return '#38bdf8';
+            const freqs = Array.from(activeNotes.keys());
+            const latestFreq = freqs[freqs.length - 1];
+            const ratio = (latestFreq - 261.63) / (523.25 - 261.63);
+            return `hsl(${210 - (ratio * 180)}, 100%, 65%)`;
+        }
+
+        function startVisualizer() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                requestAnimationFrame(draw);
+                const width = canvas.width;
+                const height = canvas.height;
+
+                analyser.getByteTimeDomainData(dataArray);
+
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(0, 0, width, height);
+
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = getWaveColor();
+                ctx.beginPath();
+
+                const sliceWidth = width / bufferLength;
+                let x = 0;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = (v * height) / 2;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                    x += sliceWidth;
+                }
+
+                ctx.lineTo(width, height / 2);
+                ctx.stroke();
+            }
+            draw();
+        }
+
+        // 초기 안내선
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height / 2);
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+    </script>
+</body>
+</html>

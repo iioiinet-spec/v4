@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<title>Interactive Kalimba Studio</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+}
+
+body{
+    background:#08111f;
+    color:white;
+    font-family:Arial,sans-serif;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+}
+
+/* 컨트롤 영역 */
+
+.controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    justify-content:center;
+    align-items:center;
+    padding:12px;
+    background:#111827;
+    z-index:10;
+}
+
+button,
+select{
+    border:none;
+    border-radius:12px;
+    padding:10px 14px;
+    font-size:14px;
+}
+
+button{
+    background:#2563eb;
+    color:white;
+    cursor:pointer;
+}
+
+button:active{
+    transform:scale(0.96);
+}
+
+select{
+    background:#1f2937;
+    color:white;
+}
+
+/* 오실로스코프 */
+
+#oscilloscope{
+    width:100%;
+    flex:1;
+    background:#030712;
+}
+
+/* 칼림바 영역 */
+
+.kalimba-wrapper{
+    overflow-x:auto;
+    overflow-y:hidden;
+    background:#1a1a1a;
+}
+
+.kalimba{
+    min-width:max-content;
+
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+
+    gap:5px;
+
+    padding:20px 25px 30px;
+}
+
+/* 건반 */
+
+.key{
+    width:42px;
+
+    background:linear-gradient(
+        to bottom,
+        #f8fafc,
+        #d1d5db
+    );
+
+    border-radius:0 0 14px 14px;
+
+    box-shadow:
+        0 0 10px rgba(255,255,255,.2),
+        inset 0 0 8px rgba(255,255,255,.4);
+
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+
+    padding-bottom:8px;
+
+    color:#111;
+    font-size:11px;
+    font-weight:bold;
+
+    cursor:pointer;
+
+    user-select:none;
+    touch-action:none;
+
+    transition:all .08s;
+}
+
+.key.active{
+    background:linear-gradient(
+        to bottom,
+        #60a5fa,
+        #2563eb
+    );
+
+    color:white;
+
+    transform:translateY(6px);
+}
+
+@media(max-width:768px){
+
+    .key{
+        width:36px;
+        font-size:10px;
+    }
+}
+</style>
+
+</head>
+<body>
+
+<div class="controls">
+
+```
+<select id="instrument">
+    <option value="kalimba">Kalimba</option>
+    <option value="piano">Piano</option>
+    <option value="guitar">Guitar</option>
+    <option value="synth">Synth</option>
+</select>
+
+<button id="recordBtn">🎙 녹음</button>
+<button id="playBtn">▶ 재생</button>
+<button id="downloadBtn">💾 저장</button>
+```
+
+</div>
+
+<canvas id="oscilloscope"></canvas>
+
+<div class="kalimba-wrapper">
+    <div class="kalimba" id="kalimba"></div>
+</div>
+
+<script>
+/* =====================================================
+   Audio Engine
+===================================================== */
+
+const audioCtx = new (
+    window.AudioContext ||
+    window.webkitAudioContext
+)({
+    latencyHint:"interactive"
+});
+
+const masterGain =
+    audioCtx.createGain();
+
+masterGain.gain.value = 0.9;
+
+/* =====================================================
+   Analyzer
+===================================================== */
+
+const analyser =
+    audioCtx.createAnalyser();
+
+analyser.fftSize = 2048;
+
+masterGain.connect(analyser);
+analyser.connect(audioCtx.destination);
+
+/* =====================================================
+   Recorder
+===================================================== */
+
+const mediaDest =
+    audioCtx.createMediaStreamDestination();
+
+masterGain.connect(mediaDest);
+
+let recorder;
+let chunks = [];
+let recordedBlob = null;
+
+/* =====================================================
+   21-Key Kalimba Notes
+===================================================== */
+
+const notes = [
+{n:"F3",f:174.61},
+{n:"G3",f:196.00},
+{n:"A3",f:220.00},
+{n:"B3",f:246.94},
+{n:"C4",f:261.63},
+{n:"D4",f:293.66},
+{n:"E4",f:329.63},
+{n:"F4",f:349.23},
+{n:"G4",f:392.00},
+{n:"A4",f:440.00},
+{n:"B4",f:493.88},
+{n:"C5",f:523.25},
+{n:"D5",f:587.33},
+{n:"E5",f:659.25},
+{n:"F5",f:698.46},
+{n:"G5",f:783.99},
+{n:"A5",f:880.00},
+{n:"B5",f:987.77},
+{n:"C6",f:1046.50},
+{n:"D6",f:1174.66},
+{n:"E6",f:1318.51}
+];
+
+/* =====================================================
+   UI 생성
+===================================================== */
+
+const kalimba =
+    document.getElementById("kalimba");
+
+const center =
+    (notes.length - 1) / 2;
+
+notes.forEach((note,index)=>{
+
+    const key =
+        document.createElement("div");
+
+    key.className = "key";
+
+    const distance =
+        Math.abs(index-center);
+
+    key.style.height =
+        (270 - distance*12) + "px";
+
+    key.innerHTML =
+        `<span>${note.n}</span>`;
+
+    kalimba.appendChild(key);
+
+    const start = (e)=>{
+
+        e.preventDefault();
+
+        key.classList.add("active");
+
+        playNote(note.f);
+    };
+
+    const end = ()=>{
+
+        key.classList.remove("active");
+    };
+
+    key.addEventListener("mousedown",start);
+    key.addEventListener("mouseup",end);
+    key.addEventListener("mouseleave",end);
+
+    key.addEventListener(
+        "touchstart",
+        start,
+        {passive:false}
+    );
+
+    key.addEventListener("touchend",end);
+    key.addEventListener("touchcancel",end);
+});
+
+/* =====================================================
+   악기 선택
+===================================================== */
+
+const instrument =
+document.getElementById("instrument");
+
+let currentFreq = 440;
+
+/* =====================================================
+   음 재생
+===================================================== */
+
+function playNote(freq){
+
+    currentFreq = freq;
+
+    if(audioCtx.state==="suspended"){
+        audioCtx.resume();
+    }
+
+    const osc =
+        audioCtx.createOscillator();
+
+    const gain =
+        audioCtx.createGain();
+
+    const filter =
+        audioCtx.createBiquadFilter();
+
+    const now =
+        audioCtx.currentTime;
+
+    switch(instrument.value){
+
+        case "kalimba":
+            osc.type="triangle";
+            filter.type="bandpass";
+            filter.frequency.value=freq*2;
+            break;
+
+        case "piano":
+            osc.type="sine";
+            filter.type="lowpass";
+            filter.frequency.value=3000;
+            break;
+
+        case "guitar":
+            osc.type="sawtooth";
+            filter.type="lowpass";
+            filter.frequency.value=1800;
+            break;
+
+        case "synth":
+            osc.type="square";
+            filter.type="lowpass";
+            filter.frequency.value=6000;
+            break;
+    }
+
+    osc.frequency.value = freq;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    gain.gain.setValueAtTime(0,now);
+    gain.gain.linearRampToValueAtTime(
+        1,
+        now+0.01
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        now+2.5
+    );
+
+    osc.start(now);
+    osc.stop(now+2.5);
+}
+
+/* =====================================================
+   Recording
+===================================================== */
+
+const recordBtn =
+document.getElementById("recordBtn");
+
+recordBtn.onclick=()=>{
+
+    if(
+        !recorder ||
+        recorder.state==="inactive"
+    ){
+
+        chunks=[];
+
+        recorder =
+        new MediaRecorder(
+            mediaDest.stream
+        );
+
+        recorder.ondataavailable=
+            e=>chunks.push(e.data);
+
+        recorder.onstop=()=>{
+
+            recordedBlob =
+                new Blob(
+                    chunks,
+                    {type:"audio/webm"}
+                );
+        };
+
+        recorder.start();
+
+        recordBtn.textContent=
+            "⏹ 정지";
+
+    }else{
+
+        recorder.stop();
+
+        recordBtn.textContent=
+            "🎙 녹음";
+    }
+};
+
+/* 재생 */
+
+document
+.getElementById("playBtn")
+.onclick=()=>{
+
+    if(!recordedBlob) return;
+
+    const audio =
+        new Audio(
+            URL.createObjectURL(
+                recordedBlob
+            )
+        );
+
+    audio.play();
+};
+
+/* 다운로드 */
+
+document
+.getElementById("downloadBtn")
+.onclick=()=>{
+
+    if(!recordedBlob) return;
+
+    const a =
+        document.createElement("a");
+
+    a.href =
+        URL.createObjectURL(
+            recordedBlob
+        );
+
+    a.download =
+        "kalimba-session.webm";
+
+    a.click();
+};
+
+/* =====================================================
+   Oscilloscope
+===================================================== */
+
+const canvas =
+document.getElementById(
+    "oscilloscope"
+);
+
+const ctx =
+canvas.getContext("2d");
+
+function resize(){
+
+    canvas.width =
+        window.innerWidth;
+
+    canvas.height =
+        canvas.clientHeight;
+}
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+resize();
+
+const bufferLength =
+    analyser.fftSize;
+
+const dataArray =
+    new Uint8Array(
+        bufferLength
+    );
+
+function getColor(freq){
+
+    const hue =
+        Math.min(
+            320,
+            (freq-150)/3
+        );
+
+    return `hsl(${hue},100%,60%)`;
+}
+
+function animate(){
+
+    requestAnimationFrame(
+        animate
+    );
+
+    analyser.getByteTimeDomainData(
+        dataArray
+    );
+
+    /* Trail Effect */
+
+    ctx.fillStyle =
+        "rgba(3,7,18,0.08)";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle =
+        getColor(currentFreq);
+
+    ctx.shadowBlur = 20;
+    ctx.shadowColor =
+        getColor(currentFreq);
+
+    ctx.beginPath();
+
+    let x = 0;
+
+    const slice =
+        canvas.width /
+        bufferLength;
+
+    for(
+        let i=0;
+        i<bufferLength;
+        i++
+    ){
+
+        const v =
+            dataArray[i] / 128.0;
+
+        const y =
+            v *
+            canvas.height/2;
+
+        if(i===0){
+
+            ctx.moveTo(x,y);
+
+        }else{
+
+            ctx.lineTo(x,y);
+        }
+
+        x += slice;
+    }
+
+    ctx.stroke();
+}
+
+animate();
+</script>
+
+</body>
+</html>

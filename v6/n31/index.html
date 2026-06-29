@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2옥타브 멜로디언 학습게임</title>
+
+<style>
+body{
+margin:0;
+background:#111;
+color:#fff;
+font-family:sans-serif;
+}
+
+header{
+text-align:center;
+padding:10px;
+background:#1a1a1a;
+}
+
+#topbar{
+display:flex;
+justify-content:center;
+gap:8px;
+padding:8px;
+background:#222;
+align-items:center;
+flex-wrap:wrap;
+}
+
+button{
+padding:6px 10px;
+border:none;
+border-radius:8px;
+background:#444;
+color:#fff;
+}
+
+#score,#level{
+padding:6px 10px;
+background:#111;
+border-radius:8px;
+}
+
+#status{
+text-align:center;
+padding:6px;
+background:#000;
+color:#0ff;
+font-weight:bold;
+}
+
+#mouthpiece{
+width:200px;
+height:70px;
+margin:10px auto;
+background:#444;
+border-radius:40px;
+display:flex;
+align-items:center;
+justify-content:center;
+user-select:none;
+}
+
+#mouthpiece.active{
+background:#00ff88;
+color:#000;
+}
+
+#keyboard{
+display:flex;
+overflow-x:auto;
+height:260px;
+background:#222;
+}
+
+.white{
+min-width:60px;
+height:240px;
+background:#fff;
+color:#000;
+display:flex;
+align-items:flex-end;
+justify-content:center;
+padding-bottom:10px;
+user-select:none;
+border:1px solid #333;
+}
+
+.black{
+min-width:40px;
+height:160px;
+background:#000;
+color:#fff;
+display:flex;
+align-items:flex-end;
+justify-content:center;
+padding-bottom:10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>🎹 2옥타브 멜로디언 학습게임</header>
+
+<div id="topbar">
+<button id="modeBtn">🎓 학습 OFF</button>
+<button id="nextBtn">🎯 다음 문제</button>
+<div id="score">점수: 0</div>
+<div id="level">레벨: 1</div>
+</div>
+
+<div id="status">문제를 시작하세요</div>
+
+<div id="mouthpiece">🎤 취구 (스페이스)</div>
+
+<div id="keyboard"></div>
+
+<script>
+
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+
+let blowing=false;
+let osc=null;
+
+let learnMode=false;
+let score=0;
+let level=1;
+let target=[];
+
+const notes=[
+"C4","C#4","D4","D#4","E4","F4","F#4","G4","G#4","A4","A#4","B4",
+"C5","C#5","D5","D#5","E5","F5","F#5","G5","G#5","A5","A#5","B5"
+];
+
+const map={
+C:0,"C#":1,D:2,"D#":3,E:4,F:5,"F#":6,
+G:7,"G#":8,A:9,"A#":10,B:11
+};
+
+const freq={};
+
+notes.forEach(n=>{
+const p=n.slice(0,-1);
+const o=parseInt(n.slice(-1));
+const midi=map[p]+(o+1)*12;
+freq[n]=440*Math.pow(2,(midi-69)/12);
+});
+
+function play(note){
+if(!blowing) return;
+
+stop();
+
+osc=audioCtx.createOscillator();
+const gain=audioCtx.createGain();
+
+osc.type="sawtooth";
+osc.frequency.value=freq[note];
+
+gain.gain.value=0.2;
+
+osc.connect(gain);
+gain.connect(audioCtx.destination);
+
+osc.start();
+}
+
+function stop(){
+if(osc){
+try{osc.stop();}catch(e){}
+osc=null;
+}
+}
+
+// 🎯 문제 생성
+function generate(){
+
+target=[];
+
+let len=Math.min(level+1,5);
+
+for(let i=0;i<len;i++){
+target.push(notes[Math.floor(Math.random()*notes.length)]);
+}
+
+document.getElementById("status").innerText=
+"🎯 따라치기: " + target.join(" → ");
+}
+
+let input=[];
+
+function check(note){
+
+if(!learnMode){
+play(note);
+return;
+}
+
+play(note);
+
+input.push(note);
+
+let i=input.length-1;
+
+if(input[i]===target[i]){
+score+=5;
+}else{
+score-=3;
+}
+
+if(input.length===target.length){
+
+if(JSON.stringify(input)===JSON.stringify(target)){
+score+=20;
+document.getElementById("status").innerText="✅ 정답!";
+level++;
+}else{
+document.getElementById("status").innerText="❌ 틀림!";
+}
+
+setTimeout(()=>{
+generate();
+input=[];
+updateUI();
+},800);
+
+}
+
+updateUI();
+}
+
+function updateUI(){
+document.getElementById("score").innerText="점수: "+score;
+document.getElementById("level").innerText="레벨: "+level;
+}
+
+// 🎹 건반 생성
+const keyboard=document.getElementById("keyboard");
+
+notes.forEach(n=>{
+
+const key=document.createElement("div");
+key.className=n.includes("#")?"black":"white";
+key.innerText=n;
+
+key.onmousedown=()=>check(n);
+key.ontouchstart=e=>{e.preventDefault();check(n);};
+
+keyboard.appendChild(key);
+});
+
+// 🎤 취구
+const mouth=document.getElementById("mouthpiece");
+
+mouth.onmousedown=()=>{audioCtx.resume();blowing=true;}
+mouth.onmouseup=()=>{blowing=false;stop();};
+
+document.addEventListener("keydown",e=>{
+if(e.code==="Space"){audioCtx.resume();blowing=true;}
+});
+
+document.addEventListener("keyup",e=>{
+if(e.code==="Space"){blowing=false;stop();}
+});
+
+// 버튼
+document.getElementById("modeBtn").onclick=()=>{
+learnMode=!learnMode;
+document.getElementById("modeBtn").innerText=
+learnMode?"🎓 학습 ON":"🎓 학습 OFF";
+generate();
+};
+
+document.getElementById("nextBtn").onclick=()=>{
+generate();
+input=[];
+};
+
+generate();
+updateUI();
+
+</script>
+
+</body>
+</html>

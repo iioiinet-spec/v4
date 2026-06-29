@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>인터렉티브 리얼 피아노</title>
+    <style>
+        body {
+            background-color: #1a1a1e;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            user-select: none;
+        }
+
+        h1 {
+            margin-bottom: 5px;
+            font-weight: 600;
+            letter-spacing: -1px;
+        }
+
+        .status-container {
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #00ffcc;
+            height: 20px;
+            font-weight: bold;
+        }
+
+        /* 피아노 건반 컨테이너 */
+        .piano {
+            display: flex;
+            position: relative;
+            background: #09090b;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            margin-bottom: 25px;
+        }
+
+        /* 흰색 건반 */
+        .key {
+            width: 60px;
+            height: 220px;
+            background: linear-gradient(to bottom, #fff 0%, #ebebeb 100%);
+            border: 1px solid #bbb;
+            border-radius: 0 0 6px 6px;
+            cursor: pointer;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 1;
+            box-shadow: inset 0 3px 0 #fff, 0 4px 3px rgba(0,0,0,0.1);
+        }
+        .key:active, .key.active {
+            background: linear-gradient(to bottom, #e0e0e0 0%, #fff 100%);
+            height: 218px;
+            border-top: 3px solid #333;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* 검은색 건반 */
+        .key.black {
+            width: 38px;
+            height: 135px;
+            background: linear-gradient(to bottom, #333 0%, #111 100%);
+            border: 1px solid #000;
+            position: absolute;
+            z-index: 2;
+            transform: translateX(-50%);
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.5);
+        }
+        .key.black:active, .key.black.active {
+            background: linear-gradient(to bottom, #111 0%, #222 100%);
+            height: 133px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* 오디오 비주얼라이저 */
+        .visualizer-container {
+            width: 530px;
+            background: #0d0d11;
+            border: 2px solid #2d2d37;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 140px;
+        }
+
+        .guide {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Interactive Piano</h1>
+    <div class="status-container" id="status">건반을 눌러 연주를 시작하세요.</div>
+
+    <div class="piano" id="piano">
+        <div class="key" data-note="C4" data-freq="261.63"></div>
+        <div class="key black" data-note="C#4" data-freq="277.18" style="left: 75px;"></div>
+        
+        <div class="key" data-note="D4" data-freq="293.66"></div>
+        <div class="key black" data-note="D#4" data-freq="311.13" style="left: 135px;"></div>
+        
+        <div class="key" data-note="E4" data-freq="329.63"></div>
+        
+        <div class="key" data-note="F4" data-freq="349.23"></div>
+        <div class="key black" data-note="F#4" data-freq="369.99" style="left: 255px;"></div>
+        
+        <div class="key" data-note="G4" data-freq="392.00"></div>
+        <div class="key black" data-note="G#4" data-freq="415.30" style="left: 315px;"></div>
+        
+        <div class="key" data-note="A4" data-freq="440.00"></div>
+        <div class="key black" data-note="A#4" data-freq="466.16" style="left: 375px;"></div>
+        
+        <div class="key" data-note="B4" data-freq="493.88"></div>
+        
+        <div class="key" data-note="C5" data-freq="523.25"></div>
+    </div>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="guide">
+        • <strong>홀드(꾹 누르기)</strong>: 음정이 변하지 않고 "아아아아..." 하며 자연스럽게 소리가 감쇠합니다.<br>
+        • <strong>우클릭 1번</strong>: 녹음 시작 / <strong>우클릭 2번</strong>: 녹음 종료<br>
+        • 좌클릭 안 하고 <strong>우클릭 바로 3번째</strong>: 녹음된 곡 재생
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let analyser = null;
+        
+        let activeNodes = {}; 
+        let isRecording = false;
+        let recordBuffer = []; 
+        let recordStartTime = 0;
+        let lastActionWasRightClick = false; 
+
+        const statusDiv = document.getElementById('status');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+
+        canvas.width = 530;
+        canvas.height = 140;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.connect(audioCtx.destination);
+                drawVisualizer();
+            }
+        }
+
+        // 🎹 현실적인 피아노 소리를 만들기 위해 배음(Harmonics) 합성
+        function startNote(note, freq) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            if (activeNodes[note]) stopNote(note);
+
+            const now = audioCtx.currentTime;
+            
+            // 메인 볼륨 컨트롤러
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(0, now);
+            // 피아노 특유의 강한 타건음(Attack) 표현
+            masterGain.gain.linearRampToValueAtTime(0.6, now + 0.02);
+            // 꾹 누르고 있을 때 음정 변화 없이 소리만 서서히 사라짐 (아아아아...)
+            masterGain.gain.exponentialRampToValueAtTime(0.005, now + 4.0); 
+
+            // 피아노의 풍부한 울림을 위해 기본 주파수 + 배음 오실레이터 3개 합성
+            const oscillators = [];
+            const harmonics = [
+                { type: 'sine', freqMult: 1, gainMult: 0.7 },      // 기본음 (둥글고 묵직함)
+                { type: 'triangle', freqMult: 2, gainMult: 0.25 },  // 1옥타브 위 배음 (선명함)
+                { type: 'sine', freqMult: 3, gainMult: 0.1 }        // 5도 위 배음 (피아노 특유의 통울림)
+            ];
+
+            harmonics.forEach(h => {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                
+                osc.type = h.type;
+                // 주파수는 꾹 누르고 있어도 절대 변하지 않음 고정!
+                osc.frequency.setValueAtTime(freq * h.freqMult, now);
+                
+                g.gain.setValueAtTime(h.gainMult, now);
+                
+                osc.connect(g);
+                g.connect(masterGain);
+                osc.start(now);
+                
+                oscillators.push(osc);
+            });
+
+            masterGain.connect(analyser);
+
+            activeNodes[note] = {
+                oscillators: oscillators,
+                gain: masterGain,
+                startTime: now,
+                freq: freq
+            };
+
+            if (isRecording) {
+                recordBuffer.push({ note: note, freq: freq, time: now - recordStartTime, type: 'start' });
+            }
+        }
+
+        function stopNote(note) {
+            if (activeNodes[note]) {
+                const node = activeNodes[note];
+                const now = audioCtx.currentTime;
+                try {
+                    // 손을 떼면 여음이 살짝 남으며 사라짐
+                    node.gain.gain.cancelScheduledValues(now);
+                    node.gain.gain.setValueAtTime(node.gain.gain.value, now);
+                    node.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    
+                    node.oscillators.forEach(osc => osc.stop(now + 0.3));
+                } catch(e) {}
+
+                if (isRecording) {
+                    recordBuffer.push({ note: note, time: now - recordStartTime, type: 'end' });
+                }
+                delete activeNodes[note];
+            }
+        }
+
+        // 녹음 재생
+        function playRecordedTrack() {
+            if (recordBuffer.length === 0) return;
+            statusDiv.innerText = "▶ 녹음된 소리 재생 중...";
+            
+            const playbackNodes = {};
+            recordBuffer.forEach(event => {
+                if (event.type === 'start') {
+                    setTimeout(() => {
+                        initAudio();
+                        startNote(event.note, event.freq);
+                        const el = document.querySelector(`[data-note="${event.note}"]`);
+                        if(el) el.classList.add('active');
+                    }, event.time * 1000);
+                } else if (event.type === 'end') {
+                    setTimeout(() => {
+                        stopNote(event.note);
+                        const el = document.querySelector(`[data-note="${event.note}"]`);
+                        if(el) el.classList.remove('active');
+                    }, event.time * 1000);
+                }
+            });
+        }
+
+        // 마우스 이벤트
+        const keys = document.querySelectorAll('.key');
+        keys.forEach(key => {
+            const note = key.getAttribute('data-note');
+            const freq = parseFloat(key.getAttribute('data-freq'));
+
+            key.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    lastActionWasRightClick = false;
+                    startNote(note, freq);
+                }
+            });
+
+            key.addEventListener('mouseup', (e) => { if (e.button === 0) stopNote(note); });
+            key.addEventListener('mouseleave', () => stopNote(note));
+        });
+
+        // 우클릭 제어
+        window.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            initAudio();
+
+            if (!isRecording) {
+                if (lastActionWasRightClick && recordBuffer.length > 0) {
+                    playRecordedTrack();
+                    lastActionWasRightClick = false;
+                } else {
+                    isRecording = true;
+                    recordBuffer = [];
+                    recordStartTime = audioCtx.currentTime;
+                    statusDiv.innerText = "🔴 녹음 중... 건반을 연주하세요";
+                    lastActionWasRightClick = false;
+                }
+            } else {
+                isRecording = false;
+                statusDiv.innerText = "💾 녹음 저장됨! (한 번 더 우클릭 시 재생)";
+                lastActionWasRightClick = true;
+            }
+        });
+
+        // 실시간 파형 시각화
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            if (!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = '#0d0d11';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 그리드 선 격자 추가 (비주얼 강화)
+            canvasCtx.strokeStyle = '#1a1a24';
+            canvasCtx.lineWidth = 1;
+            for(let i=0; i<canvas.width; i+=40) {
+                canvasCtx.beginPath(); canvasCtx.moveTo(i, 0); canvasCtx.lineTo(i, canvas.height); canvasCtx.stroke();
+            }
+
+            canvasCtx.lineWidth = 2.5;
+            canvasCtx.strokeStyle = '#00ffcc';
+            canvasCtx.shadowBlur = 4;
+            canvasCtx.shadowColor = '#00ffcc';
+            canvasCtx.beginPath();
+
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+            canvasCtx.shadowBlur = 0; // 초기화
+        }
+    </script>
+</body>
+</html>

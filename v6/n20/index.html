@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 배틀로얄 시뮬레이터 (🧬 플레이어 무빙 학습형 판)</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #0b0e14; color: #f0f3f8; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; user-select: none; }
+        #lobby { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle, #151b26 0%, #0b0e14 100%); z-index: 10; }
+        .lobby-panel { background: rgba(25, 33, 46, 0.85); padding: 30px; border-radius: 12px; border: 1px solid #3a475d; box-shadow: 0 8px 32px rgba(0,0,0,0.5); width: 440px; text-align: center; }
+        h1 { margin-top: 0; color: #00ffaa; font-size: 28px; text-shadow: 0 0 10px rgba(0,255,170,0.3); }
+        .select-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; margin-bottom: 5px; color: #a0aec0; }
+        select { width: 100%; padding: 10px; background: #0f131a; border: 1px solid #4e5d78; border-radius: 6px; color: #fff; box-sizing: border-box; }
+        
+        .gen-control-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 5px 0 15px 0; background: #0f131a; padding: 10px; border-radius: 8px; border: 1px solid #2d3545; }
+        .gen-adjust-btn { background: #3a475d; color: white; border: none; padding: 6px 14px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .gen-adjust-btn:hover { background: #4e5d78; }
+        .gen-display { font-size: 18px; font-weight: bold; color: #00ffaa; min-width: 80px; text-align: center; }
+
+        .gene-selector-container { margin: 15px 0; background: #0f131a; padding: 12px; border-radius: 8px; border: 1px solid #3a475d; }
+        .gene-btn-group { display: flex; gap: 8px; margin-top: 8px; }
+        .gene-toggle-btn { flex: 1; padding: 10px 5px; border: 2px solid #4e5d78; background: #151b26; color: #a0aec0; font-weight: bold; font-size: 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .gene-toggle-btn.active { background: #00ffaa; color: #0b0e14; border-color: #00ffaa; box-shadow: 0 0 12px rgba(0,255,170,0.3); }
+
+        .record-badge { background: rgba(255, 170, 0, 0.1); border: 1px solid rgba(255, 170, 0, 0.3); padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #ffaa00; }
+
+        .btn { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 6px; background: #00ffaa; color: #0b0e14; font-weight: bold; cursor: pointer; font-size: 16px; transition: all 0.2s; }
+        .btn:hover { background: #00cc88; box-shadow: 0 0 15px rgba(0,255,170,0.4); }
+        .btn-secondary { background: #4e5d78; color: #fff; margin-top: 5px; font-size: 13px; padding: 8px; flex: 1; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-secondary:hover { background: #3a475d; }
+        
+        #gameContainer { display: none; position: relative; width: 100vw; height: 100vh; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        #hud { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        .hud-card { background: rgba(15, 20, 30, 0.8); padding: 15px; border-radius: 8px; border: 1px solid #2d3545; margin-bottom: 10px; width: 220px; }
+        .hp-bar-bg { width: 100%; height: 12px; background: #33101a; border-radius: 6px; overflow: hidden; margin-top: 5px; }
+        #myHp { width: 100%; height: 100%; background: #ff0055; transition: width 0.1s; }
+        
+        #radarAlert, #zoneAlert { position: absolute; width: 100%; text-align: center; font-weight: bold; font-size: 20px; pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        #radarAlert { top: 80px; color: #00ffff; }
+        #zoneAlert { top: 115px; color: #ff3355; }
+        
+        #killLogContainer { position: absolute; top: 20px; right: 20px; width: 280px; height: 160px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; font-size: 13px; }
+        .kill-entry { background: rgba(20, 25, 35, 0.7); border-left: 4px solid #ffaa00; padding: 5px 10px; margin-top: 4px; border-radius: 0 4px 4px 0; animation: fadeIn 0.3s forwards; }
+        
+        .modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #151b26; padding: 30px; border-radius: 12px; border: 2px solid #4e5d78; text-align: center; z-index: 100; box-shadow: 0 0 50px rgba(0,0,0,0.8); width: 320px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+<div id="lobby">
+    <div class="lobby-panel">
+        <h1>AI ROYALE 🧬</h1>
+        
+        <label>🧬 대전 상대 AI 세대 지정 (내 도달 범위 내 선택 가능)</label>
+        <div class="gen-control-box">
+            <button class="gen-adjust-btn" onclick="adjustSelectedGen(-1)">-</button>
+            <div id="selectedGenDisplay" class="gen-display">1 Gen</div>
+            <button class="gen-adjust-btn" onclick="adjustSelectedGen(1)">+</button>
+        </div>
+        <p style="font-size:12px; color:#a0aec0; margin-top:-10px; margin-bottom:15px;">(내 최대 도달 차수: <span id="lblMaxGen" style="color:#00ffaa; font-weight:bold;">1</span> Gen)</p>
+        
+        <div class="record-badge">
+            🥇 내 PC 최고기록: <span id="lobbyBestRecord" style="font-weight: bold;">기록 없음</span>
+        </div>
+
+        <div class="select-group">
+            <label for="weaponSelect">🔫 무기 선택</label>
+            <select id="weaponSelect">
+                <option value="ar">AR (돌격소총 - 표준 밸런스)</option>
+                <option value="mg">MG (기관총 - 고연사 난사형)</option>
+                <option value="pistol">Pistol (권총 - 이속 특화)</option>
+                <option value="sr">SR (저격총 - 강력한 대구경 한방)</option>
+                <option value="sg">SG (산탄총 - 근접 가공할 집탄)</option>
+            </select>
+        </div>
+        
+        <div class="select-group">
+            <label for="subWeaponSelect">💣 보조 장비</label>
+            <select id="subWeaponSelect">
+                <option value="grenade">수류탄 (지연 폭발 범위 공격)</option>
+                <option value="homing">유도 탄환 (포인터 타겟 추적)</option>
+                <option value="freeze">빙결탄 (일시 이동 족쇄)</option>
+                <option value="blade">주변 검기 폭발 (즉시 즉발형)</option>
+            </select>
+        </div>
+        
+        <div class="select-group">
+            <label for="upgradeSelect">⚙️ 강화 특성</label>
+            <select id="upgradeSelect">
+                <option value="dash">기동 침투 (이동 속도 +20%)</option>
+                <option value="juggernaut">저거너트 (최대 HP 벌크업)</option>
+                <option value="sniper">철갑 탄두 (탄 데미지 가중)</option>
+                <option value="radar">상시 맵 레이더 탐지</option>
+                <option value="sustenance">안전 상태 체력 가속 자동재생</option>
+            </select>
+        </div>
+        
+        <div class="select-group">
+            <label for="skillSelect">🔮 액티브 스킬 (Q 키)</label>
+            <select id="skillSelect">
+                <option value="medikit">재생 주사기 (치료 키트 즉시 복용)</option>
+                <option value="blink">상황 돌파 블링크 (단거리 돌진)</option>
+                <option value="phase">위상 무적 (벽 통과 차원 왜곡)</option>
+                <option value="teleport">차원 도약 (안전 구역 랜덤 탈출)</option>
+            </select>
+        </div>
+
+        <div class="gene-selector-container">
+            <label style="text-align: center; font-weight: bold; color: #a0aec0; font-size:11px;">원클릭 프리셋 맞춤</label>
+            <div class="gene-btn-group">
+                <button id="btnGen1" class="gene-toggle-btn" onclick="jumpToGenPreset(1)">🌱 1세대</button>
+                <button id="btnGen50" class="gene-toggle-btn" onclick="jumpToGenPreset(50)">🧠 50세대 강제개방</button>
+            </div>
+        </div>
+        
+        <button class="btn" onclick="startGame()">매치 트랙 입장</button>
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <button class="btn btn-secondary" onclick="exportSaveData()">코드 복사</button>
+            <button class="btn btn-secondary" onclick="importSaveData()">코드 주입</button>
+            <button class="btn btn-secondary" style="background:#782e3b" onclick="clearSaveData()">초기화</button>
+        </div>
+    </div>
+</div>
+
+<div id="gameContainer">
+    <div id="hud">
+        <div class="hud-card">
+            <div style="font-weight:bold; color:#00ffaa;"><span id="currentGameGen">1 세대</span> 플레이어</div>
+            <div style="font-size:18px; margin-top:5px; font-weight:bold;">HP: <span id="hpText">100</span></div>
+            <div class="hp-bar-bg"><div id="myHp"></div></div>
+        </div>
+        <div class="hud-card" style="font-size:13px; line-height: 1.6;">
+            ⏱️ 생존 현황: <span id="aliveCount" style="color:#fff; font-weight:bold;">50</span> 명 남음<br>
+            💀 내 처치수: <span id="killCount" style="color:#ffaa00; font-weight:bold;">0</span> 킬<br>
+            🏆 최고 기록: <span id="hudBestRecord" style="color:#ffbb00; font-weight:bold;">없음</span><br>
+            <hr style="border:0; border-top:1px solid #2d3545; margin:5px 0;">
+            탄약: <span id="ammoText" style="color:#00ffff; font-weight:bold;">30/30</span><br>
+            [Space] 대시: <span id="evadeCdText">READY</span><br>
+            [우클릭] 보조: <span id="subWeaponCdText">READY</span><br>
+            [ Q ] 스킬: <span id="skillCdText">READY</span>
+        </div>
+    </div>
+    
+    <div id="radarAlert"></div>
+    <div id="zoneAlert"></div>
+    <div id="killLogContainer"></div>
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<div id="matchResultModal" class="modal">
+    <h2 id="resultTitle" style="color:#00ffaa; margin-top:0;">🏆 MATCH OVER</h2>
+    <p id="resultRank" style="font-size:18px; font-weight:bold;"></p>
+    <p id="resultKills"></p>
+    <p id="resultTime"></p>
+    <div id="newRecordNotice" style="color:#ffaa00; font-weight:bold; margin-bottom:10px; display:none;">✨ 최고기록 경신완료! ✨</div>
+    <button class="btn" onclick="closeResultModal()">로비 궤도로 이탈</button>
+</div>
+
+<script>
+const WEAPON_DATA = {
+    pistol: { name: "권총", speed: 4.8, maxAmmo: 12, maxCooldown: 12, reloadTime: 60, bSpeed: 15, damage: 16 },
+    ar:     { name: "돌격소총",  speed: 4.0, maxAmmo: 30, maxCooldown: 8,  reloadTime: 100, bSpeed: 17, damage: 14 },
+    mg:     { name: "기관총",   speed: 3.2, maxAmmo: 75, maxCooldown: 5,  reloadTime: 160, bSpeed: 14, damage: 11 },
+    sr:     { name: "저격총",   speed: 3.5, maxAmmo: 5,  maxCooldown: 55, reloadTime: 130, bSpeed: 24, damage: 48 },
+    sg:     { name: "산탄총",   speed: 4.2, maxAmmo: 6,  maxCooldown: 40, reloadTime: 110, bSpeed: 13, damage: 13 }
+};
+
+const SUB_WEAPON_DATA = {
+    grenade: { name: "수류탄", cooldown: 240 }, homing:  { name: "유도탄", cooldown: 180 },
+    freeze:  { name: "빙결탄", cooldown: 200 }, blade:   { name: "검기폭발", cooldown: 120 }
+};
+
+const MAP_WIDTH = 4500; const MAP_HEIGHT = 4500; const MIN_ZONE_RADIUS = 250;
+const RADAR_CYCLE = 500; const RADAR_DURATION = 120;
+
+const AudioEngine = {
+    ctx: null, init() { if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+    play(type, volume = 1.0) {
+        try { this.init(); if(!this.ctx) return; let osc = this.ctx.createOscillator(); let gain = this.ctx.createGain(); osc.connect(gain); gain.connect(this.ctx.destination); if(type === 'hit') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, this.ctx.currentTime); gain.gain.setValueAtTime(volume * 0.08, this.ctx.currentTime); osc.start(); osc.stop(this.ctx.currentTime + 0.05); } else if(type === 'kill') { osc.type = 'sine'; osc.frequency.setValueAtTime(587, this.ctx.currentTime); gain.gain.setValueAtTime(volume * 0.12, this.ctx.currentTime); osc.start(); osc.stop(this.ctx.currentTime + 0.15); } else { osc.type = 'triangle'; osc.frequency.setValueAtTime(type==='sr'?170:300, this.ctx.currentTime); gain.gain.setValueAtTime(volume * 0.04, this.ctx.currentTime); osc.start(); osc.stop(this.ctx.currentTime + 0.04); } } catch(e){}
+    },
+    getDistanceVolume(tx, ty, px, py) { let d = Math.hypot(tx - px, ty - py); if(d > 1200) return 0; return Math.max(0, 1 - (d / 1200)); }
+};
+
+const SpatialGrid = {
+    cellSize: 300, buckets: {}, clear() { this.buckets = {}; }, getKey(x, y) { return `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`; },
+    register(obj, type) { let key = this.getKey(obj.x||obj.x+10, obj.y||obj.y+10); if(!this.buckets[key]) this.buckets[key] = { bots: [], walls: [], items: [] }; if(type === 'bot') this.buckets[key].bots.push(obj); else if(type === 'wall') this.buckets[key].walls.push(obj); else if(type === 'item') this.buckets[key].items.push(obj); },
+    getNearbyRaw(x, y, radius) { let res = { bots: [], walls: [], items: [] }; let cells = Math.ceil(radius / this.cellSize); let cx = Math.floor(x / this.cellSize); let cy = Math.floor(y / this.cellSize); for(let i = -cells; i <= cells; i++) { for(let j = -cells; j <= cells; j++) { let bucket = this.buckets[`${cx+i},${cy+j}`]; if(bucket) { res.bots.push(...bucket.bots); res.walls.push(...bucket.walls); res.items.push(...bucket.items); } } } return res; }
+};
+
+// 기본 엘리트 유전 풀
+let ELITE_50GEN_POOL = [
+    {aggro: 0.45, evade: 0.75, prediction: 0.35}, {aggro: 0.55, evade: 0.65, prediction: 0.45},
+    {aggro: 0.65, evade: 0.55, prediction: 0.50}, {aggro: 0.40, evade: 0.85, prediction: 0.30}
+];
+
+// 🧠 플레이어 움직임 트랙킹 데이터 객체
+let playerTracker = {
+    totalFrames: 0,
+    movingFrames: 0,
+    shotsFired: 0,
+    dashesUsed: 0,
+    skillsUsed: 0,
+    reset() {
+        this.totalFrames = 0; this.movingFrames = 0; this.shotsFired = 0; this.dashesUsed = 0; this.skillsUsed = 0;
+    },
+    // 성향 유추 산출
+    getMetrics() {
+        if(this.totalFrames === 0) return { aggro: 0.4, evade: 0.4, prediction: 0.3 };
+        let moveRatio = this.movingFrames / this.totalFrames;
+        let shootDensity = (this.shotsFired * 60) / this.totalFrames; // 초당 사격 빈도 기반
+        
+        return {
+            aggro: Math.max(0.1, Math.min(1.0, shootDensity * 2.5 + 0.2)),
+            evade: Math.max(0.1, Math.min(1.0, moveRatio * 1.1 + (this.dashesUsed * 0.05))),
+            prediction: Math.max(0.05, Math.min(1.0, 0.2 + (this.shotsFired * 0.005) + (shootDensity * 0.5)))
+        };
+    }
+};
+
+let canvas = null; let ctx = null;
+let aiGeneration = 1; let selectedGeneration = 1;
+let gameActive = false; let animationFrameId = null;
+let player = { x: 0, y: 0, radius: 15, color: "#00ffaa", name: "USER_PLAYER", upgrade: "none" };
+let bots = []; let deadBotsPool = []; let walls = []; let boosters = []; let healItems = []; let bullets = []; let explosions = [];
+let keys = {}; let mouse = { x: 0, y: 0 }; let camera = { x: 0, y: 0 };
+let isLeftMouseDown = false; let isRightMouseDown = false;
+let myKills = 0; let zoneRadius = 5400; let zoneCenter = { x: MAP_WIDTH/2, y: MAP_HEIGHT/2 };
+let radarTimer = 0; let gameStartTime = 0; let bestRank = 50; let bestKills = 0;
+
+function adjustSelectedGen(amount) {
+    let target = selectedGeneration + amount;
+    if (target < 1) target = 1;
+    selectedGeneration = target;
+    updateGenDisplay();
+}
+
+function jumpToGenPreset(gen) {
+    selectedGeneration = gen;
+    if(selectedGeneration > aiGeneration) {
+        aiGeneration = selectedGeneration;
+        localStorage.setItem("ai_royale_gen", aiGeneration);
+    }
+    updateGenDisplay();
+}
+
+function updateGenDisplay() {
+    document.getElementById("selectedGenDisplay").innerText = selectedGeneration + " Gen";
+    document.getElementById("lblMaxGen").innerText = aiGeneration;
+    document.getElementById("btnGen1").classList.remove("active");
+    document.getElementById("btnGen50").classList.remove("active");
+    if(selectedGeneration === 1) document.getElementById("btnGen1").classList.add("active");
+    if(selectedGeneration === 50) document.getElementById("btnGen50").classList.add("active");
+}
+
+function getSpawnGeneProperties() {
+    let genFactor = Math.min(1.0, (selectedGeneration - 1) / 49); 
+    
+    // 로컬 스토리지에 유저가 학습시킨 데이터 모델이 있다면 기반으로 생성
+    let basePool = ELITE_50GEN_POOL;
+    try {
+        let learned = localStorage.getItem("ai_royale_learned_pool");
+        if(learned) basePool = JSON.parse(learned);
+    } catch(e){}
+
+    if (selectedGeneration >= 50) {
+        let chosenBase = basePool[Math.floor(Math.random() * basePool.length)];
+        return {
+            aggro: Math.max(0.1, Math.min(1.0, chosenBase.aggro + (Math.random() * 0.08 - 0.04))),
+            evade: Math.max(0.1, Math.min(1.0, chosenBase.evade + (Math.random() * 0.08 - 0.04))),
+            prediction: Math.max(0.1, Math.min(1.0, chosenBase.prediction + (Math.random() * 0.08 - 0.04)))
+        };
+    } else {
+        let randBase = basePool[Math.floor(Math.random() * basePool.length)];
+        return { 
+            aggro: Math.max(0.1, Math.min(1.0, (randBase.aggro * 0.5) + (genFactor * 0.35) + Math.random()*0.15)), 
+            evade: Math.max(0.1, Math.min(1.0, (randBase.evade * 0.5) + (genFactor * 0.45) + Math.random()*0.15)), 
+            prediction: Math.max(0.05, Math.min(1.0, (randBase.prediction * 0.5) + (genFactor * 0.45) + Math.random()*0.1)) 
+        };
+    }
+}
+
+function updateRecordUI() {
+    const recordString = (bestRank === 50 && bestKills === 0) ? "기록 없음" : `${bestRank}위 / ${bestKills}킬`;
+    document.getElementById("lobbyBestRecord").innerText = recordString;
+    document.getElementById("hudBestRecord").innerText = recordString;
+}
+
+function resizeCanvas() { if(canvas) { canvas.width = window.innerWidth; canvas.height = window.innerHeight; } }
+window.addEventListener('resize', resizeCanvas);
+
+function isPositionInWall(x, y, rad) {
+    for (let i = 0; i < walls.length; i++) {
+        let w = walls[i]; if (x + rad > w.x && x - rad < w.x + w.w && y + rad > w.y && y - rad < w.y + w.h) return true;
+    }
+    return false;
+}
+
+function addKillLog(attacker, victim) {
+    const container = document.getElementById("killLogContainer"); const entry = document.createElement("div"); entry.className = "kill-entry";
+    entry.innerHTML = `<span style="color:#00ffaa;">${attacker}</span> ⚔️ <span style="color:#ff3355;">${victim}</span>`;
+    container.appendChild(entry); if(container.children.length > 5) container.removeChild(container.firstChild);
+    setTimeout(() => { if(entry.parentNode === container) container.removeChild(entry); }, 4000);
+}
+
+function checkLineOfSight(x1, y1, x2, y2) {
+    let dist = Math.hypot(x2 - x1, y2 - y1); if (dist > 850) return false; let steps = Math.ceil(dist / 40);
+    for(let i = 1; i < steps; i++) { let t = i / steps; if (isPositionInWall(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, 5)) return false; } return true;
+}
+
+function loadGameData() {
+    canvas = document.getElementById("gameCanvas"); ctx = canvas.getContext("2d"); resizeCanvas();
+    try {
+        const savedGen = localStorage.getItem("ai_royale_gen"); 
+        if (savedGen) { aiGeneration = parseInt(savedGen); selectedGeneration = aiGeneration; }
+        const savedRank = localStorage.getItem("ai_royale_best_rank"); if (savedRank) bestRank = parseInt(savedRank);
+        const savedKills = localStorage.getItem("ai_royale_best_kills"); if (savedKills) bestKills = parseInt(savedKills);
+        
+        let learned = localStorage.getItem("ai_royale_learned_pool");
+        if(learned) ELITE_50GEN_POOL = JSON.parse(learned);
+
+        updateGenDisplay(); updateRecordUI();
+    } catch(e) {}
+}
+
+function exportSaveData() {
+    try {
+        const pack = { gen: aiGeneration, bestRank: bestRank, bestKills: bestKills, genes: ELITE_50GEN_POOL };
+        const raw = btoa(encodeURIComponent(JSON.stringify(pack))); navigator.clipboard.writeText(raw).then(() => { alert("🧬 세대 및 무빙 학습 데이터가 복사되었습니다."); });
+    } catch(e){}
+}
+
+function importSaveData() {
+    const promptData = prompt("코드를 입력하세요:"); if(!promptData) return;
+    try {
+        const parsed = JSON.parse(decodeURIComponent(atob(promptData.trim())));
+        if(parsed.gen) { 
+            aiGeneration = parsed.gen; localStorage.setItem("ai_royale_gen", aiGeneration);
+            if(parsed.bestRank) { bestRank = parsed.bestRank; localStorage.setItem("ai_royale_best_rank", bestRank); }
+            if(parsed.bestKills) { bestKills = parsed.bestKills; localStorage.setItem("ai_royale_best_kills", bestKills); }
+            if(parsed.genes) { ELITE_50GEN_POOL = parsed.genes; localStorage.setItem("ai_royale_learned_pool", JSON.stringify(ELITE_50GEN_POOL)); }
+            location.reload(); 
+        }
+    } catch(e){ alert("해독 불가 코드입니다."); }
+}
+
+function clearSaveData() { if(confirm("모든 세대 데이터, 기록, 학습 무빙을 완전 초기화할까요?")) { localStorage.clear(); location.reload(); } }
+
+window.addEventListener('load', loadGameData);
+window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'ㅂ') { if (gameActive) { triggerActiveSkill(player, false, 0); playerTracker.skillsUsed++; } }
+    if (e.key === ' ' || e.code === 'Space') { 
+        if (gameActive && !player.isDead && player.evadeCooldown <= 0) { 
+            e.preventDefault(); let dx = 0, dy = 0;
+            if (keys['w'] || keys['ㅈ']) dy -= 1; if (keys['s'] || keys['ㄴ']) dy += 1;
+            if (keys['a'] || keys['ㅁ']) dx -= 1; if (keys['d'] || keys['ㅇ']) dx += 1;
+            if(dx === 0 && dy === 0) { let mAngle = Math.atan2((mouse.y + camera.y) - player.y, (mouse.x + camera.x) - player.x); dx = Math.cos(mAngle); dy = Math.sin(mAngle); } 
+            else { let len = Math.hypot(dx, dy); dx /= len; dy /= len; }
+            player.evadeTimer = 10; player.evadeVx = dx * 13; player.evadeVy = dy * 13; player.evadeCooldown = 72; AudioEngine.play('dodge', 1.0); 
+            playerTracker.dashesUsed++;
+        } 
+    }
+    if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'ㄱ') { if (gameActive && !player.isDead && player.reloadTimer === 0 && player.ammo < player.maxAmmo) { player.reloadTimer = player.reloadMaxTime; AudioEngine.play('reload', 1.0); } }
+});
+window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+window.addEventListener('mousemove', (e) => { if(!canvas) return; const rect = canvas.getBoundingClientRect(); mouse.x = e.clientX - rect.left; mouse.y = e.clientY - rect.top; });
+
+function playerShoot() {
+    if (player.isDead || !gameActive || player.shootCooldown > 0 || player.reloadTimer > 0) return;
+    if (player.ammo <= 0) { player.reloadTimer = player.reloadMaxTime; AudioEngine.play('reload', 1.0); return; }
+    const angle = Math.atan2((mouse.y + camera.y) - player.y, (mouse.x + camera.x) - player.x); AudioEngine.play(player.weaponType, 1.0);
+    if (player.weaponType === 'sg') {
+        [-0.16, -0.08, 0, 0.08, 0.16].forEach(sa => { bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle + sa) * player.bulletSpeed, vy: Math.sin(angle + sa) * player.bulletSpeed, owner: "player", ownerName: player.name, damage: player.bulletDamage, color: "#00ffff", type: "normal" }); });
+    } else { bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * player.bulletSpeed, vy: Math.sin(angle) * player.bulletSpeed, owner: "player", ownerName: player.name, damage: player.bulletDamage, color: "#00ffff", type: "normal" }); }
+    player.ammo--; player.shootCooldown = player.maxCooldown; player.outOfCombatTimer = 300; 
+    playerTracker.shotsFired++;
+}
+
+function playerSubShoot() {
+    if (player.isDead || !gameActive || player.subWeaponCooldown > 0) return;
+    const angle = Math.atan2((mouse.y + camera.y) - player.y, (mouse.x + camera.x) - player.x); const sType = player.subWeaponType; AudioEngine.play('grenade_launch', 1.0);
+    if (sType === 'grenade') { bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 5, vy: Math.sin(angle) * 5, owner: "player", ownerName: player.name, damage: 30, color: "#ff3333", type: "grenade" }); } 
+    else if (sType === 'homing') { bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 9, vy: Math.sin(angle) * 9, owner: "player", ownerName: player.name, damage: 15, color: "#ff00ff", type: "homing" }); } 
+    else if (sType === 'freeze') { bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 16, vy: Math.sin(angle) * 16, owner: "player", ownerName: player.name, damage: 15, color: "#00bfff", type: "freeze" }); } 
+    else if (sType === 'blade') { explosions.push({ x: player.x + Math.cos(angle) * 50, y: player.y + Math.sin(angle) * 50, maxRadius: 100, currentRadius: 15, speed: 12, color: "rgba(255, 0, 100, 0.45)", ownerName: player.name, ownerId: "player", damage: 20, effect: "none" }); }
+    player.subWeaponCooldown = SUB_WEAPON_DATA[sType].cooldown; player.outOfCombatTimer = 300;
+    playerTracker.shotsFired++;
+}
+
+window.addEventListener('mousedown', (e) => { if(!gameActive) return; if (e.button === 0) { isLeftMouseDown = true; playerShoot(); } if (e.button === 2) { isRightMouseDown = true; playerSubShoot(); } });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) isLeftMouseDown = false; if (e.button === 2) isRightMouseDown = false; });
+
+function triggerActiveSkill(entity, isBot = false, botTargetAngle = 0) {
+    if (entity.isDead || entity.skillCooldown > 0) return;
+    let vol = isBot ? AudioEngine.getDistanceVolume(entity.x, entity.y, player.x, player.y) : 1.0;
+    if (entity.activeSkill === 'medikit') { entity.hp = Math.min(entity.maxHp, entity.hp + (entity.maxHp * 0.5)); entity.skillCooldown = 900; if(vol > 0.05) AudioEngine.play('skill_medikit', vol); }
+    else if (entity.activeSkill === 'phase') { entity.phaseTimer = 150; entity.skillCooldown = 600; } 
+    else if (entity.activeSkill === 'blink') {
+        let angle = isBot ? botTargetAngle : Math.atan2((mouse.y + camera.y) - entity.y, (mouse.x + camera.x) - entity.x);
+        let dist = 220; let tx = entity.x + Math.cos(angle) * dist; let ty = entity.y + Math.sin(angle) * dist;
+        if (!isPositionInWall(tx, ty, entity.radius)) { entity.x = tx; entity.y = ty; } entity.skillCooldown = 400; if(vol > 0.05) AudioEngine.play('skill_blink', vol);
+    }
+    else if (entity.activeSkill === 'teleport') {
+        let rx = zoneCenter.x + (Math.random() - 0.5) * zoneRadius; let ry = zoneCenter.y + (Math.random() - 0.5) * zoneRadius;
+        if(!isPositionInWall(rx, ry, entity.radius)){ entity.x = rx; entity.y = ry; } entity.skillCooldown = 700;
+    }
+}
+
+function handleWallCollision(entity) {
+    if (entity.phaseTimer > 0) return false; let grid = SpatialGrid.getNearbyRaw(entity.x, entity.y, entity.radius + 60);
+    grid.walls.forEach(wall => {
+        let cx = Math.max(wall.x, Math.min(entity.x, wall.x + wall.w)); let cy = Math.max(wall.y, Math.min(entity.y, wall.y + wall.h));
+        let dist = Math.hypot(entity.x - cx, entity.y - cy);
+        if (dist < entity.radius) { if (dist === 0) return; let ol = entity.radius - dist; entity.x += ((entity.x - cx) / dist) * (ol + 0.2); entity.y += ((entity.y - cy) / dist) * (ol + 0.2); }
+    });
+}
+
+function buildMap() {
+    walls = []; boosters = []; healItems = []; for(let i=0; i<160; i++) { let wx = Math.random() * (MAP_WIDTH - 1000) + 500; let wy = Math.random() * (MAP_HEIGHT - 1000) + 500; if (Math.hypot(MAP_WIDTH/2 - wx, MAP_HEIGHT/2 - wy) > 400) { walls.push({ x: wx, y: wy, w: Math.random()*150+60, h: Math.random()*150+60 }); } }
+    for(let i=0; i<50; i++) { boosters.push({ x: Math.random()*(MAP_WIDTH-800)+400, y: Math.random()*(MAP_HEIGHT-800)+400, radius: 15 }); healItems.push({ x: Math.random()*(MAP_WIDTH-800)+400, y: Math.random()*(MAP_HEIGHT-800)+400, radius: 14 }); }
+}
+
+function applyUpgradeSpecs(entity, type, isBot = false) {
+    entity.upgrade = type; if (type === 'dash') { entity.baseSpeed *= 1.2; entity.speed = entity.baseSpeed; } else if (type === 'juggernaut') { entity.maxHp = isBot ? 120 : 150; entity.hp = entity.maxHp; } else if (type === 'sniper') { entity.bulletDamage += 10; }
+}
+
+function startGame() {
+    gameActive = false; if(animationFrameId) cancelAnimationFrame(animationFrameId);
+    playerTracker.reset(); // 움직임 수집 엔진 리셋
+
+    const chosenWeapon = document.getElementById("weaponSelect").value; const wData = WEAPON_DATA[chosenWeapon];
+    player.x = MAP_WIDTH / 2; player.y = MAP_HEIGHT / 2; player.hp = 100; player.maxHp = 100; player.weaponType = chosenWeapon;
+    player.baseSpeed = wData.speed; player.speed = wData.speed; player.ammo = wData.maxAmmo; player.maxAmmo = wData.maxAmmo;
+    player.maxCooldown = wData.maxCooldown; player.shootCooldown = 0; player.reloadMaxTime = wData.reloadTime; player.reloadTimer = 0;
+    player.bulletSpeed = wData.bSpeed; player.bulletDamage = wData.damage; player.subWeaponType = document.getElementById("subWeaponSelect").value;
+    player.subWeaponCooldown = 0; player.isDead = false; player.boostTimer = 0; player.phaseTimer = 0; player.skillCooldown = 0; player.outOfCombatTimer = 300;
+    player.evadeCooldown = 0; player.evadeTimer = 0; myKills = 0; bullets = []; explosions = []; zoneRadius = 5400; deadBotsPool = []; gameStartTime = Date.now();
+
+    buildMap(); applyUpgradeSpecs(player, document.getElementById("upgradeSelect").value, false); player.activeSkill = document.getElementById("skillSelect").value;
+    document.getElementById("currentGameGen").innerText = selectedGeneration + " 세대 AI";
+    updateRecordUI();
+
+    const ups = ['radar', 'sustenance', 'dash', 'juggernaut', 'sniper']; const sks = ['medikit', 'phase', 'blink', 'teleport']; const wps = ['pistol', 'ar', 'mg', 'sr', 'sg'];
+    bots = [];
+    
+    for (let i = 0; i < 49; i++) {
+        let bx = Math.random() * (MAP_WIDTH - 1200) + 600; let by = Math.random() * (MAP_HEIGHT - 1200) + 600;
+        let bWeapon = wps[Math.floor(Math.random() * wps.length)]; let bwData = WEAPON_DATA[bWeapon];
+        let assignedGene = getSpawnGeneProperties();
+
+        bots.push({
+            id: i, name: `AI_🤖_봇_${i+1}`, x: bx, y: by, radius: 15, hp: 100, maxHp: 100, isDead: false,
+            color: `hsl(${assignedGene.aggro * 360}, 85%, 55%)`, vx: 0, vy: 0, speed: bwData.speed * (0.7 + assignedGene.aggro * 0.2), baseSpeed: bwData.speed * (0.7 + assignedGene.aggro * 0.2),
+            boostTimer: 0, freezeTimer: 0, changeDirTimer: 0, shootTimer: Math.random() * 40, weaponType: bWeapon, ammo: bwData.maxAmmo, maxAmmo: bwData.maxAmmo,
+            maxCooldown: bwData.maxCooldown * 1.2, reloadTimer: 0, reloadMaxTime: bwData.reloadTime, bulletSpeed: bwData.bSpeed * 0.88, bulletDamage: bwData.damage * 0.65,
+            activeSkill: sks[Math.floor(Math.random() * sks.length)], skillCooldown: 0, phaseTimer: 0, outOfCombatTimer: 300, evadeCooldown: Math.random()*50, evadeTimer: 0,
+            genes: assignedGene, kills: 0
+        });
+        applyUpgradeSpecs(bots[i], ups[Math.floor(Math.random() * ups.length)], true);
+    }
+    document.getElementById("lobby").style.display = "none"; document.getElementById("gameContainer").style.display = "block"; gameActive = true; gameLoop();
+}
+
+function showResultModal(rank) { 
+    gameActive = false; 
+    let sec = Math.round((Date.now() - gameStartTime) / 1000); 
+    document.getElementById("resultRank").innerText = `최종 순위: ${rank}위`; 
+    document.getElementById("resultKills").innerText = `처치수: ${myKills} 킬`; 
+    document.getElementById("resultTime").innerText = `버틴 시간: ${sec}초`; 
+
+    // 🧠 플레이어 무빙 스타일 신경망 융합 계산
+    let playerStyle = playerTracker.getMetrics();
+    ELITE_50GEN_POOL = ELITE_50GEN_POOL.map(g => {
+        return {
+            // 유저의 플레이 성향 비율을 25% 가중치로 AI 유전 풀에 혼합 학습
+            aggro: (g.aggro * 0.75) + (playerStyle.aggro * 0.25),
+            evade: (g.evade * 0.75) + (playerStyle.evade * 0.25),
+            prediction: (g.prediction * 0.75) + (playerStyle.prediction * 0.25)
+        };
+    });
+    localStorage.setItem("ai_royale_learned_pool", JSON.stringify(ELITE_50GEN_POOL));
+
+    let isNewRecord = false;
+    if((bestRank === 50 && bestKills === 0) || rank < bestRank || (rank === bestRank && myKills > bestKills)) {
+        bestRank = rank; bestKills = myKills;
+        localStorage.setItem("ai_royale_best_rank", bestRank); localStorage.setItem("ai_royale_best_kills", bestKills);
+        isNewRecord = true;
+    }
+
+    const notice = document.getElementById("newRecordNotice");
+    notice.style.display = isNewRecord ? "block" : "none";
+    document.getElementById("matchResultModal").style.display = "block"; 
+}
+
+function closeResultModal() { 
+    document.getElementById("matchResultModal").style.display = "none"; 
+    aiGeneration++; 
+    localStorage.setItem("ai_royale_gen", aiGeneration); 
+    selectedGeneration = aiGeneration; 
+    
+    updateGenDisplay(); updateRecordUI();
+    document.getElementById("gameContainer").style.display = "none"; 
+    document.getElementById("lobby").style.display = "block"; 
+}
+
+function gameLoop() {
+    if (!gameActive) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    SpatialGrid.clear(); bots.forEach(b => SpatialGrid.register(b, 'bot')); walls.forEach(w => SpatialGrid.register(w, 'wall')); boosters.forEach(bo => SpatialGrid.register(bo, 'item')); healItems.forEach(h => SpatialGrid.register(h, 'item'));
+
+    if (zoneRadius > MIN_ZONE_RADIUS) zoneRadius -= 0.14;
+    radarTimer++; let currentRadarCycleFrame = radarTimer % RADAR_CYCLE; let isRadarActive = (currentRadarCycleFrame >= 0 && currentRadarCycleFrame < RADAR_DURATION);
+
+    if (!player.isDead) {
+        playerTracker.totalFrames++; // 트랙킹 전체 프레임 누적
+        
+        let isMoving = false;
+        if (player.evadeTimer > 0) { player.x += player.evadeVx; player.y += player.evadeVy; player.evadeTimer--; isMoving = true; } 
+        else { 
+            let px = 0, py = 0; 
+            if (keys['w'] || keys['ㅈ']) py -= player.speed; if (keys['s'] || keys['ㄴ']) py += player.speed; 
+            if (keys['a'] || keys['ㅁ']) px -= player.speed; if (keys['d'] || keys['ㅇ']) px += player.speed; 
+            if(px !== 0 || py !== 0) isMoving = true;
+            player.x += px; player.y += py; 
+        }
+        if(isMoving) playerTracker.movingFrames++; // 움직인 프레임 트랙킹 누적
+
+        if (player.evadeCooldown > 0) player.evadeCooldown--; if (player.shootCooldown > 0) player.shootCooldown--; if (player.subWeaponCooldown > 0) player.subWeaponCooldown--; if (player.skillCooldown > 0) player.skillCooldown--; if (player.phaseTimer > 0) player.phaseTimer--; if (player.outOfCombatTimer > 0) player.outOfCombatTimer--;
+        if (isLeftMouseDown && (player.weaponType === 'ar' || player.weaponType === 'mg')) playerShoot();
+        if (player.upgrade === 'sustenance' && player.outOfCombatTimer <= 0 && player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 0.2);
+        if (player.reloadTimer > 0) { player.reloadTimer--; if (player.reloadTimer === 0) player.ammo = player.maxAmmo; }
+        if (player.boostTimer > 0) { player.boostTimer--; if (player.boostTimer === 0) player.speed = player.baseSpeed; }
+        player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x)); player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
+        handleWallCollision(player);
+        if (Math.hypot(player.x - zoneCenter.x, player.y - zoneCenter.y) > zoneRadius) { player.hp -= 0.08; player.outOfCombatTimer = 300; document.getElementById("zoneAlert").innerText = "⚠️ 안전 구역 이탈!"; } else { document.getElementById("zoneAlert").innerText = ""; }
+        if (player.hp <= 0) { player.hp = 0; player.isDead = true; showResultModal(bots.length + 1); }
+    }
+
+    camera.x = Math.max(0, Math.min(MAP_WIDTH - canvas.width, player.x - canvas.width / 2)); camera.y = Math.max(0, Math.min(MAP_HEIGHT - canvas.height, player.y - canvas.height / 2));
+    ctx.strokeStyle = "#1a2230"; ctx.lineWidth = 1;
+    for(let gx=0; gx<MAP_WIDTH; gx+=150) { ctx.beginPath(); ctx.moveTo(gx-camera.x, 0); ctx.lineTo(gx-camera.x, MAP_HEIGHT); ctx.stroke(); }
+    for(let gy=0; gy<MAP_HEIGHT; gy+=150) { ctx.beginPath(); ctx.moveTo(0, gy-camera.y); ctx.lineTo(MAP_WIDTH, gy-camera.y); ctx.stroke(); }
+    walls.forEach(wall => { ctx.fillStyle = "#2d3545"; ctx.fillRect(wall.x - camera.x, wall.y - camera.y, wall.w, wall.h); ctx.strokeStyle = "#4e5d78"; ctx.strokeRect(wall.x - camera.x, wall.y - camera.y, wall.w, wall.h); });
+
+    for (let eIdx = explosions.length - 1; eIdx >= 0; eIdx--) {
+        let exp = explosions[eIdx]; exp.currentRadius += exp.speed; ctx.fillStyle = exp.color; ctx.beginPath(); ctx.arc(exp.x - camera.x, exp.y - camera.y, exp.currentRadius, 0, Math.PI * 2); ctx.fill();
+        if (exp.currentRadius === exp.speed + 10) {
+            SpatialGrid.getNearbyRaw(exp.x, exp.y, exp.maxRadius + 20).bots.forEach(bot => {
+                if (!bot.isDead && Math.hypot(bot.x - exp.x, bot.y - exp.y) < bot.radius + exp.maxRadius) {
+                    bot.hp -= exp.damage; if (bot.hp <= 0) { bot.isDead = true; addKillLog(exp.ownerName, bot.name); if (exp.ownerId === "player") myKills++; }
+                }
+            });
+        }
+        if (exp.currentRadius >= exp.maxRadius) explosions.splice(eIdx, 1);
+    }
+
+    for (let i = boosters.length - 1; i >= 0; i--) { if (!player.isDead && Math.hypot(player.x - boosters[i].x, player.y - boosters[i].y) < player.radius + 15) { player.speed = player.baseSpeed * 1.4; player.boostTimer = 180; boosters.splice(i, 1); AudioEngine.play('item', 1); } }
+    for (let i = healItems.length - 1; i >= 0; i--) { if (!player.isDead && Math.hypot(player.x - healItems[i].x, player.y - healItems[i].y) < player.radius + 14) { player.hp = Math.min(player.maxHp, player.hp + 40); healItems.splice(i, 1); AudioEngine.play('item', 1); } }
+
+    bots.forEach((bot) => {
+        if (bot.boostTimer > 0) { bot.boostTimer--; if (bot.boostTimer === 0) bot.speed = bot.baseSpeed; }
+        if (bot.reloadTimer > 0) { bot.reloadTimer--; if (bot.reloadTimer === 0) bot.ammo = bot.maxAmmo; }
+        let enemy = null; let minDist = 750;
+        if (!player.isDead && checkLineOfSight(bot.x, bot.y, player.x, player.y)) { minDist = Math.hypot(player.x - bot.x, player.y - bot.y); enemy = player; }
+        SpatialGrid.getNearbyRaw(bot.x, bot.y, minDist).bots.forEach(o => { if (o.id !== bot.id && !o.isDead && checkLineOfSight(bot.x, bot.y, o.x, o.y)) { let d = Math.hypot(o.x - bot.x, o.y - bot.y); if (d < minDist) { minDist = d; enemy = o; } } });
+
+        let angle = null;
+        if (Math.hypot(bot.x - zoneCenter.x, bot.y - zoneCenter.y) > zoneRadius - 250) { angle = Math.atan2(zoneCenter.y - bot.y, zoneCenter.x - bot.x); } 
+        else if (enemy) { angle = Math.atan2(enemy.y - bot.y, enemy.x - bot.x) + (bot.hp < bot.maxHp * 0.3 ? Math.PI : Math.sin(radarTimer * 0.05) * (1.2 - bot.genes.aggro)); }
+        else { bot.changeDirTimer++; if (bot.changeDirTimer > 90) { angle = Math.random() * Math.PI * 2; bot.changeDirTimer = 0; } else angle = Math.atan2(bot.vy, bot.vx); }
+
+        bot.vx = Math.cos(angle) * bot.speed; bot.vy = Math.sin(angle) * bot.speed; bot.x += bot.vx; bot.y += bot.vy;
+        bot.x = Math.max(bot.radius, Math.min(MAP_WIDTH - bot.radius, bot.x)); bot.y = Math.max(bot.radius, Math.min(MAP_HEIGHT - bot.radius, bot.y));
+        handleWallCollision(bot);
+        if (Math.hypot(bot.x - zoneCenter.x, bot.y - zoneCenter.y) > zoneRadius) bot.hp -= 0.08;
+        if (bot.hp <= 0) bot.isDead = true;
+
+        bot.shootTimer++;
+        if (bot.shootTimer > bot.maxCooldown && bot.reloadTimer === 0 && enemy) {
+            if (bot.ammo <= 0) { bot.reloadTimer = bot.reloadMaxTime; } 
+            else {
+                let fAngle = Math.atan2(enemy.y - bot.y, enemy.x - bot.x);
+                if (Math.random() < bot.genes.prediction) {
+                    let evX = (enemy.id === "player") ? (keys['d']?player.speed:0)-(keys['a']?player.speed:0) : (enemy.vx||0);
+                    let evY = (enemy.id === "player") ? (keys['s']?player.speed:0)-(keys['w']?player.speed:0) : (enemy.vy||0);
+                    fAngle = Math.atan2((enemy.y + evY * (minDist/bot.bulletSpeed)) - bot.y, (enemy.x + evX * (minDist/bot.bulletSpeed)) - bot.x);
+                }
+                bullets.push({ x: bot.x, y: bot.y, vx: Math.cos(fAngle) * bot.bulletSpeed, vy: Math.sin(fAngle) * bot.bulletSpeed, owner: bot.id, ownerName: bot.name, damage: bot.bulletDamage, color: "#ffaa00", type: "normal" });
+                bot.ammo--; bot.shootTimer = 0;
+            }
+        }
+
+        let b_cx = bot.x - camera.x, b_cy = bot.y - camera.y;
+        if (b_cx > -20 && b_cx < canvas.width + 20 && b_cy > -20 && b_cy < canvas.height + 20) {
+            ctx.fillStyle = bot.color; ctx.beginPath(); ctx.arc(b_cx, b_cy, bot.radius, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "red"; ctx.fillRect(b_cx - 15, b_cy - 22, 30, 3); ctx.fillStyle = "green"; ctx.fillRect(b_cx - 15, b_cy - 22, 30 * (bot.hp / bot.maxHp), 3);
+        }
+    });
+
+    for (let bIdx = bullets.length - 1; bIdx >= 0; bIdx--) {
+        let b = bullets[bIdx]; b.x += b.vx; b.y += b.vy; let bX = b.x - camera.x, bY = b.y - camera.y;
+        if (isPositionInWall(b.x, b.y, 4) || b.x < 0 || b.x > MAP_WIDTH || b.y < 0 || b.y > MAP_HEIGHT) { bullets.splice(bIdx, 1); continue; }
+        if (bX > 0 && bX < canvas.width && bY > 0 && bY < canvas.height) { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(bX, bY, 4, 0, Math.PI*2); ctx.fill(); }
+        if (!player.isDead && b.owner !== "player" && Math.hypot(player.x - b.x, player.y - b.y) < player.radius) {
+            player.hp -= b.damage; player.outOfCombatTimer = 300; AudioEngine.play('hit', 1); bullets.splice(bIdx, 1); continue;
+        }
+        let hitBots = SpatialGrid.getNearbyRaw(b.x, b.y, 50).bots;
+        for(let k=0; k<hitBots.length; k++) {
+            let bot = hitBots[k];
+            if (b.owner !== bot.id && !bot.isDead && Math.hypot(bot.x - b.x, bot.y - b.y) < bot.radius) {
+                bot.hp -= b.damage; if (bot.hp <= 0) { bot.isDead = true; addKillLog(b.ownerName, bot.name); if (b.owner === "player") myKills++; }
+                bullets.splice(bIdx, 1); break;
+            }
+        }
+    }
+
+    for (let i = bots.length - 1; i >= 0; i--) { if (bots[i].isDead) { deadBotsPool.push(bots[i]); bots.splice(i, 1); } }
+    if (!player.isDead) {
+        let pX = player.x - camera.x, pY = player.y - camera.y; ctx.fillStyle = player.color; ctx.beginPath(); ctx.arc(pX, pY, player.radius, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
+        let a = Math.atan2((mouse.y + camera.y) - player.y, (mouse.x + camera.x) - player.x); ctx.strokeStyle = "#00ffaa"; ctx.beginPath(); ctx.moveTo(pX, pY); ctx.lineTo(pX + Math.cos(a)*25, pY + Math.sin(a)*25); ctx.stroke();
+    }
+
+    if (isRadarActive) { document.getElementById("radarAlert").innerText = "📡 광역 전술 스캔 가동 중!"; } else { document.getElementById("radarAlert").innerText = ""; }
+    ctx.strokeStyle = "rgba(255, 0, 85, 0.6)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(zoneCenter.x - camera.x, zoneCenter.y - camera.y, zoneRadius, 0, Math.PI*2); ctx.stroke();
+    if (bots.length === 0 && !player.isDead) showResultModal(1);
+
+    const mm = 120; let mmX = canvas.width - mm - 20; let mmY = canvas.height - mm - 20; let s = mm / MAP_WIDTH;
+    ctx.fillStyle = "rgba(7, 10, 15, 0.85)"; ctx.fillRect(mmX, mmY, mm, mm); ctx.strokeStyle = "rgba(255, 0, 85, 0.75)"; ctx.beginPath(); ctx.arc(mmX + zoneCenter.x * s, mmY + zoneCenter.y * s, zoneRadius * s, 0, Math.PI * 2); ctx.stroke();
+    if (isRadarActive || (!player.isDead && player.upgrade === 'radar')) { ctx.fillStyle = "#ff3333"; bots.forEach(b => { ctx.beginPath(); ctx.arc(mmX + b.x * s, mmY + b.y * s, 2, 0, Math.PI * 2); ctx.fill(); }); }
+    if (!player.isDead) { ctx.fillStyle = "#00ff55"; ctx.fillRect(mmX + player.x * s - 1, mmY + player.y * s - 1, 3, 3); }
+
+    document.getElementById("hpText").innerText = Math.ceil(player.hp); document.getElementById("myHp").style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+    document.getElementById("killCount").innerText = myKills; document.getElementById("aliveCount").innerText = bots.length + (player.isDead ? 0 : 1);
+    document.getElementById("ammoText").innerText = player.reloadTimer > 0 ? "RELOADING" : `${player.ammo}/${player.maxAmmo}`;
+
+    if(gameActive) animationFrameId = requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>주인님을 위한 무한 테마 로테이션 피아노</title>
+    <style>
+        /* 기본 레이아웃 초기화 및 드래그 방지 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            height: 100vh;
+            overflow: hidden;
+            padding: 15px 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        header h1 {
+            font-size: 1.3rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+            transition: color 0.3s ease;
+        }
+
+        /* [신규] H키 안내 문구 스타일링 */
+        .theme-tip {
+            font-size: 0.85rem;
+            opacity: 0.8;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+
+        /* 오실로스코프 시각화 컨테이너 */
+        .visualizer-container {
+            width: 100%;
+            max-width: 950px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 240px;
+            background: radial-gradient(circle, #161b22 0%, #0d1117 100%);
+            border-radius: 12px;
+            border: 1px solid #30363d;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: border-color 0.3s ease;
+        }
+
+        /* 건반 뭉치를 감싸는 가로 스크롤 컨테이너 */
+        .keyboard-container {
+            width: 100%;
+            max-width: 950px;
+            background-color: #161b22;
+            padding: 20px 8px;
+            border-radius: 16px;
+            border: 1px solid #30363d;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;
+            transition: border-color 0.3s ease;
+        }
+
+        /* 건반들이 실제로 배치되는 상대 좌표 기단부 */
+        .keyboard {
+            display: flex;
+            position: relative;
+            min-width: 900px;
+            height: 190px;
+            margin: 0 auto;
+        }
+
+        /* 건반 공통 기본 스타일 */
+        .key {
+            cursor: pointer;
+            border: 1px solid #0d1117;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+            transition: background 0.15s ease, transform 0.05s ease;
+        }
+
+        .key.white {
+            flex: 1;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .key.black {
+            position: absolute;
+            height: 60%;
+            width: 3.0%;
+            z-index: 2;
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* ==========================================================================
+           🎨 4단 테마 변화 시스템 (안내 문구 색상 동기화 추가)
+           ========================================================================== */
+
+        /* [테마 0] 모던 일렉트릭 블루 (기본 상태) */
+        body.theme-0 header h1 { color: #58a6ff; }
+        body.theme-0 .theme-tip { color: #58a6ff; text-shadow: 0 0 4px rgba(88, 166, 255, 0.4); }
+        body.theme-0 canvas, body.theme-0 .keyboard-container { border-color: #30363d; }
+        body.theme-0 .key.white { background: linear-gradient(to bottom, #ffffff 0%, #e5e5e5 100%); }
+        body.theme-0 .key.white.active { background: linear-gradient(to bottom, #e0e0e0 0%, #58a6ff 100%); transform: translateY(2px); }
+        body.theme-0 .key.black { background: linear-gradient(to bottom, #333333 0%, #000000 100%); }
+        body.theme-0 .key.black.active { background: linear-gradient(to bottom, #000000 0%, #1f6feb 100%); transform: translateY(2px); }
+
+        /* [테마 1] 네온 네오 핑크 */
+        body.theme-1 header h1 { color: #ff79c6; }
+        body.theme-1 .theme-tip { color: #ff79c6; text-shadow: 0 0 4px rgba(255, 121, 198, 0.4); }
+        body.theme-1 canvas, body.theme-1 .keyboard-container { border-color: #ff79c6; }
+        body.theme-1 .key.white { background: linear-gradient(to bottom, #fff0f5 0%, #ffd1dc 100%); }
+        body.theme-1 .key.white.active { background: linear-gradient(to bottom, #ffd1dc 0%, #ff79c6 100%); transform: translateY(2px); }
+        body.theme-1 .key.black { background: linear-gradient(to bottom, #4c2840 0%, #200515 100%); }
+        body.theme-1 .key.black.active { background: linear-gradient(to bottom, #200515 0%, #bd93f9 100%); transform: translateY(2px); }
+
+        /* [테마 2] 에메랄드 사이버 그린 */
+        body.theme-2 header h1 { color: #50fa7b; }
+        body.theme-2 .theme-tip { color: #50fa7b; text-shadow: 0 0 4px rgba(80, 250, 123, 0.4); }
+        body.theme-2 canvas, body.theme-2 .keyboard-container { border-color: #50fa7b; }
+        body.theme-2 .key.white { background: linear-gradient(to bottom, #f0fff0 0%, #c1fcd1 100%); }
+        body.theme-2 .key.white.active { background: linear-gradient(to bottom, #c1fcd1 0%, #50fa7b 100%); transform: translateY(2px); }
+        body.theme-2 .key.black { background: linear-gradient(to bottom, #1e3a24 0%, #051409 100%); }
+        body.theme-2 .key.black.active { background: linear-gradient(to bottom, #051409 0%, #8be9fd 100%); transform: translateY(2px); }
+
+        /* [테마 3] 볼케이노 오렌지 */
+        body.theme-3 header h1 { color: #ffb86c; }
+        body.theme-3 .theme-tip { color: #ffb86c; text-shadow: 0 0 4px rgba(255, 184, 108, 0.4); }
+        body.theme-3 canvas, body.theme-3 .keyboard-container { border-color: #ffb86c; }
+        body.theme-3 .key.white { background: linear-gradient(to bottom, #fff5ee 0%, #ffdab9 100%); }
+        body.theme-3 .key.white.active { background: linear-gradient(to bottom, #ffdab9 0%, #ffb86c 100%); transform: translateY(2px); }
+        body.theme-3 .key.black { background: linear-gradient(to bottom, #4a2f13 0%, #170b00 100%); }
+        body.theme-3 .key.black.active { background: linear-gradient(to bottom, #170b00 0%, #ff5555 100%); transform: translateY(2px); }
+    </style>
+</head>
+<body class="theme-0">
+
+    <header>
+        <h1 id="main-title">Modern Blue Piano</h1>
+        <div class="theme-tip">💡 PC에서 H키를 누르면 테마가 바뀝니다</div>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="keyboard-container">
+        <div class="keyboard" id="keyboard"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 전역 오디오 시스템 및 주파수 맵 데이터
+        // ==========================================
+        let audioCtx = null;
+        let analyser = null;
+        
+        let currentThemeIndex = 0; 
+        const totalThemes = 4;     
+        
+        const THEME_CONFIGS = {
+            0: { title: "Modern Blue Piano", activeColor: "#58a6ff", idleColor: "#1f6feb" },
+            1: { title: "Cyber Pink Piano", activeColor: "#ff79c6", idleColor: "#6272a4" },
+            2: { title: "Emerald Green Piano", activeColor: "#50fa7b", idleColor: "#282a36" },
+            3: { title: "Volcano Orange Piano", activeColor: "#ffb86c", idleColor: "#ff5555" }
+        };
+        
+        const NOTE_DATA = [
+            // --- 3옥타브 (낮은 음역) ---
+            { note: 'C3', freq: 130.81, type: 'white' }, { note: 'C#3', freq: 138.59, type: 'black' },
+            { note: 'D3', freq: 146.83, type: 'white' }, { note: 'D#3', freq: 154.55, type: 'black' },
+            { note: 'E3', freq: 164.81, type: 'white' }, { note: 'F3', freq: 174.61, type: 'white' },
+            { note: 'F#3', freq: 185.00, type: 'black' }, { note: 'G3', freq: 196.00, type: 'white' },
+            { note: 'G#3', freq: 207.65, type: 'black' }, { note: 'A3', freq: 220.00, type: 'white' },
+            { note: 'A#3', freq: 233.08, type: 'black' }, { note: 'B3', freq: 246.94, type: 'white' },
+            // --- 4옥타브 (중간 음역) ---
+            { note: 'C4', freq: 261.63, type: 'white' }, { note: 'C#4', freq: 277.18, type: 'black' },
+            { note: 'D4', freq: 293.66, type: 'white' }, { note: 'D#4', freq: 311.13, type: 'black' },
+            { note: 'E4', freq: 329.63, type: 'white' }, { note: 'F4', freq: 349.23, type: 'white' },
+            { note: 'F#4', freq: 369.99, type: 'black' }, { note: 'G4', freq: 392.00, type: 'white' },
+            { note: 'G#4', freq: 415.30, type: 'black' }, { note: 'A4', freq: 440.00, type: 'white' },
+            { note: 'A#4', freq: 466.16, type: 'black' }, { note: 'B4', freq: 493.88, type: 'white' },
+            // --- 5옥타브 (높은 음역) ---
+            { note: 'C5', freq: 523.25, type: 'white' }, { note: 'C#5', freq: 554.37, type: 'black' },
+            { note: 'D5', freq: 587.33, type: 'white' }, { note: 'D#5', freq: 622.25, type: 'black' },
+            { note: 'E5', freq: 659.25, type: 'white' }, { note: 'F5', freq: 698.46, type: 'white' },
+            { note: 'F#5', freq: 739.99, type: 'black' }, { note: 'G5', freq: 783.99, type: 'white' },
+            { note: 'G#5', freq: 830.61, type: 'black' }, { note: 'A5', freq: 880.00, type: 'white' },
+            { note: 'A#5', freq: 932.33, type: 'black' }, { note: 'B5', freq: 987.77, type: 'white' }
+        ];
+
+        const activeNodes = new Map();
+
+        // ==========================================
+        // 2. 오디오 컨텍스트 하드웨어 가동
+        // ==========================================
+        function initAudio() {
+            if (audioCtx) return;
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.connect(audioCtx.destination);
+            
+            drawOscilloscope();
+        }
+
+        // ==========================================
+        // 3. 건반 좌표 빌드 엔진
+        // ==========================================
+        const keyboard = document.getElementById('keyboard');
+        
+        const whiteKeys = NOTE_DATA.filter(item => item.type === 'white');
+        const totalWhiteKeys = whiteKeys.length;
+        const whiteWidthPercent = 100 / totalWhiteKeys;
+        const whiteKeyPositions = {};
+
+        whiteKeys.forEach((keyInfo, index) => {
+            const keyEl = document.createElement('div');
+            keyEl.className = 'key white';
+            keyEl.dataset.note = keyInfo.note;
+            
+            const currentLeft = index * whiteWidthPercent;
+            whiteKeyPositions[keyInfo.note] = currentLeft;
+            
+            keyboard.appendChild(keyEl);
+            bindPointerEvents(keyEl, keyInfo.note, keyInfo.freq);
+        });
+
+        const blackKeys = NOTE_DATA.filter(item => item.type === 'black');
+        blackKeys.forEach((keyInfo) => {
+            const keyEl = document.createElement('div');
+            keyEl.className = 'key black';
+            keyEl.dataset.note = keyInfo.note;
+
+            const baseNoteName = keyInfo.note.replace('#', '');
+            const baseLeft = whiteKeyPositions[baseNoteName];
+            
+            if (baseLeft !== undefined) {
+                const blackLeft = baseLeft + whiteWidthPercent - (3.0 / 2);
+                keyEl.style.left = `${blackLeft}%`;
+            }
+
+            keyboard.appendChild(keyEl);
+            bindPointerEvents(keyEl, keyInfo.note, keyInfo.freq);
+        });
+
+        // ==========================================
+        // 4. 모바일 터치 / 마우스 이벤트 매핑
+        // ==========================================
+        function bindPointerEvents(element, note, frequency) {
+            element.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                initAudio();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                element.classList.add('active');
+                startTone(note, frequency);
+                element.setPointerCapture(e.pointerId);
+            });
+
+            element.addEventListener('pointerup', (e) => {
+                element.classList.remove('active');
+                stopTone(note);
+            });
+
+            element.addEventListener('pointercancel', (e) => {
+                element.classList.remove('active');
+                stopTone(note);
+            });
+        }
+
+        // ==========================================
+        // 5. H키 토글 및 테마 순환 스위치
+        // ==========================================
+        let isHKeyDown = false;
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'h' || e.key === 'H') {
+                if (!isHKeyDown) {
+                    isHKeyDown = true;
+                    rotateTheme(); 
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'h' || e.key === 'H') {
+                isHKeyDown = false; 
+            }
+        });
+
+        function rotateTheme() {
+            document.body.classList.remove(`theme-${currentThemeIndex}`);
+            currentThemeIndex = (currentThemeIndex + 1) % totalThemes;
+            document.body.classList.add(`theme-${currentThemeIndex}`);
+            
+            const config = THEME_CONFIGS[currentThemeIndex];
+            document.getElementById('main-title').innerText = config.title;
+        }
+
+        // ==========================================
+        // 6. 음향 발진 합성 장치 (Synth)
+        // ==========================================
+        function startTone(note, frequency) {
+            if (!audioCtx) return;
+
+            if (activeNodes.has(note)) {
+                stopTone(note);
+            }
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.015);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+
+            oscillator.start();
+            activeNodes.set(note, { oscillator, gainNode });
+        }
+
+        function stopTone(note) {
+            if (!activeNodes.has(note)) return;
+
+            const { oscillator, gainNode } = activeNodes.get(note);
+            activeNodes.delete(note);
+
+            try {
+                const releaseTime = 0.12;
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + releaseTime);
+                oscillator.stop(audioCtx.currentTime + releaseTime);
+            } catch (e) {}
+        }
+
+        // ==========================================
+        // 7. 실시간 오실로스코프 (테마 연동)
+        // ==========================================
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.parentElement.clientHeight * window.devicePixelRatio;
+            canvasCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawOscilloscope() {
+            requestAnimationFrame(drawOscilloscope);
+
+            if (!analyser) return;
+
+            const width = canvas.width / window.devicePixelRatio;
+            const height = canvas.height / window.devicePixelRatio;
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = 'rgba(13, 17, 23, 0.25)';
+            canvasCtx.fillRect(0, 0, width, height);
+
+            canvasCtx.strokeStyle = 'rgba(48, 54, 61, 0.12)';
+            canvasCtx.lineWidth = 1;
+            for (let i = 0; i < height; i += 30) {
+                canvasCtx.beginPath(); canvasCtx.moveTo(0, i); canvasCtx.lineTo(width, i); canvasCtx.stroke();
+            }
+            for (let i = 0; i < width; i += 30) {
+                canvasCtx.beginPath(); canvasCtx.moveTo(i, 0); canvasCtx.lineTo(i, height); canvasCtx.stroke();
+            }
+
+            canvasCtx.lineWidth = 3;
+            
+            const currentCfg = THEME_CONFIGS[currentThemeIndex];
+            const hasActiveNotes = activeNodes.size > 0;
+            
+            canvasCtx.strokeStyle = hasActiveNotes ? currentCfg.activeColor : currentCfg.idleColor;
+            canvasCtx.shadowBlur = hasActiveNotes ? 15 : 0;
+            canvasCtx.shadowColor = currentCfg.activeColor;
+            
+            canvasCtx.beginPath();
+
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(width, height / 2);
+            canvasCtx.stroke();
+            canvasCtx.shadowBlur = 0;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3옥타브 풀 피아노 & 오실로스코프</title>
+    <style>
+        body { background: #333; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; }
+        #canvas { background: #000; border: 2px solid #00ff00; margin-top: 20px; width: 800px; height: 150px; }
+        .piano-container { display: flex; position: relative; height: 200px; padding: 20px; background: #222; border-radius: 10px; margin-top: 20px; }
+        .white-key { width: 40px; height: 180px; background: white; border: 1px solid #ccc; border-radius: 0 0 5px 5px; cursor: pointer; }
+        .white-key:active { background: #eee; }
+        .black-key { width: 30px; height: 120px; background: black; border-radius: 0 0 3px 3px; cursor: pointer; position: absolute; z-index: 2; margin-left: -15px; }
+        .black-key:active { background: #444; }
+    </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div class="piano-container" id="piano"></div>
+
+<script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const piano = document.getElementById('piano');
+    
+    // 시각화 설정
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    // 캔버스 그리기 함수
+    function draw() {
+        requestAnimationFrame(draw);
+        analyser.getByteTimeDomainData(dataArray);
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#00ff00';
+        ctx.beginPath();
+        let sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            let v = dataArray[i] / 128.0;
+            let y = v * canvas.height / 2;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            x += sliceWidth;
+        }
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+    }
+    draw();
+
+    // 피아노 로직
+    const pattern = [
+        { note: 'C', type: 'white' }, { note: 'C#', type: 'black' }, { note: 'D', type: 'white' },
+        { note: 'D#', type: 'black' }, { note: 'E', type: 'white' }, { note: 'F', type: 'white' },
+        { note: 'F#', type: 'black' }, { note: 'G', type: 'white' }, { note: 'G#', type: 'black' },
+        { note: 'A', type: 'white' }, { note: 'A#', type: 'black' }, { note: 'B', type: 'white' }
+    ];
+
+    let whiteKeyCount = 0;
+    for (let octave = 0; octave < 3; octave++) {
+        pattern.forEach((keyData, index) => {
+            const key = document.createElement('div');
+            const freq = 261.63 * Math.pow(2, (octave * 12 + index) / 12);
+            key.className = keyData.type === 'white' ? 'white-key' : 'black-key';
+            if (keyData.type === 'black') key.style.left = `${(whiteKeyCount * 40) - 15}px`;
+            else whiteKeyCount++;
+
+            key.onmousedown = () => playTone(freq);
+            piano.appendChild(key);
+        });
+    }
+
+    function playTone(freq) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        
+        // 중요: 오디오를 스피커로 보내기 전에 Analyser에 연결
+        osc.connect(analyser); 
+        analyser.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+</script>
+</body>
+</html>

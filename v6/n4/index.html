@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>인터랙티브 웹 악기 & 주파수 시각화</title>
+    <style>
+        /* 기본 스타일 초기화 및 다크 모드 테마 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none; /* 드래그 방지 */
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            height: 100vh;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: #00e676;
+            margin-bottom: 5px;
+        }
+
+        p {
+            font-size: 0.9rem;
+            color: #aaaaaa;
+        }
+
+        /* 캔버스 (오실로스코프) 스타일 */
+        .visualizer-container {
+            width: 100%;
+            flex-grow: 1;
+            max-height: 40%;
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 2px solid #333;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 피아노 건반 스타일 */
+        .piano-container {
+            width: 100%;
+            max-width: 800px;
+            height: 250px;
+            display: flex;
+            position: relative;
+            background-color: #000;
+            padding: 3px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* 백건 (흰 건반) */
+        .key {
+            flex: 1;
+            background: linear-gradient(to bottom, #ededed 0%, #ffffff 100%);
+            border-right: 1px solid #ccc;
+            border-bottom: 1px solid #bbb;
+            border-radius: 0 0 5px 5px;
+            cursor: pointer;
+            position: relative;
+            z-index: 1;
+            transition: background 0.05s ease;
+        }
+
+        .key:last-child {
+            border-right: none;
+        }
+
+        /* 흑건 (검은 건반) 위치 조정을 위한 래퍼 */
+        .black-key-wrapper {
+            position: absolute;
+            width: 0;
+            height: 0;
+            top: 0;
+            left: 0;
+            z-index: 2;
+        }
+
+        /* 흑건 스타일 */
+        .key.black {
+            position: absolute;
+            background: linear-gradient(to bottom, #111 0%, #333 100%);
+            border: 1px solid #000;
+            border-radius: 0 0 3px 3px;
+            z-index: 2;
+            /* 자바스크립트에서 정확한 left 위치 계산 예정 */
+        }
+
+        /* 건반이 눌렸을 때의 효과 */
+        .key.active {
+            background: #00e676 !important;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+        }
+        
+        .key.black.active {
+            background: #00b359 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Web Audio 오실로스코프 피아노</h1>
+        <p>화면의 건반을 누르거나 터치해보세요.</p>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="piano-container" id="piano"></div>
+
+    <script>
+        // ==========================================
+        // 1. 데이터 정의 (피아노 건반 및 주파수 매핑)
+        // ==========================================
+        // C4(도)부터 C5(도)까지의 1옥타브 + 알파 구성
+        const notes = [
+            { note: 'C4',  freq: 261.63, isBlack: false },
+            { note: 'C#4', freq: 277.18, isBlack: true },
+            { note: 'D4',  freq: 293.66, isBlack: false },
+            { note: 'D#4', freq: 311.13, isBlack: true },
+            { note: 'E4',  freq: 329.63, isBlack: false },
+            { note: 'F4',  freq: 349.23, isBlack: false },
+            { note: 'F#4', freq: 369.99, isBlack: true },
+            { note: 'G4',  freq: 392.00, isBlack: false },
+            { note: 'G#4', freq: 415.30, isBlack: true },
+            { note: 'A4',  freq: 440.00, isBlack: false },
+            { note: 'A#4', freq: 466.16, isBlack: true },
+            { note: 'B4',  freq: 493.88, isBlack: false },
+            { note: 'C5',  freq: 523.25, isBlack: false }
+        ];
+
+        // ==========================================
+        // 2. 초기화 및 오디오 컨텍스트 설정
+        // ==========================================
+        let audioCtx = null;
+        let analyser = null;
+        
+        // 현재 활성화된(소리나는) 오실레이터 노드들을 저장하는 객체
+        const activeNodes = {};
+
+        // 사용자의 첫 상호작용 시 오디오 컨텍스트를 활성화 (브라우저 보안 정책 대응)
+        function initAudio() {
+            if (audioCtx) return; // 이미 초기화되었다면 리턴
+            
+            // 모바일 환경 지연 시간을 최소화하기 위해 latencyHint 설정
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext({ latencyHint: 'interactive' });
+            
+            // 실시간 분석을 위한 AnalyserNode 생성
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048; // 부드러운 파형을 위해 샘플 사이즈 설정
+            analyser.connect(audioCtx.destination);
+            
+            // 시각화 애니메이션 시작
+            drawVisualizer();
+        }
+
+        // ==========================================
+        // 3. 건반 UI 동적 생성 및 이벤트 바인딩
+        // ==========================================
+        const piano = document.getElementById('piano');
+        
+        // 백건과 흑건을 구분하여 돔 생성
+        let whiteKeyCount = notes.filter(n => !n.isBlack).length;
+        let currentWhiteKeyIndex = 0;
+
+        notes.forEach((noteData) => {
+            const keyDiv = document.createElement('div');
+            keyDiv.classList.add('key');
+            keyDiv.dataset.note = noteData.note;
+            keyDiv.dataset.freq = noteData.freq;
+
+            if (noteData.isBlack) {
+                keyDiv.classList.add('black');
+                // 흑건의 위치를 백건 사이에 정확히 배치하기 위한 계산
+                // 백건 너비 비율 기준으로 배치함
+                const leftPercent = (currentWhiteKeyIndex / whiteKeyCount) * 100;
+                keyDiv.style.left = `calc(${leftPercent}% - 3%)`; 
+                keyDiv.style.width = `6%`;
+                keyDiv.style.height = `60%`;
+            } else {
+                currentWhiteKeyIndex++;
+            }
+
+            // 모바일 최적화 이벤트 바인딩 (touchstart, touchend)
+            // preventDefault()로 마우스 이벤트와의 중복 발생 및 모바일 터치 스크롤 지연 방지
+            keyDiv.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                initAudio();
+                startNote(noteData.note, noteData.freq);
+                keyDiv.classList.add('active');
+            }, { passive: false });
+
+            keyDiv.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                stopNote(noteData.note);
+                keyDiv.classList.remove('active');
+            }, { passive: false });
+
+            // 데스크톱 마우스 이벤트 대응
+            keyDiv.addEventListener('mousedown', (e) => {
+                initAudio();
+                startNote(noteData.note, noteData.freq);
+                keyDiv.classList.add('active');
+            });
+
+            keyDiv.addEventListener('mouseup', () => {
+                stopNote(noteData.note);
+                keyDiv.classList.remove('active');
+            });
+
+            keyDiv.addEventListener('mouseleave', () => {
+                stopNote(noteData.note);
+                keyDiv.classList.remove('active');
+            });
+
+            piano.appendChild(keyDiv);
+        });
+
+        // ==========================================
+        // 4. 사운드 재생 엔진 (Web Audio API)
+        // ==========================================
+        function startNote(note, frequency) {
+            if (!audioCtx) return;
+            
+            // 이미 재생 중인 노트라면 중복 생성 방지하기 위해 중지
+            if (activeNodes[note]) {
+                stopNote(note);
+            }
+
+            // 오실레이터(소리 발생기) 및 게인(볼륨 조절기) 노드 생성
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine'; // 부드러운 사인파 선택
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            // '팝(Pop)' 노이즈 방지를 위해 Envelope(엔벨로프) 처리 적용
+            // 소리가 켜질 때 아주 잠깐(0.01초) 동안 부드럽게 커지도록 설정
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.01); 
+
+            // 노드 연결: 오실레이터 -> 볼륨 -> 분석기
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+
+            oscillator.start();
+
+            // 추후 중지를 위해 객체에 인스턴스 저장
+            activeNodes[note] = { oscillator, gainNode };
+        }
+
+        function stopNote(note) {
+            const nodeGroup = activeNodes[note];
+            if (!nodeGroup) return;
+
+            const { oscillator, gainNode } = nodeGroup;
+            
+            // 소리가 꺼질 때 뚝 끊기며 발생하는 소음을 막기 위해 부드럽게 줄여줌 (0.05초 서스테인/릴리즈)
+            try {
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+                oscillator.stop(audioCtx.currentTime + 0.05);
+            } catch(e) {
+                // 이미 꺼진 노드에 대한 예외 처리
+            }
+
+            // 데이터 클린업
+            delete activeNodes[note];
+        }
+
+        // ==========================================
+        // 5. 실시간 오실로스코프 시각화 (Canvas API)
+        // ==========================================
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+
+        // 리사이즈 대응 고해상도 처리
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.parentElement.clientHeight * window.devicePixelRatio;
+            canvasCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawVisualizer() {
+            // 매 프레임마다 화면 갱신 요청
+            requestAnimationFrame(drawVisualizer);
+            if (!analyser) return;
+
+            const width = canvas.width / window.devicePixelRatio;
+            const height = canvas.height / window.devicePixelRatio;
+
+            // 시간 도메인 데이터(파형) 추출을 위한 버퍼 세팅
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            // 이전 잔상을 살짝 남기며 배경을 지워 잔상 효과(Motion Blur) 구현
+            canvasCtx.fillStyle = 'rgba(26, 26, 26, 0.2)';
+            canvasCtx.fillRect(0, 0, width, height);
+
+            // 현재 소리나고 있는 최고 주파수를 계산하여 선 색상 변경에 활용
+            let currentFreq = 0;
+            const currentNotes = Object.keys(activeNodes);
+            if (currentNotes.length > 0) {
+                // 켜져 있는 노트 중 가장 마지막 노트를 기준으로 주파수 색상 산출
+                const lastNote = currentNotes[currentNotes.length - 1];
+                const activeKey = notes.find(n => n.note === lastNote);
+                if (activeKey) currentFreq = activeKey.freq;
+            }
+
+            // 주파수 값(261Hz ~ 523Hz)을 활용하여 무지개 스펙트럼(HSL) 색상 값 도출
+            // 최저음은 푸른색 계열, 최고음은 붉은색 계열로 매핑
+            let hue = 200; // 기본 색상 (하늘색)
+            if (currentFreq > 0) {
+                const percent = (currentFreq - 261.63) / (523.25 - 261.63);
+                hue = 200 - (percent * 150); // 주파수가 높을수록 초록->노랑->빨강 순으로 변경
+            }
+
+            // 라인 스타일 지정
+            canvasCtx.lineWidth = 3;
+            canvasCtx.strokeStyle = currentFreq > 0 ? `hsl(${hue}, 100%, 50%)` : '#555555';
+            canvasCtx.beginPath();
+
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            // 오실로스코프 파형 그리기 (사인파 연출)
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0; // 값의 정규화 (0.0 ~ 2.0)
+                const y = (v * height) / 2;     // 중앙선을 기준으로 위아래로 진동
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(width, height / 2);
+            canvasCtx.stroke();
+        }
+    </script>
+</body>
+</html>

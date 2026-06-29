@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Interactive Polyphonic Instrument & Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-color: #1e293b;
+            --accent-color: #38bdf8;
+            --white-key: #f8fafc;
+            --white-key-active: #cbd5e1;
+            --black-key: #020617;
+            --black-key-active: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            overflow: hidden;
+            color: #fff;
+            padding: 10px;
+        }
+
+        header {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.05em;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
+
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+
+        #start-button {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+            transition: transform 0.1s ease;
+        }
+
+        #start-button:active {
+            transform: scale(0.95);
+        }
+
+        .visualizer-container {
+            width: 100%;
+            max-width: 800px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            margin: 10px 0;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 250px;
+            border-radius: 12px;
+            background: rgba(30, 41, 59, 0.5);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+        }
+
+        /* Keyboard Layout */
+        .keyboard-container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--panel-color);
+            padding: 15px 10px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+        }
+
+        .piano {
+            display: flex;
+            position: relative;
+            width: 100%;
+            height: 220px;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .key {
+            position: relative;
+            flex: 1;
+            height: 100%;
+            cursor: pointer;
+            transition: background-color 0.05s ease;
+        }
+
+        .key.white {
+            background: var(--white-key);
+            border-right: 1px solid #cbd5e1;
+            z-index: 1;
+        }
+
+        .key.white:last-child {
+            border-right: none;
+        }
+
+        .key.white.active {
+            background: var(--white-key-active);
+        }
+
+        .key.black {
+            background: var(--black-key);
+            height: 60%;
+            width: 6%;
+            margin-left: -3%;
+            margin-right: -3%;
+            z-index: 2;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .key.black.active {
+            background: var(--black-key-active);
+        }
+
+        /* Mobile Optimization overrides */
+        @media (max-height: 500px) and (orientation: landscape) {
+            body {
+                flex-direction: row;
+                padding: 5px;
+            }
+            header { display: none; }
+            .visualizer-container {
+                width: 40%;
+                height: 100%;
+            }
+            canvas { max-height: 100%; }
+            .keyboard-container {
+                width: 58%;
+                margin-bottom: 0;
+                padding: 5px;
+            }
+            .piano { height: 160px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay">
+        <button id="start-button">Tap to Initialize Audio</button>
+    </div>
+
+    <header>
+        <h1>Web Audio Oscilloscope</h1>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="keyboard-container">
+        <div class="piano" id="piano">
+            <div class="key white" data-note="C4"></div>
+            <div class="key black" data-note="C#4"></div>
+            <div class="key white" data-note="D4"></div>
+            <div class="key black" data-note="D#4"></div>
+            <div class="key white" data-note="E4"></div>
+            <div class="key white" data-note="F4"></div>
+            <div class="key black" data-note="F#4"></div>
+            <div class="key white" data-note="G4"></div>
+            <div class="key black" data-note="G#4"></div>
+            <div class="key white" data-note="A4"></div>
+            <div class="key black" data-note="A#4"></div>
+            <div class="key white" data-note="B4"></div>
+            <div class="key white" data-note="C5"></div>
+            <div class="key black" data-note="C#5"></div>
+            <div class="key white" data-note="D5"></div>
+            <div class="key black" data-note="D#5"></div>
+            <div class="key white" data-note="E5"></div>
+        </div>
+    </div>
+
+    <script>
+        // Note to Frequency Mapping
+        const NOTE_FREQS = {
+            "C4": 261.63, "C#4": 277.18, "D4": 293.66, "D#4": 311.13, "E4": 329.63,
+            "F4": 349.23, "F#4": 369.99, "G4": 392.00, "G#4": 415.30, "A4": 440.00,
+            "A#4": 466.16, "B4": 493.88, "C5": 523.25, "C#5": 554.37, "D5": 587.33,
+            "D#5": 622.25, "E5": 659.25
+        };
+
+        // Engine State
+        let audioCtx = null;
+        let mainAnalysor = null;
+        const activeNodes = new Map(); // Keep track of playing notes for polyphony
+
+        // Canvas UI setup
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // Audio initialization (Bypasses mobile web auto-play block restrictions)
+        document.getElementById('start-button').addEventListener('click', () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mainAnalysor = audioCtx.createAnalyser();
+            mainAnalysor.fftSize = 2048;
+            mainAnalysor.connect(audioCtx.destination);
+            
+            document.getElementById('start-overlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('start-overlay').remove(), 300);
+            
+            resizeCanvas();
+            drawOscilloscope();
+        });
+
+        // Core Synthesizer Sound Logic
+        function startNote(note) {
+            if (!audioCtx || activeNodes.has(note)) return;
+
+            const freq = NOTE_FREQS[note];
+            if (!freq) return;
+
+            // Setup Nodes
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle'; // Smooth, organic warm sound
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            // Anti-pop envelope (Fast attack)
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.01); 
+
+            osc.connect(gainNode);
+            gainNode.connect(mainAnalysor);
+            
+            osc.start();
+
+            // Track active note objects
+            activeNodes.set(note, { osc, gainNode });
+            
+            // Visual Update
+            const keyEl = document.querySelector(`[data-note="${note}"]`);
+            if (keyEl) keyEl.classList.add('active');
+        }
+
+        function stopNote(note) {
+            if (!activeNodes.has(note)) return;
+
+            const { osc, gainNode } = activeNodes.get(note);
+            activeNodes.delete(note);
+
+            // Anti-pop envelope (Fast release)
+            try {
+                gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch(e) {
+                osc.stop();
+            }
+
+            // Visual Update
+            const keyEl = document.querySelector(`[data-note="${note}"]`);
+            if (keyEl) keyEl.classList.remove('active');
+        }
+
+        // Low-latency unified Event Handling (Touch + Mouse)
+        const piano = document.getElementById('piano');
+        const activeTouches = new Map(); // Track pointer ID to note mappings
+
+        function getNoteFromSubElement(element) {
+            if (!element) return null;
+            return element.classList.contains('key') ? element.getAttribute('data-note') : null;
+        }
+
+        // Pointer Down (Mouse click or screen touch)
+        piano.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const note = getNoteFromSubElement(e.target);
+            if (note) {
+                piano.setPointerCapture(e.pointerId);
+                activeTouches.set(e.pointerId, note);
+                startNote(note);
+            }
+        });
+
+        // Pointer Move (Handles dragging fingers across keys seamlessly)
+        piano.addEventListener('pointermove', (e) => {
+            if (!piano.hasPointerCapture(e.pointerId)) return;
+            e.preventDefault();
+            
+            const currentTarget = document.elementFromPoint(e.clientX, e.clientY);
+            const currentNote = getNoteFromSubElement(currentTarget);
+            const previousNote = activeTouches.get(e.pointerId);
+
+            if (currentNote && currentNote !== previousNote) {
+                if (previousNote) stopNote(previousNote);
+                activeTouches.set(e.pointerId, currentNote);
+                startNote(currentNote);
+            }
+        });
+
+        // Pointer Up / Cancel
+        const endPointerHandler = (e) => {
+            e.preventDefault();
+            const note = activeTouches.get(e.pointerId);
+            if (note) {
+                stopNote(note);
+                activeTouches.delete(e.pointerId);
+            }
+            try { piano.releasePointerCapture(e.pointerId); } catch(err) {}
+        };
+
+        piano.addEventListener('pointerup', endPointerHandler);
+        piano.addEventListener('pointercancel', endPointerHandler);
+
+        // Real-time Smooth Oscilloscope Renderer
+        function drawOscilloscope() {
+            requestAnimationFrame(drawOscilloscope);
+
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            ctx.clearRect(0, 0, width, height);
+
+            const bufferLength = mainAnalysor.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            mainAnalysor.getByteTimeDomainData(dataArray);
+
+            // Subtle background grid lines for aesthetic depth
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+            ctx.lineWidth = 1;
+            for(let i = 1; i < 4; i++) {
+                let y = (height / 4) * i;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            }
+
+            // Zero-crossing trigger simulation to stabilize moving audio wave frame
+            let triggerOffset = 0;
+            for (let i = 0; i < bufferLength / 2; i++) {
+                if (dataArray[i] < 128 && dataArray[i+1] >= 128) {
+                    triggerOffset = i;
+                    break;
+                }
+            }
+
+            // Drawing the wave path
+            ctx.beginPath();
+            ctx.lineWidth = 3 * window.devicePixelRatio;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#38bdf8';
+
+            const sliceWidth = width / (bufferLength / 2); // Show compressed window frame
+            let x = 0;
+
+            for (let i = 0; i < bufferLength / 2; i++) {
+                // Read from stabilized index offset
+                const dataIndex = triggerOffset + i < bufferLength ? triggerOffset + i : i;
+                const v = dataArray[dataIndex] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset blur for optimal performance loops
+        }
+    </script>
+</body>
+</html>

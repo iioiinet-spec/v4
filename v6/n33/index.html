@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3옥타브 다건반 인터랙티브 악기</title>
+    <style>
+        :root {
+            --bg-color: #070913;
+            --white-key: #f8f9fa;
+            --white-key-active: #cbd5e1;
+            --black-key: #11141a;
+            --black-key-active: #2c323f;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background: 
+                linear-gradient(rgba(10, 15, 30, 0.85), rgba(7, 9, 19, 0.95)),
+                radial-gradient(circle at 50% 30%, #1a2342 0%, var(--bg-color) 70%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        header {
+            text-align: center;
+            padding: 15px 10px 5px 10px;
+            width: 100%;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(45deg, #00f2fe, #4facfe, #9b51e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .guide-text {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 3px;
+        }
+
+        .visualizer-container {
+            flex: 1;
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 5px 20px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 150px;
+            border-radius: 12px;
+            background: rgba(5, 8, 18, 0.6);
+            border: 1px solid rgba(79, 172, 254, 0.15);
+        }
+
+        /* 🎹 많은 건반을 수용하기 위한 가로 확장형 컨테이너 */
+        .keyboard-container {
+            width: 100%;
+            max-width: 100%;
+            padding: 10px 5px 30px 5px;
+            display: flex;
+            justify-content: center;
+            overflow-x: auto; /* 화면이 아주 작을 경우 스크롤 허용 */
+        }
+
+        .keyboard {
+            display: flex;
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            height: 280px; /* 많은 건반에 최적화된 높이 */
+            background: #05060b;
+            padding: 6px 6px 10px 6px;
+            border-radius: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9);
+        }
+
+        .key {
+            position: relative;
+            cursor: pointer;
+            touch-action: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 15px;
+            font-size: 0.85rem;
+            font-weight: 800;
+        }
+
+        /* 흰 건반: 총 22개 균등 분할 */
+        .key.white {
+            flex: 1;
+            background: linear-gradient(to bottom, #ffffff 0%, #f1f5f9 85%, var(--white-key) 100%);
+            border-right: 1px solid rgba(0, 0, 0, 0.15);
+            border-bottom: 8px solid #cbd5e1;
+            border-radius: 0 0 6px 6px;
+            height: 100%;
+            z-index: 1;
+            color: #475569;
+            box-shadow: inset 0 4px 0 rgba(255,255,255,0.9);
+        }
+
+        .key.white:last-child {
+            border-right: none;
+        }
+
+        .key.white.active {
+            background: linear-gradient(to bottom, #94a3b8 0%, var(--white-key-active) 100%);
+            border-bottom-width: 2px;
+            transform: translateY(6px);
+            box-shadow: inset 0 6px 10px rgba(0,0,0,0.3);
+            color: #000;
+        }
+
+        /* 검은 건반: 흰 건반 너비(100% / 22 = 4.545%) 기준으로 정밀 배치 */
+        .key.black {
+            background: linear-gradient(to bottom, #334155 0%, #1e293b 20%, var(--black-key) 100%);
+            border-bottom: 5px solid #000;
+            border-radius: 0 0 4px 4px;
+            height: 58%;
+            width: 2.8%; /* 많은 건반 비율에 맞춰 슬림화 */
+            position: absolute;
+            z-index: 2;
+            transform: translateX(-50%);
+            color: #cbd5e1;
+            padding-bottom: 10px;
+            font-size: 0.7rem;
+            box-shadow: 
+                -3px 4px 6px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+
+        .key.black.active {
+            background: var(--black-key-active);
+            border-bottom-width: 1px;
+            transform: translate(-50%, 4px);
+            box-shadow: -1px 2px 3px rgba(0,0,0,0.5);
+            color: #fff;
+        }
+
+        /* 모바일 대응 스케일링 */
+        @media (max-width: 768px) {
+            .keyboard { height: 200px; }
+            .key { font-size: 0.6rem; padding-bottom: 5px; }
+            .key.black { font-size: 0.5rem; padding-bottom: 3px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>3-Octave Wave Visualizer</h1>
+        <div class="guide-text">총 37개의 많은 건반으로 확장되었습니다! 컴퓨터 자판(숫자열, Q열, A열)으로 연주 가능합니다.</div>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="keyboard-container">
+        <div class="keyboard" id="keyboard">
+            </div>
+    </div>
+
+    <script>
+        // 🚀 대폭 확장된 3옥타브 데이터 (C3 ~ C6)
+        // 흰 건반 총 22개 기준 개별 검은건반 위치(left) 공식 계산: (흰건반_인덱스 / 22) * 100
+        const NOTE_DETAILS = [
+            // --- 1옥타브 (저음역: C3 ~ B3) ---
+            { note: "C3", freq: 130.81, type: "white", key: "1" },
+            { note: "C#3", freq: 138.59, type: "black", left: "4.55%", key: "q" },
+            { note: "D3", freq: 146.83, type: "white", key: "2" },
+            { note: "D#3", freq: 155.56, type: "black", left: "9.09%", key: "w" },
+            { note: "E3", freq: 164.81, type: "white", key: "3" },
+            { note: "F3", freq: 174.61, type: "white", key: "4" },
+            { note: "F#3", freq: 185.00, type: "black", left: "18.18%", key: "e" },
+            { note: "G3", freq: 196.00, type: "white", key: "5" },
+            { note: "G#3", freq: 207.65, type: "black", left: "22.73%", key: "r" },
+            { note: "A3", freq: 220.00, type: "white", key: "6" },
+            { note: "A#3", freq: 233.08, type: "black", left: "27.27%", key: "t" },
+            { note: "B3", freq: 246.94, type: "white", key: "7" },
+
+            // --- 2옥타브 (중음역: C4 ~ B4) ---
+            { note: "C4", freq: 261.63, type: "white", key: "a" },
+            { note: "C#4", freq: 277.18, type: "black", left: "36.36%", key: "s" },
+            { note: "D4", freq: 293.66, type: "white", key: "d" },
+            { note: "D#4", freq: 311.13, type: "black", left: "40.91%", key: "f" },
+            { note: "E4", freq: 329.63, type: "white", key: "g" },
+            { note: "F4", freq: 349.23, type: "white", key: "h" },
+            { note: "F#4", freq: 369.99, type: "black", left: "50.00%", key: "j" },
+            { note: "G4", freq: 392.00, type: "white", key: "k" },
+            { note: "G#4", freq: 415.30, type: "black", left: "54.55%", key: "l" },
+            { note: "A4", freq: 440.00, type: "white", key: ";" },
+            { note: "A#4", freq: 466.16, type: "black", left: "59.09%", key: "'" },
+            { note: "B4", freq: 493.88, type: "white", key: "z" },
+
+            // --- 3옥타브 (고음역: C5 ~ C6) ---
+            { note: "C5", freq: 523.25, type: "white", key: "x" }, 
+            { note: "C#5", freq: 554.37, type: "black", left: "68.18%", key: "c" },
+            { note: "D5", freq: 587.33, type: "white", key: "v" },
+            { note: "D#5", freq: 622.25, type: "black", left: "72.73%", key: "b" },
+            { note: "E5", freq: 659.25, type: "white", key: "n" },
+            { note: "F5", freq: 698.46, type: "white", key: "m" },
+            { note: "F#5", freq: 739.99, type: "black", left: "81.82%", key: "," },
+            { note: "G5", freq: 783.99, type: "white", key: "." },
+            { note: "G#5", freq: 830.61, type: "black", left: "86.36%", key: "/" },
+            { note: "A5", freq: 880.00, type: "white", key: "8" },
+            { note: "A#5", freq: 932.33, type: "black", left: "90.91%", key: "9" },
+            { note: "B5", freq: 987.77, type: "white", key: "0" },
+            { note: "C6", freq: 1046.50, type: "white", key: "y" }
+        ];
+
+        let audioCtx = null;
+        let analyser = null;
+        const activeNodes = new Map();
+        const keyMap = new Map();
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048; 
+            analyser.connect(audioCtx.destination);
+        }
+
+        const keyboard = document.getElementById('keyboard');
+        
+        NOTE_DETAILS.forEach(info => {
+            const keyDiv = document.createElement('div');
+            keyDiv.classList.add('key', info.type);
+            keyDiv.dataset.note = info.note;
+            keyDiv.dataset.freq = info.freq;
+            keyDiv.innerText = info.key.toUpperCase();
+            
+            if (info.type === 'black') {
+                keyDiv.style.left = info.left;
+            }
+            
+            keyDiv.addEventListener('pointerdown', (e) => { e.preventDefault(); playNoteByDOM(keyDiv); });
+            keyDiv.addEventListener('pointerup', (e) => { e.preventDefault(); stopNoteByDOM(keyDiv); });
+            keyDiv.addEventListener('pointerleave', (e) => { e.preventDefault(); stopNoteByDOM(keyDiv); });
+            keyDiv.addEventListener('pointercancel', (e) => { e.preventDefault(); stopNoteByDOM(keyDiv); });
+            
+            keyboard.appendChild(keyDiv);
+            keyMap.set(info.key, keyDiv);
+        });
+
+        function playNoteByDOM(element) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const freq = parseFloat(element.dataset.freq);
+            const note = element.dataset.note;
+
+            if (activeNodes.has(note)) return;
+
+            element.classList.add('active');
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.01);
+
+            osc.connect(gainNode);
+            gainNode.connect(analyser);
+            
+            osc.start();
+            activeNodes.set(note, { osc, gainNode, freq });
+        }
+
+        function stopNoteByDOM(element) {
+            const note = element.dataset.note;
+
+            if (activeNodes.has(note)) {
+                const { osc, gainNode } = activeNodes.get(note);
+                element.classList.remove('active');
+
+                const releaseTime = 0.15;
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + releaseTime);
+                
+                osc.stop(audioCtx.currentTime + releaseTime);
+                activeNodes.delete(note);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const key = e.key.toLowerCase();
+            if (keyMap.has(key)) {
+                playNoteByDOM(keyMap.get(key));
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (keyMap.has(key)) {
+                stopNoteByDOM(keyMap.get(key));
+            }
+        });
+
+        // 오실로스코프 엔진
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function draw() {
+            requestAnimationFrame(draw);
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.fillStyle = 'rgba(7, 9, 19, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!analyser) {
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#4facfe';
+                ctx.beginPath();
+                ctx.moveTo(0, height / 2);
+                ctx.lineTo(width, height / 2);
+                ctx.stroke();
+                return;
+            }
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(dataArray);
+
+            let currentFreq = 300; 
+            if (activeNodes.size > 0) {
+                const freqs = Array.from(activeNodes.values()).map(n => n.freq);
+                currentFreq = Math.max(...freqs);
+            }
+
+            // 넓어진 주파수 범위(130Hz ~ 1046Hz)에 맞춰 HSL 변화 보정
+            const hue = Math.min(360, Math.max(180, 180 + ((currentFreq - 130.81) / 915.69) * 180));
+            
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 63%)`;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+            
+            ctx.beginPath();
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        draw();
+    </script>
+</body>
+</html>

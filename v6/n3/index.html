@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로블록스 누비 대폭발 - 전체 통합판</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            overflow: hidden;
+            font-family: sans-serif;
+            user-select: none;
+            cursor: crosshair;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 1.2rem;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+            line-height: 1.6;
+            z-index: 999;
+        }
+
+        /* 로블록스 누비 캐릭터 디자인 */
+        .noob {
+            position: absolute;
+            width: 60px;
+            height: 90px;
+        }
+
+        .noob div {
+            position: absolute;
+            box-shadow: inset -4px -4px 0px rgba(0,0,0,0.2);
+        }
+
+        .head { width: 30px; height: 30px; background-color: #f5f542; left: 15px; top: 0; border-radius: 4px; }
+        .torso { width: 40px; height: 40px; background-color: #00a2ff; left: 10px; top: 30px; border-radius: 2px; }
+        .left-arm { width: 12px; height: 35px; background-color: #f5f542; left: -4px; top: 30px; border-radius: 2px; }
+        .right-arm { width: 12px; height: 35px; background-color: #f5f542; right: -4px; top: 30px; border-radius: 2px; }
+        .left-leg { width: 18px; height: 25px; background-color: #2fc434; left: 11px; top: 70px; border-radius: 2px; }
+        .right-leg { width: 18px; height: 25px; background-color: #2fc434; right: 11px; top: 70px; border-radius: 2px; }
+
+        /* 일반 핵미사일 (좌클릭) */
+        .nuke {
+            position: absolute;
+            width: 14px;
+            height: 50px;
+            background: linear-gradient(to bottom, #ff3300, #ffcc00);
+            border-radius: 7px;
+            transform: rotate(180deg);
+            z-index: 10;
+        }
+
+        /* 우클릭 레이저 스킬 */
+        .laser-beam {
+            position: absolute;
+            width: 40px;
+            background: linear-gradient(to right, transparent, #fff, #ff0055, #fff, transparent);
+            box-shadow: 0 0 30px #ff0055, 0 0 60px #ff3300;
+            top: 0;
+            bottom: 0;
+            transform: translateX(-50%);
+            animation: beam-shock 0.4s ease-out forwards;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @keyframes beam-shock {
+            0% { width: 0px; opacity: 1; }
+            50% { width: 80px; opacity: 1; }
+            100% { width: 0px; opacity: 0; }
+        }
+
+        /* 폭발 이펙트 */
+        .explosion {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, #fff, #ffaa00, transparent);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            animation: explode 0.4s ease-out forwards;
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        @keyframes explode {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        }
+
+        /* 산산조각 나는 로블록스 블록 */
+        .piece { position: absolute; box-shadow: inset -2px -2px 0px rgba(0,0,0,0.2); z-index: 5; }
+    </style>
+</head>
+<body>
+
+    <div id="info">
+        🖱️ <b>좌클릭</b>: 핵미사일 투하 (누비가 감지하고 도망침)<br>
+        ⚡ <b>우클릭</b>: 즉발 레이저 폭격 스킬 (피할 틈 없이 즉사)<br>
+        ⚙️ <b>휠 클릭 (가운데 버튼)</b>: 클릭한 자리에 <b>누비 무한 추가 소환!</b>
+    </div>
+
+    <script>
+        // 누비들을 저장하는 배열
+        let noobs = [];
+
+        // 누비 소환 함수
+        function createNoob(startX, startY) {
+            const noobEl = document.createElement('div');
+            noobEl.className = 'noob';
+            noobEl.innerHTML = `
+                <div class="head"></div><div class="torso"></div>
+                <div class="left-arm"></div><div class="right-arm"></div>
+                <div class="left-leg"></div><div class="right-leg"></div>
+            `;
+            document.body.appendChild(noobEl);
+
+            const noobObj = {
+                element: noobEl,
+                x: startX || Math.random() * (window.innerWidth - 80),
+                y: startY || Math.random() * (window.innerHeight - 100),
+                targetX: startX || Math.random() * (window.innerWidth - 80),
+                targetY: startY || Math.random() * (window.innerHeight - 100),
+                speed: 3,
+                isDead: false
+            };
+
+            noobEl.style.left = noobObj.x + 'px';
+            noobEl.style.top = noobObj.y + 'px';
+
+            // 누비 방황 AI
+            noobObj.aiInterval = setInterval(() => {
+                if (noobObj.isDead) return;
+                if (noobObj.speed === 3 && Math.random() < 0.3) {
+                    noobObj.targetX = Math.random() * (window.innerWidth - 80);
+                    noobObj.targetY = Math.random() * (window.innerHeight - 100);
+                }
+            }, 600);
+
+            noobs.push(noobObj);
+        }
+
+        // 기본 상태로 3마리 미리 생성
+        for(let i=0; i<3; i++) createNoob();
+
+        // 메인 프레임 루프 (실시간 이동 애니메이션)
+        function gameLoop() {
+            noobs.forEach(n => {
+                if (!n.isDead) {
+                    const dx = n.targetX - n.x;
+                    const dy = n.targetY - n.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 5) {
+                        n.x += (dx / dist) * n.speed;
+                        n.y += (dy / dist) * n.speed;
+                        n.element.style.left = n.x + 'px';
+                        n.element.style.top = n.y + 'px';
+                    } else if (n.speed > 3) {
+                        n.speed = 3; // 도망치고 나서 목적지 도착하면 원래 속도로
+                    }
+                }
+            });
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+
+        // 우클릭 기본 메뉴 차단
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        // 마우스 입력 감지
+        window.addEventListener('mousedown', (e) => {
+            const clickX = e.clientX;
+            const clickY = e.clientY;
+
+            // 1. 휠 클릭 -> 누비 추가 소환
+            if (e.button === 1) {
+                e.preventDefault(); 
+                createNoob(clickX - 30, clickY - 45);
+                return;
+            }
+
+            // 2. 좌클릭 -> 일반 핵미사일 (누비 도망 로직 작동)
+            if (e.button === 0) {
+                noobs.forEach(n => {
+                    if (n.isDead) return;
+                    const escapeDx = n.x - clickX;
+                    const escapeDy = n.y - clickY;
+                    const escapeDist = Math.sqrt(escapeDx * escapeDx + escapeDy * escapeDy);
+                    
+                    if (escapeDist < 400) {
+                        n.speed = 12; // 생존 돌발 질주
+                        n.targetX = n.x + (escapeDx / escapeDist) * 350;
+                        n.targetY = n.y + (escapeDy / escapeDist) * 350;
+                        n.targetX = Math.max(10, Math.min(window.innerWidth - 70, n.targetX));
+                        n.targetY = Math.max(10, Math.min(window.innerHeight - 100, n.targetY));
+                    }
+                });
+
+                const nuke = document.createElement('div');
+                nuke.className = 'nuke';
+                nuke.style.left = (clickX - 7) + 'px';
+                nuke.style.top = '-60px';
+                document.body.appendChild(nuke);
+
+                let nukeY = -60;
+                const nukeFall = setInterval(() => {
+                    nukeY += 25;
+                    nuke.style.top = nukeY + 'px';
+
+                    if (nukeY >= clickY - 50) {
+                        clearInterval(nukeFall);
+                        nuke.remove();
+                        explode(clickX, clickY, 160); // 폭발 범위 160px
+                    }
+                }, 16);
+
+            // 3. 우클릭 -> 즉발 광선 스킬 (도망 불가)
+            } else if (e.button === 2) {
+                const beam = document.createElement('div');
+                beam.className = 'laser-beam';
+                beam.style.left = clickX + 'px';
+                document.body.appendChild(beam);
+
+                shakeScreen(40);
+                setTimeout(() => beam.remove(), 400);
+
+                noobs.forEach(n => {
+                    if (n.isDead) return;
+                    const nCenterX = n.x + 30;
+                    if (Math.abs(clickX - nCenterX) < 70) { 
+                        shatterNoob(n, clickX, n.y + 45);
+                    }
+                });
+                
+                explode(clickX, clickY, 50);
+            }
+        });
+
+        // 화면 떨림 효과
+        function shakeScreen(amount) {
+            document.body.style.transform = `translate(${(Math.random()-0.5)*amount}px, ${(Math.random()-0.5)*amount}px)`;
+            setTimeout(() => document.body.style.transform = 'none', 150);
+        }
+
+        // 폭발 스플래시 데미지 판정
+        function explode(x, y, radius) {
+            const exp = document.createElement('div');
+            exp.className = 'explosion';
+            exp.style.left = x + 'px';
+            exp.style.top = y + 'px';
+            document.body.appendChild(exp);
+
+            shakeScreen(25);
+            setTimeout(() => exp.remove(), 400);
+
+            noobs.forEach(n => {
+                if (n.isDead) return;
+                const nCenterX = n.x + 30;
+                const nCenterY = n.y + 45;
+                const dist = Math.sqrt((x - nCenterX)**2 + (y - nCenterY)**2);
+
+                if (dist < radius) {
+                    shatterNoob(n, x, y);
+                }
+            });
+        }
+
+        // 누비 파괴 및 레고 조각 애니메이션
+        function shatterNoob(n, hitX, hitY) {
+            n.isDead = true;
+            n.element.style.display = 'none';
+            clearInterval(n.aiInterval);
+
+            const pieces = [
+                { w: 30, h: 30, color: '#f5f542', ox: 15, oy: 0 },
+                { w: 40, h: 40, color: '#00a2ff', ox: 10, oy: 30 },
+                { w: 12, h: 35, color: '#f5f542', ox: -4, oy: 30 },
+                { w: 12, h: 35, color: '#f5f542', ox: 52, oy: 30 },
+                { w: 18, h: 25, color: '#2fc434', ox: 11, oy: 70 },
+                { w: 18, h: 25, color: '#2fc434', ox: 31, oy: 70 }
+            ];
+
+            pieces.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'piece';
+                div.style.width = p.w + 'px';
+                div.style.height = p.h + 'px';
+                div.style.backgroundColor = p.color;
+                
+                const pX = n.x + p.ox;
+                const pY = n.y + p.oy;
+                div.style.left = pX + 'px';
+                div.style.top = pY + 'px';
+                document.body.appendChild(div);
+
+                const angle = Math.atan2(pY - hitY, pX - hitX) + (Math.random() - 0.5);
+                const force = Math.random() * 500 + 300;
+                
+                div.animate([
+                    { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+                    { transform: `translate(${Math.cos(angle) * force}px, ${Math.sin(angle) * force + 300}px) rotate(${Math.random() * 1000}deg)`, opacity: 0 }
+                ], {
+                    duration: 1000,
+                    easing: 'cubic-bezier(0.1, 0.8, 0.3, 1)',
+                    fill: 'forwards'
+                });
+
+                setTimeout(() => div.remove(), 1000);
+            });
+
+            // 관리 배열에서 제외 및 요소 완전 삭제
+            setTimeout(() => {
+                n.element.remove();
+                noobs = noobs.filter(item => item !== n);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>13음 기반 2옥타브 미디 시퀀서</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #1e272e; color: white; padding: 20px; margin: 0; }
+        h1 { margin-bottom: 5px; color: #f5f6fa; }
+        p { color: #dcdde1; font-size: 14px; margin-bottom: 20px; }
+        
+        /* 컨트롤 바 고정 */
+        .controls { position: sticky; top: 0; background: #1e272e; padding: 15px; z-index: 10; border-bottom: 1px solid #3d3d3d; margin-bottom: 20px; }
+        button { padding: 10px 18px; font-size: 15px; font-weight: bold; cursor: pointer; border: none; border-radius: 4px; background: #4cd137; color: white; margin: 0 5px; vertical-align: middle; }
+        button:hover { background: #44bd32; }
+        button.stop { background: #e84118; }
+        button.stop:hover { background: #c23616; }
+        button.clear { background: #7f8fa6; }
+        button.clear:hover { background: #718093; }
+        
+        select { padding: 9px; font-size: 15px; border-radius: 4px; border: none; background: #2f3640; color: white; font-weight: bold; margin-left: 10px; vertical-align: middle; cursor: pointer; }
+
+        /* 메인 워크스페이스 구조 */
+        .sequencer-container { display: flex; max-width: 1200px; margin: 0 auto; background: #2f3640; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        
+        /* 왼쪽 피아노 건반 스타일 (13음 주기가 한 눈에 보임) */
+        .piano-keys { display: flex; flex-direction: column; width: 100px; flex-shrink: 0; }
+        .key-label { height: 32px; line-height: 32px; background: #f5f6fa; color: #1e272e; margin-bottom: 3px; font-weight: bold; border-radius: 4px 0 0 4px; font-size: 12px; text-align: right; padding-right: 8px; box-sizing: border-box; }
+        /* 흑건(검은 건반) 디자인 구분 */
+        .key-label.sharp { background: #1e272e; color: #f5f6fa; border-right: 5px solid #00a8ff; }
+        
+        /* 오른쪽 128칸 스크롤 격자부 */
+        .grid-viewport { flex-grow: 1; overflow-x: auto; margin-left: 5px; border-radius: 0 4px 4px 0; background: #20242c; scroll-behavior: smooth; }
+        .grid-matrix { display: flex; flex-direction: column; width: max-content; position: relative; }
+        .grid-row { display: flex; height: 32px; margin-bottom: 3px; }
+        .grid-cell { width: 36px; height: 100%; background: #2d3436; border-right: 1px solid #1e272e; border-bottom: 1px solid #1e272e; cursor: pointer; box-sizing: border-box; }
+        
+        /* 마디 구분을 쉽게 하기 위한 4칸 단위 굵은 벽 설정 */
+        .grid-cell:nth-child(4n) { border-right: 2px solid #718093; }
+        .grid-cell.active { background: #fbc531; box-shadow: inset 0 0 8px #fbc531; }
+        .grid-cell:hover { background: #485460; }
+        
+        /* 현재 연주 중인 타임라인 세로선 바 */
+        .grid-cell.playing { border-left: 2px solid #e84118; border-right: 2px solid #e84118; background: rgba(232, 65, 24, 0.2); }
+        
+        #status { margin-top: 15px; font-size: 16px; color: #fbc531; min-height: 24px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h1>웹 프로 미디 시퀀서 (13음 기준 2옥타브)</h1>
+        <button onclick="playSequencer()">▶ 재생</button>
+        <button class="stop" onclick="stopSequencer()">■ 정지</button>
+        <button class="clear" onclick="clearGrid()">🔄 전체 초기화</button>
+        
+        <!-- 미디 악기 음색 변경 드롭다운 -->
+        <select id="synthType">
+            <option value="sine">부드러운 피아노 (Sine)</option>
+            <option value="triangle">포근한 오르간 (Triangle)</option>
+            <option value="sawtooth">강렬한 신디사이저 (Sawtooth)</option>
+            <option value="square">8비트 레트로 게임 (Square)</option>
+        </select>
+    </div>
+
+    <div class="sequencer-container">
+        <!-- 왼쪽 건반 (C4부터 C6까지 총 2옥타브 25개 음배치) -->
+        <div class="piano-keys" id="pianoKeys"></div>
+
+        <!-- 오른쪽 격자 (25행 × 128열 매트릭스) -->
+        <div class="grid-viewport" id="gridViewport">
+            <div class="grid-matrix" id="gridMatrix"></div>
+        </div>
+    </div>
+
+    <div id="status">대기 중... 나만의 미디 트랙을 찍어보세요!</div>
+
+    <script>
+        // 옥타브당 13개 음(중복 포함)을 기준으로 배치한 2옥타브 주파수 배열 (높은 음이 위로)
+        const scaleData = [
+            { name: "도 (C6)", hz: 1046.50, s: false }, // --- 2옥타브 끝음
+            { name: "시 (B5)", hz: 987.77, s: false },
+            { name: "라# (A#5)", hz: 932.33, s: true },
+            { name: "라 (A5)", hz: 880.00, s: false },
+            { name: "솔# (G#5)", hz: 830.61, s: true },
+            { name: "솔 (G5)", hz: 783.99, s: false },
+            { name: "파# (F#5)", hz: 739.99, s: true },
+            { name: "파 (F5)", hz: 698.46, s: false },
+            { name: "미 (E5)", hz: 659.25, s: false },
+            { name: "레# (D#5)", hz: 622.25, s: true },
+            { name: "레 (D5)", hz: 587.33, s: false },
+            { name: "도# (C#5)", hz: 554.37, s: true },
+            { name: "도 (C5)", hz: 523.25, s: false }, // --- 1옥타브 끝음 / 2옥타브 시작음 (13번째 음)
+            { name: "시 (B4)", hz: 493.88, s: false },
+            { name: "라# (A#4)", hz: 466.16, s: true },
+            { name: "라 (A4)", hz: 440.00, s: false },
+            { name: "솔# (G#4)", hz: 415.30, s: true },
+            { name: "솔 (G4)", hz: 392.00, s: false },
+            { name: "파# (F#4)", hz: 369.99, s: true },
+            { name: "파 (F4)", hz: 349.23, s: false },
+            { name: "미 (E4)", hz: 329.63, s: false },
+            { name: "레# (D#4)", hz: 311.13, s: true },
+            { name: "레 (D4)", hz: 293.66, s: false },
+            { name: "도# (C#4)", hz: 277.18, s: true },
+            { name: "도 (C4)", hz: 261.63, s: false }  // --- 1옥타브 시작음
+        ];
+
+        const ROWS = scaleData.length;
+        const COLS = 128;
+        const STEP_DURATION = 0.22; // 재생 속도 (약 130 BPM)
+
+        let audioCtx = null;
+        let isPlaying = false;
+        let currentStep = 0;
+        let playbackInterval = null;
+        let activeOscillators = [];
+
+        // 화면 UI 생성
+        const keysContainer = document.getElementById('pianoKeys');
+        const matrixContainer = document.getElementById('gridMatrix');
+        const viewport = document.getElementById('gridViewport');
+
+        scaleData.forEach((tone, r) => {
+            const key = document.createElement('div');
+            key.className = `key-label ${tone.s ? 'sharp' : ''}`;
+            key.innerText = tone.name;
+            keysContainer.appendChild(key);
+
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'grid-row';
+            
+            for (let c = 0; c < COLS; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                cell.dataset.row = r;
+                cell.dataset.col = c;
+                cell.onclick = function() { this.classList.toggle('active'); };
+                rowDiv.appendChild(cell);
+            }
+            matrixContainer.appendChild(rowDiv);
+        });
+
+        function playSequencer() {
+            if (isPlaying) return;
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            isPlaying = true;
+            currentStep = 0;
+
+            const synthType = document.getElementById('synthType').value;
+            document.getElementById('status').innerText = "🎵 루프 연주 중...";
+
+            playbackInterval = setInterval(() => {
+                if (currentStep >= COLS) {
+                    stopSequencer();
+                    document.getElementById('status').innerText = "✅ 재생 완료";
+                    return;
+                }
+
+                document.querySelectorAll('.grid-cell.playing').forEach(el => el.classList.remove('playing'));
+
+                const currentCellSample = document.querySelector(`.grid-cell[data-col="${currentStep}"]`);
+                if (currentCellSample) {
+                    viewport.scrollLeft = currentCellSample.offsetLeft - (viewport.clientWidth / 2);
+                }
+
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${currentStep}"]`);
+                    cell.classList.add('playing');
+
+                    if (cell.classList.contains('active')) {
+                        const oscillator = audioCtx.createOscillator();
+                        const gainNode = audioCtx.createGain();
+
+                        oscillator.type = synthType; // 선택한 악기 종류 적용
+                        oscillator.frequency.value = scaleData[r].hz;
+
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+
+                        const now = audioCtx.currentTime;
+                        // 음색 특성에 따른 볼륨 최적화
+                        const volume = synthType === 'sawtooth' || synthType === 'square' ? 0.06 : 0.15;
+                        
+                        gainNode.gain.setValueAtTime(volume, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + STEP_DURATION - 0.02);
+
+                        oscillator.start(now);
+                        oscillator.stop(now + STEP_DURATION);
+
+                        activeOscillators.push(oscillator);
+                    }
+                }
+                currentStep++;
+            }, STEP_DURATION * 1000);
+        }
+
+        function stopSequencer() {
+            clearInterval(playbackInterval);
+            isPlaying = false;
+            document.querySelectorAll('.grid-cell.playing').forEach(el => el.classList.remove('playing'));
+            activeOscillators.forEach(osc => { try { osc.stop(); } catch(e) {} });
+            activeOscillators = [];
+            if (audioCtx) { audioCtx.close(); audioCtx = null; }
+            document.getElementById('status').innerText = "⏹ 정지됨";
+        }
+
+        function clearGrid() {
+            stopSequencer();
+            document.querySelectorAll('.grid-cell.active').forEach(cell => cell.classList.remove('active'));
+            viewport.scrollLeft = 0;
+            document.getElementById('status').innerText = "🔄 전체 트랙 격자가 완전히 초기화되었습니다.";
+        } // 여기서부터 이어서 작성하시면 됩니다.
+    </script>
+</body>
+</html>
+

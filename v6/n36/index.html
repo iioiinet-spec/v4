@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>인터랙티브 웹 악기 & AI 완곡 자동 연주기</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            text-align: center;
+            color: #00ffcc;
+        }
+
+        p.guide {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        /* 컨트롤러 영역 */
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: 900px;
+        }
+        select, button {
+            background-color: #222;
+            color: #fff;
+            border: 2px solid #00ffcc;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        select:focus, button:focus {
+            outline: none;
+        }
+        button:active {
+            background-color: #00ffcc;
+            color: #121212;
+        }
+        button:disabled {
+            border-color: #444;
+            color: #666;
+            cursor: not-allowed;
+        }
+        button.recording {
+            background-color: #ff3333;
+            border-color: #ff3333;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* 메인 레이아웃 */
+        .main-workspace {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        /* 오실로스코프 영역 */
+        .visualizer-box {
+            flex: 1.5;
+            min-width: 300px;
+        }
+        canvas#visualizer {
+            width: 100%;
+            height: 220px;
+            background-color: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        /* AI 텍스트 검색 입력 인터페이스 */
+        .search-box {
+            flex: 1;
+            min-width: 300px;
+            background-color: #1a1a1a;
+            border: 2px solid #00ffcc;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            height: 220px;
+            position: relative;
+        }
+        .search-box label {
+            font-size: 0.95rem;
+            color: #00ffcc;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .search-input-wrapper {
+            display: flex;
+            width: 100%;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .search-box input[type="text"] {
+            flex: 1;
+            background-color: #252525;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        .search-box input[type="text"]:focus {
+            border-color: #00ffcc;
+        }
+        .search-status {
+            font-size: 0.85rem;
+            height: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status-error { color: #ff3366; }
+        .status-success { color: #00ffcc; }
+         
+        .song-hint-list {
+            font-size: 0.75rem;
+            color: #666;
+            text-align: center;
+            margin-top: 8px;
+            line-height: 1.3;
+        }
+
+        /* 피아노 건반 컨테이너 */
+        .piano-container {
+            width: 100%;
+            max-width: 900px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+        .piano {
+            display: flex;
+            position: relative;
+            width: 100%;
+            min-width: 700px;
+            height: 220px;
+            background-color: #000;
+            padding: 5px;
+            border-radius: 10px;
+        }
+
+        /* 백색 건반 스타일 */
+        .key {
+            flex: 1;
+            background: linear-gradient(to bottom, #fff 0%, #eee 100%);
+            border: 1px solid #ccc;
+            border-radius: 0 0 5px 5px;
+            position: relative;
+            cursor: pointer;
+            height: 100%;
+            z-index: 1;
+        }
+        .key:active, .key.active {
+            background: linear-gradient(to bottom, #ddd 0%, #bbb 100%);
+        }
+
+        /* 흑색 건반 스타일 */
+        .key.black {
+            background: linear-gradient(to bottom, #333 0%, #000 100%);
+            border: 1px solid #000;
+            border-radius: 0 0 3px 3px;
+            height: 60%;
+            width: 6%;
+            margin-left: -3%;
+            margin-right: -3%;
+            z-index: 2;
+            pointer-events: auto;
+        }
+        .key.black:active, .key.black.active {
+            background: linear-gradient(to bottom, #555 0%, #222 100%);
+        }
+
+        .key-note { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); color: #888; font-size: 0.8rem; font-weight: bold; }
+        .key-hint { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); color: #ff3366; font-size: 0.85rem; font-weight: bold; }
+        .key.black .key-note { color: #aaa; bottom: 18px; font-size: 0.65rem; }
+        .key.black .key-hint { color: #00ffcc; bottom: 3px; font-size: 0.75rem; }
+        .key-hint.small { font-size: 0.55rem; width: 100%; text-align: center; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Interactive Synth & AI Complete Melody Player</h1>
+    <p class="guide">곡명을 입력하면 중간에 끊기지 않고 완곡(하이라이트/1절 끝까지)으로 연주를 완료합니다.</p>
+
+    <div class="controls">
+        <select id="instrument-select">
+            <option value="piano">피아노 (Sine + Harmonic)</option>
+            <option value="synthesizer">신디사이저 (Sawtooth)</option>
+            <option value="guitar">기타 (Triangle 플럭)</option>
+        </select>
+        <button id="record-btn">녹음 시작</button>
+        <button id="play-btn" disabled>녹음본 재생</button>
+    </div>
+
+    <div class="main-workspace">
+        <div class="visualizer-box">
+            <canvas id="visualizer"></canvas>
+        </div>
+         
+        <div class="search-box">
+            <label for="song-input">🤖 AI 자동 완곡 연주 엔진</label>
+            <div class="search-input-wrapper">
+                <input type="text" id="song-input" placeholder="곡 이름을 입력하세요... (예: 뽀로로)">
+                <button id="search-play-btn">검색 및 연주</button>
+            </div>
+            <div class="search-status" id="search-status"></div>
+             
+            <div class="song-hint-list">
+                * 완곡 재생 가능 리스트: 학교종, 나비야, 비행기, 뽀로로<br>
+                (텍스트를 입력하면 분석 매칭 후 끝까지 쭉 재생됩니다)
+            </div>
+        </div>
+    </div>
+
+    <div class="piano-container">
+        <div class="piano" id="piano">
+            <div class="key" data-note="C4" data-key="1"><span class="key-note">C4</span><span class="key-hint">1</span></div>
+            <div class="key black" data-note="C#4" data-key="2"><span class="key-note">C#4</span><span class="key-hint">2</span></div>
+            <div class="key" data-note="D4" data-key="3"><span class="key-note">D4</span><span class="key-hint">3</span></div>
+            <div class="key black" data-note="D#4" data-key="4"><span class="key-note">D#4</span><span class="key-hint">4</span></div>
+            <div class="key" data-note="E4" data-key="5"><span class="key-note">E4</span><span class="key-hint">5</span></div>
+            <div class="key" data-note="F4" data-key="6"><span class="key-note">F4</span><span class="key-hint">6</span></div>
+            <div class="key black" data-note="F#4" data-key="7"><span class="key-note">F#4</span><span class="key-hint">7</span></div>
+            <div class="key" data-note="G4" data-key="8"><span class="key-note">G4</span><span class="key-hint">8</span></div>
+            <div class="key black" data-note="G#4" data-key="9"><span class="key-note">G#4</span><span class="key-hint">9</span></div>
+            <div class="key" data-note="A4" data-key="0"><span class="key-note">A4</span><span class="key-hint">0</span></div>
+            <div class="key black" data-note="A#4" data-key="-"><span class="key-note">A#4</span><span class="key-hint">-</span></div>
+            <div class="key" data-note="B4" data-key="="><span class="key-note">B4</span><span class="key-hint">=</span></div>
+            <div class="key" data-note="C5" data-key="backspace"><span class="key-note">C5</span><span class="key-hint small">Back</span></div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 주파수 정의
+        const noteFrequencies = {
+            'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'D#4': 311.13,
+            'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00,
+            'G#4': 415.30, 'A4': 440.00, 'A#4': 466.16, 'B4': 493.88, 'C5': 523.25
+        };
+
+        // 💥 2. 완곡 데이터베이스 💥
+        const songDatabase = {
+            "학교종": [
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "A4", duration: 1 }, { note: "A4", duration: 1 },
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 1 },
+                { note: "D4", duration: 4 },
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "A4", duration: 1 }, { note: "A4", duration: 1 },
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "G4", duration: 1 }, { note: "E4", duration: 1 }, { note: "D4", duration: 1 }, { note: "E4", duration: 1 },
+                { note: "C4", duration: 4 }
+            ],
+            "나비야": [
+                { note: "G4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "F4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 2 },
+                { note: "C4", duration: 1 }, { note: "D4", duration: 1 }, { note: "E4", duration: 1 }, { note: "F4", duration: 1 },
+                { note: "G4", duration: 1 }, { note: "G4", duration: 1 }, { note: "G4", duration: 2 },
+                { note: "G4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "F4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 2 },
+                { note: "C4", duration: 1 }, { note: "E4", duration: 1 }, { note: "G4", duration: 1 }, { note: "G4", duration: 1 },
+                { note: "E4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "D4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 1 },
+                { note: "D4", duration: 1 }, { note: "E4", duration: 1 }, { note: "F4", duration: 2 },
+                { note: "E4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 1 },
+                { note: "E4", duration: 1 }, { note: "F4", duration: 1 }, { note: "G4", duration: 2 },
+                { note: "G4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "F4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 2 },
+                { note: "C4", duration: 1 }, { note: "E4", duration: 1 }, { note: "G4", duration: 1 }, { note: "G4", duration: 1 },
+                { note: "C4", duration: 4 }
+            ],
+            "비행기": [
+                { note: "E4", duration: 1 }, { note: "D4", duration: 1 }, { note: "C4", duration: 1 }, { note: "D4", duration: 1 },
+                { note: "E4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "D4", duration: 1 }, { note: "D4", duration: 1 }, { note: "D4", duration: 2 },
+                { note: "E4", duration: 1 }, { note: "G4", duration: 1 }, { note: "G4", duration: 2 },
+                { note: "E4", duration: 1 }, { note: "D4", duration: 1 }, { note: "C4", duration: 1 }, { note: "D4", duration: 1 },
+                { note: "E4", duration: 1 }, { note: "E4", duration: 1 }, { note: "E4", duration: 2 },
+                { note: "D4", duration: 1 }, { note: "D4", duration: 1 }, { note: "E4", duration: 1 }, { note: "D4", duration: 1 },
+                { note: "C4", duration: 4 }
+            ],
+            "뽀로로": [
+                { note: "G4", duration: 1.0 }, { note: "G4", duration: 1.0 }, { note: "E4", duration: 1.0 }, 
+                { note: "F4", duration: 1.0 }, { note: "F4", duration: 1.0 }, { note: "D4", duration: 1.0 }, 
+                { note: "E4", duration: 2.0 },
+                { note: "G4", duration: 1.0 }, { note: "G4", duration: 1.0 }, { note: "E4", duration: 1.0 }, 
+                { note: "F4", duration: 1.0 }, { note: "F4", duration: 1.0 }, { note: "D4", duration: 1.0 }, 
+                { note: "E4", duration: 1.0 }, { note: "E4", duration: 1.0 }, { note: "C4", duration: 1.0 }, 
+                { note: "D4", duration: 1.0 }, { note: "E4", duration: 1.0 }, { note: "F4", duration: 1.0 }, 
+                { note: "G4", duration: 2.0 },
+                { note: "C5", duration: 1.0 }, { note: "C5", duration: 1.0 }, { note: "D4", duration: 1.0 }, 
+                { note: "E4", duration: 1.0 }, { note: "E4", duration: 1.0 }, { note: "F4", duration: 1.0 }, 
+                { note: "G4", duration: 1.0 }, { note: "G4", duration: 1.0 }, { note: "E4", duration: 1.0 }, 
+                { note: "F4", duration: 1.0 }, { note: "F4", duration: 1.0 }, { note: "D4", duration: 1.0 }, 
+                { note: "E4", duration: 0.5 }, { note: "E4", duration: 0.5 }, { note: "D4", duration: 0.5 }, { note: "D4", duration: 0.5 }, 
+                { note: "C4", duration: 0.5 }, { note: "C4", duration: 0.5 }, { note: "D4", duration: 0.5 }, { note: "D4", duration: 0.5 }, 
+                { note: "C4", duration: 3.0 }
+            ]
+        };
+
+        const keyMap = {};
+        document.querySelectorAll('.key').forEach(keyEl => {
+            keyMap[keyEl.dataset.key] = { note: keyEl.dataset.note, element: keyEl };
+        });
+
+        const keyboardPressedState = {};
+
+        // 3. 오디오 노드 정의
+        let audioCtx = null;
+        let analyserNode = null;
+        let masterGain = null;
+        let destNode = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let audioBlob = null;
+        let audioUrl = null;
+        const activeNodes = {};
+
+        // 4. UI 뼈대 변수 매핑
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const instrumentSelect = document.getElementById('instrument-select');
+        const recordBtn = document.getElementById('record-btn');
+        const playBtn = document.getElementById('play-btn');
+        
+        const songInput = document.getElementById('song-input');
+        const searchPlayBtn = document.getElementById('search-play-btn');
+        const searchStatus = document.getElementById('search-status');
+
+        let isSequencePlaying = false;
+        let sequenceTimeouts = [];
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function initAudio() {
+            if (audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 2048;
+            masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            destNode = audioCtx.createMediaStreamDestination();
+
+            masterGain.connect(analyserNode);
+            analyserNode.connect(audioCtx.destination);
+            analyserNode.connect(destNode);
+
+            initMediaRecorder();
+            drawOscilloscope();
+        }
+
+        // 5. 플레이어 엔진
+        function playNote(note, frequency) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (activeNodes[note]) stopNote(note);
+
+            const now = audioCtx.currentTime;
+            const selectedInstrument = instrumentSelect.value;
+            const oscillators = [];
+            const noteGain = audioCtx.createGain();
+            noteGain.connect(masterGain);
+
+            if (selectedInstrument === 'piano') {
+                const osc1 = audioCtx.createOscillator(); osc1.type = 'sine'; osc1.frequency.setValueAtTime(frequency, now);
+                const osc2 = audioCtx.createOscillator(); osc2.type = 'triangle'; osc2.frequency.setValueAtTime(frequency * 2, now);
+                const gain2 = audioCtx.createGain(); gain2.gain.setValueAtTime(0.2, now);
+                
+                // 🛠️ 버그 수정: 중복 'const' 선언 제거문 수정
+                osc1.connect(noteGain); osc2.connect(gain2); gain2.connect(noteGain);
+                oscillators.push(osc1, osc2);
+                noteGain.gain.setValueAtTime(0, now);
+                noteGain.gain.linearRampToValueAtTime(0.8, now + 0.01);
+                noteGain.gain.exponentialRampToValueAtTime(0.1, now + 0.8);
+            } else if (selectedInstrument === 'synthesizer') {
+                const osc = audioCtx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(frequency, now);
+                osc.connect(noteGain); oscillators.push(osc);
+                noteGain.gain.setValueAtTime(0, now);
+                noteGain.gain.linearRampToValueAtTime(0.5, now + 0.05);
+            } else if (selectedInstrument === 'guitar') {
+                const osc = audioCtx.createOscillator(); osc.type = 'triangle'; osc.frequency.setValueAtTime(frequency, now);
+                osc.connect(noteGain); oscillators.push(osc);
+                noteGain.gain.setValueAtTime(0, now);
+                noteGain.gain.linearRampToValueAtTime(1.0, now + 0.005);
+                noteGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            }
+
+            oscillators.forEach(osc => osc.start(now));
+            activeNodes[note] = { oscillators, gainNode: noteGain, instrument: selectedInstrument };
+            
+            const keyEl = document.querySelector(`[data-note="${note}"]`);
+            if(keyEl) {
+                keyEl.classList.add('active');
+                setTimeout(() => { if(!keyboardPressedState[note]) keyEl.classList.remove('active'); }, 250);
+            }
+        }
+
+        function stopNote(note) {
+            const activeKey = activeNodes[note];
+            if (!activeKey) return;
+            const now = audioCtx.currentTime;
+            try {
+                activeKey.gainNode.gain.cancelScheduledValues(now);
+                activeKey.gainNode.gain.setValueAtTime(activeKey.gainNode.gain.value, now);
+                const releaseTime = activeKey.instrument === 'synthesizer' ? 0.3 : 0.1;
+                activeKey.gainNode.gain.exponentialRampToValueAtTime(0.001, now + releaseTime);
+                activeKey.oscillators.forEach(osc => osc.stop(now + releaseTime));
+            } catch(e) {}
+            delete activeNodes[note];
+            const keyEl = document.querySelector(`[data-note="${note}"]`);
+            if(keyEl) keyEl.classList.remove('active');
+        }
+
+        // 6. 실시간 오실로스코프 시각화
+        function drawOscilloscope() {
+            requestAnimationFrame(drawOscilloscope);
+            if (!analyserNode) return;
+            const bufferLength = analyserNode.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyserNode.getByteTimeDomainData(dataArray);
+
+            ctx.fillStyle = 'rgba(18, 18, 18, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            let totalAmp = 0;
+            for(let i=0; i<bufferLength; i++) totalAmp += Math.abs(dataArray[i] - 128);
+            const avgAmp = totalAmp / bufferLength;
+            ctx.strokeStyle = `hsl(${160 + (avgAmp * 5) % 360}, 100%, 50%)`;
+
+            ctx.beginPath();
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+
+        // 7. 검색 및 완곡 자동 재생 로직
+        function searchAndPlaySong() {
+            if (isSequencePlaying) {
+                stopSongSequence();
+                return;
+            }
+
+            const query = songInput.value.trim().replace(/\s+/g, "");
+            if (!query) {
+                showStatus("곡 이름을 입력해 주세요.", "error");
+                return;
+            }
+
+            initAudio();
+
+            let matchedKey = null;
+            for (const key of Object.keys(songDatabase)) {
+                if (query.includes(key) || key.includes(query)) {
+                    matchedKey = key;
+                    break;
+                }
+            }
+
+            if (!matchedKey) {
+                showStatus("찾을 수 없는 곡입니다", "error");
+                return;
+            }
+
+            if (matchedKey === "뽀로로") {
+                showStatus(`🎵 '${matchedKey}'(노는 게 제일 좋아) 하이라이트 연주를 시작합니다!`, "success");
+            } else {
+                showStatus(`🎵 '${matchedKey}' 연주를 시작합니다! 끝까지 재생됩니다.`, "success");
+            }
+            executeMelodySequence(songDatabase[matchedKey]);
+        }
+
+        function showStatus(text, type) {
+            searchStatus.innerText = text;
+            searchStatus.className = "search-status " + (type === "error" ? "status-error" : "status-success");
+        }
+
+        // 💥 타이밍 누적 방식을 이용해 마지막까지 완벽하게 이어지도록 구성된 시퀀서 💥
+        function executeMelodySequence(melodyArray) {
+            isSequencePlaying = true;
+            searchPlayBtn.innerText = "연주 중지";
+            
+            let accumulatedTime = 0;
+            const tempoFactor = 320; 
+
+            melodyArray.forEach((noteEvent) => {
+                const triggerTime = accumulatedTime;
+                
+                // 음표 시작 타이밍 예약
+                const t1 = setTimeout(() => {
+                    const freq = noteFrequencies[noteEvent.note];
+                    if(freq) playNote(noteEvent.note, freq);
+                }, triggerTime);
+
+                // 음표 정지 타이밍 예약
+                const t2 = setTimeout(() => {
+                    stopNote(noteEvent.note);
+                }, triggerTime + (noteEvent.duration * tempoFactor - 40));
+
+                sequenceTimeouts.push(t1, t2);
+                accumulatedTime += noteEvent.duration * tempoFactor; 
+            });
+
+            // 데이터의 마지막 음표가 완전히 끝날 때 시퀀서 종료 예약
+            const endTimer = setTimeout(() => {
+                stopSongSequence();
+                showStatus("곡 연주가 끝까지 완료되었습니다!", "success");
+            }, accumulatedTime);
+            sequenceTimeouts.push(endTimer);
+        }
+
+        function stopSongSequence() {
+            isSequencePlaying = false;
+            searchPlayBtn.innerText = "검색 및 연주";
+            sequenceTimeouts.forEach(t => clearTimeout(t));
+            sequenceTimeouts = [];
+            Object.keys(noteFrequencies).forEach(note => stopNote(note));
+        }
+
+        searchPlayBtn.addEventListener('click', searchAndPlaySong);
+        songInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') searchAndPlaySong();
+        });
+
+        // 8. 기존 마우스, 터치 및 키보드 이벤트 보존
+        const pianoContainer = document.getElementById('piano');
+        function handleNoteDown(e) {
+            e.preventDefault();
+            const keyElement = e.target.closest('.key'); if (!keyElement) return;
+            const note = keyElement.dataset.note;
+            playNote(note, noteFrequencies[note]);
+        }
+        function handleNoteUp(e) {
+            e.preventDefault();
+            const keyElement = e.target.closest('.key'); if (!keyElement) return;
+            stopNote(keyElement.dataset.note);
+        }
+
+        pianoContainer.querySelectorAll('.key').forEach(key => {
+            key.addEventListener('mousedown', handleNoteDown);
+            key.addEventListener('mouseup', handleNoteUp);
+            key.addEventListener('mouseleave', handleNoteUp);
+            key.addEventListener('touchstart', handleNoteDown, { passive: false });
+            key.addEventListener('touchend', handleNoteUp, { passive: false });
+            key.addEventListener('touchcancel', handleNoteUp, { passive: false });
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement === songInput) return;
+            const inputKey = e.key.toLowerCase();
+            if (keyMap[inputKey]) {
+                if (inputKey === 'backspace') e.preventDefault();
+                if (!keyboardPressedState[inputKey]) {
+                    keyboardPressedState[inputKey] = true;
+                    playNote(keyMap[inputKey].note, noteFrequencies[keyMap[inputKey].note]);
+                }
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (document.activeElement === songInput) return;
+            const inputKey = e.key.toLowerCase();
+            if (keyMap[inputKey]) {
+                if (inputKey === 'backspace') e.preventDefault();
+                keyboardPressedState[inputKey] = false;
+                stopNote(keyMap[inputKey].note);
+            }
+        });
+
+        // 9. 레코딩 기능
+        function initMediaRecorder() {
+            mediaRecorder = new MediaRecorder(destNode.stream, { mimeType: 'audio/webm;codecs=opus' });
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                audioBlob = new Blob(recordedChunks, { type: 'audio/webm' });
+                recordedChunks = [];
+                audioUrl = URL.createObjectURL(audioBlob);
+                playBtn.disabled = false;
+                recordBtn.innerText = "녹음 시작";
+                recordBtn.classList.remove('recording');
+                // 🛠️ 오타 수정: 녹음 종료 후 재생 버튼을 강제로 다시 비활성화하던 코드 삭제
+            };
+        }
+        recordBtn.addEventListener('click', () => {
+            initAudio();
+            if (mediaRecorder.state === "inactive") {
+                mediaRecorder.start(); recordBtn.innerText = "녹음 중지 (정지)"; recordBtn.classList.add('recording'); playBtn.disabled = true;
+            } else mediaRecorder.stop();
+        });
+        playBtn.addEventListener('click', () => { if (audioUrl) new Audio(audioUrl).play(); });
+    </script>
+</body>
+</html>

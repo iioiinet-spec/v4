@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3옥타브 풀스크린 피아노 (클릭 시 즉시 활성화)</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #121214;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        /* 상단 정보 알림판 */
+        #info-panel {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: 100%;
+            max-width: 1200px;
+            cursor: pointer; /* 클릭 유도 */
+        }
+
+        #info-panel h1 {
+            font-size: 0.95rem;
+            color: #aaa;
+            margin-bottom: 2px;
+        }
+
+        #status {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #ffcc00; /* 초기 상태는 경고 색상 */
+            text-shadow: 0 0 10px rgba(255, 204, 0, 0.4);
+            min-height: 1.6rem;
+        }
+
+        /* 실시간 오실로스코프 캔버스 */
+        #visualizer {
+            width: 100%;
+            max-width: 1200px;
+            height: 25vh;
+            background: #1a1a1e;
+            border-radius: 12px;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+            border: 2px solid #2a2a30;
+        }
+
+        /* 피아노 키보드 컨테이너 */
+        #keyboard-container {
+            position: relative;
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+            height: 50vh;
+            background: #16161a;
+            padding: 6px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            touch-action: none;
+        }
+
+        .white-keys-group {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        .key {
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            font-weight: bold;
+            transition: background 0.05s ease, transform 0.05s ease, box-shadow 0.05s ease;
+        }
+
+        /* 흰 건반 스타일 */
+        .white-key {
+            flex: 1;
+            margin: 0 1px;
+            background: linear-gradient(to bottom, #f2f2f2 0%, #ffffff 100%);
+            color: #222;
+            border-radius: 0 0 5px 5px;
+            border: 1px solid #bbb;
+            padding-bottom: 10px;
+            font-size: 0.75rem;
+            z-index: 1;
+            min-width: 0;
+        }
+
+        /* 검은 건반 레이어 */
+        .black-keys-group {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            right: 6px;
+            height: 58%;
+            pointer-events: none;
+            display: flex;
+        }
+
+        /* 검은 건반 스타일 */
+        .black-key {
+            position: absolute;
+            width: calc(100% / 22 * 0.62);
+            background: linear-gradient(to bottom, #050505 0%, #28282c 100%);
+            color: #fff;
+            border-radius: 0 0 3px 3px;
+            border: 1px solid #000;
+            padding-bottom: 6px;
+            font-size: 0.6rem;
+            pointer-events: auto;
+            z-index: 2;
+        }
+
+        /* 검은 건반 배치 좌표 */
+        .bk-c3_s  { left: calc(100% / 22 * 0.66); }
+        .bk-d3_s  { left: calc(100% / 22 * 1.68); }
+        .bk-f3_s  { left: calc(100% / 22 * 3.66); }
+        .bk-g3_s  { left: calc(100% / 22 * 4.68); }
+        .bk-a3_s  { left: calc(100% / 22 * 5.70); }
+
+        .bk-c4_s  { left: calc(100% / 22 * 7.66); }
+        .bk-d4_s  { left: calc(100% / 22 * 8.68); }
+        .bk-f4_s  { left: calc(100% / 22 * 10.66); }
+        .bk-g4_s  { left: calc(100% / 22 * 11.68); }
+        .bk-a4_s  { left: calc(100% / 22 * 12.70); }
+
+        .bk-c5_s  { left: calc(100% / 22 * 14.66); }
+        .bk-d5_s  { left: calc(100% / 22 * 15.68); }
+        .bk-f5_s  { left: calc(100% / 22 * 17.66); }
+        .bk-g5_s  { left: calc(100% / 22 * 18.68); }
+        .bk-a5_s  { left: calc(100% / 22 * 19.70); }
+
+        .key-hint {
+            font-size: 0.55rem;
+            color: #888;
+            margin-top: 1px;
+            font-weight: normal;
+        }
+        .black-key .key-hint { color: #bbb; }
+
+        .sub-note {
+            font-size: 0.55rem;
+            color: #ff3333;
+            font-weight: normal;
+            display: block;
+        }
+
+        .key.active {
+            transform: translateY(3px) scaleY(0.97);
+        }
+
+        @media (max-width: 768px) {
+            .key { font-size: 0.6rem; padding-bottom: 5px; }
+            .black-key { font-size: 0.5rem; padding-bottom: 3px; }
+            .key-hint, .sub-note { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info-panel">
+        <h1>3옥타브 가상 악기 (PC 자판 및 마우스 연동)</h1>
+        <div id="status">⚠️ 화면 아무 곳이나 마우스로 한 번 클릭하면 피아노가 시작됩니다!</div>
+    </div>
+
+    <canvas id="visualizer"></canvas>
+
+    <div id="keyboard-container">
+        <div class="white-keys-group">
+            <div class="key white-key" data-note="낮은 도 (C3)" data-freq="130.81" data-key="1">도3<span class="key-hint">1</span></div>
+            <div class="key white-key" data-note="낮은 레 (D3)" data-freq="146.83" data-key="2">레3<span class="key-hint">2</span></div>
+            <div class="key white-key" data-note="낮은 미 (E3)" data-freq="164.81" data-key="3">미3<span class="key-hint">3</span></div>
+            <div class="key white-key" data-note="낮은 파 (F3)" data-freq="174.61" data-key="4">파3<span class="key-hint">4</span></div>
+            <div class="key white-key" data-note="낮은 솔 (G3)" data-freq="196.00" data-key="5">솔3<span class="key-hint">5</span></div>
+            <div class="key white-key" data-note="낮은 라 (A3)" data-freq="220.00" data-key="6">라3<span class="key-hint">6</span></div>
+            <div class="key white-key" data-note="낮은 시 (B3)" data-freq="246.94" data-key="7">시3<span class="key-hint">7</span></div>
+
+            <div class="key white-key" data-note="도 (C4)" data-freq="261.63" data-key="q">도4<span class="key-hint">Q</span></div>
+            <div class="key white-key" data-note="레 (D4)" data-freq="293.66" data-key="w">레4<span class="key-hint">W</span></div>
+            <div class="key white-key" data-note="미 (E4)" data-freq="329.63" data-key="e">미4<span class="key-hint">E</span></div>
+            <div class="key white-key" data-note="파 (F4)" data-freq="349.23" data-key="r">파4<span class="key-hint">R</span></div>
+            <div class="key white-key" data-note="솔 (G4)" data-freq="392.00" data-key="t">솔4<span class="key-hint">T</span></div>
+            <div class="key white-key" data-note="라 (A4)" data-freq="440.00" data-key="y">라4<span class="key-hint">Y</span></div>
+            <div class="key white-key" data-note="시 (B4) / 도♭ (C♭4)" data-freq="493.88" data-key="u">시4<span class="sub-note">도♭</span><span class="key-hint">U</span></div>
+
+            <div class="key white-key" data-note="높은 도 (C5)" data-freq="523.25" data-key="a">도5<span class="key-hint">A</span></div>
+            <div class="key white-key" data-note="높은 레 (D5)" data-freq="587.33" data-key="s">레5<span class="key-hint">S</span></div>
+            <div class="key white-key" data-note="높은 미 (E5)" data-freq="659.25" data-key="d">미5<span class="key-hint">D</span></div>
+            <div class="key white-key" data-note="높은 파 (F5)" data-freq="698.46" data-key="f">파5<span class="key-hint">F</span></div>
+            <div class="key white-key" data-note="높은 솔 (G5)" data-freq="783.99" data-key="g">솔5<span class="key-hint">G</span></div>
+            <div class="key white-key" data-note="높은 라 (A5)" data-freq="880.00" data-key="h">라5<span class="key-hint">H</span></div>
+            <div class="key white-key" data-note="높은 시 (B5)" data-freq="987.77" data-key="j">시5<span class="key-hint">J</span></div>
+            
+            <div class="key white-key" data-note="최고음 도 (C6)" data-freq="1046.50" data-key="k">도6<span class="key-hint">K</span></div>
+        </div>
+
+        <div class="black-keys-group">
+            <div class="key black-key bk-c3_s" data-note="낮은 도# (C#3)" data-freq="138.59" data-key="!">도#3<span class="key-hint">!</span></div>
+            <div class="key black-key bk-d3_s" data-note="낮은 레# (D#3)" data-freq="155.56" data-key="@">레#3<span class="key-hint">@</span></div>
+            <div class="key black-key bk-f3_s" data-note="낮은 파# (F#3)" data-freq="185.00" data-key="$">파#3<span class="key-hint">$</span></div>
+            <div class="key black-key bk-g3_s" data-note="낮은 솔# (G#3)" data-freq="207.65" data-key="%">솔#3<span class="key-hint">%</span></div>
+            <div class="key black-key bk-a3_s" data-note="낮은 라# (A#3)" data-freq="233.08" data-key="^">라#3<span class="key-hint">^</span></div>
+
+            <div class="key black-key bk-c4_s" data-note="도# (C#4)" data-freq="277.18" data-key="8">도#4<span class="key-hint">8</span></div>
+            <div class="key black-key bk-d4_s" data-note="레# (D#4)" data-freq="311.13" data-key="9">레#4<span class="key-hint">9</span></div>
+            <div class="key black-key bk-f4_s" data-note="파# (F#4)" data-freq="369.99" data-key="0">파#4<span class="key-hint">0</span></div>
+            <div class="key black-key bk-g4_s" data-note="솔# (G#4)" data-freq="415.30" data-key="-">솔#4<span class="key-hint">-</span></div>
+            <div class="key black-key bk-a4_s" data-note="라# (A#4)" data-freq="466.16" data-key="=">라#4<span class="key-hint">=</span></div>
+
+            <div class="key black-key bk-c5_s" data-note="높은 도# (C#5)" data-freq="554.37" data-key="z">도#5<span class="key-hint">Z</span></div>
+            <div class="key black-key bk-d5_s" data-note="높은 레# (D#5)" data-freq="622.25" data-key="x">레#5<span class="key-hint">X</span></div>
+            <div class="key black-key bk-f5_s" data-note="높은 파# (F#5)" data-freq="739.99" data-key="c">파#5<span class="key-hint">C</span></div>
+            <div class="key black-key bk-g5_s" data-note="높은 솔# (G#5)" data-freq="830.61" data-key="v">솔#5<span class="key-hint">V</span></div>
+            <div class="key black-key bk-a5_s" data-note="높은 라# (A#5)" data-freq="932.33" data-key="b">라#5<span class="key-hint">B</span></div>
+        </div>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let analyser = null;
+        const activeOscillators = {}; 
+
+        const statusDisplay = document.getElementById('status');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        const keys = document.querySelectorAll('.key');
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // [변경] 브라우저 보호 정책을 완벽히 깨우는 강제 활성화 오디오 로직
+        function initAudio() {
+            if (audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext({ latencyHint: 'interactive' });
+            
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.connect(audioCtx.destination);
+
+            drawVisualizer();
+        }
+
+        // 마우스 클릭 시 오디오 엔진 활성화 상태를 UI에 표시
+        function activateAudioContext() {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    statusDisplay.style.color = '#00ffcc';
+                    statusDisplay.textContent = "피아노가 활성화되었습니다! 즐겁게 연주하세요.";
+                });
+            } else if (audioCtx && audioCtx.state === 'running') {
+                if(statusDisplay.textContent.includes("⚠️")) {
+                    statusDisplay.style.color = '#00ffcc';
+                    statusDisplay.textContent = "준비 완료";
+                }
+            }
+        }
+
+        // [핵심 요구사항] 첫 화면 클릭 리스너 설정
+        window.addEventListener('click', activateAudioContext, { once: false });
+        window.addEventListener('touchstart', activateAudioContext, { once: false });
+
+        function getNoteColor(freq) {
+            const minFreq = 130;
+            const maxFreq = 1050;
+            const hue = ((freq - minFreq) / (maxFreq - minFreq)) * 300;
+            return `hsl(${hue}, 95%, 55%)`;
+        }
+
+        function calculateDynamicGain(freq) {
+            const baseGain = 0.35; 
+            if (freq < 300) {
+                const compensationFactor = 1 + (300 - freq) / 220; 
+                return baseGain * compensationFactor;
+            }
+            return baseGain;
+        }
+
+        function playNote(note, freq, keyElement) {
+            activateAudioContext(); // 소리 낼 때 다시 한번 체크
+
+            if (!audioCtx || activeOscillators[note]) return;
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            const optimalGain = calculateDynamicGain(freq);
+
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(optimalGain, audioCtx.currentTime + 0.008); 
+
+            osc.connect(gainNode);
+            gainNode.connect(analyser);
+            osc.start();
+
+            activeOscillators[note] = { osc, gainNode };
+
+            statusDisplay.style.color = '#00ffcc';
+            statusDisplay.textContent = `${note} - ${freq.toFixed(2)} Hz`;
+            const activeColor = getNoteColor(freq);
+            
+            keyElement.classList.add('active');
+            keyElement.style.background = activeColor;
+            keyElement.style.color = '#fff';
+            keyElement.style.boxShadow = `0 0 18px ${activeColor}, inset 0 -4px 0 rgba(0,0,0,0.2)`;
+        }
+
+        function stopNote(note, keyElement) {
+            if (!activeOscillators[note]) return;
+
+            const { osc, gainNode } = activeOscillators[note];
+            
+            gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+
+            osc.stop(audioCtx.currentTime + 0.08);
+            setTimeout(() => {
+                osc.disconnect();
+                gainNode.disconnect();
+            }, 80);
+
+            delete activeOscillators[note];
+
+            keyElement.classList.remove('active');
+            keyElement.style.background = '';
+            keyElement.style.color = '';
+            keyElement.style.boxShadow = '';
+
+            if (Object.keys(activeOscillators).length === 0) {
+                statusDisplay.textContent = "연주 중이 아닙니다";
+            }
+        }
+
+        // 인터랙션 이벤트 연결
+        keys.forEach(key => {
+            const note = key.getAttribute('data-note');
+            const freq = parseFloat(key.getAttribute('data-freq'));
+
+            key.addEventListener('mousedown', (e) => { e.preventDefault(); playNote(note, freq, key); });
+            key.addEventListener('mouseup', () => stopNote(note, key));
+            key.addEventListener('mouseleave', () => stopNote(note, key));
+
+            key.addEventListener('touchstart', (e) => { e.preventDefault(); playNote(note, freq, key); });
+            key.addEventListener('touchend', (e) => { e.preventDefault(); stopNote(note, key); });
+        });
+
+        // 물리 키보드 핸들러
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const targetKey = document.querySelector(`.key[data-key="${e.key.toLowerCase()}"]`) || 
+                              document.querySelector(`.key[data-key="${e.key}"]`); 
+            if (targetKey) {
+                playNote(targetKey.getAttribute('data-note'), parseFloat(targetKey.getAttribute('data-freq')), targetKey);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const targetKey = document.querySelector(`.key[data-key="${e.key.toLowerCase()}"]`) || 
+                              document.querySelector(`.key[data-key="${e.key}"]`);
+            if (targetKey) {
+                stopNote(targetKey.getAttribute('data-note'), targetKey);
+            }
+        });
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = '#1a1a1e';
+            canvasCtx.fillRect(0, 0, width, height);
+
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+            canvasCtx.lineWidth = 1;
+            for(let i = 0; i < width; i += 40) { canvasCtx.beginPath(); canvasCtx.moveTo(i, 0); canvasCtx.lineTo(i, height); canvasCtx.stroke(); }
+            for(let j = 0; j < height; j += 40) { canvasCtx.beginPath(); canvasCtx.moveTo(0, j); canvasCtx.lineTo(width, j); canvasCtx.stroke(); }
+
+            let currentFreq = 0;
+            const keysPlaying = Object.keys(activeOscillators);
+            if (keysPlaying.length > 0) {
+                const topNote = keysPlaying[keysPlaying.length - 1];
+                const activeEl = Array.from(keys).find(k => k.getAttribute('data-note') === topNote);
+                if(activeEl) currentFreq = parseFloat(activeEl.getAttribute('data-freq'));
+            }
+
+            canvasCtx.lineWidth = 4;
+            canvasCtx.lineJoin = 'round';
+            canvasCtx.lineCap = 'round';
+            
+            if(currentFreq > 0) {
+                const glowColor = getNoteColor(currentFreq);
+                canvasCtx.strokeStyle = glowColor;
+                canvasCtx.shadowBlur = 18;
+                canvasCtx.shadowColor = glowColor;
+            } else {
+                canvasCtx.strokeStyle = '#4a5568';
+                canvasCtx.shadowBlur = 0;
+            }
+
+            canvasCtx.beginPath();
+            const sliceWidth = width / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(width, height / 2);
+            canvasCtx.stroke();
+        }
+    </script>
+</body>
+</html>
