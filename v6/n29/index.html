@@ -1,0 +1,571 @@
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Interactive Kalimba Visualizer</title>
+
+<style>
+/* ======================================
+   기본 스타일
+====================================== */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+}
+
+body{
+    background:#0d1117;
+    color:white;
+    font-family:Arial,sans-serif;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
+
+/* ======================================
+   상단 컨트롤
+====================================== */
+.controls{
+    background:#161b22;
+    padding:10px;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:10px;
+}
+
+button,
+select{
+    padding:10px 15px;
+    border:none;
+    border-radius:10px;
+    background:#21262d;
+    color:white;
+    cursor:pointer;
+}
+
+/* ======================================
+   오실로스코프
+====================================== */
+#scope{
+    width:100%;
+    height:42vh;
+    background:#000;
+    display:block;
+}
+
+/* ======================================
+   칼림바
+====================================== */
+.kalimba-wrap{
+    flex:1;
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+    padding-bottom:20px;
+}
+
+.kalimba{
+    display:flex;
+    align-items:flex-end;
+    gap:8px;
+}
+
+.key{
+    width:52px;
+    border-radius:0 0 20px 20px;
+
+    background:
+    linear-gradient(
+        to bottom,
+        #d8dde5,
+        #9099a8
+    );
+
+    color:#111;
+    font-weight:bold;
+
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+
+    padding-bottom:12px;
+
+    border:1px solid rgba(255,255,255,.3);
+
+    user-select:none;
+    touch-action:manipulation;
+
+    transition:.06s;
+}
+
+.key.active{
+    transform:translateY(5px);
+    filter:brightness(1.3);
+}
+
+/* 8키 칼림바 형태 */
+.key:nth-child(1),
+.key:nth-child(8){
+    height:160px;
+}
+
+.key:nth-child(2),
+.key:nth-child(7){
+    height:190px;
+}
+
+.key:nth-child(3),
+.key:nth-child(6){
+    height:220px;
+}
+
+.key:nth-child(4),
+.key:nth-child(5){
+    height:260px;
+}
+
+.recording{
+    background:#d62828 !important;
+}
+</style>
+</head>
+<body>
+
+<div class="controls">
+
+<select id="instrument">
+    <option value="kalimba">Kalimba</option>
+    <option value="piano">Piano</option>
+    <option value="guitar">Guitar</option>
+    <option value="synth">Synth</option>
+</select>
+
+<button id="recordBtn">
+🎤 녹음 시작
+</button>
+
+<button id="playBtn">
+▶ 녹음 재생
+</button>
+
+</div>
+
+<canvas id="scope"></canvas>
+
+<div class="kalimba-wrap">
+    <div id="kalimba" class="kalimba"></div>
+</div>
+
+<audio id="player" hidden controls></audio>
+
+<script>
+
+/* ======================================
+   AudioContext
+====================================== */
+const AudioContextClass =
+window.AudioContext ||
+window.webkitAudioContext;
+
+const audioCtx =
+new AudioContextClass();
+
+/* 마스터 볼륨 */
+const masterGain =
+audioCtx.createGain();
+
+masterGain.gain.value = 0.85;
+masterGain.connect(audioCtx.destination);
+
+/* 분석기 */
+const analyser =
+audioCtx.createAnalyser();
+
+analyser.fftSize = 2048;
+
+masterGain.connect(analyser);
+
+/* ======================================
+   녹음용 MediaRecorder
+====================================== */
+const destination =
+audioCtx.createMediaStreamDestination();
+
+masterGain.connect(destination);
+
+let mediaRecorder;
+let chunks = [];
+let recordedBlob = null;
+
+const recordBtn =
+document.getElementById("recordBtn");
+
+const playBtn =
+document.getElementById("playBtn");
+
+const player =
+document.getElementById("player");
+
+recordBtn.addEventListener("click",()=>{
+
+    if(
+        !mediaRecorder ||
+        mediaRecorder.state==="inactive"
+    ){
+
+        chunks=[];
+
+        mediaRecorder =
+        new MediaRecorder(
+            destination.stream
+        );
+
+        mediaRecorder.ondataavailable=
+        e=>{
+            chunks.push(e.data);
+        };
+
+        mediaRecorder.onstop=()=>{
+            recordedBlob =
+            new Blob(
+                chunks,
+                {type:"audio/webm"}
+            );
+
+            player.src =
+            URL.createObjectURL(
+                recordedBlob
+            );
+        };
+
+        mediaRecorder.start();
+
+        recordBtn.textContent=
+        "■ 녹음 중";
+
+        recordBtn.classList.add(
+            "recording"
+        );
+
+    }else{
+
+        mediaRecorder.stop();
+
+        recordBtn.textContent=
+        "🎤 녹음 시작";
+
+        recordBtn.classList.remove(
+            "recording"
+        );
+    }
+});
+
+playBtn.addEventListener("click",()=>{
+
+    if(recordedBlob){
+        player.play();
+    }
+});
+
+/* ======================================
+   도레미파솔라시도
+====================================== */
+const notes = [
+    {name:"도", freq:261.63},
+    {name:"레", freq:293.66},
+    {name:"미", freq:329.63},
+    {name:"파", freq:349.23},
+    {name:"솔", freq:392.00},
+    {name:"라", freq:440.00},
+    {name:"시", freq:493.88},
+    {name:"도", freq:523.25}
+];
+
+let currentFrequency = 261.63;
+
+const kalimba =
+document.getElementById("kalimba");
+
+const instrument =
+document.getElementById("instrument");
+
+/* ======================================
+   음 생성
+====================================== */
+function playNote(freq){
+
+    if(audioCtx.state==="suspended"){
+        audioCtx.resume();
+    }
+
+    currentFrequency = freq;
+
+    const osc =
+    audioCtx.createOscillator();
+
+    const gain =
+    audioCtx.createGain();
+
+    osc.connect(gain);
+    gain.connect(masterGain);
+
+    const now =
+    audioCtx.currentTime;
+
+    const mode =
+    instrument.value;
+
+    switch(mode){
+
+        case "synth":
+
+            osc.type="sawtooth";
+
+            gain.gain.setValueAtTime(
+                0.001, now
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.8,
+                now+0.01
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                now+1
+            );
+            break;
+
+        case "guitar":
+
+            osc.type="square";
+
+            gain.gain.setValueAtTime(
+                0.001, now
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.7,
+                now+0.01
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                now+1.3
+            );
+            break;
+
+        case "piano":
+
+            osc.type="triangle";
+
+            gain.gain.setValueAtTime(
+                0.001, now
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.9,
+                now+0.01
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                now+1.5
+            );
+            break;
+
+        default:
+
+            osc.type="sine";
+
+            gain.gain.setValueAtTime(
+                0.001, now
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.8,
+                now+0.01
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                now+2
+            );
+    }
+
+    osc.frequency.value = freq;
+
+    osc.start();
+    osc.stop(now+2);
+}
+
+/* ======================================
+   건반 생성
+====================================== */
+notes.forEach(note=>{
+
+    const key =
+    document.createElement("div");
+
+    key.className="key";
+    key.textContent=note.name;
+
+    const start=()=>{
+
+        key.classList.add("active");
+        playNote(note.freq);
+    };
+
+    const end=()=>{
+
+        key.classList.remove("active");
+    };
+
+    key.addEventListener(
+        "mousedown",
+        start
+    );
+
+    key.addEventListener(
+        "mouseup",
+        end
+    );
+
+    key.addEventListener(
+        "mouseleave",
+        end
+    );
+
+    key.addEventListener(
+        "touchstart",
+        e=>{
+            e.preventDefault();
+            start();
+        },
+        {passive:false}
+    );
+
+    key.addEventListener(
+        "touchend",
+        end
+    );
+
+    kalimba.appendChild(key);
+});
+
+/* ======================================
+   Canvas Oscilloscope
+====================================== */
+const canvas =
+document.getElementById("scope");
+
+const ctx =
+canvas.getContext("2d");
+
+function resize(){
+
+    canvas.width =
+    window.innerWidth;
+
+    canvas.height =
+    canvas.clientHeight;
+}
+
+resize();
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+const data =
+new Uint8Array(
+    analyser.fftSize
+);
+
+/* ======================================
+   실시간 시각화
+====================================== */
+function animate(){
+
+    requestAnimationFrame(
+        animate
+    );
+
+    analyser.getByteTimeDomainData(
+        data
+    );
+
+    /* Trail Effect */
+    ctx.fillStyle =
+    "rgba(0,0,0,0.08)";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    /* 주파수별 색상 */
+    const hue =
+    Math.min(
+        360,
+        currentFrequency/523.25*360
+    );
+
+    ctx.shadowBlur = 25;
+    ctx.shadowColor =
+    `hsl(${hue},100%,60%)`;
+
+    ctx.lineWidth = 3;
+
+    ctx.strokeStyle =
+    `hsl(${hue},100%,60%)`;
+
+    ctx.beginPath();
+
+    const slice =
+    canvas.width /
+    data.length;
+
+    let x = 0;
+
+    for(
+        let i=0;
+        i<data.length;
+        i++
+    ){
+
+        const v =
+        data[i]/128.0;
+
+        const y =
+        v*canvas.height/2;
+
+        if(i===0){
+            ctx.moveTo(x,y);
+        }else{
+            ctx.lineTo(x,y);
+        }
+
+        x += slice;
+    }
+
+    ctx.stroke();
+}
+
+animate();
+
+</script>
+
+</body>
+</html>
+```
