@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Realistic Web Synth</title>
+    <style>
+        body { margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; transition: background 0.5s; background: #222; color: white; touch-action: none; }
+        .shake { animation: shake 0.2s linear; }
+        @keyframes shake { 0%, 100% {transform: translate(0,0);} 25% {transform: translate(-5px, 5px);} 75% {transform: translate(5px, -5px);} }
+        #bg-container { width: 100%; display: flex; flex-direction: column; align-items: center; }
+        canvas { width: 90%; height: 200px; background: rgba(0,0,0,0.6); margin-top: 10px; border-radius: 10px; }
+        .keyboard, .bg-controls { display: grid; grid-template-columns: repeat(4, 1fr); width: 90%; gap: 5px; margin-top: 10px; }
+        .key, .bg-btn { padding: 15px 0; background: rgba(255,255,255,0.9); color: #000; border-radius: 8px; text-align: center; font-weight: bold; cursor: pointer; }
+        .bg-btn { background: rgba(0,0,0,0.7); color: #fff; font-size: 0.8rem; }
+        /* 악기 이미지 표시 영역 */
+        #instrument-display { position: fixed; bottom: 20px; right: 20px; width: 120px; text-align: center; pointer-events: none; }
+    </style>
+</head>
+<body id="mainBody">
+
+<div id="bg-container">
+    <select id="instrumentSelect" style="margin:10px; padding:5px;">
+        <option value="piano">피아노</option>
+        <option value="guitar">기타</option>
+        <option value="violin">바이올린</option>
+    </select>
+    <canvas id="visualizer"></canvas>
+    <div class="keyboard" id="keyboard"></div>
+    <div class="bg-controls">
+        <div class="bg-btn" onclick="changeBg(1)">1: 검은색</div>
+        <div class="bg-btn" onclick="changeBg(2)">2: 무대</div>
+        <div class="bg-btn" onclick="changeBg(3)">3: 도시</div>
+        <div class="bg-btn" onclick="changeBg(4)">4: 숲</div>
+    </div>
+</div>
+
+<div id="instrument-display">
+    <div id="inst-icon" style="font-size: 50px;">🎹</div>
+    <div id="inst-name">피아노</div>
+</div>
+
+<script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioCtx.createAnalyser();
+    const canvasCtx = document.getElementById('visualizer').getContext('2d');
+    const instSelect = document.getElementById('instrumentSelect');
+    
+    // 악기 소리 및 이미지 설정
+    const instSettings = {
+        piano: { type: 'sine', filter: 1000, icon: '🎹' },
+        guitar: { type: 'triangle', filter: 2000, icon: '🎸' },
+        violin: { type: 'sawtooth', filter: 4000, icon: '🎻' }
+    };
+
+    instSelect.onchange = () => {
+        const s = instSettings[instSelect.value];
+        document.getElementById('inst-icon').innerText = s.icon;
+        document.getElementById('inst-name').innerText = instSelect.options[instSelect.selectedIndex].text;
+    };
+
+    function playNote(freq) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const settings = instSettings[instSelect.value];
+        
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter(); // 소리의 질감을 다듬는 필터 추가
+
+        osc.type = settings.type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(settings.filter, audioCtx.currentTime);
+
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.2);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        
+        osc.start(); osc.stop(audioCtx.currentTime + 1.2);
+    }
+
+    // [기존 로직 포함]
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.key, .bg-btn, select')) {
+            document.body.classList.add('shake');
+            setTimeout(() => document.body.classList.remove('shake'), 200);
+            playNote(Math.random() > 0.5 ? 587.33 : 659.25);
+        }
+    });
+
+    const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+    notes.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'key';
+        div.innerText = ['도','레','미','파','솔','라','시','도'][i];
+        div.addEventListener('mousedown', (e) => { e.stopPropagation(); playNote(f); });
+        document.getElementById('keyboard').appendChild(div);
+    });
+
+    function changeBg(n) {
+        const bgs = ["", "#222", "url('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=2000')", "url('https://images.unsplash.com/photo-1449824913935-59a10b8d2000?q=80&w=2000')", "url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=2000')"];
+        document.body.style.background = bgs[n] + " center/cover";
+    }
+
+    function draw() {
+        requestAnimationFrame(draw);
+        const data = new Uint8Array(256);
+        analyser.getByteTimeDomainData(data);
+        canvasCtx.fillStyle = 'black'; canvasCtx.fillRect(0,0,800,200);
+        canvasCtx.beginPath(); canvasCtx.strokeStyle = '#0ff';
+        for(let i=0; i<data.length; i++) {
+            const x = (i / data.length) * 800;
+            const y = (data[i] / 255) * 200;
+            i === 0 ? canvasCtx.moveTo(x,y) : canvasCtx.lineTo(x,y);
+        }
+        canvasCtx.stroke();
+    }
+    draw();
+</script>
+</body>
+</html>
