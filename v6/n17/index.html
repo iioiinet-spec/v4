@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>5-Type 멀티 비주얼라이저 마스터 피아노</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            background-color: #0b0c10 !important;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 120px;
+            background: #1f2833;
+            text-align: center;
+            padding-top: 12px;
+            z-index: 999;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        header h1 {
+            font-size: 1.1rem;
+            color: #66fcf1;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 0 10px;
+        }
+
+        .controls select, .controls button {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            border: 1px solid #66fcf1;
+            font-weight: bold;
+            outline: none;
+        }
+
+        .controls select {
+            background: #0b0c10;
+            color: #fff;
+        }
+
+        .btn-mode {
+            background: #1f2833;
+            color: #66fcf1;
+            cursor: pointer;
+        }
+        
+        .btn-mode.active {
+            background: #66fcf1;
+            color: #0b0c10;
+        }
+
+        .btn-visual {
+            background: #ff9f43;
+            color: #fff;
+            border-color: #ff9f43;
+            cursor: pointer;
+        }
+
+        .btn-action {
+            background: #2ed573;
+            color: #fff;
+            border-color: #2ed573;
+            cursor: pointer;
+        }
+
+        .btn-action.stop-style {
+            background: #ff4757;
+            border-color: #ff4757;
+        }
+
+        .visualizer-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background-color: #0b0c10;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .piano-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 220px;
+            background-color: #111;
+            padding: 6px;
+            display: flex;
+            justify-content: center;
+            z-index: 999;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.8);
+        }
+
+        .piano-keyboard {
+            position: relative;
+            width: 100%;
+            max-width: 1100px;
+            height: 100%;
+            display: flex;
+        }
+
+        .key {
+            flex: 1;
+            height: 100%;
+            background: linear-gradient(to bottom, #ffffff 0%, #f9f9f9 75%, #e5e5e5 100%);
+            border: 1px solid #111;
+            border-radius: 0 0 5px 5px;
+            position: relative;
+            z-index: 10;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 12px;
+            color: #333;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .key.active {
+            background: linear-gradient(to bottom, #66fcf1 0%, #4ce6dd 80%, #29b3aa 100%) !important;
+            color: #000 !important;
+        }
+
+        .key.black {
+            position: absolute;
+            height: 58%;
+            width: 4.2%;
+            background: linear-gradient(to bottom, #444444 0%, #030303 100%);
+            border: 1px solid #000;
+            border-radius: 0 0 4px 4px;
+            z-index: 20;
+            color: #fff;
+            font-size: 0.6rem;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 6px;
+        }
+
+        .key.black.active {
+            background: linear-gradient(to bottom, #29b3aa 0%, #1f8a83 100%) !important;
+            color: #fff !important;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>MULTI-VISUAL PIANO MASTER</h1>
+        <div class="controls">
+            <button id="modeManualBtn" class="btn-mode active">혼자 연주</button>
+            <button id="modeAutoBtn" class="btn-mode">대신 연주</button>
+            <select id="songSelect" disabled>
+                <option value="totoro">이웃집 토토로 - 메인 테마</option>
+                <option value="always">센과 치히로 - 언제나 몇번이라도</option>
+                <option value="maiden">바다르제프스카 - 소녀의 기도</option>
+                <option value="humoresque">드보르자크 - 유모레스크</option>
+                <option value="elise">베토벤 - 엘리제를 위하여</option>
+            </select>
+            <button id="visualChangeBtn" class="btn-visual">파형 스타일 변환 (1 / 5)</button>
+            <button id="actionBtn" class="btn-action">연주 시작</button>
+        </div>
+    </header>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="piano-container">
+        <div class="piano-keyboard" id="keyboard"></div>
+    </div>
+
+    <script>
+        const noteData = [
+            { note: "C4",  freq: 261.63, isBlack: false, label: "도" },
+            { note: "C#4", freq: 277.18, isBlack: true,  label: "도#" },
+            { note: "D4",  freq: 293.66, isBlack: false, label: "레" },
+            { note: "D#4", freq: 311.13, isBlack: true,  label: "레#" },
+            { note: "E4",  freq: 329.63, isBlack: false, label: "미" },
+            { note: "F4",  freq: 349.23, isBlack: false, label: "파" },
+            { note: "F#4", freq: 369.99, isBlack: true,  label: "파#" },
+            { note: "G4",  freq: 392.00, isBlack: false, label: "솔" },
+            { note: "G#4", freq: 415.30, isBlack: true,  label: "솔#" },
+            { note: "A4",  freq: 440.00, isBlack: false, label: "라" },
+            { note: "A#4", freq: 466.16, isBlack: true,  label: "라#" },
+            { note: "B4",  freq: 493.88, isBlack: false, label: "시" },
+            { note: "C5",  freq: 523.25, isBlack: false, label: "도" },
+            { note: "C#5", freq: 554.37, isBlack: true,  label: "도#" },
+            { note: "D5",  freq: 587.33, isBlack: false, label: "레" },
+            { note: "D#5", freq: 622.25, isBlack: true,  label: "레#" },
+            { note: "E5",  freq: 659.25, isBlack: false, label: "미" },
+            { note: "F5",  freq: 698.46, isBlack: false, label: "파" },
+            { note: "F#5", freq: 739.99, isBlack: true,  label: "파#" },
+            { note: "G5",  freq: 783.99, isBlack: false, label: "솔" },
+            { note: "G#5", freq: 830.61, isBlack: true,  label: "솔#" },
+            { note: "A5",  freq: 880.00, isBlack: false, label: "라" },
+            { note: "A#5", freq: 932.33, isBlack: true,  label: "라#" },
+            { note: "B5",  freq: 987.77, isBlack: false, label: "시" },
+            { note: "C6",  freq: 1046.50, isBlack: false, label: "도" }
+        ];
+
+        noteData.forEach((note, index) => { note.hue = Math.floor((index / noteData.length) * 360); });
+
+        const songs = {
+            totoro: [
+                { note: "C#5", duration: 0.15 }, { note: "C#5", duration: 0.15 }, { note: "C#5", duration: 0.15 }, { note: "D5", duration: 0.15 },
+                { note: "E5", duration: 0.40 }, { note: "D5", duration: 0.20 }, { note: "C#5", duration: 0.45 },
+                { note: "D5", duration: 0.15 }, { note: "D5", duration: 0.15 }, { note: "D5", duration: 0.15 }, { note: "E5", duration: 0.15 },
+                { note: "F#5", duration: 0.40 }, { note: "E5", duration: 0.20 }, { note: "D5", duration: 0.45 },
+                { note: "C#5", duration: 0.15 }, { note: "C#5", duration: 0.15 }, { note: "C#5", duration: 0.15 }, { note: "D5", duration: 0.15 },
+                { note: "E5", duration: 0.40 }, { note: "D5", duration: 0.20 }, { note: "C#5", duration: 0.45 },
+                { note: "D5", duration: 0.15 }, { note: "E5", duration: 0.15 }, { note: "F#5", duration: 0.30 }, { note: "E5", duration: 0.30 }, 
+                { note: "A5", duration: 0.70 },
+                { note: "F#5", duration: 0.20 }, { note: "G#5", duration: 0.20 }, { note: "A5", duration: 0.40 }, { note: "A5", duration: 0.40 },
+                { note: "B5", duration: 0.20 }, { note: "A5", duration: 0.20 }, { note: "G#5", duration: 0.20 }, { note: "F#5", duration: 0.40 },
+                { note: "E5", duration: 0.30 }, { note: "F#5", duration: 0.30 }, { note: "D5", duration: 0.30 }, { note: "E5", duration: 0.80 }
+            ],
+            always: [
+                { note: "A4", duration: 0.25 }, { note: "G4", duration: 0.25 }, { note: "F4", duration: 0.25 }, 
+                { note: "E4", duration: 0.25 }, { note: "C4", duration: 0.25 }, { note: "D4", duration: 0.25 },
+                { note: "F4", duration: 0.25 }, { note: "A4", duration: 0.25 }, { note: "G4", duration: 0.65 },
+                { note: "F4", duration: 0.25 }, { note: "E4", duration: 0.25 }, { note: "D4", duration: 0.25 },
+                { note: "E4", duration: 0.25 }, { note: "F4", duration: 0.25 }, { note: "A4", duration: 0.25 },
+                { note: "B4", duration: 0.25 }, { note: "C5", duration: 0.25 }, { note: "G4", duration: 0.65 },
+                { note: "C5", duration: 0.25 }, { note: "B4", duration: 0.25 }, { note: "A4", duration: 0.25 },
+                { note: "G4", duration: 0.45 }, { note: "F4", duration: 0.25 }, { note: "E4", duration: 0.25 },
+                { note: "D4", duration: 0.25 }, { note: "F4", duration: 0.25 }, { note: "C4", duration: 0.70 }
+            ],
+            maiden: [
+                { note: "E5", duration: 0.4 }, { note: "G#5", duration: 0.4 }, { note: "B5", duration: 0.4 }, { note: "E6", duration: 0.6 },
+                { note: "D#5", duration: 0.2 }, { note: "E5", duration: 0.2 }, { note: "F#5", duration: 0.2 }, { note: "E5", duration: 0.5 },
+                { note: "C#5", duration: 0.3 }, { note: "B4", duration: 0.15 }, { note: "A4", duration: 0.3 }, { note: "G#4", duration: 0.15 },
+                { note: "F#4", duration: 0.3 }, { note: "E4", duration: 0.5 },
+                { note: "E4", duration: 0.2 }, { note: "A4", duration: 0.2 }, { note: "C#5", duration: 0.2 }, { note: "E5", duration: 0.4 },
+                { note: "D5", duration: 0.2 }, { note: "C#5", duration: 0.2 }, { note: "B4", duration: 0.5 },
+                { note: "B4", duration: 0.2 }, { note: "E5", duration: 0.2 }, { note: "G#5", duration: 0.2 }, { note: "B5", duration: 0.4 },
+                { note: "A5", duration: 0.2 }, { note: "G#5", duration: 0.2 }, { note: "A5", duration: 0.7 }
+            ],
+            humoresque: [
+                { note: "D5", duration: 0.12 }, { note: "F#5", duration: 0.25 },
+                { note: "D5", duration: 0.12 }, { note: "F#5", duration: 0.25 },
+                { note: "D5", duration: 0.12 }, { note: "F#5", duration: 0.12 }, { note: "D5", duration: 0.12 }, { note: "F#5", duration: 0.25 },
+                { note: "E5", duration: 0.12 }, { note: "G5", duration: 0.25 },
+                { note: "E5", duration: 0.12 }, { note: "G5", duration: 0.25 },
+                { note: "E5", duration: 0.12 }, { note: "G5", duration: 0.12 }, { note: "E5", duration: 0.12 }, { note: "G5", duration: 0.25 },
+                { note: "F#5", duration: 0.12 }, { note: "A5", duration: 0.25 },
+                { note: "F#5", duration: 0.12 }, { note: "A5", duration: 0.25 },
+                { note: "G5", duration: 0.12 }, { note: "F#5", duration: 0.12 }, { note: "E5", duration: 0.12 }, { note: "D5", duration: 0.25 },
+                { note: "C#5", duration: 0.12 }, { note: "E5", duration: 0.25 },
+                { note: "A4", duration: 0.12 }, { note: "C#5", duration: 0.25 },
+                { note: "D5", duration: 0.50 }
+            ],
+            elise: [
+                { note: "E5", duration: 0.2 }, { note: "D#5", duration: 0.2 }, { note: "E5", duration: 0.2 }, { note: "D#5", duration: 0.2 }, { note: "E5", duration: 0.2 }, { note: "B4", duration: 0.2 }, { note: "D5", duration: 0.2 }, { note: "C5", duration: 0.2 },
+                { note: "A4", duration: 0.5 }, { note: "C4", duration: 0.2 }, { note: "E4", duration: 0.2 }, { note: "A4", duration: 0.2 }, { note: "B4", duration: 0.5 },
+                { note: "E4", duration: 0.2 }, { note: "G#4", duration: 0.2 }, { note: "B4", duration: 0.2 }, { note: "C5", duration: 0.5 }
+            ]
+        };
+
+        let audioCtx = null, analyser = null;
+        const activeOscillators = {};
+        let currentMode = 'manual';
+        let isLoopPlaying = false;
+        let demoTimeoutId = null;
+        let currentPlayingHue = 180;
+        
+        // 비주얼라이저 종류 선택 변수 (1: 막대, 2: 파동, 3: 원형, 4: 도트, 5: 미러)
+        let visualType = 1; 
+        const visualNames = ["네온 이퀄라이저", "사인 웨이브", "원형 파형", "미니멀 도트", "양방향 미러"];
+
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256; 
+                analyser.connect(audioCtx.destination);
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playNote(freq, noteName) {
+            initAudio();
+            if (activeOscillators[noteName]) return;
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle'; 
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.01);
+
+            osc.connect(gainNode);
+            gainNode.connect(analyser);
+            osc.start();
+
+            activeOscillators[noteName] = { osc, gainNode };
+            
+            const noteObj = noteData.find(n => n.note === noteName);
+            if (noteObj) currentPlayingHue = noteObj.hue;
+
+            const keyEl = document.querySelector(`[data-note="${noteName}"]`);
+            if (keyEl) keyEl.classList.add('active');
+        }
+
+        function stopNote(noteName) {
+            const activeObj = activeOscillators[noteName];
+            if (!activeObj) return;
+
+            const { osc, gainNode } = activeObj;
+            try {
+                gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch(e) { osc.stop(); }
+            delete activeOscillators[noteName];
+
+            const keyEl = document.querySelector(`[data-note="${noteName}"]`);
+            if (keyEl) keyEl.classList.remove('active');
+        }
+
+        function playAutoSequencer(songArray, index = 0) {
+            if (!isLoopPlaying || index >= songArray.length) {
+                resetPlaybackState();
+                return;
+            }
+
+            const step = songArray[index];
+            stopAllNotes();
+
+            const matched = noteData.find(n => n.note === step.note);
+            if (matched) playNote(matched.freq, matched.note);
+
+            demoTimeoutId = setTimeout(() => {
+                playAutoSequencer(songArray, index + 1);
+            }, step.duration * 1500); 
+        }
+
+        function stopAllNotes() {
+            Object.keys(activeOscillators).forEach(name => stopNote(name));
+        }
+
+        function resetPlaybackState() {
+            isLoopPlaying = false;
+            clearTimeout(demoTimeoutId);
+            stopAllNotes();
+            const actionBtn = document.getElementById('actionBtn');
+            actionBtn.innerText = "연주 시작";
+            actionBtn.classList.remove('stop-style');
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            resizeCanvas();
+            
+            const keyboard = document.getElementById('keyboard');
+            const whiteKeys = noteData.filter(n => !n.isBlack);
+            
+            whiteKeys.forEach((note) => {
+                const keyBtn = document.createElement('div');
+                keyBtn.className = 'key';
+                keyBtn.dataset.note = note.note;
+                keyBtn.innerHTML = `<span>${note.label}</span>`;
+                setupKeyListeners(keyBtn, note);
+                keyboard.appendChild(keyBtn);
+            });
+
+            let whiteIdx = 0;
+            noteData.forEach((note) => {
+                if (!note.isBlack) {
+                    whiteIdx++;
+                } else {
+                    const keyBtn = document.createElement('div');
+                    keyBtn.className = 'key black';
+                    keyBtn.dataset.note = note.note;
+                    keyBtn.innerHTML = `<span>${note.label}</span>`;
+                    
+                    const leftPercent = (whiteIdx / whiteKeys.length) * 100 - 2.1;
+                    keyBtn.style.left = `${leftPercent}%`;
+                    
+                    setupKeyListeners(keyBtn, note);
+                    keyboard.appendChild(keyBtn);
+                }
+            });
+
+            function setupKeyListeners(el, note) {
+                function handlePress(e) {
+                    e.preventDefault();
+                    if (isLoopPlaying) resetPlaybackState();
+                    playNote(note.freq, note.note);
+                }
+                function handleRelease(e) { e.preventDefault(); stopNote(note.note); }
+
+                el.addEventListener('touchstart', handlePress, { passive: false });
+                el.addEventListener('touchend', handleRelease, { passive: false });
+                el.addEventListener('mousedown', handlePress);
+                el.addEventListener('mouseup', handleRelease);
+                el.addEventListener('mouseleave', handleRelease);
+            }
+
+            const modeManualBtn = document.getElementById('modeManualBtn');
+            const modeAutoBtn = document.getElementById('modeAutoBtn');
+            const songSelect = document.getElementById('songSelect');
+            const actionBtn = document.getElementById('actionBtn');
+            const visualChangeBtn = document.getElementById('visualChangeBtn');
+
+            // 파형 변환 버튼 클릭 이벤트
+            visualChangeBtn.addEventListener('click', () => {
+                visualType = visualType >= 5 ? 1 : visualType + 1;
+                visualChangeBtn.innerText = `파형 스타일 변환 (${visualType} / 5) : ${visualNames[visualType-1]}`;
+            });
+
+            modeManualBtn.addEventListener('click', () => {
+                currentMode = 'manual';
+                modeManualBtn.classList.add('active');
+                modeAutoBtn.classList.remove('active');
+                songSelect.disabled = true;
+                resetPlaybackState();
+            });
+
+            modeAutoBtn.addEventListener('click', () => {
+                currentMode = 'auto';
+                modeAutoBtn.classList.add('active');
+                modeManualBtn.classList.remove('active');
+                songSelect.disabled = false;
+                resetPlaybackState();
+            });
+
+            actionBtn.addEventListener('click', function() {
+                initAudio();
+                if (currentMode === 'manual') {
+                    playNote(440, "A4");
+                    setTimeout(() => stopNote("A4"), 150);
+                } else {
+                    if (isLoopPlaying) {
+                        resetPlaybackState();
+                    } else {
+                        isLoopPlaying = true;
+                        this.innerText = "연주 정지";
+                        this.classList.add('stop-style');
+                        playAutoSequencer(songs[songSelect.value]);
+                    }
+                }
+            });
+
+            drawVisualizer();
+        });
+
+        // 5가지 모드를 동적으로 그리는 마스터 비주얼라이저 루프
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            
+            // 모드별 투명도 페이드 아웃 연출 변경 (도트 모드 등은 잔상이 더 길게 남도록 조정)
+            ctx.fillStyle = visualType === 4 ? 'rgba(11, 12, 16, 0.4)' : 'rgba(11, 12, 16, 0.25)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            // 형태별 데이터 가공 (타입 2 사인웨이브는 시간 영역 데이터 사용)
+            if (visualType === 2) {
+                analyser.getByteTimeDomainData(dataArray);
+            } else {
+                analyser.getByteFrequencyData(dataArray);
+            }
+
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = `hsl(${currentPlayingHue}, 100%, 50%)`;
+
+            // --- 5가지 파형 렌더링 선택 스케줄러 ---
+            if (visualType === 1) {
+                // [종류 1] 네온 이퀄라이저 막대
+                const barWidth = (canvas.width / bufferLength) * 1.8;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    let barHeight = dataArray[i] * 1.7;
+                    if (barHeight > 0) {
+                        const gradient = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight);
+                        gradient.addColorStop(0, `hsl(${currentPlayingHue}, 100%, 40%)`);
+                        gradient.addColorStop(1, '#66fcf1');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(x, canvas.height - barHeight, barWidth - 4, barHeight);
+                    }
+                    x += barWidth;
+                }
+            } 
+            else if (visualType === 2) {
+                // [종류 2] 실시간 네온 사인 웨이브 파동
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = `hsl(${currentPlayingHue}, 100%, 65%)`;
+                ctx.beginPath();
+                const sliceWidth = canvas.width / bufferLength;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = (v * canvas.height) / 2;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    x += sliceWidth;
+                }
+                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.stroke();
+            } 
+            else if (visualType === 3) {
+                // [종류 3] 소리 반응형 중앙 원형 파형 오르빗
+                let totalEnergy = 0;
+                for(let i=0; i<bufferLength; i++) totalEnergy += dataArray[i];
+                let avgEnergy = totalEnergy / bufferLength;
+                
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2 - 40;
+                const baseRadius = 60 + avgEnergy * 1.2;
+
+                ctx.strokeStyle = '#66fcf1';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, baseRadius, 0, 2 * Math.PI);
+                ctx.stroke();
+
+                // 테두리에 퍼지는 파동 침선 추가 효과
+                for(let i=0; i<bufferLength; i+=4) {
+                    let angle = (i / bufferLength) * Math.PI * 2;
+                    let pLength = dataArray[i] * 0.8;
+                    let x1 = centerX + Math.cos(angle) * baseRadius;
+                    let y1 = centerY + Math.sin(angle) * baseRadius;
+                    let x2 = centerX + Math.cos(angle) * (baseRadius + pLength);
+                    let y2 = centerY + Math.sin(angle) * (baseRadius + pLength);
+                    
+                    ctx.strokeStyle = `hsl(${(currentPlayingHue + i)%360}, 100%, 60%)`;
+                    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                }
+            } 
+            else if (visualType === 4) {
+                // [종류 4] 은하수 미니멀 댄싱 도트
+                const barWidth = canvas.width / bufferLength * 1.8;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    let pointY = canvas.height - (dataArray[i] * 1.8) - 20;
+                    ctx.fillStyle = `hsl(${currentPlayingHue}, 100%, 70%)`;
+                    ctx.beginPath();
+                    ctx.arc(x + barWidth/2, pointY, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    x += barWidth;
+                }
+            } 
+            else if (visualType === 5) {
+                // [종류 5] 양방향 대칭 데칼코마니 미러 웨이브
+                const barWidth = (canvas.width / bufferLength) * 1.8;
+                const midY = canvas.height / 2 - 30;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    let halfHeight = dataArray[i] * 0.9;
+                    if (halfHeight > 0) {
+                        ctx.fillStyle = `hsl(${(currentPlayingHue + i*2)%360}, 100%, 60%)`;
+                        ctx.fillRect(x, midY - halfHeight, barWidth - 4, halfHeight * 2);
+                    }
+                    x += barWidth;
+                }
+            }
+
+            ctx.shadowBlur = 0; 
+        }
+    </script>
+</body>
+</html>
