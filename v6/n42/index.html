@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>High-Quality City Destroyer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050508; font-family: 'Segoe UI', sans-serif; color: white; cursor: none; }
+        
+        #loading {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; font-weight: bold; z-index: 9999; color: #00ffcc;
+        }
+
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: none; }
+        .weapon-info { font-size: 16px; margin-bottom: 8px; padding: 12px 20px; border-radius: 8px; background: rgba(10,10,15,0.85); border: 1px solid #222; min-width: 180px; backdrop-filter: blur(5px); transition: 0.2s; }
+        .active { border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.4); color: #00ffcc; font-weight: bold; }
+        
+        #crosshair { 
+            position: absolute; width: 24px; height: 24px; border: 2px solid #00ffcc; 
+            border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); 
+            z-index: 10; display: none; 
+        }
+        #crosshair::before { 
+            content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; 
+            background: #00ffcc; border-radius: 50%; transform: translate(-50%, -50%); 
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">라이브러리 로딩 중... (잠시만 기다려주세요)</div>
+    <div id="crosshair"></div>
+    <div id="ui">
+        <div id="w1" class="weapon-info active">🔫 [1] Vulcan 기관총</div>
+        <div id="w2" class="weapon-info">💣 [2] Cluster 폭탄</div>
+        <div id="w3" class="weapon-info">🚀 [3] Tactical 미사일</div>
+        <p style="margin-left: 5px; color: #aaa; font-size: 13px;">마우스 휠: 줌 | 좌클릭: 타격 | <span style="color:#00ffcc">우클릭 드래그: 시점 회전</span></p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer, clock;
+        // 기존 배열에 npcs(사람), cars(차량) 추가
+        let buildings = [], trees = [], particles = [], npcs = [], cars = [];
+        let currentWeapon = 1, zoomLevel = 150;
+        let mouse, raycaster, ground;
+        
+        // 시점 돌리기를 위한 변수 추가
+        let cameraAngle = Math.PI / 4; 
+        let isRightMouseDown = false;
+        let previousMouseX = 0;
+
+        // 재질 추가
+        let groundMat, trunkMat, leafMat, bldgMat;
+        let npcMat, headMat, carMat; // 사람 및 자동차 재질
+
+        window.onload = function() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('crosshair').style.display = 'block';
+            
+            init();
+            animate();
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a10);
+            scene.fog = new THREE.Fog(0x0a0a10, 100, 800);
+
+            camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 2000);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+            mouse = new THREE.Vector2();
+            raycaster = new THREE.Raycaster();
+
+            scene.add(new THREE.AmbientLight(0x1a1a2e, 1.5));
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(150, 250, 150);
+            sunLight.castShadow = true;
+            sunLight.shadow.camera.left = -300;
+            sunLight.shadow.camera.right = 300;
+            sunLight.shadow.camera.top = 300;
+            sunLight.shadow.camera.bottom = -300;
+            scene.add(sunLight);
+
+            groundMat = new THREE.MeshStandardMaterial({ color: 0x121214, roughness: 0.8 });
+            trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a1e05, roughness: 0.9 });
+            leafMat = new THREE.MeshStandardMaterial({ color: 0x1b4d22, roughness: 0.6, flatShading: true });
+            bldgMat = new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.4 });
+            
+            // 사람, 자동차 재질 초기화
+            npcMat = new THREE.MeshStandardMaterial({ color: 0x22a6b3, roughness: 0.5 });
+            headMat = new THREE.MeshStandardMaterial({ color: 0xffddcc, roughness: 0.6 });
+            carMat = new THREE.MeshStandardMaterial({ color: 0xd63031, roughness: 0.3 });
+
+            createMap();
+            setupEvents();
+        }
+
+        // [기능 추가] 카메라 회전 위치 업데이트
+        function updateCameraPosition() {
+            camera.position.x = Math.cos(cameraAngle) * zoomLevel;
+            camera.position.y = zoomLevel;
+            camera.position.z = Math.sin(cameraAngle) * zoomLevel;
+            camera.lookAt(0, 0, 0);
+        }
+
+        // [기능 추가] 사람(NPC) 생성 함수
+        function createPerson(x, z) {
+            const group = new THREE.Group();
+            
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), npcMat);
+            body.position.y = 1.5;
+            body.castShadow = true;
+            
+            const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), headMat);
+            head.position.y = 3.75;
+            head.castShadow = true;
+            
+            group.add(body, head);
+            group.position.set(x, 0, z);
+            
+            // 이동 속도와 방향 설정
+            group.userData = { 
+                speed: Math.random() * 8 + 4, 
+                angle: Math.random() * Math.PI * 2,
+                isDead: false,
+                velocity: new THREE.Vector3()
+            };
+            return group;
+        }
+
+        // [기능 추가] 자동차 생성 함수
+        function createCar(x, z) {
+            const group = new THREE.Group();
+            
+            const body = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 10), carMat);
+            body.position.y = 1.5;
+            body.castShadow = true;
+            
+            const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.5, 6), new THREE.MeshStandardMaterial({color: 0x111111}));
+            windowMesh.position.y = 3;
+            
+            group.add(body, windowMesh);
+            group.position.set(x, 0, z);
+            
+            // 자동차 이동 속도 및 방향 설정
+            group.userData = { 
+                speed: Math.random() * 25 + 15, 
+                angle: Math.random() * Math.PI * 2,
+                isDead: false,
+                velocity: new THREE.Vector3()
+            };
+            return group;
+        }
+
+        function createBuilding(x, z) {
+            const group = new THREE.Group();
+            const h = 30 + Math.random() * 50;
+            const body = new THREE.Mesh(new THREE.BoxGeometry(15, h, 15), bldgMat);
+            body.position.y = h / 2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            group.add(body);
+
+            const winGeo = new THREE.PlaneGeometry(2, 2);
+            const winMat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xfff200 : 0x00d2d3 });
+            for(let i=0; i<3; i++) {
+                const win = new THREE.Mesh(winGeo, winMat);
+                win.position.set(0, h * 0.8 - (i*6), 7.51);
+                group.add(win);
+            }
+            group.position.set(x, 0, z);
+            group.userData = { type: 'building', maxH: h, currentScale: 1 };
+            return group;
+        }
+
+        function createTree(x, z) {
+            const tree = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.5, 8, 8), trunkMat);
+            trunk.position.y = 4;
+            trunk.castShadow = true;
+            tree.add(trunk);
+
+            const leaf = new THREE.Mesh(new THREE.DodecahedronGeometry(5, 0), leafMat);
+            leaf.position.y = 10;
+            leaf.castShadow = true;
+            tree.add(leaf);
+            tree.position.set(x, 0, z);
+            return tree;
+        }
+
+        function createMap() {
+            ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            for(let i=0; i<80; i++) {
+                const bldg = createBuilding((Math.random() - 0.5) * 600, (Math.random() - 0.5) * 600);
+                buildings.push(bldg);
+                scene.add(bldg);
+            }
+
+            for(let i=0; i<100; i++) {
+                const tree = createTree((Math.random() - 0.5) * 600, (Math.random() - 0.5) * 600);
+                trees.push(tree);
+                scene.add(tree);
+            }
+
+            // [기능 추가] 맵에 사람과 자동차 생성
+            for(let i=0; i<40; i++) {
+                const person = createPerson((Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500);
+                npcs.push(person);
+                scene.add(person);
+            }
+            for(let i=0; i<20; i++) {
+                const car = createCar((Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500);
+                cars.push(car);
+                scene.add(car);
+            }
+        }
+
+        function setupEvents() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            window.addEventListener('wheel', (e) => {
+                zoomLevel += e.deltaY * 0.1;
+                zoomLevel = Math.max(50, Math.min(zoomLevel, 400));
+                updateCameraPosition();
+            });
+
+            // 우클릭 메뉴 방지
+            window.addEventListener('contextmenu', e => e.preventDefault());
+
+            window.addEventListener('mousemove', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                const crosshair = document.getElementById('crosshair');
+                crosshair.style.left = e.clientX + 'px';
+                crosshair.style.top = e.clientY + 'px';
+
+                // [기능 추가] 우클릭 드래그 중 시점 회전
+                if(isRightMouseDown) {
+                    const deltaX = e.clientX - previousMouseX;
+                    cameraAngle -= deltaX * 0.008;
+                    previousMouseX = e.clientX;
+                    updateCameraPosition();
+                }
+            });
+
+            // [기능 추가] 우클릭 드래그 감지
+            window.addEventListener('mousedown', (e) => {
+                if(e.button === 0) fireWeapon();
+                if(e.button === 2) { 
+                    isRightMouseDown = true; 
+                    previousMouseX = e.clientX; 
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if(e.button === 2) isRightMouseDown = false;
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if(['1','2','3'].includes(e.key)) {
+                    currentWeapon = parseInt(e.key);
+                    document.querySelectorAll('.weapon-info').forEach(el => el.classList.remove('active'));
+                    document.getElementById('w' + currentWeapon).classList.add('active');
+                }
+            });
+        }
+
+        function fireWeapon() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(ground);
+            
+            if(intersects.length > 0) {
+                const hitPoint = intersects[0].point;
+                createExplosion(hitPoint, currentWeapon);
+                applyDamage(hitPoint, currentWeapon);
+            }
+        }
+
+        // [기능 강화] 폭발을 물리 기반으로 역동적이게
+        function createExplosion(pos, type) {
+            const color = type === 1 ? 0xffdd00 : type === 2 ? 0xff4400 : 0x00ffcc;
+            const size = type === 1 ? 2 : type === 2 ? 4 : 8;
+            const particleCount = type === 1 ? 20 : type === 2 ? 50 : 120;
+            
+            for(let i=0; i<particleCount; i++) {
+                const geo = new THREE.BoxGeometry(size, size, size);
+                const mat = new THREE.MeshBasicMaterial({ color: color });
+                const p = new THREE.Mesh(geo, mat);
+                
+                p.position.copy(pos);
+                p.position.y += 2; 
+                
+                const speed = type === 1 ? 30 : 60;
+                
+                // 하늘로 더 강하게 솟구치도록 y축 속도 증가
+                p.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * speed,
+                    (Math.random() * speed) + speed * 0.5,
+                    (Math.random() - 0.5) * speed
+                );
+                
+                // 파편 회전 속도 추가
+                p.rotSpeed = new THREE.Vector3(
+                    Math.random() * 10 - 5,
+                    Math.random() * 10 - 5,
+                    Math.random() * 10 - 5
+                );
+                
+                p.life = 1.0; 
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        function applyDamage(pos, type) {
+            const radius = type === 1 ? 20 : type === 2 ? 45 : 90;
+            const damage = type === 1 ? 0.2 : type === 2 ? 0.5 : 1.0; 
+
+            buildings.forEach(b => {
+                if(b.position.distanceTo(pos) < radius) {
+                    b.userData.currentScale -= damage;
+                    if(b.userData.currentScale <= 0) {
+                        b.scale.y = 0.01;
+                        b.position.y = -100;
+                    } else {
+                        b.scale.y = b.userData.currentScale;
+                        b.position.y = (b.userData.maxH * b.userData.currentScale) / 2 - (b.userData.maxH / 2);
+                    }
+                }
+            });
+
+            trees.forEach(t => {
+                if(t.position.distanceTo(pos) < radius) t.position.y = -100;
+            });
+
+            // [기능 추가] 타격 시 사람과 자동차가 사방으로 튕겨 날아가는 물리 효과
+            [...npcs, ...cars].forEach(obj => {
+                if(!obj.userData.isDead && obj.position.distanceTo(pos) < radius) {
+                    obj.userData.isDead = true;
+                    
+                    // 폭발 중심점 기준 바깥 방향 계산
+                    const dir = obj.position.clone().sub(pos).normalize();
+                    const force = type === 1 ? 40 : type === 2 ? 80 : 150;
+                    
+                    obj.userData.velocity = new THREE.Vector3(
+                        dir.x * force,
+                        Math.random() * force + 30, // 공중으로 솟구침
+                        dir.z * force
+                    );
+                    obj.userData.rotSpeed = new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+                }
+            });
+        }
+
+        // [기능 추가] 움직이는 객체 업데이트 통합 함수
+        function updateDynamicEntities(entities, dt) {
+            for(let i = entities.length - 1; i >= 0; i--) {
+                const obj = entities[i];
+                
+                if(obj.userData.isDead) {
+                    // 폭발에 휘말려 공중으로 날아갈 때 중력 적용
+                    obj.userData.velocity.y -= dt * 100; 
+                    obj.position.addScaledVector(obj.userData.velocity, dt);
+                    
+                    // 빙글빙글 돌며 날아가기
+                    obj.rotation.x += obj.userData.rotSpeed.x * dt;
+                    obj.rotation.y += obj.userData.rotSpeed.y * dt;
+                    obj.rotation.z += obj.userData.rotSpeed.z * dt;
+                    
+                    // 땅 밑으로 사라지면 제거
+                    if(obj.position.y < -30) {
+                        scene.remove(obj);
+                        entities.splice(i, 1);
+                    }
+                } else {
+                    // 평상시: 돌아다니기
+                    obj.position.x += Math.cos(obj.userData.angle) * obj.userData.speed * dt;
+                    obj.position.z += Math.sin(obj.userData.angle) * obj.userData.speed * dt;
+                    obj.rotation.y = -obj.userData.angle; // 이동 방향 바라보기
+
+                    // 맵 끝부분에 닿으면 방향 반전 (무작위성 부여)
+                    if(Math.abs(obj.position.x) > 280 || Math.abs(obj.position.z) > 280) {
+                        obj.userData.angle += Math.PI + (Math.random() - 0.5);
+                        obj.position.x = Math.max(-280, Math.min(280, obj.position.x));
+                        obj.position.z = Math.max(-280, Math.min(280, obj.position.z));
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+
+            // [기능 강화] 파티클에 중력과 회전 적용
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.velocity.y -= dt * 80; // 떨어지는 중력
+                p.position.addScaledVector(p.velocity, dt);
+                
+                p.rotation.x += p.rotSpeed.x * dt;
+                p.rotation.y += p.rotSpeed.y * dt;
+                p.rotation.z += p.rotSpeed.z * dt;
+                
+                p.life -= dt * 1.5;
+                
+                if(p.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                } else {
+                    p.scale.setScalar(p.life);
+                }
+            }
+
+            // 사람과 차량 이동/폭발 물리엔진 연산 적용
+            updateDynamicEntities(npcs, dt);
+            updateDynamicEntities(cars, dt);
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
