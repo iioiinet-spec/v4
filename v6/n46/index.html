@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>울림 — Interactive Instrument Studio</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+
+:root{
+    --bg-deep:#090b10;
+    --bg-panel:#12141c;
+    --bg-panel-2:#171a24;
+    --ivory:#f4efe2;
+    --muted:#8791a6;
+
+    --wood-dark:#241209;
+    --wood-mid:#5c3016;
+    --wood-light:#8a5228;
+    --brass:#dfa758;
+    --brass-bright:#f4c988;
+
+    --ebony:#0e0d0c;
+    --ebony-light:#232120;
+
+    --steel:#cfd6dd;
+    --steel-dark:#5c6672;
+
+    --neon-1:#37e6c4;
+    --neon-2:#ff5da8;
+
+    /* active instrument accent, overridden per instrument below */
+    --accent:#dfa758;
+    --accent-soft: rgba(223,167,88,.35);
+}
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+}
+
+body{
+    background:
+        radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(255,255,255,.05), transparent 60%),
+        var(--bg-deep);
+    color:var(--ivory);
+    font-family:'Noto Sans KR',sans-serif;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+}
+
+body[data-instrument="kalimba"]{ --accent:var(--brass); --accent-soft:rgba(223,167,88,.35); }
+body[data-instrument="piano"]{ --accent:#e7dcc0; --accent-soft:rgba(231,220,192,.30); }
+body[data-instrument="guitar"]{ --accent:var(--wood-light); --accent-soft:rgba(138,82,40,.35); }
+body[data-instrument="synth"]{ --accent:var(--neon-1); --accent-soft:rgba(55,230,196,.35); }
+
+/* =====================================================
+   Topbar
+===================================================== */
+
+.topbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 20px;
+    background:linear-gradient(180deg, var(--bg-panel), var(--bg-panel-2));
+    border-bottom:1px solid rgba(255,255,255,.06);
+    z-index:10;
+}
+
+.brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+}
+
+.brand-mark{
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    background:conic-gradient(from 200deg, var(--accent), transparent 70%);
+    box-shadow:0 0 16px var(--accent-soft);
+    transition:background .4s ease, box-shadow .4s ease;
+}
+
+.brand h1{
+    font-family:'Gowun Batang',serif;
+    font-weight:700;
+    font-size:19px;
+    letter-spacing:.02em;
+}
+
+.brand span.sub{
+    display:block;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:400;
+    letter-spacing:.03em;
+}
+
+.controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+}
+
+.select-wrap{
+    position:relative;
+}
+
+.select-wrap::after{
+    content:"▾";
+    position:absolute;
+    right:12px;
+    top:50%;
+    transform:translateY(-50%);
+    pointer-events:none;
+    color:var(--muted);
+    font-size:11px;
+}
+
+select{
+    appearance:none;
+    -webkit-appearance:none;
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:10px;
+    padding:10px 30px 10px 14px;
+    font-size:13.5px;
+    font-family:inherit;
+    font-weight:500;
+    background:var(--bg-panel-2);
+    color:var(--ivory);
+    cursor:pointer;
+}
+
+.transport{
+    display:flex;
+    gap:8px;
+}
+
+button{
+    border:none;
+    border-radius:10px;
+    padding:10px 15px;
+    font-size:13.5px;
+    font-family:inherit;
+    font-weight:600;
+    cursor:pointer;
+    background:var(--bg-panel-2);
+    color:var(--ivory);
+    border:1px solid rgba(255,255,255,.1);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition:transform .08s ease, background .2s ease, box-shadow .2s ease;
+}
+
+button:hover{
+    background:#1d2029;
+}
+
+button:active{
+    transform:scale(0.96);
+}
+
+.btn-primary{
+    background:var(--accent);
+    color:#14161c;
+    border-color:transparent;
+    box-shadow:0 0 14px var(--accent-soft);
+}
+
+.btn-primary:hover{
+    filter:brightness(1.08);
+}
+
+.btn-record.recording{
+    background:#e0435c;
+    color:white;
+    box-shadow:0 0 14px rgba(224,67,92,.5);
+    animation:recPulse 1.2s infinite;
+}
+
+@keyframes recPulse{
+    0%,100%{opacity:1;}
+    50%{opacity:.72;}
+}
+
+/* =====================================================
+   Oscilloscope
+===================================================== */
+
+#oscilloscope{
+    width:100%;
+    flex:1;
+    min-height:80px;
+    background:
+        linear-gradient(180deg, #050609, #030409);
+    display:block;
+}
+
+/* =====================================================
+   Stage — the part that morphs per instrument
+===================================================== */
+
+.stage{
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:0;
+}
+
+.frame{
+    min-width:max-content;
+    width:100%;
+    display:flex;
+    justify-content:center;
+    position:relative;
+}
+
+/* ---------- shared key basics ---------- */
+
+.key{
+    position:relative;
+    width:40px;
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+    padding-bottom:8px;
+    color:#151312;
+    font-size:10.5px;
+    font-weight:700;
+    cursor:pointer;
+    user-select:none;
+    touch-action:none;
+    transition:transform .08s ease, filter .1s ease, box-shadow .15s ease;
+}
+
+.key .cap{
+    position:relative;
+    z-index:2;
+    letter-spacing:.02em;
+}
+
+.key .string,
+.key .fret-dot{
+    display:none;
+}
+
+/* =====================================================
+   KALIMBA — wooden body + fanned brass tines
+===================================================== */
+
+.frame[data-instrument="kalimba"]{
+    align-items:flex-end;
+    gap:4px;
+    padding:26px 40px 40px;
+    background:
+        radial-gradient(ellipse 70% 100% at 50% 100%, rgba(0,0,0,.45), transparent 70%),
+        linear-gradient(180deg, var(--wood-light) 0%, var(--wood-mid) 55%, var(--wood-dark) 100%);
+    border-radius:26px 26px 50% 50% / 26px 26px 90px 90px;
+    box-shadow:
+        inset 0 3px 0 rgba(255,255,255,.08),
+        inset 0 -20px 40px rgba(0,0,0,.5),
+        0 20px 40px rgba(0,0,0,.5);
+}
+
+.frame[data-instrument="kalimba"]::before{
+    content:"";
+    position:absolute;
+    left:50%;
+    bottom:22px;
+    transform:translateX(-50%);
+    width:64px;
+    height:64px;
+    border-radius:50%;
+    background:radial-gradient(circle at 40% 35%, #1c0f06, #000 70%);
+    box-shadow:inset 0 0 14px rgba(0,0,0,.9), 0 0 0 3px rgba(255,255,255,.04);
+}
+
+.frame[data-instrument="kalimba"] .key{
+    width:24px;
+    height:var(--h, 200px);
+    background:linear-gradient(180deg, #fdf8ee 0%, var(--brass-bright) 18%, var(--brass) 55%, #a9743a 100%);
+    border-radius:9px 9px 4px 4px;
+    box-shadow:
+        0 0 10px rgba(0,0,0,.35),
+        inset -2px 0 3px rgba(0,0,0,.25),
+        inset 2px 0 3px rgba(255,255,255,.5);
+    transform-origin:bottom center;
+}
+
+.frame[data-instrument="kalimba"] .key .cap{
+    color:#3c2503;
+    font-size:9.5px;
+}
+
+.frame[data-instrument="kalimba"] .key.active{
+    transform:translateY(10px);
+    filter:brightness(1.12);
+    box-shadow:0 0 16px var(--accent-soft);
+}
+
+@keyframes tineWobble{
+    0%{transform:translateY(10px) rotate(0deg);}
+    18%{transform:translateY(11px) rotate(-3.5deg);}
+    38%{transform:translateY(4px) rotate(2.6deg);}
+    58%{transform:translateY(7px) rotate(-1.4deg);}
+    78%{transform:translateY(2px) rotate(.6deg);}
+    100%{transform:translateY(0) rotate(0deg);}
+}
+
+.frame[data-instrument="kalimba"] .key.pluck{
+    animation:tineWobble .65s cubic-bezier(.2,.8,.3,1);
+}
+
+/* =====================================================
+   PIANO — ivory keybed
+===================================================== */
+
+.frame[data-instrument="piano"]{
+    align-items:stretch;
+    gap:2px;
+    padding:0 0 0 0;
+    background:linear-gradient(180deg, var(--ebony-light), var(--ebony) 30%);
+    border-radius:10px 10px 0 0;
+    box-shadow:inset 0 6px 14px rgba(0,0,0,.6), 0 20px 40px rgba(0,0,0,.5);
+}
+
+.frame[data-instrument="piano"] .key{
+    width:46px;
+    height:210px;
+    align-items:flex-end;
+    padding-bottom:14px;
+    background:linear-gradient(180deg, #ffffff 0%, #eee9dc 78%, #d8d0bd 100%);
+    border-radius:0 0 8px 8px;
+    border-left:1px solid rgba(0,0,0,.12);
+    border-right:1px solid rgba(0,0,0,.12);
+    box-shadow:inset 0 -6px 10px rgba(0,0,0,.06);
+}
+
+.frame[data-instrument="piano"] .key .cap{
+    color:#7a7259;
+    font-size:10px;
+}
+
+.frame[data-instrument="piano"] .key.active{
+    transform:translateY(6px);
+    background:linear-gradient(180deg, #efe6cf 0%, var(--accent) 100%);
+    box-shadow:inset 0 6px 10px rgba(0,0,0,.25);
+}
+
+.frame[data-instrument="piano"] .key.pluck{
+    animation:keyDip .28s ease-out;
+}
+
+@keyframes keyDip{
+    0%{transform:translateY(0);}
+    35%{transform:translateY(7px);}
+    100%{transform:translateY(0);}
+}
+
+/* =====================================================
+   GUITAR — wood fretboard + steel strings
+===================================================== */
+
+.frame[data-instrument="guitar"]{
+    align-items:center;
+    gap:0;
+    padding:30px 20px;
+    background:
+        repeating-linear-gradient(90deg,
+            transparent 0, transparent 46px,
+            rgba(0,0,0,.35) 46px, rgba(0,0,0,.35) 49px),
+        linear-gradient(180deg, #7a4a24, #5c3016 60%, #3b1d0c 100%);
+    border-radius:16px;
+    box-shadow:inset 0 0 40px rgba(0,0,0,.5), 0 20px 40px rgba(0,0,0,.5);
+}
+
+.frame[data-instrument="guitar"] .key{
+    width:49px;
+    height:150px;
+    align-items:center;
+    padding-bottom:0;
+    background:transparent;
+    justify-content:center;
+}
+
+.frame[data-instrument="guitar"] .key .string{
+    display:block;
+    position:absolute;
+    left:2px;
+    right:2px;
+    top:50%;
+    height:3px;
+    border-radius:2px;
+    transform:translateY(-50%);
+    background:linear-gradient(180deg, #f2f5f7, var(--steel-dark));
+    box-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+
+.frame[data-instrument="guitar"] .key .fret-dot{
+    display:block;
+    position:absolute;
+    top:12px;
+    left:50%;
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    transform:translateX(-50%);
+    background:rgba(244,239,226,.5);
+}
+
+.frame[data-instrument="guitar"] .key:not(.show-dot) .fret-dot{
+    display:none;
+}
+
+.frame[data-instrument="guitar"] .key .cap{
+    position:absolute;
+    bottom:8px;
+    color:var(--ivory);
+    font-size:9px;
+    font-weight:600;
+    opacity:.85;
+    text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+
+.frame[data-instrument="guitar"] .key.active .string{
+    background:linear-gradient(180deg, var(--brass-bright), var(--accent));
+    box-shadow:0 0 10px var(--accent-soft);
+}
+
+@keyframes stringShake{
+    0%,100%{transform:translateY(-50%) scaleY(1);}
+    15%{transform:translateY(-65%) scaleY(2.4);}
+    30%{transform:translateY(-35%) scaleY(2.1);}
+    45%{transform:translateY(-58%) scaleY(1.6);}
+    60%{transform:translateY(-42%) scaleY(1.3);}
+    100%{transform:translateY(-50%) scaleY(1);}
+}
+
+.frame[data-instrument="guitar"] .key.pluck .string{
+    animation:stringShake .5s ease-out;
+}
+
+/* =====================================================
+   SYNTH — neon pad grid
+===================================================== */
+
+.frame[data-instrument="synth"]{
+    flex-wrap:wrap;
+    align-items:center;
+    gap:8px;
+    padding:24px;
+    max-width:900px;
+    background:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+        #0c0e14;
+    background-size:22px 22px, 22px 22px, auto;
+    border-radius:18px;
+    box-shadow:inset 0 0 60px rgba(0,0,0,.6), 0 20px 40px rgba(0,0,0,.5);
+}
+
+.frame[data-instrument="synth"] .key{
+    width:52px;
+    height:52px;
+    align-items:center;
+    padding-bottom:0;
+    background:linear-gradient(160deg, #1c2130, #12151f);
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:inset 0 0 0 rgba(0,0,0,0);
+}
+
+.frame[data-instrument="synth"] .key .cap{
+    color:var(--muted);
+    font-size:9.5px;
+}
+
+.frame[data-instrument="synth"] .key.active{
+    background:linear-gradient(160deg, var(--neon-1), var(--neon-2));
+    box-shadow:0 0 22px var(--accent-soft), 0 0 4px #fff inset;
+    transform:scale(.93);
+}
+
+.frame[data-instrument="synth"] .key.active .cap{
+    color:#0b0c10;
+}
+
+@keyframes padPulse{
+    0%{box-shadow:0 0 0 rgba(0,0,0,0);}
+    30%{box-shadow:0 0 26px var(--accent-soft);}
+    100%{box-shadow:0 0 4px transparent;}
+}
+
+.frame[data-instrument="synth"] .key.pluck{
+    animation:padPulse .5s ease-out;
+}
+
+/* =====================================================
+   Responsive
+===================================================== */
+
+@media(max-width:768px){
+    .brand h1{ font-size:16px; }
+    .key{ font-size:9px; }
+    .frame[data-instrument="kalimba"] .key{ width:20px; }
+    .frame[data-instrument="piano"] .key{ width:38px; height:170px; }
+    .frame[data-instrument="guitar"] .key{ width:40px; height:120px; }
+    .frame[data-instrument="synth"] .key{ width:44px; height:44px; }
+}
+</style>
+</head>
+<body data-instrument="kalimba">
+
+<header class="topbar">
+    <div class="brand">
+        <div class="brand-mark" id="brandMark">🎵</div>
+        <div>
+            <h1>울림 Studio</h1>
+            <span class="sub" id="brandSub">21현 칼림바 · 인터랙티브 연주</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="select-wrap">
+            <select id="instrument">
+                <option value="kalimba">🎵 칼림바</option>
+                <option value="piano">🎹 피아노</option>
+                <option value="guitar">🎸 기타</option>
+                <option value="synth">🎛 신스</option>
+            </select>
+        </div>
+
+        <div class="transport">
+            <button id="recordBtn">🎙 녹음</button>
+            <button id="playBtn">▶ 재생</button>
+            <button id="downloadBtn" class="btn-primary">💾 저장</button>
+        </div>
+    </div>
+</header>
+
+<canvas id="oscilloscope"></canvas>
+
+<div class="stage" id="stage">
+    <div class="frame" id="frame" data-instrument="kalimba"></div>
+</div>
+
+<script>
+/* =====================================================
+   Audio Engine
+===================================================== */
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    latencyHint:"interactive"
+});
+
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.9;
+
+const analyser = audioCtx.createAnalyser();
+analyser.fftSize = 2048;
+
+masterGain.connect(analyser);
+analyser.connect(audioCtx.destination);
+
+const mediaDest = audioCtx.createMediaStreamDestination();
+masterGain.connect(mediaDest);
+
+let recorder, chunks = [], recordedBlob = null;
+
+/* =====================================================
+   21-Key Notes
+===================================================== */
+
+const notes = [
+{n:"F3",f:174.61},{n:"G3",f:196.00},{n:"A3",f:220.00},{n:"B3",f:246.94},
+{n:"C4",f:261.63},{n:"D4",f:293.66},{n:"E4",f:329.63},{n:"F4",f:349.23},
+{n:"G4",f:392.00},{n:"A4",f:440.00},{n:"B4",f:493.88},{n:"C5",f:523.25},
+{n:"D5",f:587.33},{n:"E5",f:659.25},{n:"F5",f:698.46},{n:"G5",f:783.99},
+{n:"A5",f:880.00},{n:"B5",f:987.77},{n:"C6",f:1046.50},{n:"D6",f:1174.66},
+{n:"E6",f:1318.51}
+];
+
+const frame = document.getElementById("frame");
+const stage = document.getElementById("stage");
+const center = (notes.length - 1) / 2;
+const fretMarkers = [3,5,7,9,12,15,17];
+
+notes.forEach((note,index)=>{
+
+    const key = document.createElement("div");
+    key.className = "key";
+
+    const distance = Math.abs(index-center);
+    key.style.setProperty("--h", (240 - distance*11) + "px");
+
+    if(fretMarkers.includes(index+1)) key.classList.add("show-dot");
+
+    key.innerHTML =
+        `<span class="fret-dot"></span>
+         <span class="string"></span>
+         <span class="cap">${note.n}</span>`;
+
+    frame.appendChild(key);
+
+    let plucking = false;
+
+    const start = (e)=>{
+        e.preventDefault();
+        key.classList.add("active");
+        key.classList.remove("pluck");
+        void key.offsetWidth; // restart animation
+        key.classList.add("pluck");
+        playNote(note.f);
+    };
+
+    const end = ()=>{
+        key.classList.remove("active");
+    };
+
+    key.addEventListener("animationend", ()=> key.classList.remove("pluck"));
+
+    key.addEventListener("mousedown",start);
+    key.addEventListener("mouseup",end);
+    key.addEventListener("mouseleave",end);
+    key.addEventListener("touchstart",start,{passive:false});
+    key.addEventListener("touchend",end);
+    key.addEventListener("touchcancel",end);
+});
+
+/* =====================================================
+   Instrument Selection
+===================================================== */
+
+const instrument = document.getElementById("instrument");
+const brandMark = document.getElementById("brandMark");
+const brandSub = document.getElementById("brandSub");
+
+const instrumentMeta = {
+    kalimba:{icon:"🎵", sub:"21현 칼림바 · 인터랙티브 연주"},
+    piano:{icon:"🎹", sub:"21건반 피아노 · 클래식 터치"},
+    guitar:{icon:"🎸", sub:"21프렛 기타 · 스틸 스트링"},
+    synth:{icon:"🎛", sub:"21패드 신스 · 네온 사운드"}
+};
+
+function applyInstrument(value){
+    document.body.setAttribute("data-instrument", value);
+    frame.setAttribute("data-instrument", value);
+    const meta = instrumentMeta[value];
+    brandMark.textContent = meta.icon;
+    brandSub.textContent = meta.sub;
+}
+
+instrument.addEventListener("change", ()=> applyInstrument(instrument.value));
+
+let currentFreq = 440;
+
+/* =====================================================
+   Note Playback
+===================================================== */
+
+function playNote(freq){
+
+    currentFreq = freq;
+
+    if(audioCtx.state==="suspended") audioCtx.resume();
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    const now = audioCtx.currentTime;
+
+    switch(instrument.value){
+        case "kalimba":
+            osc.type="triangle";
+            filter.type="bandpass";
+            filter.frequency.value=freq*2;
+            break;
+        case "piano":
+            osc.type="sine";
+            filter.type="lowpass";
+            filter.frequency.value=3000;
+            break;
+        case "guitar":
+            osc.type="sawtooth";
+            filter.type="lowpass";
+            filter.frequency.value=1800;
+            break;
+        case "synth":
+            osc.type="square";
+            filter.type="lowpass";
+            filter.frequency.value=6000;
+            break;
+    }
+
+    osc.frequency.value = freq;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    gain.gain.setValueAtTime(0,now);
+    gain.gain.linearRampToValueAtTime(1, now+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now+2.5);
+
+    osc.start(now);
+    osc.stop(now+2.5);
+}
+
+/* =====================================================
+   Recording
+===================================================== */
+
+const recordBtn = document.getElementById("recordBtn");
+
+recordBtn.onclick = ()=>{
+    if(!recorder || recorder.state==="inactive"){
+        chunks = [];
+        recorder = new MediaRecorder(mediaDest.stream);
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = ()=> recordedBlob = new Blob(chunks, {type:"audio/webm"});
+        recorder.start();
+        recordBtn.textContent = "⏹ 정지";
+        recordBtn.classList.add("recording");
+    }else{
+        recorder.stop();
+        recordBtn.textContent = "🎙 녹음";
+        recordBtn.classList.remove("recording");
+    }
+};
+
+document.getElementById("playBtn").onclick = ()=>{
+    if(!recordedBlob) return;
+    new Audio(URL.createObjectURL(recordedBlob)).play();
+};
+
+document.getElementById("downloadBtn").onclick = ()=>{
+    if(!recordedBlob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(recordedBlob);
+    a.download = "kalimba-session.webm";
+    a.click();
+};
+
+/* =====================================================
+   Oscilloscope
+===================================================== */
+
+const canvas = document.getElementById("oscilloscope");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = canvas.clientHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+const bufferLength = analyser.fftSize;
+const dataArray = new Uint8Array(bufferLength);
+
+function getColor(freq){
+    const hue = Math.min(320, (freq-150)/3);
+    return `hsl(${hue},100%,62%)`;
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    analyser.getByteTimeDomainData(dataArray);
+
+    ctx.fillStyle = "rgba(3,4,9,0.1)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = getColor(currentFreq);
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = getColor(currentFreq);
+
+    ctx.beginPath();
+    let x = 0;
+    const slice = canvas.width / bufferLength;
+
+    for(let i=0;i<bufferLength;i++){
+        const v = dataArray[i] / 128.0;
+        const y = v * canvas.height/2;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        x += slice;
+    }
+    ctx.stroke();
+}
+animate();
+</script>
+
+</body>
+</html>
