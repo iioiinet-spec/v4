@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STICKMAN: ULTIMATE GORANI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; }
+        body { background: #030306; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; user-select: none; }
+        #gameContainer { position: relative; border: 4px solid #333; background: #fff; cursor: crosshair; }
+        canvas { display: block; }
+        
+        .ui { position: absolute; font-weight: 900; pointer-events: none; font-family: monospace; }
+        
+        /* HUD */
+        #statZone { top: 15px; left: 15px; display: flex; flex-direction: column; gap: 5px; }
+        .bar-frame { width: 200px; height: 12px; background: #222; border: 2px solid #000; position: relative; }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.05s ease; }
+        #hpFill { background: #ff0044; }
+        #bossHpFrame { display: none; }
+        #bossHpFill { background: linear-gradient(90deg, #ff00ff, #00ffff); }
+        .hud-text { font-size: 11px; color: #000; text-shadow: 1px 1px 0 #fff; }
+        
+        #scoreZone { top: 15px; right: 15px; text-align: right; color: #000; text-shadow: 1px 1px 0 #fff; }
+
+        /* UI 슬림화 크기 축소 */
+        #skillZone {
+            bottom: 12px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; background: rgba(0,0,0,0.88);
+            padding: 5px 12px; border-radius: 6px; border: 1px solid #ff0055;
+        }
+        .skill-box { text-align: center; color: #fff; width: 85px; }
+        .skill-btn { font-size: 11px; color: #00ffcc; font-weight: bold; }
+        .skill-name { font-size: 9px; color: #bbb; }
+        .skill-count { font-size: 10px; color: #ffcc00; font-weight: bold; }
+
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.93); display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; z-index: 10; }
+        .hidden { display: none !important; }
+        h1 { font-size: 36px; margin-bottom: 10px; text-shadow: 3px 3px 0 #ff0055; font-style: italic; text-align: center; }
+        p { color: #ccc; font-size: 12px; text-align: center; margin-bottom: 20px; line-height: 1.6; }
+        button { padding: 8px 30px; font-size: 15px; font-weight: bold; background: #fff; border: none; color: #000; cursor: pointer; border-radius: 4px; box-shadow: 3px 3px 0 #ff0055; }
+        button:hover { background: #ff0055; color: #fff; }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="statZone" class="ui">
+        <div>
+            <div class="hud-text">🛡️ HP <span id="hpText">100/100</span></div>
+            <div class="bar-frame"><div id="hpFill" class="bar-fill"></div></div>
+        </div>
+        <div id="bossHpFrame">
+            <div class="hud-text" style="color: #ff00ff; font-weight: bold;">⚠️ BOSS HP</div>
+            <div class="bar-frame" style="width: 240px;"><div id="bossHpFill" class="bar-fill"></div></div>
+        </div>
+    </div>
+    
+    <div id="scoreZone" class="ui">
+        <div style="font-size: 22px; font-weight: 900; color: #ff0055;" id="stageText">STAGE 1/100</div>
+        <div style="font-size: 12px; color: #222;" id="killText">KILLS: 0</div>
+    </div>
+    
+    <!-- 스킬창 메뉴 레이아웃 -->
+    <div id="skillZone" class="ui">
+        <div class="skill-box"><div class="skill-btn">L-CLICK</div><div class="skill-name">3단 평타</div></div>
+        <div class="skill-box"><div class="skill-btn">[ F ]</div><div class="skill-name">무라사키 (7)</div><div class="skill-count" id="fCool">0/7</div></div>
+        <div class="skill-box"><div class="skill-btn">[ E ]</div><div class="skill-name">참격폭풍 (10)</div><div class="skill-count" id="eCool">0/10</div></div>
+        <div class="skill-box"><div class="skill-btn">[ G ]</div><div class="skill-name">벽력일섬 (50)</div><div class="skill-count" id="gCool">0/50</div></div>
+        <div class="skill-box" style="width:95px;"><div class="skill-btn" style="color:#ff00ff;">[ R ]</div><div class="skill-name">고라니 (100)</div><div class="skill-count" id="rCool">0/100</div></div>
+    </div>
+
+    <div id="startScreen" class="screen">
+        <h1>STICKMAN: GORANI SMASH</h1>
+        <p>
+            [커맨드 가이드]<br>
+            이동: A, D | 2단 점프: SPACEBAR<br>
+            평타: 마우스 클릭 (1타→2타→3타 회전 베기)<br>
+            F: 허식 무라사키 (7킬 - 사거리 대폭 축소) | E: 참격 폭풍 (10킬 신규)<br>
+            G: 벽력일섬 (50킬 - 3초 무적+젠이츠 사운드)<br>
+            R: 고라니 (100킬 - 전설의 씬 결계 소환 + 즉시 스테이지 클리어)
+        </p>
+        <button id="startBtn">전장 진입</button>
+    </div>
+
+    <div id="endScreen" class="screen hidden">
+        <h1 id="endTitle">MISSION FAILED</h1>
+        <p id="endDesc"></p>
+        <button id="restartBtn">다시 시작</button>
+    </div>
+
+    <canvas id="gameCanvas" width="1000" height="550"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let gameState = 'START';
+let currentStage = 1;
+let killCount = 0;
+let fKill = 0, eKill = 0, gKill = 0, rKill = 0;
+let globalTimer = 0;
+let keys = {};
+const gravity = 0.6;
+const floorY = 460;
+
+// 웹 오디오 API 효과음 주파수 제어
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+    if(type === 'zenitsu') {
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(850, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    } else if(type === 'gorani') {
+        osc.type = 'square'; osc.frequency.setValueAtTime(90, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(140, audioCtx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    }
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+}
+
+const player = {
+    x: 200, y: floorY, vx: 0, vy: 0, radius: 15, dir: 1, hp: 100, maxHp: 100,
+    jumpCount: 0, state: 'idle', combo: 0, comboTimer: 0,
+    fCount: 0, eCount: 0, gCount: 0, rCount: 0,
+    invincibleTimer: 0, isInvincible: false, zenitsuTimer: 0
+};
+
+let enemies = []; let slashes = []; let projectiles = []; let items = []; let particles = []; let texts = [];
+let boss = null;
+let goraniScene = false; let goraniTimer = 0; let flashActive = false;
+
+window.addEventListener('keydown', e => {
+    if (gameState !== 'PLAYING' || goraniScene) return;
+    if (e.code === 'Space' && player.jumpCount < 2) {
+        player.vy = -12; player.jumpCount++; player.state = 'jump';
+    }
+    if (e.code === 'KeyF' && player.fCount > 0) useFSkill();
+    if (e.code === 'KeyE' && player.eCount > 0) useESkill();
+    if (e.code === 'KeyG' && player.gCount > 0) useGSkill();
+    if (e.code === 'KeyR' && player.rCount > 0) useRSkill();
+    keys[e.code] = true;
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// 3단 공격 마우스 이벤트 루프
+canvas.addEventListener('mousedown', e => {
+    if (gameState !== 'PLAYING' || goraniScene) return;
+    const rect = canvas.getBoundingClientRect();
+    player.dir = (e.clientX - rect.left) > player.x ? 1 : -1;
+    player.state = 'attack'; player.comboTimer = 35; player.combo = (player.combo % 3) + 1;
+
+    let rangeW = 120, rangeH = 75, type = 'normal1';
+    if (player.combo === 2) { rangeW = 140; rangeH = 85; type = 'normal2'; }
+    else if (player.combo === 3) { rangeW = 190; rangeH = 110; type = 'normal3'; }
+
+    slashes.push({ x: player.x + (player.dir * (rangeW * 0.4)), y: player.y - 25, dir: player.dir, type: type, life: 6, w: rangeW, h: rangeH });
+    player.vx += player.dir * (player.combo === 3 ? 4 : 2);
+});
+
+document.getElementById('startBtn').addEventListener('click', initGame);
+document.getElementById('restartBtn').addEventListener('click', initGame);
+
+function initGame() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('endScreen').classList.add('hidden');
+    document.getElementById('bossHpFrame').style.display = 'none';
+    currentStage = 1; killCount = 0; fKill = 0; eKill = 0; gKill = 0; rKill = 0; globalTimer = 0;
+    player.x = 200; player.y = floorY; player.vx = 0; player.vy = 0; player.hp = 100;
+    player.fCount = 0; player.eCount = 0; player.gCount = 0; player.rCount = 0; player.combo = 0;
+    player.invincibleTimer = 0; player.isInvincible = false; player.zenitsuTimer = 0;
+    enemies = []; slashes = []; projectiles = []; items = []; particles = []; texts = []; boss = null;
+    goraniScene = false; goraniTimer = 0; flashActive = false;
+    gameState = 'PLAYING'; updateUI();
+}
+
+function nextStage() {
+    if (currentStage >= 100) {
+        gameState = 'END';
+        document.getElementById('endScreen').classList.remove('hidden');
+        document.getElementById('endTitle').innerText = "🏆 FINAL VICTORY 🏆";
+        document.getElementById('endDesc').innerText = "지구상 모든 졸라맨과 보스를 격파하고 100단계를 정복했습니다!";
+        return;
+    }
+    currentStage++; enemies = []; slashes = []; projectiles = []; items = []; boss = null;
+    document.getElementById('bossHpFrame').style.display = 'none';
+    player.x = 200; player.hp = Math.min(player.maxHp, player.hp + 35);
+    texts.push({ x: canvas.width/2, y: canvas.height/2, text: `STAGE ${currentStage} START`, color: '#ff0055', size: 26, life: 50 });
+    updateUI();
+}
+
+// 7, 10, 50, 100 킬링 카운터 스택 분배 연산
+function checkRewards() {
+    if (fKill >= 7) { fKill -= 7; player.fCount++; }
+    if (eKill >= 10) { eKill -= 10; player.eCount++; }
+    if (gKill >= 50) { gKill -= 50; player.gCount++; }
+    if (rKill >= 100) { rKill -= 100; player.rCount++; }
+}
+
+// F스킬: 무라사키 (사정거리 대폭 너프 고정)
+function useFSkill() {
+    player.fCount--; player.state = 'attack';
+    projectiles.push({ x: player.x + player.dir*30, y: player.y - 30, vx: player.dir * 5, radius: 40, life: 35, type: 'murasaki' }); // life를 140에서 35로 줄여 사거리 대폭 축소
+}
+
+// E스킬: 참격 폭풍 (10킬 스킬)
+function useESkill() {
+    player.eCount--; player.state = 'attack';
+    for(let i=0; i<3; i++) {
+        setTimeout(() => {
+            if(gameState !== 'PLAYING') return;
+            slashes.push({ x: player.x + (player.dir * 80) + (i*15), y: player.y - 25, dir: player.dir, type: 'storm', life: 6, w: 100, h: 60 });
+        }, i * 80);
+    }
+}
+
+// G스킬: 벽력일섬
+function useGSkill() {
+    player.gCount--; player.state = 'attack'; playSound('zenitsu');
+    player.zenitsuTimer = 180; player.isInvincible = true;
+    let startX = player.x; player.x = Math.max(40, Math.min(canvas.width - 40, player.x + player.dir * 420));
+    slashes.push({ x: (startX + player.x) / 2, y: player.y - 25, dir: player.dir, type: 'zenitsu', life: 12, w: Math.abs(startX - player.x) + 80, h: 80 });
+    texts.push({ x: canvas.width/2, y: 140, text: "⚡ 벽력일섬 (霹靂一閃) ⚡", color: '#ffcc00', size: 24, life: 60 });
+}
+
+// R스킬: 고라니 (100킬 레전드 연출 스킬)
+function useRSkill() {
+    player.rCount--; goraniScene = true; goraniTimer = 0; flashActive = false;
+    player.isInvincible = true; player.zenitsuTimer = 150;
+    playSound('gorani');
+}
+
+function spawnBlood(x, y, dir, count = 8) {
+    for (let i = 0; i < count; i++) {
+        particles.push({ x: x, y: y - 20, vx: (Math.random() * 7 * dir) + (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 10 - 2, size: Math.random() * 4 + 2, color: '#e60000', alpha: 1, decay: 0.016, isBlood: true });
+    }
+}
+
+function update() {
+    if (gameState !== 'PLAYING') return;
+
+    // 레전드 궁극기 고라니 연출 시나리오 연산
+    if (goraniScene) {
+        goraniTimer++;
+        if (goraniTimer === 35) { flashActive = true; } // 팍 하는 불빛 활성화
+        if (goraniTimer === 55) {
+            flashActive = false;
+            // 결계 내부 전체 몰살 처리 알고리즘
+            enemies.forEach(e => spawnBlood(e.x, e.y, 1, 10));
+            if(boss) spawnBlood(boss.x, boss.y, 1, 40);
+            killCount += enemies.length + (boss ? 1 : 0);
+            
+            // 즉시 스테이지 클리어 연계 처리
+            goraniScene = false;
+            nextStage();
+            return;
+        }
+        return; // 고라니 연출 도중엔 아래 일반 업데이트 일시정지
+    }
+
+    globalTimer++;
+
+    // 보스 즉시 스폰 엔진 최적화 (맵 중앙 낙하 방식 적용으로 안 나오는 버그 완벽 대처)
+    if (!boss && killCount > 0 && killCount % 50 === 0 && enemies.length === 0) {
+        let bossMaxHp = 250 + (currentStage * 180);
+        boss = { x: canvas.width / 2 + (Math.random() - 0.5)*200, y: -50, vx: 0, vy: 0, hp: bossMaxHp, maxHp: bossMaxHp, radius: 25, state: 'run', color: '#111', scale: 1.6, patternTimer: 0 };
+        document.getElementById('bossHpFrame').style.display = 'block';
+        texts.push({ x: canvas.width/2, y: 180, text: "⚠️ BOSS DROP DOWN", color: '#ff00ff', size: 24, life: 60 });
+    }
+
+    // 적 소환수 수 제한 해제 제어문
+    if (!boss && globalTimer % Math.max(10, 35 - currentStage * 2) === 0) {
+        let isHeavy = Math.random() < 0.2;
+        enemies.push({ x: Math.random() < 0.5 ? -20 : canvas.width + 20, y: floorY, vx: 0, vy: 0, hp: isHeavy ? 4 : 1, radius: isHeavy ? 17 : 14, speed: isHeavy ? 2.6 : 4.2, color: isHeavy ? '#543d2b' : '#ff3333', state: 'run', stateTimer: 0, isHeavy: isHeavy });
+    }
+
+    // 무적 연산
+    if (player.zenitsuTimer > 0) {
+        player.zenitsuTimer--; player.isInvincible = true;
+        if (player.zenitsuTimer <= 0) player.isInvincible = false;
+    } else if (player.invincibleTimer > 0) {
+        player.invincibleTimer--;
+        if (player.invincibleTimer <= 0) player.isInvincible = false;
+    }
+
+    if (player.comboTimer > 0) { if (--player.comboTimer === 0) player.combo = 0; }
+    if (player.state === 'attack' && globalTimer % 5 === 0) player.state = 'idle';
+
+    // 좌우 물리 엔진 제어
+    if (player.state !== 'hit') {
+        if (keys['KeyA']) { player.vx = -6; player.dir = -1; if (player.isGrounded) player.state = 'run'; } 
+        else if (keys['KeyD']) { player.vx = 6; player.dir = 1; if (player.isGrounded) player.state = 'run'; } 
+        else { player.vx *= 0.7; if (player.isGrounded && Math.abs(player.vx) < 0.5) player.state = 'idle'; }
+    }
+
+    player.vy += gravity; player.x += player.vx; player.y += player.vy;
+    if (player.y >= floorY) { player.y = floorY; player.vy = 0; player.jumpCount = 0; if (!player.isGrounded) { player.isGrounded = true; player.state = 'idle'; } }
+    player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+
+    // 무라사키 이동 투사체 루틴
+    projectiles.forEach((p, pIdx) => {
+        p.x += p.vx;
+        particles.push({ x: p.x + (Math.random()-0.5)*20, y: p.y + (Math.random()-0.5)*20, vx: 0, vy: (Math.random()-0.5)*2, size: Math.random()*5+2, color: '#9900ff', alpha: 0.6, decay: 0.05 });
+        
+        enemies.forEach((e, eIdx) => {
+            if (Math.abs(p.x - e.x) < p.radius + e.radius) {
+                e.hp -= 0.25; e.state = 'hit'; e.stateTimer = 4;
+                if (e.hp <= 0) { killCount++; fKill++; eKill++; gKill++; rKill++; checkRewards(); if (Math.random() < 0.3) items.push({ x: e.x, y: floorY }); enemies.splice(eIdx, 1); updateUI(); }
+            }
+        });
+        if (boss && Math.abs(p.x - boss.x) < p.radius + boss.radius) {
+            boss.hp -= 0.5; boss.state = 'hit'; boss.stateTimer = 4; updateUI();
+            if (boss.hp <= 0) { spawnBlood(boss.x, boss.y, 1, 40); nextStage(); }
+        }
+        if (--p.life <= 0) projectiles.splice(pIdx, 1);
+    });
+
+    // 참격 히트 연산 파트
+    slashes.forEach((s, sIdx) => {
+        s.life--; if (s.life <= 0) slashes.splice(sIdx, 1);
+
+        enemies.forEach((e, eIdx) => {
+            if (Math.abs(s.x - e.x) < (s.w/2 + e.radius) && Math.abs(s.y - (e.y - 25)) < s.h) {
+                if (e.state !== 'hit') {
+                    let dmg = s.type === 'zenitsu' ? 15 : s.type === 'storm' ? 2 : s.type === 'normal3' ? 3.5 : 1;
+                    e.hp -= dmg; e.state = 'hit'; e.stateTimer = 10; e.vx = s.dir * (s.type === 'zenitsu' ? 18 : 7); e.vy = -3;
+                    spawnBlood(e.x, e.y, s.dir, 6);
+                    if (e.hp <= 0) { killCount++; fKill++; eKill++; gKill++; rKill++; checkRewards(); if (Math.random() < 0.3) items.push({ x: e.x, y: floorY }); enemies.splice(eIdx, 1); updateUI(); }
+                }
+            }
+        });
+
+        if (boss && Math.abs(s.x - boss.x) < (s.w/2 + boss.radius) && Math.abs(s.y - (boss.y - 40)) < s.h) {
+            if (boss.state !== 'hit') {
+                let dmg = s.type === 'zenitsu' ? 40 : s.type === 'storm' ? 5 : 2;
+                boss.hp -= dmg; boss.state = 'hit'; boss.stateTimer = 8; updateUI();
+                if (boss.hp <= 0) { spawnBlood(boss.x, boss.y, s.dir, 40); nextStage(); }
+            }
+        }
+    });
+
+    // 힐링 포션 습득 연산
+    items.forEach((it, idx) => {
+        if (Math.abs(player.x - it.x) < 30) {
+            player.hp = Math.min(player.maxHp, player.hp + 30);
+            texts.push({ x: player.x, y: player.y - 65, text: "+30% HEAL", color: '#00ff44', size: 14, life: 35 });
+            items.splice(idx, 1); updateUI();
+        }
+    });
+
+    // 졸라맨 무리 기동 처리
+    enemies.forEach((e) => {
+        e.vy += gravity; e.x += e.vx; e.y += e.vy;
+        if (e.y >= floorY) { e.y = floorY; e.vy = 0; e.vx *= 0.8; }
+        if (e.state === 'hit') { if (--e.stateTimer <= 0) e.state = 'run'; } 
+        else {
+            let tDir = player.x > e.x ? 1 : -1; e.vx = tDir * e.speed;
+            if (Math.abs(player.x - e.x) < (player.radius + e.radius) && Math.abs(player.y - e.y) < 40) inflictDamageToPlayer(e.isHeavy ? 10 : 5, tDir);
+        }
+    });
+
+    // 보스 행동 AI 연산 제어
+    if (boss) {
+        boss.vy += gravity; boss.x += boss.vx; boss.y += boss.vy;
+        if (boss.y >= floorY) { boss.y = floorY; boss.vy = 0; }
+        if (boss.state === 'hit') { if (--boss.stateTimer <= 0) boss.state = 'run'; } 
+        else {
+            let bDir = player.x > boss.x ? 1 : -1; boss.vx = bDir * 4.0;
+            if (Math.abs(player.x - boss.x) < (player.radius + boss.radius) && Math.abs(player.y - boss.y) < 50) inflictDamageToPlayer(15, bDir);
+        }
+    }
+
+    particles.forEach((p, idx) => { p.x += p.vx; p.y += p.vy; if (p.isBlood && p.y >= floorY + 25) { p.vy = 0; p.vx = 0; } else if (p.isBlood) p.vy += 0.3; if ((p.alpha -= p.decay) <= 0) particles.splice(idx, 1); });
+    texts.forEach((t, idx) => { t.y -= 0.5; if (--t.life <= 0) texts.splice(idx, 1); });
+}
+
+function inflictDamageToPlayer(damage, knockbackDir) {
+    if (player.isInvincible) return;
+    player.hp -= damage; player.isInvincible = true; player.invincibleTimer = 35;
+    player.state = 'hit'; player.vx = knockbackDir * 6; player.vy = -3;
+    updateUI();
+    if (player.hp <= 0) { player.hp = 0; gameState = 'END'; document.getElementById('endScreen').classList.remove('hidden'); document.getElementById('endDesc').innerHTML = `최종 정복지: STAGE ${currentStage}<br>KILLS: ${killCount}`; }
+}
+
+function updateUI() {
+    document.getElementById('hpFill').style.width = `${Math.max(0, player.hp)}%`;
+    document.getElementById('hpText').innerText = `${Math.max(0, Math.floor(player.hp))}/100`;
+    document.getElementById('stageText').innerText = `STAGE ${currentStage}/100`;
+    document.getElementById('killText').innerText = `KILLS: ${killCount}`;
+    if (boss) document.getElementById('bossHpFill').style.width = `${Math.max(0, (boss.hp / boss.maxHp) * 100)}%`;
+    document.getElementById('fCool').innerText = player.fCount > 0 ? `충전됨` : `${fKill}/7`;
+    document.getElementById('eCool').innerText = player.eCount > 0 ? `충전됨` : `${eKill}/10`;
+    document.getElementById('gCool').innerText = player.gCount > 0 ? `READY` : `${gKill}/50`;
+    document.getElementById('rCool').innerText = player.rCount > 0 ? `MAX` : `${rKill}/100`;
+}
+
+function drawStick(x, y, dir, state, color, scale = 1, frame = 0, hasWeapon = false) {
+    ctx.strokeStyle = color; ctx.lineWidth = hasWeapon ? 5 : 3.5; ctx.lineCap = 'round';
+    let size = 45 * scale, r = 7.5 * scale;
+    let headY = y - size, chestY = y - (size * 0.65), pelvisY = y - (size * 0.3);
+    ctx.beginPath(); ctx.arc(x, headY, r, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, headY + r); ctx.lineTo(x, pelvisY); ctx.stroke();
+    let lX, lY, rX, rY, lhX, lhY, rhX, rhY; let motion = frame * 0.25;
+    if (state === 'run') { lX = x + Math.sin(motion) * (14 * scale); lY = y; rX = x - Math.sin(motion) * (14 * scale); rY = y; lhX = x - Math.sin(motion) * (10 * scale); lhY = chestY + (10 * scale); rhX = x + Math.sin(motion) * (10 * scale); rhY = chestY + (10 * scale); } 
+    else if (state === 'attack') { lX = x - dir * (10 * scale); lY = y; rX = x + dir * (12 * scale); rY = y; lhX = x - dir * (5 * scale); lhY = chestY; rhX = x + dir * (34 * scale); rhY = chestY - (8 * scale); } 
+    else if (state === 'hit') { lX = x - dir * (12 * scale); lY = y - (5 * scale); rX = x - dir * (2 * scale); rY = y - (10 * scale); lhX = x - dir * (12 * scale); lhY = chestY - (10 * scale); rhX = x - dir * (5 * scale); rhY = chestY - (18 * scale); } 
+    else { let b = Math.sin(frame * 0.08) * 1.2; lX = x - (7 * scale); lY = y; rX = x + (7 * scale); rY = y; lhX = x - (8 * scale); lhY = chestY + (12 * scale) + b; rhX = x + (8 * scale); rhY = chestY + (12 * scale) + b; }
+    ctx.beginPath(); ctx.moveTo(x, pelvisY); ctx.lineTo(lX, lY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, pelvisY); ctx.lineTo(rX, rY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, chestY); ctx.lineTo(lhX, lhY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, chestY); ctx.lineTo(rhX, rhY); ctx.stroke();
+    if (hasWeapon) { if (player.invincibleTimer % 4 > 2) return; ctx.strokeStyle = player.zenitsuTimer > 0 ? '#ffcc00' : '#0066ff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(rhX, rhY); ctx.lineTo(rhX + dir * 38, rhY - 12); ctx.stroke(); }
+}
+
+function draw() {
+    ctx.fillStyle = '#f3f4f7'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#e3e6ed'; for(let i=0; i<6; i++) { ctx.fillRect(i*180 + 40, floorY - 220 - (i%2)*40, 100, 220 + (i%2)*40); }
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(canvas.width, floorY); ctx.stroke();
+    ctx.fillStyle = '#cbd0db'; ctx.fillRect(0, floorY + 2, canvas.width, canvas.height - floorY);
+
+    items.forEach(it => { ctx.fillStyle = '#00ff55'; ctx.beginPath(); ctx.arc(it.x, it.y - 10, 7, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = '#000'; ctx.stroke(); });
+
+    slashes.forEach(s => {
+        ctx.strokeStyle = s.type === 'zenitsu' ? '#ffcc00' : s.type === 'storm' ? '#00ffcc' : s.type === 'normal3' ? '#ff3300' : '#0077ff';
+        ctx.lineWidth = s.type === 'zenitsu' ? 10 : s.type === 'normal3' ? 7 : 4;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.type === 'normal3' ? 75 : 52, -Math.PI/2.5, Math.PI/2.5, s.dir < 0); ctx.stroke();
+    });
+
+    projectiles.forEach(p => {
+        let grad = ctx.createRadialGradient(p.x, p.y, 3, p.x, p.y, p.radius); grad.addColorStop(0, '#fff'); grad.addColorStop(0.4, '#aa00ff'); grad.addColorStop(1, 'rgba(50,0,120,0)');
+        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2); ctx.fill();
+    });
+
+    enemies.forEach(e => drawStick(e.x, e.y, player.x > e.x ? 1 : -1, e.state, e.color, e.isHeavy ? 1.3 : 1.0, globalTimer));
+    if (boss) drawStick(boss.x, boss.y, player.x > boss.x ? 1 : -1, boss.state, boss.color, boss.scale, globalTimer);
+
+    if (player.zenitsuTimer > 0) { ctx.strokeStyle = 'rgba(255,204,0,0.4)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(player.x, player.y - 20, 32, 0, Math.PI*2); ctx.stroke(); }
+    if (!(player.invincibleTimer % 4 > 2)) drawStick(player.x, player.y, player.dir, player.state, '#000000', 1.1, globalTimer, true);
+
+    // 🦌 고라니 시전 시 스크린 테두리 전설 결계(벽) 및 연출 그래픽 연산
+    if (goraniScene) {
+        ctx.fillStyle = 'rgba(160, 0, 255, 0.25)';
+        ctx.fillRect(0, 0, 45, canvas.height); // 좌측 벽 결계
+        ctx.fillRect(canvas.width - 45, 0, 45, canvas.height); // 우측 벽 결계
+        ctx.fillStyle = '#fff';
+        ctx.font = "italic bold 32px Impact"; ctx.textAlign = 'center';
+        ctx.fillText("CRITICAL SCENE: GORANI", canvas.width/2, 220);
+    }
+    // 팍 터지는 흰색 섬광 불빛 효과 오버레이
+    if (flashActive) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+
+    particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.alpha; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
+    ctx.globalAlpha = 1.0;
+    texts.forEach(t => { ctx.fillStyle = t.color; ctx.font = `italic bold ${t.size}px Arial`; ctx.textAlign = 'center'; ctx.fillText(t.text, t.x, t.y); });
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
