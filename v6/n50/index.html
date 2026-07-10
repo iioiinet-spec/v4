@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Zombie Soldier Ultimate</title>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+cursor:none;
+background:black;
+}
+
+
+#ui{
+position:absolute;
+top:10px;
+left:10px;
+color:white;
+font-size:18px;
+font-family:Arial;
+z-index:5;
+}
+
+
+#hpBox{
+width:220px;
+height:20px;
+border:2px solid white;
+background:#550000;
+}
+
+
+#hp{
+height:100%;
+width:100%;
+background:red;
+}
+
+
+#crosshair{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+font-size:30px;
+color:white;
+z-index:5;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div id="ui">
+
+🪖 군인<br>
+
+무기:
+<span id="weapon">
+총
+</span>
+
+<br>
+
+탄약:
+<span id="ammo">
+30
+</span>/30
+
+<br><br>
+
+<div id="hpBox">
+<div id="hp"></div>
+</div>
+
+체력:
+<span id="hpText">
+100
+</span>
+
+<br>
+
+웨이브:
+<span id="wave">
+1
+</span>
+
+<br>
+
+처치:
+<span id="score">
+0
+</span>
+
+</div>
+
+
+<div id="crosshair">
++
+</div>
+
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+
+<script>
+
+
+// ======================
+// 기본 설정
+// ======================
+
+
+let scene=new THREE.Scene();
+
+scene.background=
+new THREE.Color(0x111111);
+
+
+
+let camera=
+new THREE.PerspectiveCamera(
+75,
+innerWidth/innerHeight,
+0.1,
+1000
+);
+
+
+
+let renderer=
+new THREE.WebGLRenderer();
+
+
+renderer.setSize(
+innerWidth,
+innerHeight
+);
+
+
+document.body.appendChild(renderer.domElement);
+
+
+
+
+// ======================
+// 변수
+// ======================
+
+
+let zombies=[];
+let bullets=[];
+let grenades=[];
+
+let walls=[];
+
+let keys={};
+
+
+let yaw=0;
+let pitch=0;
+
+
+let weapon="gun";
+
+
+let health=100;
+
+let ammo=30;
+
+let maxAmmo=30;
+
+
+let wave=1;
+
+let score=0;
+
+
+let thirdPerson=false;
+
+
+
+// ======================
+// 바닥
+// ======================
+
+
+let ground=new THREE.Mesh(
+
+new THREE.PlaneGeometry(
+200,
+200
+),
+
+new THREE.MeshBasicMaterial({
+color:0x555555
+})
+
+);
+
+
+ground.rotation.x=-Math.PI/2;
+
+scene.add(ground);
+
+
+
+
+// ======================
+// 벽 생성
+// ======================
+
+
+function createWall(x,z,w,d){
+
+
+let wall=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+w,
+4,
+d
+),
+
+new THREE.MeshBasicMaterial({
+color:0x333333
+})
+
+);
+
+
+wall.position.set(
+x,
+2,
+z
+);
+
+
+scene.add(wall);
+
+
+walls.push(wall);
+
+
+}
+
+
+
+createWall(0,-30,60,2);
+
+createWall(0,30,60,2);
+
+createWall(-30,0,2,60);
+
+createWall(30,0,2,60);
+
+
+
+
+// 장애물
+
+for(let i=0;i<15;i++){
+
+
+let box=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+3,
+2,
+3
+),
+
+new THREE.MeshBasicMaterial({
+color:0x777777
+})
+
+);
+
+
+box.position.set(
+
+(Math.random()-0.5)*40,
+1,
+(Math.random()-0.5)*40
+
+);
+
+
+scene.add(box);
+
+
+}
+
+
+
+
+// ======================
+// 군인
+// ======================
+
+
+let soldier=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+1,
+2,
+1
+),
+
+new THREE.MeshBasicMaterial({
+color:0x0055ff
+})
+
+);
+
+
+soldier.position.y=1;
+
+
+scene.add(soldier);
+
+
+
+
+// ======================
+// 武器模型
+// ======================
+
+
+// 枪
+
+let gun=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+0.15,
+0.15,
+1
+),
+
+new THREE.MeshBasicMaterial({
+color:0x111111
+})
+
+);
+
+
+gun.position.set(
+0.35,
+-0.35,
+-1
+);
+
+
+camera.add(gun);
+
+
+
+
+// 剑
+
+let sword=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+0.12,
+0.12,
+1.5
+),
+
+new THREE.MeshBasicMaterial({
+color:0xffffff
+})
+
+);
+
+
+sword.position.set(
+-0.35,
+-0.35,
+-1
+);
+
+
+sword.rotation.x=Math.PI/2;
+
+
+camera.add(sword);
+
+
+sword.visible=false;
+
+
+
+scene.add(camera);
+
+
+
+// 다음 2부에서 계속
+
+// ======================
+// 마우스 회전
+// ======================
+
+document.addEventListener("click",()=>{
+
+document.body.requestPointerLock();
+
+});
+
+
+
+document.addEventListener("mousemove",e=>{
+
+
+if(document.pointerLockElement){
+
+
+yaw-=e.movementX*0.002;
+
+pitch-=e.movementY*0.002;
+
+
+pitch=Math.max(
+-1.3,
+Math.min(1.3,pitch)
+);
+
+
+}
+
+});
+
+
+
+
+
+// ======================
+// 키 입력
+// ======================
+
+
+document.addEventListener("keydown",e=>{
+
+
+keys[e.key.toLowerCase()]=true;
+
+
+
+// 검
+
+if(e.key=="1"){
+
+weapon="sword";
+
+document.getElementById("weapon").innerHTML="검";
+
+
+gun.visible=false;
+
+sword.visible=true;
+
+
+}
+
+
+
+// 총
+
+if(e.key=="2"){
+
+weapon="gun";
+
+document.getElementById("weapon").innerHTML="총";
+
+
+gun.visible=true;
+
+sword.visible=false;
+
+
+}
+
+
+
+// 3인칭
+
+if(e.code=="Space"){
+
+thirdPerson=!thirdPerson;
+
+}
+
+
+
+});
+
+
+
+
+
+document.addEventListener("keyup",e=>{
+
+keys[e.key.toLowerCase()]=false;
+
+});
+
+
+
+
+
+
+
+// ======================
+// 이동
+// ======================
+
+
+function movePlayer(){
+
+
+let speed=0.15;
+
+
+
+if(keys["shift"]){
+
+speed=0.3;
+
+}
+
+
+
+let oldX=soldier.position.x;
+
+let oldZ=soldier.position.z;
+
+
+
+let forward=
+new THREE.Vector3(
+
+Math.sin(yaw),
+0,
+Math.cos(yaw)
+
+);
+
+
+
+let right=
+new THREE.Vector3(
+
+Math.cos(yaw),
+0,
+-Math.sin(yaw)
+
+);
+
+
+
+
+if(keys["w"])
+
+soldier.position.addScaledVector(
+forward,
+-speed
+);
+
+
+if(keys["s"])
+
+soldier.position.addScaledVector(
+forward,
+speed
+);
+
+
+if(keys["a"])
+
+soldier.position.addScaledVector(
+right,
+-speed
+);
+
+
+if(keys["d"])
+
+soldier.position.addScaledVector(
+right,
+speed
+);
+
+
+
+
+
+// 벽 충돌
+
+for(let wall of walls){
+
+
+if(
+
+soldier.position.distanceTo(
+wall.position
+)<3
+
+){
+
+
+soldier.position.x=oldX;
+
+soldier.position.z=oldZ;
+
+
+}
+
+
+}
+
+
+
+
+// 人物方向
+
+soldier.rotation.y=yaw;
+
+
+
+}
+
+
+
+
+
+
+
+// ======================
+// 摄像机
+// ======================
+
+
+function updateCamera(){
+
+
+
+if(thirdPerson){
+
+
+
+camera.position.x=
+soldier.position.x
+-
+Math.sin(yaw)*6;
+
+
+
+camera.position.z=
+soldier.position.z
+-
+Math.cos(yaw)*6;
+
+
+
+camera.position.y=
+soldier.position.y+3;
+
+
+
+camera.rotation.order="YXZ";
+
+camera.rotation.y=yaw;
+
+camera.rotation.x=pitch;
+
+
+
+}
+
+else{
+
+
+
+camera.position.copy(
+soldier.position
+);
+
+
+
+camera.position.y=1.7;
+
+
+
+camera.rotation.order="YXZ";
+
+camera.rotation.y=yaw;
+
+camera.rotation.x=pitch;
+
+
+
+}
+
+
+
+}
+
+
+
+
+// ======================
+// 화면 크기
+// ======================
+
+
+window.addEventListener(
+"resize",
+()=>{
+
+
+camera.aspect=
+innerWidth/innerHeight;
+
+
+camera.updateProjectionMatrix();
+
+
+renderer.setSize(
+innerWidth,
+innerHeight
+);
+
+
+});
+
+// ======================
+// 총 / 검 공격
+// ======================
+
+
+document.addEventListener("mousedown",()=>{
+
+
+if(weapon=="gun"){
+
+shoot();
+
+
+}
+
+
+if(weapon=="sword"){
+
+swordAttack();
+
+
+}
+
+
+});
+
+
+
+
+// ======================
+// 총 발사
+// ======================
+
+
+function shoot(){
+
+
+if(ammo<=0){
+
+return;
+
+}
+
+
+
+ammo--;
+
+updateUI();
+
+
+
+
+let bullet=new THREE.Mesh(
+
+new THREE.SphereGeometry(
+0.08
+),
+
+new THREE.MeshBasicMaterial({
+color:0xffff00
+})
+
+);
+
+
+
+bullet.position.copy(
+camera.position
+);
+
+
+
+let dir=new THREE.Vector3();
+
+camera.getWorldDirection(dir);
+
+
+
+bullet.userData.dir=dir;
+
+
+scene.add(bullet);
+
+
+bullets.push(bullet);
+
+
+
+}
+
+
+
+
+
+// ======================
+// 재장전 R
+// ======================
+
+
+document.addEventListener("keydown",e=>{
+
+
+if(e.key.toLowerCase()=="r"){
+
+
+ammo=maxAmmo;
+
+updateUI();
+
+
+}
+
+
+});
+
+
+
+
+
+
+
+// ======================
+// 검 공격
+// ======================
+
+
+function swordAttack(){
+
+
+
+// 검 이펙트
+
+let effect=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+3,
+0.1,
+3
+),
+
+new THREE.MeshBasicMaterial({
+
+color:0x00ffff,
+
+transparent:true,
+
+opacity:0.5
+
+})
+
+);
+
+
+effect.position.copy(
+soldier.position
+);
+
+
+effect.position.y=1;
+
+
+scene.add(effect);
+
+
+
+setTimeout(()=>{
+
+scene.remove(effect);
+
+},200);
+
+
+
+
+
+
+// 벽 무시 범위 공격
+
+for(
+let i=zombies.length-1;
+i>=0;
+i--
+){
+
+
+
+if(
+
+soldier.position.distanceTo(
+zombies[i].position
+)<4
+
+){
+
+
+killZombie(i);
+
+
+}
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+// ======================
+// UI
+// ======================
+
+
+function updateUI(){
+
+
+document.getElementById("ammo").innerHTML=
+ammo;
+
+
+document.getElementById("hpText").innerHTML=
+health;
+
+
+document.getElementById("hp").style.width=
+health+"%";
+
+
+document.getElementById("wave").innerHTML=
+wave;
+
+
+document.getElementById("score").innerHTML=
+score;
+
+
+}
+
+
+
+
+
+
+
+// ======================
+// 좀비 생성
+// ======================
+
+
+function createZombie(){
+
+
+let zombie=new THREE.Mesh(
+
+new THREE.BoxGeometry(
+1,
+2,
+1
+),
+
+new THREE.MeshBasicMaterial({
+color:0x00aa00
+})
+
+);
+
+
+
+let angle=Math.random()*Math.PI*2;
+
+
+
+zombie.position.set(
+
+Math.cos(angle)*40,
+
+1,
+
+Math.sin(angle)*40
+
+);
+
+
+
+scene.add(zombie);
+
+
+zombies.push(zombie);
+
+
+}
+
+
+
+
+
+
+// ======================
+// 웨이브
+// ======================
+
+
+let zombieAmount=5;
+
+
+
+function startWave(){
+
+
+
+document.getElementById("wave").innerHTML=
+wave;
+
+
+
+for(let i=0;i<zombieAmount;i++){
+
+createZombie();
+
+}
+
+
+
+zombieAmount+=5;
+
+
+
+}
+
+
+
+startWave();
+
+
+
+
+
+
+
+// ======================
+// 좀비 제거
+// ======================
+
+
+function killZombie(i){
+
+
+scene.remove(
+zombies[i]
+);
+
+
+zombies.splice(
+i,
+1
+);
+
+
+score++;
+
+
+updateUI();
+
+
+}
+
+
+
+
+
+
+// ======================
+// 총알 이동
+// ======================
+
+
+function updateBullets(){
+
+
+
+for(
+let i=bullets.length-1;
+i>=0;
+i--
+){
+
+
+
+let b=bullets[i];
+
+
+b.position.addScaledVector(
+b.userData.dir,
+1
+);
+
+
+
+for(
+let j=zombies.length-1;
+j>=0;
+j--
+){
+
+
+
+if(
+
+b.position.distanceTo(
+zombies[j].position
+)<1
+
+){
+
+
+scene.remove(b);
+
+
+bullets.splice(
+i,
+1
+);
+
+
+
+killZombie(j);
+
+
+break;
+
+
+}
+
+
+}
+
+
+}
+
+
+}
+
+
+
+
+
+
+// ======================
+// 좀비 AI
+// ======================
+
+
+function updateZombies(){
+
+
+
+for(let z of zombies){
+
+
+
+z.lookAt(
+soldier.position
+);
+
+
+
+let dir=new THREE.Vector3();
+
+
+dir.subVectors(
+soldier.position,
+z.position
+)
+.normalize();
+
+
+
+z.position.addScaledVector(
+dir,
+0.035
+);
+
+
+
+
+if(
+
+z.position.distanceTo(
+soldier.position
+)<1.5
+
+){
+
+
+
+health-=0.5;
+
+
+if(health<0)
+health=0;
+
+
+updateUI();
+
+
+
+if(health<=0){
+
+
+alert(
+"좀비에게 패배"
+);
+
+
+location.reload();
+
+
+}
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+// 다음 웨이브
+
+if(
+zombies.length==0
+){
+
+
+wave++;
+
+
+startWave();
+
+
+}
+
+}
+
+// ======================
+// G키 수류탄
+// ======================
+
+
+document.addEventListener("keydown",e=>{
+
+
+if(e.key.toLowerCase()=="g"){
+
+throwGrenade();
+
+}
+
+
+});
+
+
+
+
+
+
+function throwGrenade(){
+
+
+
+let grenade=new THREE.Mesh(
+
+new THREE.SphereGeometry(
+0.25
+),
+
+new THREE.MeshBasicMaterial({
+
+color:0x222222
+
+})
+
+);
+
+
+
+grenade.position.copy(
+soldier.position
+);
+
+
+grenade.position.y+=1;
+
+
+
+grenade.userData={
+
+time:120
+
+};
+
+
+
+scene.add(grenade);
+
+
+grenades.push(grenade);
+
+
+
+}
+
+
+
+
+
+
+
+// ======================
+// 수류탄 추적
+// ======================
+
+
+function updateGrenades(){
+
+
+
+for(
+let i=grenades.length-1;
+i>=0;
+i--
+){
+
+
+
+let g=grenades[i];
+
+
+
+let target=null;
+
+let min=999;
+
+
+
+// 가까운 좀비 찾기
+
+for(let z of zombies){
+
+
+let d=
+g.position.distanceTo(
+z.position
+);
+
+
+
+if(d<min){
+
+min=d;
+
+target=z;
+
+}
+
+
+}
+
+
+
+
+// 좀비 추적
+
+if(target){
+
+
+let dir=new THREE.Vector3();
+
+
+
+dir.subVectors(
+target.position,
+g.position
+)
+.normalize();
+
+
+
+g.position.addScaledVector(
+dir,
+0.15
+);
+
+
+}
+
+
+
+
+// 2초 타이머
+
+g.userData.time--;
+
+
+
+
+
+if(g.userData.time<=0){
+
+
+
+explode(
+g.position
+);
+
+
+
+scene.remove(g);
+
+
+grenades.splice(
+i,
+1
+);
+
+
+}
+
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+// ======================
+// 폭발
+// ======================
+
+
+function explode(pos){
+
+
+
+let effect=new THREE.Mesh(
+
+new THREE.SphereGeometry(
+3
+),
+
+new THREE.MeshBasicMaterial({
+
+color:0xff5500,
+
+transparent:true,
+
+opacity:0.5
+
+})
+
+);
+
+
+
+effect.position.copy(pos);
+
+
+scene.add(effect);
+
+
+
+setTimeout(()=>{
+
+
+scene.remove(effect);
+
+
+},300);
+
+
+
+
+
+
+
+// 폭발 범위
+
+for(
+let i=zombies.length-1;
+i>=0;
+i--
+){
+
+
+
+if(
+
+pos.distanceTo(
+zombies[i].position
+)<5
+
+){
+
+
+
+killZombie(i);
+
+
+}
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+// ======================
+// 메인 게임循环
+// ======================
+
+
+function animate(){
+
+
+requestAnimationFrame(
+animate
+);
+
+
+
+movePlayer();
+
+
+updateCamera();
+
+
+updateBullets();
+
+
+updateZombies();
+
+
+updateGrenades();
+
+
+
+renderer.render(
+scene,
+camera
+);
+
+
+
+}
+
+
+
+animate();
+
+
+
+</script>
+
+</body>
+</html>
+//추가할것: 검위치이동 3인칭 검공격모션 3인칭시 자신캐릭터추가 R로장전 스킬추가 적 웨이브추가 웨이브당100부터1000까지의 몬스터추가 적처치시코인획득  유물추가  재장전시간추가 좀비 모델링추가 메인화면 추가(메인화면에있는거:무기상점,시작버튼,스킬창,유물소환)
