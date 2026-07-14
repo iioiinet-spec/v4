@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 냥코 대전쟁 : 대규모 웨이브</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #121212;
+            font-family: 'Malgun Gothic', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #fff;
+            user-select: none;
+        }
+
+        header {
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 28px;
+            color: #ffcb05;
+            text-shadow: 3px 3px 0px #3b4cca, -1px -1px 0px #3b4cca, 1px -1px 0px #3b4cca, -1px 1px 0px #3b4cca;
+        }
+
+        #game-container {
+            position: relative;
+            width: 1000px;
+            height: 400px;
+            border: 5px solid #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            background: linear-gradient(to bottom, #70c5ff 65%, #63a35c 65%);
+            cursor: crosshair;
+        }
+
+        .lightning-effect {
+            position: absolute;
+            width: 80px;
+            height: 400px;
+            background: linear-gradient(to bottom, transparent, #f1c40f, #fff, #f1c40f, transparent);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 99;
+            transform: translateX(-50%);
+            box-shadow: 0 0 20px #f1c40f;
+        }
+
+        @keyframes flash {
+            0% { opacity: 0; width: 5px; }
+            30% { opacity: 1; width: 80px; }
+            100% { opacity: 0; width: 0px; }
+        }
+
+        .castle {
+            position: absolute;
+            bottom: 40px;
+            width: 130px;
+            height: 130px;
+            border-radius: 15px;
+            border: 4px solid #fff;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 10px;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        #player-castle {
+            left: 20px;
+            background: #ff4757 url('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/town-map.png') no-repeat center;
+            background-size: 60px;
+        }
+        #enemy-castle {
+            right: 20px;
+            background: #2f3542 url('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dark-ball.png') no-repeat center;
+            background-size: 60px;
+        }
+        .castle-title {
+            position: absolute;
+            top: -45px;
+            color: #ffd700;
+            text-shadow: 1px 1px 3px #000;
+            font-size: 15px;
+            width: 120px;
+            text-align: center;
+        }
+        .castle-hp {
+            position: absolute;
+            top: -23px;
+            width: 90%;
+            background: rgba(0,0,0,0.85);
+            color: #ff4757;
+            font-size: 11px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #ff4757;
+        }
+
+        .unit {
+            position: absolute;
+            bottom: 40px;
+            width: 70px;
+            height: 70px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            z-index: 5;
+        }
+
+        .enemy-ball {
+            animation: roll 0.8s linear infinite;
+        }
+        @keyframes roll {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+
+        .hp-bar {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 45px;
+            height: 6px;
+            background: #333;
+            border: 1px solid #fff;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .hp-fill {
+            height: 100%;
+            background: #2ed573;
+            width: 100%;
+        }
+
+        /* UI 레이아웃 확장 */
+        #ui-layout {
+            width: 1000px;
+            display: grid;
+            grid-template-columns: 2.2fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            margin-bottom: 30px;
+        }
+
+        .ui-box {
+            background: #1e1e1e;
+            border: 3px solid #fff;
+            border-radius: 8px;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #ffcb05;
+            margin-bottom: 8px;
+            border-bottom: 2px solid #555;
+            padding-bottom: 4px;
+        }
+
+        /* 포켓몬 4열 그리드로 변경 */
+        .spawn-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .btn-spawn {
+            background: #2d3436;
+            color: #fff;
+            border: 2px solid #636e72;
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: bold;
+            text-align: left;
+            transition: 0.2s;
+        }
+        .btn-spawn:hover { background: #353b48; }
+        
+        .btn-spawn:disabled {
+            cursor: not-allowed;
+            background: #2d3436 !important;
+            border-color: #d63031 !important;
+        }
+        
+        .btn-spawn.locked {
+            background: #111111 !important;
+            border-color: #333333 !important;
+            cursor: not-allowed;
+        }
+        .btn-spawn.locked img { filter: brightness(0) !important; }
+        .btn-spawn.locked .info span { color: #666 !important; }
+
+        .btn-spawn img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+        .btn-spawn .info {
+            display: flex;
+            flex-direction: column;
+        }
+        .btn-spawn .cost {
+            color: #f1c40f;
+            font-size: 10px;
+        }
+
+        .upgrade-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            height: 100%;
+        }
+        .btn-upgrade {
+            background: #2c3e50;
+            color: #fff;
+            border: 2px solid #34495e;
+            border-radius: 6px;
+            padding: 12px 8px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            flex: 1;
+        }
+        .btn-upgrade:hover { background: #34495e; }
+        .btn-upgrade:disabled { opacity: 0.2; cursor: not-allowed; }
+
+        #top-info {
+            width: 1000px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d3436;
+            padding: 8px 20px;
+            box-sizing: border-box;
+            border-radius: 8px;
+            border: 3px solid #fff;
+            font-weight: bold;
+        }
+
+        .stage-badge {
+            background: #e17055;
+            padding: 4px 10px;
+            border-radius: 12px;
+            color: #fff;
+        }
+        #gold-info { color: #ffd700; font-size: 18px; }
+        #skill-cooldown { font-size: 13px; color: #55efc4; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>포켓몬 냥코 대전쟁 : 대규모 군단</h1>
+        <p style="margin: 5px 0 0; font-size: 12px; color: #aaa;">💡 웨이브를 정복하여 10종의 포켓몬을 모두 해금하세요! (클릭 시 번개 공격)</p>
+    </header>
+
+    <div id="top-info">
+        <div id="wave-display" class="stage-badge">WAVE 1</div>
+        <div id="skill-cooldown">⚡ 10만볼트 충전완료!</div>
+        <div id="gold-info">골드: 0G / 200G</div>
+    </div>
+
+    <div id="game-container" onclick="castLightning(event)">
+        <div id="player-castle" class="castle">
+            <div class="castle-title">포켓몬 센터</div>
+            <div id="player-hp" class="castle-hp">HP: 2000 / 2000</div>
+        </div>
+        <div id="enemy-castle" class="castle">
+            <div class="castle-title">로켓단 기지</div>
+            <div id="enemy-hp" class="castle-hp">HP: 2000 / 2000</div>
+        </div>
+    </div>
+
+    <div id="ui-layout">
+        <!-- 확장된 포켓몬 상점 (10마리 배치) -->
+        <div class="ui-box">
+            <div class="section-title">대규모 소환 연구소 (웨이브 클리어 시 자동 해금)</div>
+            <div class="spawn-grid">
+                <!-- 1열 -->
+                <button id="btn-pikachu" class="btn-spawn" onclick="spawnPlayer('pikachu')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/25.gif">
+                    <div class="info"><span>⚡ 피카츄</span><span class="cost">50G</span></div>
+                </button>
+                <button id="btn-squirtle" class="btn-spawn" onclick="spawnPlayer('squirtle')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/7.gif">
+                    <div class="info"><span>🐢 꼬부기</span><span class="cost">120G</span></div>
+                </button>
+                <button id="btn-charmander" class="btn-spawn locked" onclick="spawnPlayer('charmander')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/4.gif">
+                    <div class="info"><span id="txt-charmander">🔒 파이리 (W2)</span><span class="cost">160G</span></div>
+                </button>
+                <button id="btn-eevee" class="btn-spawn locked" onclick="spawnPlayer('eevee')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/133.gif">
+                    <div class="info"><span id="txt-eevee">🔒 이브이 (W3)</span><span class="cost">80G</span></div>
+                </button>
+
+                <!-- 2열 -->
+                <button id="btn-bulbasaur" class="btn-spawn locked" onclick="spawnPlayer('bulbasaur')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/1.gif">
+                    <div class="info"><span id="txt-bulbasaur">🔒 이상해씨(W4)</span><span class="cost">220G</span></div>
+                </button>
+                <button id="btn-machamp" class="btn-spawn locked" onclick="spawnPlayer('machamp')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/68.gif">
+                    <div class="info"><span id="txt-machamp">🔒 괴력몬 (W5)</span><span class="cost">280G</span></div>
+                </button>
+                <button id="btn-snorlax" class="btn-spawn locked" onclick="spawnPlayer('snorlax')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/143.gif">
+                    <div class="info"><span id="txt-snorlax">🔒 잠만보 (W6)</span><span class="cost">400G</span></div>
+                </button>
+                <button id="btn-gengar" class="btn-spawn locked" onclick="spawnPlayer('gengar')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/94.gif">
+                    <div class="info"><span id="txt-gengar">🔒 팬텀 (W7)</span><span class="cost">350G</span></div>
+                </button>
+
+                <!-- 3열 -->
+                <button id="btn-dragonite" class="btn-spawn locked" onclick="spawnPlayer('dragonite')">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/149.gif">
+                    <div class="info"><span id="txt-dragonite">🔒 망나뇽 (W9)</span><span class="cost">600G</span></div>
+                </button>
+                <button id="btn-mewtwo" class="btn-spawn locked" onclick="spawnPlayer('mewtwo')" style="grid-column: span 3;">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/150.gif">
+                    <div class="info"><span id="txt-mewtwo">🔒 뮤츠 (최종 병기 - W10)</span><span class="cost">999G</span></div>
+                </button>
+            </div>
+        </div>
+
+        <div class="ui-box">
+            <div class="section-title">기지 과학 연구실</div>
+            <div class="upgrade-list">
+                <button id="up-wallet" class="btn-upgrade" onclick="upgrade('wallet')">
+                    <span>💰 지갑 확장 (Lv.1)</span><span id="cost-up-wallet">80G</span>
+                </button>
+                <button id="up-castle" class="btn-upgrade" onclick="upgrade('castle')">
+                    <span>🏥 센터 보강 (Lv.1)</span><span id="cost-up-castle">100G</span>
+                </button>
+                <button id="up-attack" class="btn-upgrade" onclick="upgrade('attack')">
+                    <span>⚔️ 훈련 (Lv.1)</span><span id="cost-up-attack">150G</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 게임 데이터 초기화
+        let gold = 100, maxGold = 200, goldRate = 12; 
+        let currentWave = 1;
+        let playerMaxHp = 2000, playerCastleHp = 2000;
+        let enemyMaxHp = 2000, enemyCastleHp = 2000;
+        let skillReady = true;
+        const LIGHTNING_COOLDOWN = 1500, LIGHTNING_RADIUS = 75, LIGHTNING_DAMAGE = 150;     
+        let levels = { wallet: 1, castle: 1, attack: 1 };
+        
+        let playerUnits = [];
+        let enemyUnits = [];
+
+        // 해금 상태
+        let unlocked = {
+            pikachu: true, squirtle: true, charmander: false, eevee: false, 
+            bulbasaur: false, machamp: false, snorlax: false, gengar: false, 
+            dragonite: false, mewtwo: false
+        };
+
+        // 아군 유닛 (총 10종)
+        const PLAYER_SPECS = {
+            pikachu: { cost: 50, hp: 90, attack: 18, range: 45, speed: 2.2, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/25.gif' },
+            eevee: { cost: 80, hp: 120, attack: 14, range: 35, speed: 2.5, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/133.gif' },
+            squirtle: { cost: 120, hp: 300, attack: 12, range: 35, speed: 1.1, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/7.gif' },
+            charmander: { cost: 160, hp: 140, attack: 28, range: 40, speed: 1.8, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/4.gif' },
+            bulbasaur: { cost: 220, hp: 170, attack: 38, range: 90, speed: 1.3, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/1.gif' },
+            machamp: { cost: 280, hp: 550, attack: 65, range: 35, speed: 1.5, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/68.gif' },
+            gengar: { cost: 350, hp: 180, attack: 75, range: 70, speed: 2.8, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/94.gif' },
+            snorlax: { cost: 400, hp: 850, attack: 22, range: 35, speed: 0.6, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/143.gif' },
+            dragonite: { cost: 600, hp: 600, attack: 85, range: 50, speed: 1.6, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/149.gif' },
+            mewtwo: { cost: 999, hp: 900, attack: 120, range: 120, speed: 1.4, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/150.gif' }
+        };
+
+        // 적 유닛 (총 11종으로 대폭 추가)
+        const ENEMY_SPECS = {
+            poke: { hp: 80, attack: 9, range: 35, speed: 1.8, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png' },
+            heal: { hp: 120, attack: 8, range: 35, speed: 1.5, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/heal-ball.png' },
+            great: { hp: 180, attack: 16, range: 35, speed: 1.3, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/great-ball.png' },
+            safari: { hp: 220, attack: 20, range: 45, speed: 1.6, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/safari-ball.png' },
+            premier: { hp: 80, attack: 25, range: 30, speed: 2.8, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/premier-ball.png' },
+            quick: { hp: 150, attack: 18, range: 30, speed: 3.5, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/quick-ball.png' },
+            ultra: { hp: 350, attack: 26, range: 40, speed: 0.9, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ultra-ball.png' },
+            timer: { hp: 450, attack: 35, range: 40, speed: 1.1, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/timer-ball.png' },
+            dusk: { hp: 550, attack: 40, range: 40, speed: 1.0, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dusk-ball.png' },
+            master: { hp: 800, attack: 65, range: 50, speed: 0.8, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png' },
+            cherish: { hp: 3000, attack: 150, range: 60, speed: 0.5, img: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/cherish-ball.png' } // 보스
+        };
+
+        // 자원 루프
+        setInterval(() => {
+            gold = Math.min(maxGold, gold + goldRate);
+            updateUI();
+        }, 500);
+
+        function updateUI() {
+            document.getElementById('gold-info').innerText = `골드: ${Math.floor(gold)}G / ${maxGold}G`;
+            
+            // 버튼 제어 로직 (id 연동 자동화)
+            for (let id in PLAYER_SPECS) {
+                let btn = document.getElementById('btn-' + id);
+                if (btn) {
+                    if (!unlocked[id]) {
+                        btn.disabled = true;
+                    } else {
+                        btn.disabled = gold < PLAYER_SPECS[id].cost;
+                    }
+                }
+            }
+
+            document.getElementById('up-wallet').disabled = gold < levels.wallet * 80;
+            document.getElementById('up-castle').disabled = gold < levels.castle * 100;
+            document.getElementById('up-attack').disabled = gold < levels.attack * 150;
+        }
+
+        function upgrade(type) {
+            if (type === 'wallet' && gold >= levels.wallet * 80) {
+                gold -= levels.wallet * 80;
+                levels.wallet++;
+                maxGold = 200 + (levels.wallet - 1) * 150;
+                goldRate += 4;
+                document.getElementById('up-wallet').innerHTML = `<span>💰 지갑 확장 (Lv.${levels.wallet})</span><span id="cost-up-wallet">${levels.wallet * 80}G</span>`;
+            } else if (type === 'castle' && gold >= levels.castle * 100) {
+                gold -= levels.castle * 100;
+                levels.castle++;
+                playerMaxHp = 2000 + (levels.castle - 1) * 800;
+                playerCastleHp = playerMaxHp; 
+                updateCastleHP();
+                document.getElementById('up-castle').innerHTML = `<span>🏥 센터 보강 (Lv.${levels.castle})</span><span id="cost-up-castle">${levels.castle * 100}G</span>`;
+            } else if (type === 'attack' && gold >= levels.attack * 150) {
+                gold -= levels.attack * 150;
+                levels.attack++;
+                document.getElementById('up-attack').innerHTML = `<span>⚔️ 훈련 (Lv.${levels.attack})</span><span id="cost-up-attack">${levels.attack * 150}G</span>`;
+            }
+            updateUI();
+        }
+
+        function spawnPlayer(type) {
+            if (!unlocked[type] || gold < PLAYER_SPECS[type].cost) return; 
+
+            const spec = PLAYER_SPECS[type];
+            gold -= spec.cost;
+            updateUI();
+
+            const unitEl = document.createElement('div');
+            unitEl.className = 'unit';
+            unitEl.style.backgroundImage = `url('${spec.img}')`;
+            unitEl.style.left = '140px'; 
+            unitEl.style.transform = 'scaleX(-1)'; 
+            
+            const hpBar = document.createElement('div');
+            hpBar.className = 'hp-bar';
+            const hpFill = document.createElement('div');
+            hpFill.className = 'hp-fill';
+            hpBar.appendChild(hpFill);
+            unitEl.appendChild(hpBar);
+            
+            document.getElementById('game-container').appendChild(unitEl);
+
+            let statMult = 1 + (levels.attack - 1) * 0.2; 
+
+            playerUnits.push({
+                element: unitEl, hpFill: hpFill, x: 140,
+                hp: spec.hp * statMult, maxHp: spec.hp * statMult,
+                attack: spec.attack * statMult, range: spec.range, speed: spec.speed
+            });
+        }
+
+        function spawnEnemy() {
+            let pool = ['poke', 'heal'];
+            if (currentWave >= 3) pool = ['great', 'safari', 'heal', 'premier'];
+            if (currentWave >= 5) pool = ['ultra', 'quick', 'great', 'safari'];
+            if (currentWave >= 7) pool = ['dusk', 'timer', 'ultra', 'quick'];
+            if (currentWave >= 9) pool = ['master', 'dusk', 'timer'];
+            
+            // 10웨이브 이상부터는 프레셔스볼(보스) 섞여 나옴
+            if (currentWave >= 10 && Math.random() > 0.85) pool = ['cherish'];
+
+            let ballType = pool[Math.floor(Math.random() * pool.length)];
+            const spec = ENEMY_SPECS[ballType];
+
+            const unitEl = document.createElement('div');
+            unitEl.className = 'unit';
+            
+            const ballImg = document.createElement('div');
+            ballImg.className = 'enemy-ball';
+            ballImg.style.width = ballType === 'cherish' ? '60px' : '42px';
+            ballImg.style.height = ballType === 'cherish' ? '60px' : '42px';
+            ballImg.style.backgroundImage = `url('${spec.img}')`;
+            ballImg.style.backgroundSize = 'contain';
+            ballImg.style.backgroundRepeat = 'no-repeat';
+            unitEl.appendChild(ballImg);
+
+            unitEl.style.left = '830px'; 
+
+            const hpBar = document.createElement('div');
+            hpBar.className = 'hp-bar';
+            const hpFill = document.createElement('div');
+            hpFill.className = 'hp-fill';
+            hpBar.appendChild(hpFill);
+            unitEl.appendChild(hpBar);
+
+            document.getElementById('game-container').appendChild(unitEl);
+
+            let waveMultiplier = 1 + (currentWave - 1) * 0.3;
+
+            enemyUnits.push({
+                element: unitEl, hpFill: hpFill, x: 830,
+                hp: spec.hp * waveMultiplier, maxHp: spec.hp * waveMultiplier,
+                attack: spec.attack * waveMultiplier, range: spec.range, speed: spec.speed
+            });
+        }
+
+        function castLightning(event) {
+            if (!skillReady) return; 
+
+            skillReady = false;
+            document.getElementById('skill-cooldown').innerText = "⚡ 재충전 중...";
+            document.getElementById('skill-cooldown').style.color = "#ff7675";
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+
+            const lEl = document.createElement('div');
+            lEl.className = 'lightning-effect';
+            lEl.style.left = clickX + 'px';
+            lEl.style.animation = 'flash 0.3s ease-out forwards';
+            event.currentTarget.appendChild(lEl);
+            setTimeout(() => lEl.remove(), 400);
+
+            enemyUnits.forEach(e => {
+                if (Math.abs(e.x - clickX) <= LIGHTNING_RADIUS) {
+                    e.hp -= LIGHTNING_DAMAGE;
+                    e.hpFill.style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
+                }
+            });
+
+            setTimeout(() => {
+                skillReady = true;
+                document.getElementById('skill-cooldown').innerText = "⚡ 10만볼트 충전완료!";
+                document.getElementById('skill-cooldown').style.color = "#55efc4";
+            }, LIGHTNING_COOLDOWN);
+        }
+
+        let enemySpawner;
+        function resetEnemySpawner() {
+            if (enemySpawner) clearInterval(enemySpawner);
+            // 웨이브가 오를수록 적 스폰 주기 급격히 감소
+            let interval = Math.max(1200, 3500 - (currentWave * 200));
+            enemySpawner = setInterval(() => spawnEnemy(), interval);
+        }
+
+        function loadWave(waveNum) {
+            currentWave = waveNum;
+            document.getElementById('wave-display').innerText = `WAVE ${currentWave}`;
+
+            enemyMaxHp = 2000 + (currentWave - 1) * 1500;
+            enemyCastleHp = enemyMaxHp;
+
+            checkUnlocks();
+            updateCastleHP();
+            resetEnemySpawner();
+        }
+
+        // 해금 로직 및 시각효과 업데이트
+        function unlockUnit(id, name) {
+            if (!unlocked[id]) {
+                unlocked[id] = true;
+                const btn = document.getElementById('btn-' + id);
+                btn.classList.remove('locked');
+                document.getElementById('txt-' + id).innerText = name;
+            }
+        }
+
+        function checkUnlocks() {
+            if (currentWave >= 2) unlockUnit('charmander', '🔥 파이리');
+            if (currentWave >= 3) unlockUnit('eevee', '🤎 이브이');
+            if (currentWave >= 4) unlockUnit('bulbasaur', '🍃 이상해씨');
+            if (currentWave >= 5) unlockUnit('machamp', '🥊 괴력몬');
+            if (currentWave >= 6) unlockUnit('snorlax', '🛡️ 잠만보');
+            if (currentWave >= 7) unlockUnit('gengar', '👻 팬텀');
+            if (currentWave >= 9) unlockUnit('dragonite', '🐉 망나뇽');
+            if (currentWave >= 10) unlockUnit('mewtwo', '🔮 뮤츠');
+        }
+
+        function updateCastleHP() {
+            document.getElementById('player-hp').innerText = `HP: ${Math.max(0, Math.floor(playerCastleHp))} / ${playerMaxHp}`;
+            document.getElementById('enemy-hp').innerText = `HP: ${Math.max(0, Math.floor(enemyCastleHp))} / ${enemyMaxHp}`;
+        }
+
+        // 물리 연산 (30FPS)
+        setInterval(() => {
+            playerUnits.forEach(p => {
+                let target = null; let minDist = 9999;
+                enemyUnits.forEach(e => {
+                    let dist = e.x - p.x;
+                    if (dist > 0 && dist < minDist) { minDist = dist; target = e; }
+                });
+                if (target && minDist <= p.range) {
+                    target.hp -= p.attack / 15;
+                    target.hpFill.style.width = `${Math.max(0, (target.hp / target.maxHp) * 100)}%`;
+                } else if (p.x >= 820) { 
+                    enemyCastleHp -= p.attack / 15; updateCastleHP();
+                } else {
+                    p.x += p.speed; p.element.style.left = p.x + 'px';
+                }
+            });
+
+            enemyUnits.forEach(e => {
+                let target = null; let minDist = 9999;
+                playerUnits.forEach(p => {
+                    let dist = e.x - p.x;
+                    if (dist > 0 && dist < minDist) { minDist = dist; target = p; }
+                });
+                if (target && minDist <= e.range) {
+                    target.hp -= e.attack / 15;
+                    target.hpFill.style.width = `${Math.max(0, (target.hp / target.maxHp) * 100)}%`;
+                } else if (e.x <= 150) {
+                    playerCastleHp -= e.attack / 15; updateCastleHP();
+                } else {
+                    e.x -= e.speed; e.element.style.left = e.x + 'px';
+                }
+            });
+
+            playerUnits = playerUnits.filter(p => {
+                if (p.hp <= 0) { p.element.remove(); return false; }
+                return true;
+            });
+
+            enemyUnits = enemyUnits.filter(e => {
+                if (e.hp <= 0) {
+                    e.element.remove();
+                    gold = Math.min(maxGold, gold + 30 + (currentWave * 6));
+                    updateUI(); return false;
+                }
+                return true;
+            });
+
+            if (enemyCastleHp <= 0) {
+                alert(`🎉 WAVE ${currentWave} 클리어! 적들이 더욱 강력해집니다.`);
+                playerUnits.forEach(p => p.element.remove());
+                enemyUnits.forEach(e => e.element.remove());
+                playerUnits = []; enemyUnits = [];
+                loadWave(currentWave + 1);
+            } else if (playerCastleHp <= 0) {
+                alert(`💀 게임 오버! (도달 기록: WAVE ${currentWave})\n처음부터 다시 훈련하세요.`);
+                location.reload();
+            }
+        }, 33);
+
+        loadWave(1);
+    </script>
+</body>
+</html>
