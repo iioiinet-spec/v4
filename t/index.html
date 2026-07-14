@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>클래식 테트리스 게임</title>
+
+  <style>
+    /* =========================================================
+       1. 전체 화면 기본 디자인
+       ========================================================= */
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
+      color: #f8fafc;
+      background:
+        radial-gradient(circle at top, #374151 0%, #1f2937 45%, #111827 100%);
+    }
+
+    button {
+      font: inherit;
+    }
+
+    /* =========================================================
+       2. 게임 전체를 감싸는 카드
+       ========================================================= */
+    .game-wrapper {
+      width: min(100%, 820px);
+      padding: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      background: rgba(17, 24, 39, 0.92);
+      box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+    }
+
+    .title-area {
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .title-area h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 46px);
+      letter-spacing: 0.06em;
+    }
+
+    .title-area p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* =========================================================
+       3. 게임판과 정보창 배치
+       ========================================================= */
+    .game-layout {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 26px;
+    }
+
+    .board-frame {
+      position: relative;
+      padding: 10px;
+      border: 2px solid #64748b;
+      border-radius: 14px;
+      background: #0f172a;
+      box-shadow:
+        0 0 0 4px rgba(148, 163, 184, 0.08),
+        0 18px 40px rgba(0, 0, 0, 0.38);
+    }
+
+    /* Canvas의 실제 크기는 자바스크립트에서 300 x 600으로 사용한다. */
+    #gameCanvas {
+      display: block;
+      width: 300px;
+      height: 600px;
+      max-width: 100%;
+      border-radius: 6px;
+      background: #111827;
+    }
+
+    /* 게임 오버 메시지는 평소에는 숨겨 둔다. */
+    .game-over-message {
+      position: absolute;
+      inset: 10px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      border-radius: 6px;
+      text-align: center;
+      background: rgba(3, 7, 18, 0.82);
+      backdrop-filter: blur(4px);
+    }
+
+    .game-over-message.show {
+      display: flex;
+    }
+
+    .game-over-message div {
+      padding: 22px;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      border-radius: 16px;
+      background: rgba(127, 29, 29, 0.28);
+    }
+
+    .game-over-message strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #fecaca;
+      font-size: 32px;
+    }
+
+    .game-over-message span {
+      color: #e5e7eb;
+      line-height: 1.6;
+    }
+
+    /* =========================================================
+       4. 오른쪽 정보 패널
+       ========================================================= */
+    .side-panel {
+      width: 250px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel-card {
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      background: rgba(30, 41, 59, 0.9);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .panel-card h2 {
+      margin: 0 0 14px;
+      color: #e2e8f0;
+      font-size: 16px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .score-value {
+      display: block;
+      color: #fde68a;
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .status-text {
+      margin-top: 10px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .button-group {
+      display: grid;
+      gap: 10px;
+    }
+
+    .control-button {
+      width: 100%;
+      padding: 13px 16px;
+      border: 0;
+      border-radius: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      transition:
+        transform 0.15s ease,
+        filter 0.15s ease;
+    }
+
+    .control-button:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.08);
+    }
+
+    .control-button:active {
+      transform: translateY(0);
+    }
+
+    #startButton {
+      color: #0f172a;
+      background: linear-gradient(135deg, #86efac, #67e8f9);
+    }
+
+    #pauseButton {
+      color: #172554;
+      background: linear-gradient(135deg, #fef08a, #fdba74);
+    }
+
+    .guide-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    .guide-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .guide-list li:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .key {
+      min-width: 78px;
+      color: #f8fafc;
+      font-weight: 800;
+    }
+
+    .small-note {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* =========================================================
+       5. 작은 화면에서는 세로로 배치
+       ========================================================= */
+    @media (max-width: 720px) {
+      body {
+        align-items: flex-start;
+        padding: 12px;
+      }
+
+      .game-wrapper {
+        padding: 18px;
+      }
+
+      .game-layout {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .board-frame {
+        width: min(100%, 320px);
+      }
+
+      #gameCanvas {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 2;
+      }
+
+      .side-panel {
+        width: min(100%, 320px);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="game-wrapper">
+    <header class="title-area">
+      <h1>CLASSIC TETRIS</h1>
+      <p>
+        방향키와 스페이스바를 사용하여 블록을 쌓아 보세요.<br />
+        한 줄을 가득 채우면 줄이 사라지고 100점을 얻습니다.
+      </p>
+    </header>
+
+    <section class="game-layout">
+      <!-- 테트리스 게임판 -->
+      <div class="board-frame">
+        <canvas
+          id="gameCanvas"
+          width="300"
+          height="600"
+          aria-label="테트리스 게임 화면"
+        ></canvas>
+
+        <div id="gameOverMessage" class="game-over-message">
+          <div>
+            <strong>GAME OVER</strong>
+            <span>시작 버튼을 눌러<br />다시 도전해 보세요.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 점수와 조작법을 보여 주는 오른쪽 패널 -->
+      <aside class="side-panel">
+        <div class="panel-card">
+          <h2>Score</h2>
+          <span id="score" class="score-value">0</span>
+          <div id="statusText" class="status-text">시작 버튼을 눌러 주세요.</div>
+        </div>
+
+        <div class="panel-card button-group">
+          <button id="startButton" class="control-button" type="button">
+            게임 시작 / 다시 시작
+          </button>
+          <button id="pauseButton" class="control-button" type="button">
+            일시정지
+          </button>
+        </div>
+
+        <div class="panel-card">
+          <h2>Controls</h2>
+          <ul class="guide-list">
+            <li><span class="key">◀</span><span>왼쪽 이동</span></li>
+            <li><span class="key">▶</span><span>오른쪽 이동</span></li>
+            <li><span class="key">▼</span><span>빠르게 내리기</span></li>
+            <li><span class="key">▲</span><span>90도 회전</span></li>
+            <li><span class="key">Space</span><span>바닥까지 내리기</span></li>
+          </ul>
+        </div>
+
+        <div class="panel-card">
+          <p class="small-note">
+            블록이 바닥이나 다른 블록에 닿으면 게임판에 고정됩니다.
+            블록이 맨 위까지 쌓이면 게임이 끝납니다.
+          </p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    /* =========================================================
+       1. 게임 화면과 기본 크기 설정
+       ========================================================= */
+
+    // HTML에 있는 canvas 요소와 2D 그림 도구를 가져온다.
+    const canvas = document.getElementById("gameCanvas");
+    const context = canvas.getContext("2d");
+
+    // 점수, 상태 글자, 버튼, 게임 오버 화면을 가져온다.
+    const scoreElement = document.getElementById("score");
+    const statusText = document.getElementById("statusText");
+    const startButton = document.getElementById("startButton");
+    const pauseButton = document.getElementById("pauseButton");
+    const gameOverMessage = document.getElementById("gameOverMessage");
+
+    // 테트리스 게임판은 가로 10칸, 세로 20칸이다.
+    const COLS = 10;
+    const ROWS = 20;
+
+    // 한 칸의 크기는 30픽셀이다.
+    // 10칸 x 30 = 300픽셀, 20칸 x 30 = 600픽셀이 된다.
+    const BLOCK_SIZE = 30;
+
+    // 블록이 자동으로 한 칸 내려오는 시간 간격이다.
+    // 숫자가 작을수록 더 빠르게 내려온다.
+    const DROP_INTERVAL = 700;
+
+    /* =========================================================
+       2. 테트로미노 블록 모양과 색상
+       ========================================================= */
+
+    /*
+      각 블록은 2차원 배열로 표현한다.
+
+      0 : 빈 공간
+      1 : 색칠할 블록 칸
+
+      예를 들어 T 블록은 다음과 같은 모양이다.
+
+      0 1 0
+      1 1 1
+    */
+    const TETROMINOES = {
+      I: {
+        color: "#8BE9FD",
+        shape: [
+          [1, 1, 1, 1]
+        ]
+      },
+      J: {
+        color: "#A7B8FF",
+        shape: [
+          [1, 0, 0],
+          [1, 1, 1]
+        ]
+      },
+      L: {
+        color: "#FFC98B",
+        shape: [
+          [0, 0, 1],
+          [1, 1, 1]
+        ]
+      },
+      O: {
+        color: "#FFF59D",
+        shape: [
+          [1, 1],
+          [1, 1]
+        ]
+      },
+      S: {
+        color: "#A7F3D0",
+        shape: [
+          [0, 1, 1],
+          [1, 1, 0]
+        ]
+      },
+      T: {
+        color: "#D8B4FE",
+        shape: [
+          [0, 1, 0],
+          [1, 1, 1]
+        ]
+      },
+      Z: {
+        color: "#FDA4AF",
+        shape: [
+          [1, 1, 0],
+          [0, 1, 1]
+        ]
+      }
+    };
+
+    // 블록 이름만 따로 배열로 저장하면 무작위 블록을 만들기 쉽다.
+    const TETROMINO_NAMES = Object.keys(TETROMINOES);
+
+    /* =========================================================
+       3. 게임에서 계속 바뀌는 변수
+       ========================================================= */
+
+    // board는 쌓여 있는 블록을 저장하는 20행 10열 배열이다.
+    let board = createEmptyBoard();
+
+    // currentPiece는 현재 플레이어가 움직이고 있는 블록이다.
+    let currentPiece = null;
+
+    // 현재 점수
+    let score = 0;
+
+    // 게임이 실행 중인지 기억한다.
+    let isRunning = false;
+
+    // 일시정지 상태인지 기억한다.
+    let isPaused = false;
+
+    // requestAnimationFrame으로 만든 반복 실행 번호를 저장한다.
+    let animationId = null;
+
+    // 이전 화면이 그려진 시간을 저장한다.
+    let lastTime = 0;
+
+    // 블록이 내려오기까지 쌓인 시간을 저장한다.
+    let dropCounter = 0;
+
+    /* =========================================================
+       4. 빈 게임판 만들기
+       ========================================================= */
+
+    function createEmptyBoard() {
+      /*
+        Array.from을 사용하여 20개의 행을 만든다.
+        각 행에는 10개의 0을 넣는다.
+
+        0은 빈 칸이라는 뜻이다.
+        블록이 고정되면 0 대신 블록의 색상 문자열을 저장한다.
+      */
+      return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    }
+
+    /* =========================================================
+       5. 새로운 블록 만들기
+       ========================================================= */
+
+    function createRandomPiece() {
+      // 0부터 블록 개수보다 1 작은 수까지 무작위 정수를 만든다.
+      const randomIndex = Math.floor(Math.random() * TETROMINO_NAMES.length);
+
+      // 무작위로 선택된 블록 이름을 가져온다.
+      const name = TETROMINO_NAMES[randomIndex];
+
+      // 선택된 블록의 모양과 색상 정보를 가져온다.
+      const data = TETROMINOES[name];
+
+      // 2차원 배열을 복사한다.
+      // 원본 배열을 직접 사용하면 회전할 때 원본 데이터까지 바뀔 수 있기 때문이다.
+      const copiedShape = data.shape.map(row => [...row]);
+
+      return {
+        name: name,
+        shape: copiedShape,
+        color: data.color,
+
+        // 블록을 게임판 가로 중앙 근처에서 시작시킨다.
+        x: Math.floor((COLS - copiedShape[0].length) / 2),
+
+        // 블록은 게임판 맨 위에서 시작한다.
+        y: 0
+      };
+    }
+
+    /* =========================================================
+       6. 한 칸 그리기
+       ========================================================= */
+
+    function drawBlock(x, y, color) {
+      // 블록의 안쪽 색상을 칠한다.
+      context.fillStyle = color;
+      context.fillRect(
+        x * BLOCK_SIZE,
+        y * BLOCK_SIZE,
+        BLOCK_SIZE,
+        BLOCK_SIZE
+      );
+
+      // 블록 사이를 구분하기 위해 밝은 테두리를 그린다.
+      context.strokeStyle = "rgba(255, 255, 255, 0.34)";
+      context.lineWidth = 2;
+      context.strokeRect(
+        x * BLOCK_SIZE + 1,
+        y * BLOCK_SIZE + 1,
+        BLOCK_SIZE - 2,
+        BLOCK_SIZE - 2
+      );
+
+      // 블록 안쪽에 살짝 어두운 그림자를 넣어 입체적으로 보이게 한다.
+      context.fillStyle = "rgba(15, 23, 42, 0.15)";
+      context.fillRect(
+        x * BLOCK_SIZE + 5,
+        y * BLOCK_SIZE + 5,
+        BLOCK_SIZE - 10,
+        BLOCK_SIZE - 10
+      );
+    }
+
+    /* =========================================================
+       7. 게임판 배경과 격자 그리기
+       ========================================================= */
+
+    function drawBoardBackground() {
+      // 이전 화면을 모두 지운다.
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 게임판 배경색을 칠한다.
+      context.fillStyle = "#111827";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 격자선을 그려서 10 x 20 칸이 잘 보이게 한다.
+      context.strokeStyle = "rgba(148, 163, 184, 0.10)";
+      context.lineWidth = 1;
+
+      for (let x = 0; x <= COLS; x++) {
+        context.beginPath();
+        context.moveTo(x * BLOCK_SIZE, 0);
+        context.lineTo(x * BLOCK_SIZE, canvas.height);
+        context.stroke();
+      }
+
+      for (let y = 0; y <= ROWS; y++) {
+        context.beginPath();
+        context.moveTo(0, y * BLOCK_SIZE);
+        context.lineTo(canvas.width, y * BLOCK_SIZE);
+        context.stroke();
+      }
+    }
+
+    /* =========================================================
+       8. 이미 쌓여 있는 블록 그리기
+       ========================================================= */
+
+    function drawFixedBlocks() {
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          // board[y][x]가 0이 아니라면 그 칸에는 블록 색상이 들어 있다.
+          if (board[y][x] !== 0) {
+            drawBlock(x, y, board[y][x]);
+          }
+        }
+      }
+    }
+
+    /* =========================================================
+       9. 현재 움직이는 블록 그리기
+       ========================================================= */
+
+    function drawCurrentPiece() {
+      // 게임이 시작되기 전에는 currentPiece가 없을 수 있다.
+      if (!currentPiece) {
+        return;
+      }
+
+      for (let row = 0; row < currentPiece.shape.length; row++) {
+        for (let col = 0; col < currentPiece.shape[row].length; col++) {
+          // 배열 값이 1인 칸만 실제 블록으로 그린다.
+          if (currentPiece.shape[row][col] === 1) {
+            drawBlock(
+              currentPiece.x + col,
+              currentPiece.y + row,
+              currentPiece.color
+            );
+          }
+        }
+      }
+    }
+
+    /* =========================================================
+       10. 전체 화면 다시 그리기
+       ========================================================= */
+
+    function draw() {
+      drawBoardBackground();
+      drawFixedBlocks();
+      drawCurrentPiece();
+    }
+
+    /* =========================================================
+       11. 충돌 감지
+       ========================================================= */
+
+    function hasCollision(piece, moveX = 0, moveY = 0, testShape = piece.shape) {
+      /*
+        piece를 moveX, moveY만큼 움직였다고 가정했을 때
+        벽, 바닥, 다른 블록과 부딪히는지 검사한다.
+
+        true  : 충돌함
+        false : 충돌하지 않음
+      */
+
+      for (let row = 0; row < testShape.length; row++) {
+        for (let col = 0; col < testShape[row].length; col++) {
+          // 현재 칸이 빈 칸이라면 충돌을 검사할 필요가 없다.
+          if (testShape[row][col] === 0) {
+            continue;
+          }
+
+          // 이동 후 블록 한 칸의 실제 게임판 위치를 계산한다.
+          const newX = piece.x + col + moveX;
+          const newY = piece.y + row + moveY;
+
+          // 1. 왼쪽 벽 또는 오른쪽 벽을 벗어났는지 검사한다.
+          if (newX < 0 || newX >= COLS) {
+            return true;
+          }
+
+          // 2. 바닥보다 아래로 내려갔는지 검사한다.
+          if (newY >= ROWS) {
+            return true;
+          }
+
+          /*
+            newY가 0보다 작을 때는 아직 블록이 게임판 위쪽에 있는 상태이다.
+            이때 board[newY]를 검사하면 오류가 날 수 있으므로,
+            newY가 0 이상일 때만 쌓인 블록과의 충돌을 검사한다.
+          */
+          if (newY >= 0 && board[newY][newX] !== 0) {
+            return true;
+          }
+        }
+      }
+
+      // 모든 칸을 검사했는데 문제가 없으면 충돌하지 않은 것이다.
+      return false;
+    }
+
+    /* =========================================================
+       12. 블록 좌우 이동
+       ========================================================= */
+
+    function movePiece(direction) {
+      // 게임이 실행 중이 아니거나 일시정지라면 움직이지 않는다.
+      if (!isRunning || isPaused || !currentPiece) {
+        return;
+      }
+
+      // 이동할 위치에 충돌이 없다면 x 위치를 바꾼다.
+      if (!hasCollision(currentPiece, direction, 0)) {
+        currentPiece.x += direction;
+        draw();
+      }
+    }
+
+    /* =========================================================
+       13. 블록 회전
+       ========================================================= */
+
+    function rotateMatrixClockwise(matrix) {
+      /*
+        2차원 배열을 시계 방향으로 90도 회전한다.
+
+        예:
+        1 0       1 1
+        1 1  ->   1 0
+      */
+
+      const rowCount = matrix.length;
+      const colCount = matrix[0].length;
+
+      // 회전 후에는 행과 열의 개수가 서로 바뀐다.
+      const rotated = Array.from(
+        { length: colCount },
+        () => Array(rowCount).fill(0)
+      );
+
+      for (let row = 0; row < rowCount; row++) {
+        for (let col = 0; col < colCount; col++) {
+          rotated[col][rowCount - 1 - row] = matrix[row][col];
+        }
+      }
+
+      return rotated;
+    }
+
+    function rotatePiece() {
+      if (!isRunning || isPaused || !currentPiece) {
+        return;
+      }
+
+      // 현재 모양을 90도 회전한 새 배열을 만든다.
+      const rotatedShape = rotateMatrixClockwise(currentPiece.shape);
+
+      /*
+        회전한 모양이 벽, 바닥, 다른 블록과 충돌하지 않을 때만
+        실제 블록 모양을 바꾼다.
+
+        이해하기 쉽도록 복잡한 벽 차기(Wall Kick)는 사용하지 않는다.
+      */
+      if (!hasCollision(currentPiece, 0, 0, rotatedShape)) {
+        currentPiece.shape = rotatedShape;
+        draw();
+      }
+    }
+
+    /* =========================================================
+       14. 블록을 한 칸 아래로 내리기
+       ========================================================= */
+
+    function softDrop() {
+      if (!isRunning || isPaused || !currentPiece) {
+        return;
+      }
+
+      // 한 칸 아래에 충돌이 없다면 y 위치를 1 증가시킨다.
+      if (!hasCollision(currentPiece, 0, 1)) {
+        currentPiece.y += 1;
+      } else {
+        /*
+          아래쪽에 바닥이나 다른 블록이 있다면
+          현재 블록을 게임판에 고정한다.
+        */
+        lockPiece();
+      }
+
+      // 화면을 다시 그린다.
+      draw();
+    }
+
+    /* =========================================================
+       15. 하드 드롭
+       ========================================================= */
+
+    function hardDrop() {
+      if (!isRunning || isPaused || !currentPiece) {
+        return;
+      }
+
+      /*
+        아래에 충돌이 생기기 직전까지 반복해서 내려간다.
+        이렇게 하면 스페이스바를 눌렀을 때 바닥까지 한 번에 내려간다.
+      */
+      while (!hasCollision(currentPiece, 0, 1)) {
+        currentPiece.y += 1;
+      }
+
+      // 바닥에 도착했으므로 바로 고정한다.
+      lockPiece();
+      draw();
+    }
+
+    /* =========================================================
+       16. 현재 블록을 게임판에 고정하기
+       ========================================================= */
+
+    function lockPiece() {
+      for (let row = 0; row < currentPiece.shape.length; row++) {
+        for (let col = 0; col < currentPiece.shape[row].length; col++) {
+          if (currentPiece.shape[row][col] === 0) {
+            continue;
+          }
+
+          const boardX = currentPiece.x + col;
+          const boardY = currentPiece.y + row;
+
+          /*
+            boardY가 0보다 작다는 것은 블록이 게임판 위쪽까지 쌓였다는 뜻이다.
+            이 경우에는 더 이상 새 블록이 들어올 수 없으므로 게임 오버이다.
+          */
+          if (boardY < 0) {
+            endGame();
+            return;
+          }
+
+          // 현재 블록의 색상을 board 배열에 저장한다.
+          board[boardY][boardX] = currentPiece.color;
+        }
+      }
+
+      // 블록을 고정한 뒤 완성된 줄이 있는지 확인한다.
+      clearCompletedLines();
+
+      // 다음 블록을 만든다.
+      spawnNextPiece();
+    }
+
+    /* =========================================================
+       17. 완성된 줄 삭제하기
+       ========================================================= */
+
+    function clearCompletedLines() {
+      let clearedLineCount = 0;
+
+      /*
+        아래쪽 줄부터 위쪽으로 검사한다.
+        아래쪽부터 검사해야 줄을 삭제했을 때 배열 위치를 다루기 쉽다.
+      */
+      for (let row = ROWS - 1; row >= 0; row--) {
+        // every는 행의 모든 칸이 조건을 만족하면 true를 반환한다.
+        const isFullLine = board[row].every(cell => cell !== 0);
+
+        if (isFullLine) {
+          // 완성된 줄 한 개를 배열에서 삭제한다.
+          board.splice(row, 1);
+
+          // 게임판 맨 위에 빈 줄 하나를 추가한다.
+          board.unshift(Array(COLS).fill(0));
+
+          clearedLineCount += 1;
+
+          /*
+            줄을 삭제하면 위의 줄들이 한 칸씩 내려온다.
+            따라서 현재 row 위치에는 새로운 줄이 내려오므로,
+            같은 row를 다시 검사하기 위해 row를 1 증가시킨다.
+          */
+          row += 1;
+        }
+      }
+
+      if (clearedLineCount > 0) {
+        // 한 줄당 100점을 올린다.
+        score += clearedLineCount * 100;
+        updateScore();
+      }
+    }
+
+    /* =========================================================
+       18. 다음 블록 만들기와 게임 오버 검사
+       ========================================================= */
+
+    function spawnNextPiece() {
+      currentPiece = createRandomPiece();
+
+      /*
+        새 블록이 처음 생긴 위치부터 기존 블록과 겹친다면
+        블록이 맨 위까지 쌓였다는 뜻이므로 게임 오버이다.
+      */
+      if (hasCollision(currentPiece, 0, 0)) {
+        endGame();
+      }
+    }
+
+    /* =========================================================
+       19. 점수 화면 갱신
+       ========================================================= */
+
+    function updateScore() {
+      scoreElement.textContent = score;
+    }
+
+    /* =========================================================
+       20. 게임 시작과 다시 시작
+       ========================================================= */
+
+    function startGame() {
+      // 이전 게임의 반복 실행이 남아 있다면 취소한다.
+      if (animationId !== null) {
+        cancelAnimationFrame(animationId);
+      }
+
+      // 게임판과 점수를 처음 상태로 되돌린다.
+      board = createEmptyBoard();
+      score = 0;
+      updateScore();
+
+      // 게임 상태를 실행 중으로 바꾼다.
+      isRunning = true;
+      isPaused = false;
+
+      // 시간 계산 변수도 초기화한다.
+      lastTime = 0;
+      dropCounter = 0;
+
+      // 화면 표시를 초기화한다.
+      pauseButton.textContent = "일시정지";
+      statusText.textContent = "게임 진행 중";
+      gameOverMessage.classList.remove("show");
+
+      // 첫 번째 블록을 만든다.
+      spawnNextPiece();
+
+      // 첫 화면을 그리고 게임 반복을 시작한다.
+      draw();
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    /* =========================================================
+       21. 일시정지와 다시 시작
+       ========================================================= */
+
+    function togglePause() {
+      // 게임이 시작되지 않았다면 일시정지 버튼을 무시한다.
+      if (!isRunning) {
+        return;
+      }
+
+      // true는 false로, false는 true로 바꾼다.
+      isPaused = !isPaused;
+
+      if (isPaused) {
+        pauseButton.textContent = "계속하기";
+        statusText.textContent = "일시정지 중";
+      } else {
+        pauseButton.textContent = "일시정지";
+        statusText.textContent = "게임 진행 중";
+
+        /*
+          일시정지한 시간까지 dropCounter에 더해지지 않도록
+          lastTime을 0으로 다시 설정한다.
+        */
+        lastTime = 0;
+      }
+    }
+
+    /* =========================================================
+       22. 게임 종료
+       ========================================================= */
+
+    function endGame() {
+      isRunning = false;
+      isPaused = false;
+      currentPiece = null;
+
+      statusText.textContent = "게임 오버";
+      pauseButton.textContent = "일시정지";
+      gameOverMessage.classList.add("show");
+
+      if (animationId !== null) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+
+      draw();
+    }
+
+    /* =========================================================
+       23. 게임 반복 실행
+       ========================================================= */
+
+    function gameLoop(currentTime = 0) {
+      /*
+        requestAnimationFrame은 브라우저 화면이 갱신될 때마다
+        gameLoop 함수를 다시 실행한다.
+      */
+
+      if (!isRunning) {
+        return;
+      }
+
+      // 일시정지 중이 아닐 때만 게임 시간을 계산한다.
+      if (!isPaused) {
+        /*
+          첫 실행에서는 lastTime이 0이다.
+          이때 너무 큰 시간 차이가 생기지 않도록 처리한다.
+        */
+        const deltaTime = lastTime === 0 ? 0 : currentTime - lastTime;
+        lastTime = currentTime;
+
+        // 지난 시간을 dropCounter에 계속 더한다.
+        dropCounter += deltaTime;
+
+        // 일정 시간이 지나면 블록을 한 칸 내린다.
+        if (dropCounter >= DROP_INTERVAL) {
+          softDrop();
+          dropCounter = 0;
+        }
+
+        draw();
+      } else {
+        // 일시정지 중에도 현재 시각은 갱신해 둔다.
+        lastTime = currentTime;
+      }
+
+      // 다음 화면에서도 gameLoop를 다시 실행하도록 예약한다.
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    /* =========================================================
+       24. 키보드 입력 처리
+       ========================================================= */
+
+    document.addEventListener("keydown", event => {
+      /*
+        방향키와 스페이스바를 누르면 브라우저 화면이 스크롤될 수 있다.
+        게임 중에는 기본 스크롤 동작을 막는다.
+      */
+      const gameKeys = [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowDown",
+        "ArrowUp",
+        " "
+      ];
+
+      if (gameKeys.includes(event.key)) {
+        event.preventDefault();
+      }
+
+      // 게임 실행 중이 아니거나 일시정지 중이라면 조작하지 않는다.
+      if (!isRunning || isPaused) {
+        return;
+      }
+
+      switch (event.key) {
+        case "ArrowLeft":
+          movePiece(-1);
+          break;
+
+        case "ArrowRight":
+          movePiece(1);
+          break;
+
+        case "ArrowDown":
+          softDrop();
+
+          // 사용자가 직접 아래로 내렸으므로 자동 낙하 시간을 다시 센다.
+          dropCounter = 0;
+          break;
+
+        case "ArrowUp":
+          rotatePiece();
+          break;
+
+        case " ":
+          hardDrop();
+          dropCounter = 0;
+          break;
+      }
+    });
+
+    /* =========================================================
+       25. 버튼 클릭 이벤트 연결
+       ========================================================= */
+
+    startButton.addEventListener("click", startGame);
+    pauseButton.addEventListener("click", togglePause);
+
+    /* =========================================================
+       26. 페이지가 처음 열렸을 때 빈 게임판 그리기
+       ========================================================= */
+
+    draw();
+  </script>
+</body>
+</html>
