@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>진화하는 적 AI 게임 (플레이어 포함)</title>
+    <style>
+        body { margin: 0; background: #111; color: white; overflow: hidden; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; font-size: 18px; pointer-events: none; line-height: 1.5em; }
+        canvas { display: block; cursor: crosshair; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        현재 웨이브: <span id="wave">1</span><br>
+        남은 적: <span id="count">30</span><br>
+        플레이어 HP: <span id="playerHp">100</span>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth; 
+    canvas.height = window.innerHeight;
+
+    // --- 플레이어 설정 ---
+    let player = { 
+        x: canvas.width/2, 
+        y: canvas.height/2, 
+        radius: 15, 
+        hp: 100, 
+        speed: 4 
+    };
+    let keys = {};
+    let mouse = { x: 0, y: 0 };
+
+    // --- 게임 상태 변수 ---
+    let bullets = [], enemies = [], enemyBullets = [], wave = 1;
+
+    // --- AI 학습 데이터 ---
+    let aiGenome = { accuracy: 0.3, fireRate: 0.005 }; 
+
+    // --- 입력 처리 ---
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+    window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener('mousedown', e => {
+        const angle = Math.atan2(e.clientY - player.y, e.clientX - player.x);
+        bullets.push({ 
+            x: player.x, y: player.y, 
+            vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8,
+            life: 60 // 총알 수명 (프레임 단위)
+        });
+    });
+
+    function spawnWave() {
+        enemies = []; // 이전 웨이브 데이터 초기화
+        for(let i = 0; i < 30; i++) {
+            let strategy;
+            if (i < 10) strategy = "top";      // 상위 10마리 (데이터 계승)
+            else if (i < 25) strategy = "evolved"; // 학습된 15마리
+            else strategy = "chaotic";     // 무지성 5마리
+
+            enemies.push({ 
+                x: Math.random() * (canvas.width - 100) + 50, 
+                y: -50 - Math.random() * 200, 
+                radius: 15,
+                hp: 3 + wave, // 웨이브마다 적 체력 증가
+                strategy: strategy, 
+                // 개체별 약간의 변이 적용
+                accuracy: aiGenome.accuracy + (Math.random() - 0.5) * 0.1,
+                fireRate: aiGenome.fireRate + (Math.random() - 0.5) * 0.002
+            });
+        }
+        document.getElementById('wave').innerText = wave;
+    }
+
+    function update() {
+        // 1. 플레이어 이동
+        if (keys['w'] && player.y > player.radius) player.y -= player.speed;
+        if (keys['s'] && player.y < canvas.height - player.radius) player.y += player.speed;
+        if (keys['a'] && player.x > player.radius) player.x -= player.speed;
+        if (keys['d'] && player.x < canvas.width - player.radius) player.x += player.speed;
+
+        // 2. 플레이어 총알 업데이트
+        bullets.forEach((b, index) => {
+            b.x += b.vx; b.y += b.vy;
+            b.life--;
+            if (b.life <= 0) bullets.splice(index, 1);
+        });
+
+        // 3. 적 총알 업데이트 및 플레이어 충돌 체크
+        enemyBullets.forEach((eb, index) => {
+            eb.x += eb.vx; eb.y += eb.vy;
+            if (Math.hypot(eb.x - player.x, eb.y - player.y) < player.radius + 3) {
+                player.hp -= 10; // 적 총알 데미지
+                document.getElementById('playerHp').innerText = player.hp;
+                enemyBullets.splice(index, 1);
+                if (player.hp <= 0) {
+                    alert("게임 오버! 도달 웨이브: " + wave);
+                    location.reload();
+                }
+            }
+            if (eb.x < -50 || eb.x > canvas.width+50 || eb.y < -50 || eb.y > canvas.height+50) enemyBullets.splice(index, 1);
+        });
+
+        // 4. 적 업데이트 (이동, 사격, AI 적용)
+        enemies.forEach((en, i) => {
+            // AI 이동 패턴
+            if (en.strategy === "top" || en.strategy === "evolved") {
+                // 플레이어 방향으로 부드럽게 이동
+                en.x += (player.x - en.x) * 0.005 * (en.accuracy * 2);
+                en.y += (player.y - en.y) * 0.005 * (en.accuracy * 2);
+                // 근접 시 약간 거리 유지
+                if(Math.hypot(player.x - en.x, player.y - en.y) < 150) {
+                     en.x -= (player.x - en.x) * 0.01;
+                     en.y -= (player.y - en.y) * 0.01;
+                }
+            } else {
+                // 무지성 랜덤 이동
+                en.x += Math.sin(Date.now() * 0.001 + i) * 2;
+                en.y += 0.5;
+            }
+            // 화면 밖으로 너무 나가지 않게 제어
+            en.x = Math.max(en.radius, Math.min(canvas.width - en.radius, en.x));
+            en.y = Math.max(en.radius, Math.min(canvas.height - en.radius, en.y));
+
+            // 적 사격 로직
+            if (Math.random() < en.fireRate) {
+                const angle = Math.atan2(player.y - en.y, player.x - en.x);
+                enemyBullets.push({ 
+                    x: en.x, y: en.y, 
+                    vx: Math.cos(angle) * 3, 
+                    vy: Math.sin(angle) * 3 
+                });
+            }
+
+            // 적 피격 체크
+            bullets.forEach((b, bi) => {
+                if (Math.hypot(b.x - en.x, b.y - en.y) < en.radius + 4) {
+                    en.hp -= 1;
+                    bullets.splice(bi, 1);
+                    if (en.hp <= 0) {
+                        // 상위 개체가 죽으면 데이터 강화 (학습)
+                        if (en.strategy === "top") {
+                            aiGenome.accuracy += 0.01;
+                            aiGenome.fireRate += 0.0005;
+                        }
+                        enemies.splice(i, 1);
+                    }
+                }
+            });
+        });
+
+        // 5. 웨이브 클리어 체크
+        if (enemies.length === 0) {
+            wave++;
+            spawnWave();
+        }
+        document.getElementById('count').innerText = enemies.length;
+    }
+
+    function draw() {
+        // 잔상 효과 배경
+        ctx.fillStyle = 'rgba(17, 17, 17, 0.4)'; 
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 플레이어 그리기 (조준선 포함)
+        // 조준선
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+        ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+        // 본체
+        ctx.fillStyle = '#0ff';
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill();
+        // 외곽선
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+        // 플레이어 총알
+        ctx.fillStyle = '#ff0';
+        bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill(); });
+
+        // 적 총알
+        ctx.fillStyle = '#f00';
+        enemyBullets.forEach(eb => { ctx.beginPath(); ctx.arc(eb.x, eb.y, 3, 0, Math.PI * 2); ctx.fill(); });
+
+        // 적 그리기 (전략에 따라 색상 다름)
+        enemies.forEach(en => {
+            if(en.strategy === "top") ctx.fillStyle = 'gold';
+            else if(en.strategy === "evolved") ctx.fillStyle = '#ff6600';
+            else ctx.fillStyle = '#f55';
+            
+            ctx.beginPath(); ctx.arc(en.x, en.y, en.radius, 0, Math.PI * 2); ctx.fill();
+            // 체력 바
+            ctx.fillStyle = "white";
+            ctx.fillRect(en.x - en.radius, en.y - en.radius - 5, (en.radius*2) * (en.hp/(3+wave-1)), 3);
+        });
+
+        update();
+        requestAnimationFrame(draw);
+    }
+
+    // 게임 시작
+    spawnWave();
+    draw();
+</script>
+</body>
+</html>
