@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 테라리움 시뮬레이터</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #ffe6e6, #e6f0fa);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        h1 {
+            margin: 10px 0 5px 0;
+            font-size: 1.5rem;
+            color: #333;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        /* 컨트롤 패널 */
+        #control-panel {
+            background: rgba(255, 255, 255, 0.85);
+            padding: 10px 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 15px;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #555;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 100px;
+            accent-color: #ff5252;
+        }
+
+        button {
+            background: #ff5252;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(255,82,82,0.3);
+        }
+
+        button:hover {
+            background: #ff3333;
+            transform: translateY(-1px);
+        }
+
+        /* 유리 상자 컨테이너 */
+        #canvas-container {
+            position: relative;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            padding: 12px;
+            box-shadow: 
+                0 20px 40px rgba(0,0,0,0.1),
+                inset 0 0 20px rgba(255,255,255,0.6);
+            backdrop-filter: blur(3px);
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+
+        canvas {
+            display: block;
+            border-radius: 16px;
+            background: linear-gradient(to bottom, #eef5fc, #dedeff);
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.03);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Pokémon Glass Box Simulator</h1>
+
+    <div id="control-panel">
+        <div class="control-group">
+            <label for="gravity-slider">중력:</label>
+            <input type="range" id="gravity-slider" min="0" max="2" step="0.1" value="1">
+            <span id="gravity-val">1.0</span>
+        </div>
+        <div class="control-group">
+            <label for="jump-slider">점프력:</label>
+            <input type="range" id="jump-slider" min="0.5" max="2" step="0.1" value="1.2">
+            <span id="jump-val">1.2</span>
+        </div>
+        <button id="add-btn">포켓몬 추가</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <script>
+        // 엔진 및 모듈 초기화
+        const { Engine, Render, Runner, World, Bodies, Body, Composite, Events } = Matter;
+
+        const canvas = document.getElementById('simCanvas');
+        const width = 600;
+        const height = 500;
+        canvas.width = width;
+        canvas.height = height;
+
+        const engine = Engine.create({
+            gravity: { y: 1 }
+        });
+        const world = engine.world;
+
+        const render = Render.create({
+            canvas: canvas,
+            engine: engine,
+            options: {
+                width: width,
+                height: height,
+                background: 'transparent',
+                wireframes: false, // 실제 이미지 출력을 위해 false 고정
+                showVelocity: false
+            }
+        });
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // 유리벽 생성 (두께 40으로 두껍게 쳐서 탈출 방지, 화면 밖으로 배치)
+        const wallOptions = { isStatic: true, render: { fillStyle: 'transparent' }, friction: 0.1 };
+        const ground = Bodies.rectangle(width/2, height + 20, width + 100, 40, wallOptions);
+        const leftWall = Bodies.rectangle(-20, height/2, 40, height + 100, wallOptions);
+        const rightWall = Bodies.rectangle(width + 20, height/2, 40, height + 100, wallOptions);
+        const ceiling = Bodies.rectangle(width/2, -20, width + 100, 40, wallOptions);
+
+        World.add(world, [ground, leftWall, rightWall, ceiling]);
+
+        // 공식 애니메이션 GIF/PNG 스프라이트 데이터
+        const pokemonData = [
+            { name: 'pikachu', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/25.gif', scale: 0.9 },
+            { name: 'bulbasaur', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/1.gif', scale: 0.9 },
+            { name: 'charmander', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/4.gif', scale: 0.9 },
+            { name: 'squirtle', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/7.gif', scale: 0.9 },
+            { name: 'mew', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/151.gif', scale: 1.1 },
+            { name: 'eevee', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/133.gif', scale: 0.9 },
+            { name: 'psyduck', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/54.gif', scale: 0.9 }
+        ];
+
+        let jumpForceMultiplier = 1.2;
+
+        // 포켓몬 생성 함수
+        function spawnPokemon(x, y) {
+            const p = pokemonData[Math.floor(Math.random() * pokemonData.length)];
+            const radius = 24;
+
+            // DOM Image 객체 미리 로드하여 Matter.js 렌더러에 매핑
+            const img = new Image();
+            img.src = p.url;
+
+            const pokemon = Bodies.circle(x, y, radius, {
+                frictionAir: 0.02,
+                restitution: 0.3, // 탄성
+                friction: 0.1,
+                render: {
+                    sprite: {
+                        texture: p.url,
+                        xScale: p.scale,
+                        yScale: p.scale
+                    }
+                }
+            });
+
+            // 행동 패턴 제어를 위한 커스텀 속성 부여
+            pokemon.customAI = {
+                direction: Math.random() > 0.5 ? 1 : -1,
+                lastDecision: 0,
+                isClimbing: false
+            };
+
+            World.add(world, pokemon);
+        }
+
+        // 초기 기본 포켓몬 5마리 스폰
+        for(let i=0; i<5; i++){
+            spawnPokemon(100 + i * 90, 100);
+        }
+
+        // --- 매 프레임 AI 연산 및 제어 루프 ---
+        Events.on(engine, 'beforeUpdate', function() {
+            const bodies = Composite.allBodies(world);
+            const time = engine.timing.timestamp;
+
+            bodies.forEach(body => {
+                if (body.isStatic || !body.customAI) return;
+
+                const ai = body.customAI;
+
+                // 1. 일정 주기마다 무작위로 행동(방향 전환, 점프) 결정
+                if (time - ai.lastDecision > 1500 + Math.random() * 2000) {
+                    ai.direction = Math.random() > 0.5 ? 1 : -1;
+                    ai.lastDecision = time;
+
+                    // 바닥 근처에 있을 때 가끔 점프
+                    if (body.position.y > height - 60 && Math.random() < 0.6) {
+                        Body.applyForce(body, body.position, { 
+                            x: ai.direction * 0.005 * jumpForceMultiplier, 
+                            y: -0.016 * jumpForceMultiplier 
+                        });
+                    }
+                }
+
+                // 2. 벽 근처에 도달 시 기어오르기 핸들링 (유리벽 타기)
+                const closeToLeft = body.position.x < 50;
+                const closeToRight = body.position.x > width - 50;
+
+                if (closeToLeft || closeToRight) {
+                    // 벽을 마주보고 위로 가려는 인공 힘 추가 (반중력 효과 유도)
+                    if (Math.random() < 0.3) {
+                        Body.applyForce(body, body.position, { 
+                            x: 0, 
+                            y: -0.006 * engine.gravity.y 
+                        });
+                    }
+                    // 벽에 닿으면 방향 반전 유도
+                    if (body.position.x < 35) ai.direction = 1;
+                    if (body.position.x > width - 35) ai.direction = -1;
+                }
+
+                // 3. 평상시 기본 걷기 운동 에너지 부여
+                // 과도하게 빨라지는 것을 막기 위해 수평 속도 제한 내에서 가속
+                if (Math.abs(body.velocity.x) < 2) {
+                    Body.applyForce(body, body.position, { x: ai.direction * 0.0007, y: 0 });
+                }
+
+                // 4. 몸이 뒤집히는 현상 자연스럽게 억제 (서서 걸어다니도록 회전 복원)
+                if (Math.abs(body.angle) > 0.1) {
+                    Body.setAngle(body, body.angle * 0.9);
+                }
+            });
+        });
+
+        // --- UI 컨트롤 인터랙션 이벤트 리스너 ---
+        const gravitySlider = document.getElementById('gravity-slider');
+        const gravityVal = document.getElementById('gravity-val');
+        gravitySlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            engine.gravity.y = val;
+            gravityVal.textContent = val.toFixed(1);
+        });
+
+        const jumpSlider = document.getElementById('jump-slider');
+        const jumpVal = document.getElementById('jump-val');
+        jumpSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            jumpForceMultiplier = val;
+            jumpVal.textContent = val.toFixed(1);
+        });
+
+        document.getElementById('add-btn').addEventListener('click', () => {
+            spawnPokemon(width / 2 + (Math.random() * 60 - 30), 50);
+        });
+    </script>
+</body>
+</html>
