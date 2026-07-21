@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 오션 & 전설의 대결 시뮬레이터</title>
+    <!-- Matter.js 물리 엔진 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 10px;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .header-title {
+            margin: 5px 0 10px 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 컨트롤 패널 UI */
+        #control-panel {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 12px 20px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 85px;
+            accent-color: #76ff03;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00e676, #00b0ff);
+            color: #0d47a1;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
+            font-size: 0.85rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 230, 118, 0.5);
+        }
+
+        .btn-legend {
+            background: linear-gradient(135deg, #d500f9, #ff1744);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(213, 0, 249, 0.4);
+        }
+
+        .btn-legend:hover {
+            box-shadow: 0 6px 20px rgba(213, 0, 249, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            box-shadow: none;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 컨트롤 안내 바 */
+        #status-bar {
+            background: rgba(0, 10, 25, 0.6);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255,255,255,0.15);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .key-badge {
+            background: #fff;
+            color: #1a237e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 0 #9fa8da;
+        }
+
+        /* 유리 상자 및 캔버스 */
+        #terrarium-container {
+            position: relative;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 12px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                inset 0 0 35px rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 16px;
+            box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+        }
+
+        /* 모바일 터치 조작반 */
+        #mobile-controls {
+            display: none;
+            width: 100%;
+            max-width: 900px;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding: 0 10px;
+        }
+
+        .touch-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .touch-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            touch-action: manipulation;
+        }
+
+        .touch-btn:active {
+            background: rgba(213, 0, 249, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+            .header-title {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-title">
+        <span>⚡</span> 전설의 대결: 메가뮤츠 vs 그란돈·자시안·자마젠타
+    </div>
+
+    <!-- 컨트롤 패널 -->
+    <div id="control-panel">
+        <div class="control-group">
+            <label for="gravity-slider">중력</label>
+            <input type="range" id="gravity-slider" min="0.2" max="2" step="0.1" value="0.9">
+            <span id="gravity-val">0.9</span>
+        </div>
+        <div class="control-group">
+            <label for="jump-slider">점프/비행 파워</label>
+            <input type="range" id="jump-slider" min="0.8" max="2.2" step="0.1" value="1.3">
+            <span id="jump-val">1.3</span>
+        </div>
+        <button class="btn btn-legend" id="showdown-btn">⚡ 전설 대결 구도 배치</button>
+        <button class="btn" id="add-btn">+ 랜덤 추가</button>
+        <button class="btn btn-secondary" id="deselect-btn">선택 해제</button>
+    </div>
+
+    <!-- 조작 가이드 -->
+    <div id="status-bar">
+        <span id="selected-info">💡 포켓몬을 <b>클릭</b>하면 직접 조종할 수 있습니다! (이로치 메가뮤츠는 하늘 비상 조종 가능)</span>
+        <span style="opacity:0.4;">|</span>
+        <span>이동: <span class="key-badge">←</span> <span class="key-badge">→</span> <span class="key-badge">↑</span> <span class="key-badge">↓</span></span>
+        <span>점프/헤엄: <span class="key-badge">Space</span></span>
+    </div>
+
+    <!-- 테라리움 메인 캔버스 -->
+    <div id="terrarium-container" style="margin-top: 10px;">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <!-- 터치 기기용 컨트롤러 -->
+    <div id="mobile-controls">
+        <div class="touch-group">
+            <div class="touch-btn" id="btn-left">◀</div>
+            <div class="touch-btn" id="btn-right">▶</div>
+            <div class="touch-btn" id="btn-up">▲</div>
+            <div class="touch-btn" id="btn-down">▼</div>
+        </div>
+        <div class="touch-group">
+            <div class="touch-btn" id="btn-jump" style="width:70px; border-radius:25px;">JUMP</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Matter.js 물리 엔진 초기화 ---
+        const { Engine, World, Bodies, Body, Composite, Events } = Matter;
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const CANVAS_WIDTH = 900;
+        const CANVAS_HEIGHT = 600;
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        const WATER_LEVEL = 430; // 해수면 Y 좌표
+
+        const engine = Engine.create({
+            gravity: { y: 0.9 }
+        });
+        const world = engine.world;
+
+        // --- 포켓몬 속성 및 스프라이트 데이터 ---
+        // pose: 'look_down' (하늘에서 아래 쳐다봄), 'look_up' (지상에서 하늘 쳐다봄)
+        const POKEMON_ROSTER = [
+            // [하늘] 이로치 메가뮤츠 X & Y
+            { 
+                id: 'mewtwo_x_shiny', 
+                name: '이로치 메가뮤츠 X', 
+                type: 'flyer', 
+                pose: 'look_down', 
+                auraColor: 'rgba(118, 255, 3, 0.6)', 
+                url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/shiny/10043.gif', 
+                radius: 32, 
+                scale: 1.3 
+            },
+            { 
+                id: 'mewtwo_y_shiny', 
+                name: '이로치 메가뮤츠 Y', 
+                type: 'flyer', 
+                pose: 'look_down', 
+                auraColor: 'rgba(178, 255, 89, 0.6)', 
+                url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/shiny/10044.gif', 
+                radius: 30, 
+                scale: 1.25 
+            },
+
+            // [지상] 그란돈, 검왕 자시안, 방패왕 자마젠타
+            { 
+                id: 'groudon', 
+                name: '원시 그란돈', 
+                type: 'heavy_land', 
+                pose: 'look_up', 
+                auraColor: 'rgba(255, 61, 0, 0.5)', 
+                url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/383.gif', 
+                radius: 38, 
+                scale: 1.45 
+            },
+            { 
+                id: 'zacian', 
+                name: '검왕 자시안', 
+                type: 'land', 
+                pose: 'look_up', 
+                auraColor: 'rgba(0, 229, 255, 0.5)', 
+                url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/888.gif', 
+                radius: 32, 
+                scale: 1.3 
+            },
+            { 
+                id: 'zamazenta', 
+                name: '방패왕 자마젠타', 
+                type: 'land', 
+                pose: 'look_up', 
+                auraColor: 'rgba(255, 23, 68, 0.5)', 
+                url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/889.gif', 
+                radius: 34, 
+                scale: 1.35 
+            },
+
+            // 일반 / 물 / 비행 동반 포켓몬
+            { id: 'gyarados', name: '갸라도스', type: 'flyer', pose: 'normal', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/130.gif', radius: 34, scale: 1.4 },
+            { id: 'squirtle', name: '꼬부기', type: 'water', pose: 'normal', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/7.gif', radius: 24, scale: 1.0 },
+            { id: 'lapras', name: '라프라스', type: 'water', pose: 'normal', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/131.gif', radius: 30, scale: 1.2 },
+            { id: 'pikachu', name: '피카츄', type: 'land', pose: 'normal', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/25.gif', radius: 24, scale: 1.0 }
+        ];
+
+        // 이미지 캐싱
+        const imageCache = {};
+        POKEMON_ROSTER.forEach(p => {
+            const img = new Image();
+            img.src = p.url;
+            imageCache[p.id] = img;
+        });
+
+        // --- 외곽 유리벽 및 섬(플랫폼) 배치 ---
+        const wallThickness = 60;
+        const wallOptions = { isStatic: true, friction: 0.1, restitution: 0.2 };
+
+        const ground = Bodies.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT + wallThickness/2 - 10, CANVAS_WIDTH, wallThickness, wallOptions);
+        const leftWall = Bodies.rectangle(-wallThickness/2 + 10, CANVAS_HEIGHT / 2, wallThickness, CANVAS_HEIGHT, wallOptions);
+        const rightWall = Bodies.rectangle(CANVAS_WIDTH + wallThickness/2 - 10, CANVAS_HEIGHT / 2, wallThickness, CANVAS_HEIGHT, wallOptions);
+        const ceiling = Bodies.rectangle(CANVAS_WIDTH / 2, -wallThickness/2 + 10, CANVAS_WIDTH, wallThickness, wallOptions);
+
+        // 섬 점프맵 배치
+        const platformData = [
+            { x: 180, y: 410, w: 220, h: 28, label: '용암 화산섬 (좌)' },
+            { x: 720, y: 400, w: 220, h: 28, label: '왕국 성채섬 (우)' },
+            { x: 450, y: 340, w: 240, h: 25, label: '중앙 대전단' },
+            { x: 220, y: 230, w: 150, h: 20, label: '천공 구름 1' },
+            { x: 680, y: 230, w: 150, h: 20, label: '천공 구름 2' },
+            { x: 450, y: 130, w: 170, h: 22, label: '메가 제단' }
+        ];
+
+        const platforms = platformData.map(p => {
+            return Bodies.rectangle(p.x, p.y, p.w, p.h, {
+                isStatic: true,
+                friction: 0.2,
+                restitution: 0.1
+            });
+        });
+
+        World.add(world, [ground, leftWall, rightWall, ceiling, ...platforms]);
+
+        // --- 수집용 열매 아이템 ---
+        let collectibles = [];
+        function initCollectibles() {
+            collectibles = [
+                { x: 180, y: 360, radius: 10, collected: false },
+                { x: 720, y: 350, radius: 10, collected: false },
+                { x: 450, y: 290, radius: 10, collected: false },
+                { x: 220, y: 180, radius: 10, collected: false },
+                { x: 680, y: 180, radius: 10, collected: false },
+                { x: 450, y: 80,  radius: 10, collected: false }
+            ];
+        }
+        initCollectibles();
+
+        // --- 상태 변수 ---
+        let pokemonBodies = [];
+        let selectedPokemon = null;
+        let jumpPowerMultiplier = 1.3;
+        let particles = [];
+
+        const keys = { left: false, right: false, up: false, down: false, jump: false };
+
+        // --- 포켓몬 소환 함수 ---
+        function spawnPokemon(x, y, pokemonInfo = null) {
+            const p = pokemonInfo || POKEMON_ROSTER[Math.floor(Math.random() * POKEMON_ROSTER.length)];
+            
+            const isFlyer = p.type === 'flyer';
+            const body = Bodies.circle(x, y, p.radius, {
+                friction: 0.05,
+                frictionAir: isFlyer ? 0.05 : (p.type === 'heavy_land' ? 0.01 : 0.02),
+                restitution: 0.2,
+                density: isFlyer ? 0.0008 : (p.type === 'heavy_land' ? 0.005 : 0.002)
+            });
+
+            body.pokemonData = p;
+            body.facingLeft = p.pose === 'look_down' ? (x > CANVAS_WIDTH / 2) : (x < CANVAS_WIDTH / 2);
+            body.isGrounded = false;
+            body.inWater = false;
+
+            // AI 이동 파라미터
+            body.ai = {
+                nextDecision: 0,
+                directionX: Math.random() > 0.5 ? 1 : -1,
+                directionY: Math.random() > 0.5 ? 1 : -1
+            };
+
+            pokemonBodies.push(body);
+            World.add(world, body);
+
+            addParticles(x, y, 18, p.auraColor || '#00e676');
+            return body;
+        }
+
+        // --- 요청된 전설 대결 구도 자동 배치 ---
+        function setupLegendaryShowdown() {
+            // 기존 포켓몬 모두 제거
+            pokemonBodies.forEach(b => World.remove(world, b));
+            pokemonBodies = [];
+            selectedPokemon = null;
+
+            // 1. 하늘: 이로치 메가뮤츠 X & 이로치 메가뮤츠 Y (아래를 내려다봄)
+            const mmx = spawnPokemon(350, 100, POKEMON_ROSTER[0]); // 메가뮤츠 X 이로치
+            const mmy = spawnPokemon(550, 100, POKEMON_ROSTER[1]); // 메가뮤츠 Y 이로치
+
+            // 2. 지상/섬: 그란돈, 검왕 자시안, 방패왕 자마젠타 (하늘을 올려다봄)
+            const groudon = spawnPokemon(450, 300, POKEMON_ROSTER[2]);  // 중앙 섬 그란돈
+            const zacian = spawnPokemon(180, 370, POKEMON_ROSTER[3]);   // 좌측 섬 자시안
+            const zamazenta = spawnPokemon(720, 360, POKEMON_ROSTER[4]);// 우측 섬 자마젠타
+
+            // 추가 수영 포켓몬
+            spawnPokemon(280, 500, POKEMON_ROSTER[6]); // 꼬부기
+            spawnPokemon(620, 500, POKEMON_ROSTER[7]); // 라프라스
+
+            document.getElementById('selected-info').innerHTML = 
+                `⚡ <b>대결 구도 생성 완료!</b> 하늘의 이로치 메가뮤츠 X·Y ↔ 지상의 그란돈·자시안·자마젠타`;
+        }
+
+        // 초기 배치 실행
+        setupLegendaryShowdown();
+
+        // --- 파티클 시스템 ---
+        function addParticles(x, y, count, color, speedScale = 1) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 5 * speedScale,
+                    vy: (Math.random() - 0.5) * 5 * speedScale,
+                    life: 1.0,
+                    size: Math.random() * 6 + 2,
+                    color: color || '#ffffff'
+                });
+            }
+        }
+
+        function updateAndDrawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.025;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- 접지 체크 ---
+        function checkGrounded(body) {
+            const bX = body.position.x;
+            const bY = body.position.y + body.circleRadius + 3;
+
+            if (bY >= CANVAS_HEIGHT - 15) return true;
+
+            for (let plat of platformData) {
+                if (Math.abs(bX - plat.x) < plat.w / 2 && Math.abs(bY - (plat.y - plat.h/2)) < 8) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // --- 물리 & AI 프레임 연산 ---
+        Events.on(engine, 'beforeUpdate', () => {
+            const now = engine.timing.timestamp;
+
+            pokemonBodies.forEach(body => {
+                const pData = body.pokemonData;
+                const pType = pData.type;
+                body.isGrounded = checkGrounded(body);
+                
+                // 물속 여부 판별
+                const wasInWater = body.inWater;
+                body.inWater = body.position.y > WATER_LEVEL;
+
+                if (!wasInWater && body.inWater) {
+                    addParticles(body.position.x, WATER_LEVEL, 12, '#ffffff', 1.2);
+                    addParticles(body.position.x, WATER_LEVEL, 8, '#00b0ff', 0.8);
+                }
+
+                // 1. 바다 부력 & 수영 물리 적용
+                if (body.inWater) {
+                    const depth = body.position.y - WATER_LEVEL;
+                    const buoyancy = -0.0025 * depth * engine.gravity.y;
+                    Body.applyForce(body, body.position, { x: 0, y: buoyancy });
+
+                    Body.setVelocity(body, {
+                        x: body.velocity.x * 0.94,
+                        y: body.velocity.y * 0.92
+                    });
+                }
+
+                // 2. 비행 포켓몬 (이로치 메가뮤츠 X, Y 등) 공중 부유
+                if (pType === 'flyer' && body !== selectedPokemon) {
+                    Body.applyForce(body, body.position, { x: 0, y: -0.0018 * engine.gravity.y });
+                    
+                    const hoverAmp = Math.sin(now * 0.0025 + body.id) * 0.0009;
+                    Body.applyForce(body, body.position, { x: 0, y: hoverAmp });
+
+                    // 메가뮤츠 이로치 오라 입자 뿜기
+                    if (pData.pose === 'look_down' && Math.random() < 0.2) {
+                        addParticles(body.position.x, body.position.y + 10, 1, pData.auraColor, 0.4);
+                    }
+                }
+
+                // 3. 지상 전설 포켓몬 (그란돈, 자시안, 자마젠타) 오라 입자 뿜기
+                if (pData.pose === 'look_up' && Math.random() < 0.15) {
+                    addParticles(body.position.x, body.position.y - 15, 1, pData.auraColor, 0.5);
+                }
+
+                // --- 4. 컨트롤러 또는 AI 행동 연산 ---
+                if (body === selectedPokemon) {
+                    // [플레이어 직접 조작]
+                    const speed = pType === 'flyer' ? 4.8 : (body.inWater ? 3.2 : 3.8);
+
+                    if (keys.left) {
+                        Body.setVelocity(body, { x: -speed, y: body.velocity.y });
+                        body.facingLeft = true;
+                    } else if (keys.right) {
+                        Body.setVelocity(body, { x: speed, y: body.velocity.y });
+                        body.facingLeft = false;
+                    }
+
+                    if (pType === 'flyer' || body.inWater) {
+                        if (keys.up) {
+                            Body.setVelocity(body, { x: body.velocity.x, y: -speed });
+                        } else if (keys.down) {
+                            Body.setVelocity(body, { x: body.velocity.x, y: speed });
+                        }
+                    }
+
+                    if (keys.jump) {
+                        if (body.isGrounded || body.inWater || pType === 'flyer') {
+                            const jumpImpulse = body.inWater ? -7.5 : -9.8;
+                            Body.setVelocity(body, { 
+                                x: body.velocity.x, 
+                                y: jumpImpulse * jumpPowerMultiplier 
+                            });
+
+                            addParticles(body.position.x, body.position.y + 15, 10, pData.auraColor || '#ffffff');
+                            keys.jump = false;
+                        }
+                    }
+                } else {
+                    // [자율 AI 이동]
+                    const ai = body.ai;
+
+                    if (now > ai.nextDecision) {
+                        ai.directionX = Math.random() < 0.3 ? 0 : (Math.random() > 0.5 ? 1 : -1);
+                        ai.directionY = Math.random() > 0.5 ? 1 : -1;
+                        ai.nextDecision = now + 1800 + Math.random() * 2500;
+
+                        if (body.isGrounded && Math.random() < 0.35) {
+                            Body.setVelocity(body, {
+                                x: body.velocity.x + ai.directionX * 2,
+                                y: -8 * jumpPowerMultiplier
+                            });
+                        }
+                    }
+
+                    if (ai.directionX !== 0 && Math.abs(body.velocity.x) < 2.2) {
+                        Body.applyForce(body, body.position, { x: ai.directionX * 0.0006, y: 0 });
+                        body.facingLeft = ai.directionX < 0;
+                    }
+
+                    if (pType === 'flyer' && Math.abs(body.velocity.y) < 2) {
+                        Body.applyForce(body, body.position, { x: 0, y: ai.directionY * 0.0004 });
+                    }
+                }
+
+                // 회전 복원
+                if (Math.abs(body.angle) > 0.05) {
+                    Body.setAngle(body, body.angle * 0.85);
+                }
+
+                // 열매 수집
+                collectibles.forEach(item => {
+                    if (!item.collected) {
+                        const dist = Math.hypot(body.position.x - item.x, body.position.y - item.y);
+                        if (dist < body.circleRadius + item.radius) {
+                            item.collected = true;
+                            addParticles(item.x, item.y, 15, '#ffea00');
+                            setTimeout(() => { item.collected = false; }, 7000);
+                        }
+                    }
+                });
+            });
+        });
+
+        // --- 캔버스 렌더링 루프 ---
+        function render() {
+            const time = Date.now() * 0.002;
+
+            // 1. 전설의 대결 분위기 밤하늘 & 바다 배경
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, WATER_LEVEL);
+            skyGrad.addColorStop(0, '#0a0e27');
+            skyGrad.addColorStop(0.5, '#1a237e');
+            skyGrad.addColorStop(1, '#3949ab');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, WATER_LEVEL);
+
+            // 구름 연출
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.beginPath();
+            ctx.arc((time * 12) % (CANVAS_WIDTH + 100) - 50, 50, 35, 0, Math.PI * 2);
+            ctx.arc((time * 12) % (CANVAS_WIDTH + 100) - 20, 40, 45, 0, Math.PI * 2);
+            ctx.arc((time * 12) % (CANVAS_WIDTH + 100) + 20, 50, 35, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 바다 속 그라데이션
+            const seaGrad = ctx.createLinearGradient(0, WATER_LEVEL, 0, CANVAS_HEIGHT);
+            seaGrad.addColorStop(0, 'rgba(13, 71, 161, 0.85)');
+            seaGrad.addColorStop(0.5, 'rgba(10, 25, 47, 0.92)');
+            seaGrad.addColorStop(1, 'rgba(2, 12, 27, 0.98)');
+            ctx.fillStyle = seaGrad;
+            ctx.fillRect(0, WATER_LEVEL, CANVAS_WIDTH, CANVAS_HEIGHT - WATER_LEVEL);
+
+            // 2. 섬 점프맵 (플랫폼) 그려주기
+            platformData.forEach((p, idx) => {
+                ctx.save();
+
+                const isCloud = p.y < 300;
+
+                if (isCloud) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                    ctx.shadowColor = 'rgba(128, 222, 234, 0.6)';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h, 12);
+                    ctx.fill();
+                } else {
+                    ctx.shadowColor = idx === 0 ? '#ff3d00' : (idx === 1 ? '#00e5ff' : '#d500f9');
+                    ctx.shadowBlur = 10;
+                    ctx.shadowOffsetY = 4;
+
+                    ctx.fillStyle = '#263238';
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h, 10);
+                    ctx.fill();
+
+                    // 섬 상단 하이라이트 라인
+                    ctx.fillStyle = idx === 0 ? '#ff5722' : (idx === 1 ? '#00bcd4' : '#ab47bc');
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - p.w/2, p.y - p.h/2, p.w, 6, [8, 8, 0, 0]);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+
+            // 3. 열매 수집품
+            collectibles.forEach(item => {
+                if (item.collected) return;
+                ctx.save();
+                const floatY = item.y + Math.sin(time * 2 + item.x) * 3;
+
+                ctx.shadowColor = '#ffea00';
+                ctx.shadowBlur = 12;
+                ctx.fillStyle = '#ffd600';
+                ctx.beginPath();
+                ctx.arc(item.x, floatY, item.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(item.x - 3, floatY - 3, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 4. 포켓몬 스프라이트 & 시선/오라 렌더링
+            pokemonBodies.forEach(body => {
+                const { x, y } = body.position;
+                const pData = body.pokemonData;
+                const img = imageCache[pData.id];
+
+                ctx.save();
+                ctx.translate(x, y);
+
+                // [구도 시선 및 각도 연출]
+                let rotationAngle = 0;
+                if (pData.pose === 'look_down') {
+                    // 아래쪽 지상 대치선 향함 (약간 숙임)
+                    rotationAngle = (x < CANVAS_WIDTH / 2) ? 0.25 : -0.25;
+                } else if (pData.pose === 'look_up') {
+                    // 하늘 이로치 메가뮤츠 향함 (고개 쳐듬)
+                    rotationAngle = (x < CANVAS_WIDTH / 2) ? -0.2 : 0.2;
+                }
+
+                ctx.rotate(rotationAngle);
+
+                // 전설/메가 포켓몬 전용 아우라 링
+                if (pData.auraColor) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, body.circleRadius * 1.35, 0, Math.PI * 2);
+                    ctx.fillStyle = pData.auraColor;
+                    ctx.shadowColor = pData.auraColor;
+                    ctx.shadowBlur = 18;
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // 선택 포켓몬 표식
+                if (body === selectedPokemon) {
+                    ctx.save();
+                    ctx.scale(1, 0.4);
+                    ctx.beginPath();
+                    ctx.arc(0, body.circleRadius * 2.3, body.circleRadius * 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 235, 59, 0.4)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffeb3b';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    const arrowY = -body.circleRadius - 22 + Math.sin(time * 4) * 4;
+                    ctx.fillStyle = '#ff1744';
+                    ctx.beginPath();
+                    ctx.moveTo(0, arrowY + 8);
+                    ctx.lineTo(-7, arrowY);
+                    ctx.lineTo(7, arrowY);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(pData.name, 0, arrowY - 5);
+                }
+
+                // 그림자 효과
+                if (!body.inWater) {
+                    ctx.beginPath();
+                    ctx.ellipse(0, body.circleRadius - 2, body.circleRadius * 0.8, 5, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.fill();
+                }
+
+                // 좌우 반전
+                if (body.facingLeft) {
+                    ctx.scale(-1, 1);
+                }
+
+                // 이미지 렌더링
+                if (img && img.complete) {
+                    const drawSize = body.circleRadius * 2.6 * pData.scale;
+                    ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, body.circleRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#d500f9';
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+
+            // 5. 파도 연출
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.beginPath();
+            ctx.moveTo(0, WATER_LEVEL);
+            for (let x = 0; x <= CANVAS_WIDTH; x += 20) {
+                const waveY = WATER_LEVEL + Math.sin(x * 0.02 + time * 2) * 5 + Math.cos(x * 0.03 - time) * 3;
+                ctx.lineTo(x, waveY);
+            }
+            ctx.lineTo(CANVAS_WIDTH, WATER_LEVEL + 12);
+            ctx.lineTo(0, WATER_LEVEL + 12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // 6. 파티클 그려주기
+            updateAndDrawParticles();
+
+            // 7. 유리 상자 프레임 빛반사
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
+
+            const gloss = ctx.createLinearGradient(0, 0, 220, 220);
+            gloss.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+            gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gloss;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(240, 0); ctx.lineTo(0, 240);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            requestAnimationFrame(render);
+        }
+
+        Engine.run(engine);
+        render();
+
+        // --- 마우스 클릭 선택 ---
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            let clickedBody = null;
+            let minDist = Infinity;
+
+            pokemonBodies.forEach(body => {
+                const dist = Math.hypot(body.position.x - clickX, body.position.y - clickY);
+                if (dist < body.circleRadius + 18 && dist < minDist) {
+                    minDist = dist;
+                    clickedBody = body;
+                }
+            });
+
+            if (clickedBody) {
+                selectedPokemon = clickedBody;
+                const p = clickedBody.pokemonData;
+                const typeText = p.type === 'flyer' ? '✈️ 비행 (상하좌우 자율비행)' : (p.type === 'water' ? '🏊 수영' : '🏃 육상 점퍼');
+                
+                document.getElementById('selected-info').innerHTML = 
+                    `🎯 선택됨: <b style="color:#76ff03;">${p.name}</b> (${typeText}) - 방향키 & Space로 조종 가능`;
+                addParticles(clickedBody.position.x, clickedBody.position.y, 20, p.auraColor || '#76ff03');
+            }
+        });
+
+        // --- 키보드 조작 ---
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = true;
+            if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = true;
+            if (e.code === 'Space') { keys.jump = true; e.preventDefault(); }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+            if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = false;
+            if (e.code === 'Space') keys.jump = false;
+        });
+
+        // --- 터치 버튼 연동 ---
+        const bindTouch = (id, keyName) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const start = (e) => { e.preventDefault(); keys[keyName] = true; };
+            const end = (e) => { e.preventDefault(); keys[keyName] = false; };
+            el.addEventListener('touchstart', start);
+            el.addEventListener('touchend', end);
+            el.addEventListener('mousedown', () => keys[keyName] = true);
+            el.addEventListener('mouseup', () => keys[keyName] = false);
+        };
+        bindTouch('btn-left', 'left');
+        bindTouch('btn-right', 'right');
+        bindTouch('btn-up', 'up');
+        bindTouch('btn-down', 'down');
+        bindTouch('btn-jump', 'jump');
+
+        // --- UI 슬라이더 & 버튼 리스너 ---
+        const gravitySlider = document.getElementById('gravity-slider');
+        const gravityVal = document.getElementById('gravity-val');
+        gravitySlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            engine.gravity.y = val;
+            gravityVal.textContent = val.toFixed(1);
+        });
+
+        const jumpSlider = document.getElementById('jump-slider');
+        const jumpVal = document.getElementById('jump-val');
+        jumpSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            jumpForceMultiplier = val;
+            jumpVal.textContent = val.toFixed(1);
+        });
+
+        document.getElementById('showdown-btn').addEventListener('click', () => {
+            setupLegendaryShowdown();
+        });
+
+        document.getElementById('add-btn').addEventListener('click', () => {
+            spawnPokemon(CANVAS_WIDTH / 2 + (Math.random() * 100 - 50), 80);
+        });
+
+        document.getElementById('deselect-btn').addEventListener('click', () => {
+            selectedPokemon = null;
+            document.getElementById('selected-info').innerHTML = `💡 포켓몬을 <b>클릭</b>하면 직접 조종할 수 있습니다!`;
+        });
+    </script>
+</body>
+</html>
