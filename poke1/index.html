@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 테라리움 점프맵 시뮬레이터</title>
+    <!-- Matter.js 물리 엔진 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 10px;
+            background: linear-gradient(135deg, #2b32b2 0%, #1488cc 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .header-title {
+            margin: 5px 0 10px 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 컨트롤 패널 UI */
+        #control-panel {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 12px 20px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 90px;
+            accent-color: #ffca28;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #ffca28, #ff9800);
+            color: #1a1a1a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+            font-size: 0.85rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(255, 152, 0, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            box-shadow: none;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 컨트롤 안내 바 */
+        #status-bar {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .key-badge {
+            background: #fff;
+            color: #222;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 0 #bbb;
+        }
+
+        /* 유리 상자 및 캔버스 */
+        #terrarium-container {
+            position: relative;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 12px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.35),
+                inset 0 0 30px rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 16px;
+            background: linear-gradient(to bottom, #d4fc79 0%, #96e6a1 100%);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+        }
+
+        /* 모바일 터치 컨트롤러 (화면이 작을 때 활성화) */
+        #mobile-controls {
+            display: none;
+            width: 100%;
+            max-width: 900px;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding: 0 10px;
+        }
+
+        .touch-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .touch-btn {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            font-size: 1.3rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            touch-action: manipulation;
+        }
+
+        .touch-btn:active {
+            background: rgba(255, 202, 40, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+            .header-title {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-title">
+        <span>🎮</span> 포켓몬 테라리움 점프맵
+    </div>
+
+    <!-- 컨트롤 패널 -->
+    <div id="control-panel">
+        <div class="control-group">
+            <label for="gravity-slider">중력</label>
+            <input type="range" id="gravity-slider" min="0.2" max="2" step="0.1" value="1">
+            <span id="gravity-val">1.0</span>
+        </div>
+        <div class="control-group">
+            <label for="jump-slider">점프 파워</label>
+            <input type="range" id="jump-slider" min="0.8" max="2.2" step="0.1" value="1.3">
+            <span id="jump-val">1.3</span>
+        </div>
+        <button class="btn" id="add-btn">+ 포켓몬 추가</button>
+        <button class="btn btn-secondary" id="deselect-btn">선택 해제</button>
+    </div>
+
+    <!-- 상태 & 조작 가이드 -->
+    <div id="status-bar">
+        <span id="selected-info">💡 포켓몬을 <b>클릭</b>하여 직접 조종하세요!</span>
+        <span style="opacity:0.5;">|</span>
+        <span>이동: <span class="key-badge">←</span> <span class="key-badge">→</span></span>
+        <span>점프: <span class="key-badge">Space</span></span>
+    </div>
+
+    <!-- 메인 유리상자 테라리움 -->
+    <div id="terrarium-container" style="margin-top: 10px;">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <!-- 터치 기기용 컨트롤러 -->
+    <div id="mobile-controls">
+        <div class="touch-group">
+            <div class="touch-btn" id="btn-left">◀</div>
+            <div class="touch-btn" id="btn-right">▶</div>
+        </div>
+        <div class="touch-group">
+            <div class="touch-btn" id="btn-jump" style="width:75px; border-radius:30px;">JUMP</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Matter.js 인스턴스 설정 ---
+        const { Engine, World, Bodies, Body, Composite, Events } = Matter;
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 논리 해상도 고정 (시뮬레이션 일관성 유지)
+        const CANVAS_WIDTH = 900;
+        const CANVAS_HEIGHT = 600;
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        const engine = Engine.create({
+            gravity: { y: 1 }
+        });
+        const world = engine.world;
+
+        // --- 포켓몬 애니메이션 스프라이트 데이터 ---
+        const POKEMON_ROSTER = [
+            { id: 25, name: '피카츄', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/25.gif', radius: 24, scale: 1.0 },
+            { id: 1, name: '이상해씨', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/1.gif', radius: 24, scale: 1.0 },
+            { id: 4, name: '파이리', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/4.gif', radius: 24, scale: 1.0 },
+            { id: 7, name: '꼬부기', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/7.gif', radius: 24, scale: 1.0 },
+            { id: 133, name: '이브이', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/133.gif', radius: 22, scale: 1.0 },
+            { id: 151, name: '뮤', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/151.gif', radius: 22, scale: 1.1 },
+            { id: 39, name: '푸린', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/39.gif', radius: 22, scale: 1.0 },
+            { id: 94, name: '팬텀', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/94.gif', radius: 26, scale: 1.1 },
+            { id: 54, name: '고라파덕', url: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/54.gif', radius: 24, scale: 1.0 }
+        ];
+
+        // 이미지 객체 캐싱
+        const imageCache = {};
+        POKEMON_ROSTER.forEach(p => {
+            const img = new Image();
+            img.src = p.url;
+            imageCache[p.id] = img;
+        });
+
+        // --- 환경 설정 및 점프맵 플랫폼 구성 ---
+        const wallThickness = 60;
+        const wallOptions = { isStatic: true, friction: 0.2, restitution: 0.2 };
+
+        // 외곽 유리 상자 벽
+        const ground = Bodies.rectangle(CANVAS_WIDTH / 2, CANVAS_HEIGHT + wallThickness/2 - 15, CANVAS_WIDTH, wallThickness, wallOptions);
+        const leftWall = Bodies.rectangle(-wallThickness/2 + 15, CANVAS_HEIGHT / 2, wallThickness, CANVAS_HEIGHT, wallOptions);
+        const rightWall = Bodies.rectangle(CANVAS_WIDTH + wallThickness/2 - 15, CANVAS_HEIGHT / 2, wallThickness, CANVAS_HEIGHT, wallOptions);
+        const ceiling = Bodies.rectangle(CANVAS_WIDTH / 2, -wallThickness/2 + 15, CANVAS_WIDTH, wallThickness, wallOptions);
+
+        // 점프맵 발판(플랫폼) 정보
+        const platformData = [
+            { x: 180, y: 480, w: 180, h: 20 },
+            { x: 720, y: 480, w: 180, h: 20 },
+            { x: 450, y: 390, w: 240, h: 20 },
+            { x: 180, y: 280, w: 160, h: 20 },
+            { x: 720, y: 280, w: 160, h: 20 },
+            { x: 450, y: 170, w: 220, h: 20 },
+            { x: 220, y: 90,  w: 120, h: 18 },
+            { x: 680, y: 90,  w: 120, h: 18 }
+        ];
+
+        const platforms = platformData.map(p => {
+            return Bodies.rectangle(p.x, p.y, p.w, p.h, {
+                isStatic: true,
+                friction: 0.1,
+                restitution: 0.1,
+                label: 'platform'
+            });
+        });
+
+        World.add(world, [ground, leftWall, rightWall, ceiling, ...platforms]);
+
+        // --- 상호작용 별(열매) 아이템 ---
+        let collectibles = [];
+        function createCollectible(x, y) {
+            return {
+                x: x,
+                y: y,
+                radius: 10,
+                collected: false,
+                pulse: Math.random() * Math.PI * 2
+            };
+        }
+
+        function initCollectibles() {
+            collectibles = [
+                createCollectible(180, 440),
+                createCollectible(720, 440),
+                createCollectible(450, 350),
+                createCollectible(180, 240),
+                createCollectible(720, 240),
+                createCollectible(450, 130),
+                createCollectible(220, 50),
+                createCollectible(680, 50)
+            ];
+        }
+        initCollectibles();
+
+        // --- 글로벌 게임 상태 ---
+        let pokemonBodies = [];
+        let selectedPokemon = null;
+        let jumpPowerMultiplier = 1.3;
+        let particles = [];
+
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        // --- 포켓몬 생성 스폰 함수 ---
+        function spawnPokemon(x, y, data = null) {
+            const p = data || POKEMON_ROSTER[Math.floor(Math.random() * POKEMON_ROSTER.length)];
+            
+            const body = Bodies.circle(x, y, p.radius, {
+                friction: 0.1,
+                frictionAir: 0.02,
+                restitution: 0.25,
+                density: 0.002,
+                label: 'pokemon'
+            });
+
+            body.pokemonData = p;
+            body.facingLeft = Math.random() > 0.5;
+            body.isGrounded = false;
+            body.ai = {
+                nextDecisionTime: 0,
+                direction: Math.random() > 0.5 ? 1 : -1,
+                isJumping: false
+            };
+
+            pokemonBodies.push(body);
+            World.add(world, body);
+
+            // 스폰 파티클 효과
+            addParticles(x, y, 15, '#ffca28');
+            return body;
+        }
+
+        // 초기 기본 포켓몬 5마리 생성
+        for (let i = 0; i < 5; i++) {
+            const startX = 150 + i * 150;
+            spawnPokemon(startX, 100, POKEMON_ROSTER[i % POKEMON_ROSTER.length]);
+        }
+
+        // --- 파티클 시스템 ---
+        function addParticles(x, y, count, color) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 1.0,
+                    size: Math.random() * 5 + 3,
+                    color: color || '#ffffff'
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // --- 충돌 및 접지 검사 ---
+        function checkGrounded(body) {
+            // 포켓몬 하단 위치에서 아래쪽으로 레이캐스팅 개념 검사
+            const bX = body.position.x;
+            const bY = body.position.y + body.circleRadius + 2;
+
+            // 바닥 및 플랫폼들과의 거리 체크
+            if (bY >= CANVAS_HEIGHT - 25) return true;
+
+            for (let plat of platforms) {
+                const px = plat.position.x;
+                const py = plat.position.y;
+                const hw = 100; // 넓이 대략 절반
+                if (Math.abs(bX - px) < hw && Math.abs(bY - (py - 10)) < 8) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // --- 커스텀 물리 & AI 업데이트 루프 ---
+        Events.on(engine, 'beforeUpdate', () => {
+            const now = engine.timing.timestamp;
+
+            pokemonBodies.forEach(body => {
+                body.isGrounded = checkGrounded(body);
+
+                // --- 사용자 플레이어 컨트롤 ---
+                if (body === selectedPokemon) {
+                    const moveSpeed = 3.8;
+
+                    if (keys.left) {
+                        Body.setVelocity(body, { x: -moveSpeed, y: body.velocity.y });
+                        body.facingLeft = true;
+                    } else if (keys.right) {
+                        Body.setVelocity(body, { x: moveSpeed, y: body.velocity.y });
+                        body.facingLeft = false;
+                    }
+
+                    if (keys.jump) {
+                        // 바닥에 있거나 벽 근처일 때 점프
+                        const nearWall = body.position.x < 35 || body.position.x > CANVAS_WIDTH - 35;
+                        if (body.isGrounded || nearWall) {
+                            Body.setVelocity(body, { 
+                                x: body.velocity.x, 
+                                y: -9.5 * jumpPowerMultiplier 
+                            });
+                            addParticles(body.position.x, body.position.y + 15, 8, '#ffffff');
+                            keys.jump = false; // 일회성 처리
+                        }
+                    }
+                } 
+                // --- 자율 이동 AI ---
+                else {
+                    const ai = body.ai;
+
+                    // 일정 주기마다 AI 결정 변경
+                    if (now > ai.nextDecisionTime) {
+                        ai.direction = Math.random() < 0.2 ? 0 : (Math.random() > 0.5 ? 1 : -1);
+                        ai.nextDecisionTime = now + 1200 + Math.random() * 2000;
+
+                        // 확률적 점프
+                        if (body.isGrounded && Math.random() < 0.4) {
+                            Body.setVelocity(body, {
+                                x: body.velocity.x + ai.direction * 2,
+                                y: -8 * jumpPowerMultiplier
+                            });
+                        }
+                    }
+
+                    // 수평 이동
+                    if (ai.direction !== 0 && Math.abs(body.velocity.x) < 2) {
+                        Body.applyForce(body, body.position, { x: ai.direction * 0.0006, y: 0 });
+                        body.facingLeft = ai.direction < 0;
+                    }
+
+                    // 유리 벽면 기어오르기 (반중력 효과)
+                    const isNearLeft = body.position.x < 40;
+                    const isNearRight = body.position.x > CANVAS_WIDTH - 40;
+
+                    if (isNearLeft || isNearRight) {
+                        if (Math.random() < 0.35) {
+                            Body.applyForce(body, body.position, { x: 0, y: -0.005 * engine.gravity.y });
+                        }
+                        if (body.position.x < 25) ai.direction = 1;
+                        if (body.position.x > CANVAS_WIDTH - 25) ai.direction = -1;
+                    }
+                }
+
+                // 공통: 몸체 회전 방지 (자연스럽게 서서 이동하도록)
+                if (Math.abs(body.angle) > 0.05) {
+                    Body.setAngle(body, body.angle * 0.85);
+                }
+
+                // 별 열매 수집 체크
+                collectibles.forEach(item => {
+                    if (!item.collected) {
+                        const dist = Math.hypot(body.position.x - item.x, body.position.y - item.y);
+                        if (dist < body.circleRadius + item.radius) {
+                            item.collected = true;
+                            addParticles(item.x, item.y, 12, '#ffea00');
+                            setTimeout(() => { item.collected = false; }, 8000); // 8초 후 리스폰
+                        }
+                    }
+                });
+            });
+        });
+
+        // --- 렌더링 루프 (Canvas Direct Drawing) ---
+        function render() {
+            // 1. 배경 렌더링 (그라데이션 & 빛 효과)
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            bgGradient.addColorStop(0, '#e0f7fa');
+            bgGradient.addColorStop(1, '#b2edd4');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 격자 패턴 연출
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < CANVAS_WIDTH; x += 40) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_HEIGHT); ctx.stroke();
+            }
+            for (let y = 0; y < CANVAS_HEIGHT; y += 40) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_WIDTH, y); ctx.stroke();
+            }
+
+            // 2. 점프맵 플랫폼 렌더링 (유리 감성 반투명 발판)
+            platformData.forEach(p => {
+                ctx.save();
+                
+                // 그림자
+                ctx.shadowColor = 'rgba(0,0,0,0.08)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetY = 4;
+
+                // 발판 채우기
+                const pGrad = ctx.createLinearGradient(p.x - p.w/2, p.y - p.h/2, p.x - p.w/2, p.y + p.h/2);
+                pGrad.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+                pGrad.addColorStop(1, 'rgba(200, 230, 225, 0.7)');
+                ctx.fillStyle = pGrad;
+
+                ctx.beginPath();
+                ctx.roundRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h, 10);
+                ctx.fill();
+
+                // 테두리 상단 하이라이트
+                ctx.shadowColor = 'transparent';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            });
+
+            // 3. 수집용 별 아이템 렌더링
+            const time = Date.now() * 0.003;
+            collectibles.forEach(item => {
+                if (item.collected) return;
+                ctx.save();
+                const hoverY = item.y + Math.sin(time + item.pulse) * 4;
+
+                ctx.shadowColor = '#ffea00';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#ffd600';
+
+                // 별 그리기
+                ctx.beginPath();
+                ctx.arc(item.x, hoverY, item.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(item.x - 3, hoverY - 3, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            });
+
+            // 4. 포켓몬 렌더링
+            pokemonBodies.forEach(body => {
+                const { x, y } = body.position;
+                const pData = body.pokemonData;
+                const img = imageCache[pData.id];
+
+                ctx.save();
+                ctx.translate(x, y);
+
+                // 선택된 포켓몬 후광 및 조작 인디케이터
+                if (body === selectedPokemon) {
+                    // 바닥 빛의 고리
+                    ctx.save();
+                    ctx.scale(1, 0.4);
+                    ctx.beginPath();
+                    ctx.arc(0, body.circleRadius * 2.2, body.circleRadius * 1.4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffca28';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // 머리 위 화살표 표식
+                    const arrowY = -body.circleRadius - 20 + Math.sin(time * 3) * 4;
+                    ctx.fillStyle = '#ff3d00';
+                    ctx.beginPath();
+                    ctx.moveTo(0, arrowY + 8);
+                    ctx.lineTo(-8, arrowY);
+                    ctx.lineTo(8, arrowY);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // 이름 태그
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillStyle = '#1a237e';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(pData.name, 0, arrowY - 6);
+                }
+
+                // 포켓몬 그림자
+                ctx.beginPath();
+                ctx.ellipse(0, body.circleRadius - 2, body.circleRadius * 0.8, 6, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+                ctx.fill();
+
+                // 이미지 반전(좌우 바라보기)
+                if (body.facingLeft) {
+                    ctx.scale(-1, 1);
+                }
+
+                // 이미지 그리기
+                if (img && img.complete) {
+                    const drawSize = body.circleRadius * 2.6 * pData.scale;
+                    ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+                } else {
+                    // 로딩 실패 시 대안 원
+                    ctx.beginPath();
+                    ctx.arc(0, 0, body.circleRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ff5252';
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+
+            // 5. 파티클 그려주기
+            drawParticles();
+
+            // 6. 유리 상자 프레임 빛반사 효과 (맨 위에 덮어씌우기)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
+
+            // 모서리 빛 반사
+            const reflection = ctx.createLinearGradient(0, 0, 200, 200);
+            reflection.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+            reflection.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = reflection;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(250, 0);
+            ctx.lineTo(0, 250);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+
+            requestAnimationFrame(render);
+        }
+
+        // 엔진 시작
+        Engine.run(engine);
+        render();
+
+        // --- 마우스 클릭 포켓몬 선택 이벤트 ---
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // 클릭한 위치와 가장 가까운 포켓몬 탐색
+            let clickedBody = null;
+            let minDistance = Infinity;
+
+            pokemonBodies.forEach(body => {
+                const dist = Math.hypot(body.position.x - clickX, body.position.y - clickY);
+                if (dist < body.circleRadius + 15 && dist < minDistance) {
+                    minDistance = dist;
+                    clickedBody = body;
+                }
+            });
+
+            if (clickedBody) {
+                selectedPokemon = clickedBody;
+                document.getElementById('selected-info').innerHTML = 
+                    `🎯 선택됨: <b style="color:#ffca28;">${clickedBody.pokemonData.name}</b> (방향키/스페이스바 조종 가능)`;
+                addParticles(clickedBody.position.x, clickedBody.position.y, 20, '#ffea00');
+            }
+        });
+
+        // --- 키보드 컨트롤 이벤트 ---
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+                keys.left = true;
+            } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+                keys.right = true;
+            } else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                keys.jump = true;
+                e.preventDefault(); // 스크롤 방지
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
+        });
+
+        // --- 모바일 터치 이벤트 핸들링 ---
+        const bindTouch = (id, keyName) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+            el.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+            el.addEventListener('mousedown', () => { keys[keyName] = true; });
+            el.addEventListener('mouseup', () => { keys[keyName] = false; });
+        };
+        bindTouch('btn-left', 'left');
+        bindTouch('btn-right', 'right');
+        bindTouch('btn-jump', 'jump');
+
+        // --- UI 슬라이더 및 버튼 제어 ---
+        const gravitySlider = document.getElementById('gravity-slider');
+        const gravityVal = document.getElementById('gravity-val');
+        gravitySlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            engine.gravity.y = val;
+            gravityVal.textContent = val.toFixed(1);
+        });
+
+        const jumpSlider = document.getElementById('jump-slider');
+        const jumpVal = document.getElementById('jump-val');
+        jumpSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            jumpForceMultiplier = val;
+            jumpVal.textContent = val.toFixed(1);
+        });
+
+        document.getElementById('add-btn').addEventListener('click', () => {
+            spawnPokemon(CANVAS_WIDTH / 2 + (Math.random() * 100 - 50), 60);
+        });
+
+        document.getElementById('deselect-btn').addEventListener('click', () => {
+            selectedPokemon = null;
+            document.getElementById('selected-info').innerHTML = `💡 포켓몬을 <b>클릭</b>하여 직접 조종하세요!`;
+        });
+    </script>
+</body>
+</html>
