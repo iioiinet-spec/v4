@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON TETRIS ONLINE++ | 네온 테트리스 온라인 플러스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-color: #06070f;
+    --border-color: #2a2d52;
+    --panel-bg: rgba(16, 18, 36, 0.78);
+    --cyan: #00f0ff;
+    --pink: #ff2d78;
+    --gold: #ffd700;
+    --text-dim: #8a8cb0;
+    --num-font: 'Orbitron', 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background-color: var(--bg-color);
+    color: #fff;
+    font-family: 'Segoe UI', 'Malgun Gothic', Tahoma, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; margin: 0; overflow: hidden;
+    transition: background 0.5s ease;
+  }
+  /* 배경 오로라 오브 */
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: 0.35; pointer-events: none; z-index: 0; }
+  .orb1 { width: 480px; height: 480px; background: #0a3d62; top: -140px; left: -120px; animation: drift1 16s ease-in-out infinite alternate; }
+  .orb2 { width: 420px; height: 420px; background: #43104f; bottom: -160px; right: -100px; animation: drift2 20s ease-in-out infinite alternate; }
+  .orb3 { width: 300px; height: 300px; background: #033d38; bottom: 10%; left: 8%; animation: drift1 24s ease-in-out infinite alternate-reverse; }
+  @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(70px,50px) scale(1.15); } }
+  @keyframes drift2 { from { transform: translate(0,0) scale(1.1); } to { transform: translate(-60px,-50px) scale(0.95); } }
+
+  .main-wrapper {
+    position: relative; z-index: 1;
+    background: var(--panel-bg);
+    backdrop-filter: blur(14px);
+    padding: 22px 28px 24px;
+    border-radius: 22px;
+    box-shadow: 0 0 60px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.06);
+    border: 1px solid var(--border-color);
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 {
+    margin: 0 0 14px 0; font-family: var(--num-font); font-weight: 900;
+    font-size: 1.9rem; letter-spacing: 6px; text-transform: uppercase;
+    background: linear-gradient(90deg, #00f0ff 0%, #7df9ff 35%, #ff2d78 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 12px rgba(0,240,255,0.55));
+    animation: titlePulse 3s ease-in-out infinite;
+  }
+  @keyframes titlePulse { 0%,100% { filter: drop-shadow(0 0 10px rgba(0,240,255,0.45)); } 50% { filter: drop-shadow(0 0 20px rgba(255,45,120,0.55)); } }
+
+  .game-layout { display: flex; gap: 16px; align-items: flex-start; }
+
+  .board-wrapper {
+    position: relative; border: 2px solid #34386a; border-radius: 10px;
+    background-color: #05060c;
+    box-shadow: 0 0 24px rgba(0,240,255,0.10), inset 0 0 30px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  canvas { display: block; }
+  #fx-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .popup-text {
+    position: absolute; left: 0; width: 100%; text-align: center;
+    font-family: var(--num-font); font-weight: 900; letter-spacing: 2px;
+    pointer-events: none; animation: popUp 0.9s ease-out forwards;
+    text-shadow: 0 0 12px currentColor;
+  }
+  @keyframes popUp { 0% { opacity: 0; transform: translateY(14px) scale(0.7); } 18% { opacity: 1; transform: translateY(0) scale(1.12); } 32% { transform: scale(1); } 100% { opacity: 0; transform: translateY(-42px) scale(1); } }
+
+  .player-tag { text-align: center; margin-bottom: 6px; font-family: var(--num-font); font-weight: 700; font-size: 0.85rem; letter-spacing: 2px; }
+  .tag-you { color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,0.6); }
+  .tag-opp { color: var(--pink); text-shadow: 0 0 8px rgba(255,45,120,0.6); }
+
+  .opponent-panel {
+    display: flex; flex-direction: column; align-items: center;
+    border: 1px solid rgba(255,45,120,0.55); padding: 12px; border-radius: 12px;
+    background: rgba(255,45,120,0.04);
+  }
+  .opp-stats { margin-top: 8px; font-size: 0.78rem; color: var(--text-dim); display: flex; gap: 12px; }
+  .opp-stats b { color: #fff; font-family: var(--num-font); font-weight: 700; }
+
+  .side-panel { display: flex; flex-direction: column; width: 148px; gap: 10px; }
+  .info-box {
+    background: rgba(0,0,0,0.42); border: 1px solid var(--border-color);
+    border-radius: 10px; padding: 9px 10px; text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .info-label { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
+  .info-value { font-size: 1.25rem; font-weight: 700; font-family: var(--num-font); }
+  .coin-value { color: var(--gold); text-shadow: 0 0 6px rgba(255,215,0,0.5); }
+  .hold-ready { box-shadow: 0 0 0 1px rgba(0,240,255,0.35), inset 0 1px 0 rgba(255,255,255,0.04); }
+  .hold-used { opacity: 0.45; }
+  #pending-garbage { color: var(--pink); font-size: 0.72rem; height: 14px; font-weight: 700; }
+  .keys-guide { font-size: 0.66rem; color: var(--text-dim); line-height: 1.9; text-align: left; }
+  .keys-guide b { color: #cdd0ff; font-family: var(--num-font); font-size: 0.62rem; }
+
+  .icon-btn {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #cdd0ff;
+    border-radius: 8px; padding: 6px 0; width: 100%; cursor: pointer; font-size: 0.95rem;
+    transition: all 0.2s;
+  }
+  .icon-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+  /* 오버레이 공통 */
+  .screen-overlay {
+    position: absolute; inset: 0;
+    background: rgba(6,7,15,0.94); backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 22px; z-index: 100; padding: 20px;
+  }
+  .hidden { display: none !important; }
+
+  .btn-main {
+    background: rgba(0,240,255,0.06); color: var(--cyan); border: 2px solid var(--cyan);
+    padding: 10px 25px; font-size: 1.05rem; font-weight: bold; cursor: pointer;
+    border-radius: 26px; margin: 5px 0; transition: all 0.2s ease; width: 210px;
+    font-family: inherit; letter-spacing: 1px;
+  }
+  .btn-main:hover { background: var(--cyan); color: #06070f; box-shadow: 0 0 22px rgba(0,240,255,0.7); }
+  .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .shop-container { display: flex; gap: 14px; margin-top: 14px; width: 100%; justify-content: center; }
+  .shop-box, .inventory-trigger-box {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);
+    padding: 13px; border-radius: 14px; text-align: center; width: 245px;
+  }
+  /* 인벤토리 */
+  .inventory-overlay {
+    position: absolute; inset: 0; background: #0c0e20; border-radius: 22px; z-index: 200;
+    padding: 24px; display: flex; flex-direction: column;
+  }
+  .inv-header { display: flex; align-items: center; justify-content: center; position: relative; margin-bottom: 18px; }
+  .btn-exit {
+    position: absolute; left: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--pink);
+    color: var(--pink); font-weight: bold; font-size: 1.1rem; width: 38px; height: 38px;
+    border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .btn-exit:hover { background: var(--pink); color: #fff; box-shadow: 0 0 12px var(--pink); }
+  .inv-title { font-family: var(--num-font); font-size: 1.5rem; font-weight: 700; color: var(--cyan); text-shadow: 0 0 10px rgba(0,240,255,0.6); letter-spacing: 3px; }
+  .inv-body { display: flex; flex: 1; gap: 18px; overflow: hidden; }
+  .inv-list-side { flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+  .inv-item-row {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 12px;
+    border-radius: 10px; cursor: pointer; font-weight: bold; transition: all 0.2s;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .inv-item-row:hover { border-color: var(--cyan); background: rgba(0,240,255,0.05); transform: translateX(3px); }
+  .inv-item-row.selected { border-color: var(--cyan); background: rgba(0,240,255,0.1); }
+  .inv-preview-side { width: 260px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
+  .preview-theme-name { font-size: 1.15rem; font-weight: bold; margin: 6px 0 10px; }
+  #preview-canvas { background: #05060c; border: 2px solid #34386a; border-radius: 8px; }
+
+  /* 온라인 대전 */
+  .multi-box {
+    background: rgba(0,240,255,0.04); border: 1px solid rgba(0,240,255,0.5);
+    padding: 14px; border-radius: 14px; margin-top: 14px; text-align: center; width: 520px;
+  }
+  .multi-inputs { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
+  input {
+    background: #05060c; border: 1px solid var(--border-color); color: #fff; padding: 8px;
+    border-radius: 6px; text-align: center; width: 150px; font-family: var(--num-font); letter-spacing: 2px;
+  }
+  input:focus { outline: none; border-color: var(--cyan); }
+  .id-row { display: flex; gap: 6px; align-items: center; }
+  .btn-copy {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: #cdd0ff;
+    border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 0.78rem; transition: all 0.2s;
+  }
+  .btn-copy:hover { border-color: var(--cyan); color: var(--cyan); }
+  .status-text { font-size: 0.82rem; margin-top: 6px; }
+
+  .result-title { font-family: var(--num-font); font-size: 2.6rem; font-weight: 900; letter-spacing: 4px; margin: 0 0 6px; }
+  .result-stats { display: flex; gap: 14px; margin: 12px 0; }
+  .result-stats .info-box { width: 110px; }
+  .new-record { color: var(--gold); font-weight: 700; font-size: 0.9rem; animation: titlePulse 1.5s infinite; }
+
+  @keyframes shakeAnim { 0%,100% { transform: translate(0,0); } 25% { transform: translate(-4px,3px); } 50% { transform: translate(3px,-3px); } 75% { transform: translate(-2px,2px); } }
+  .shaking { animation: shakeAnim 0.22s linear; }
+</style>
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+<style>
+  /* 4인 대전 추가 스타일 */
+  #opponents-area { display: flex; gap: 10px; align-items: flex-start; }
+  .opp-card {
+    border: 1px solid rgba(255,45,120,0.5); border-radius: 12px; padding: 8px;
+    background: rgba(255,45,120,0.04); width: 138px;
+  }
+  .opp-name {
+    font-family: var(--num-font); font-size: 0.68rem; font-weight: 700; color: var(--pink);
+    text-align: center; margin-bottom: 5px; letter-spacing: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .opp-board-wrap { position: relative; border: 1px solid #34386a; border-radius: 6px; background: #05060c; overflow: hidden; }
+  .ko-overlay {
+    position: absolute; inset: 0; background: rgba(6,7,15,0.78);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--num-font); font-weight: 900; font-size: 1.4rem; color: var(--pink);
+    text-shadow: 0 0 14px rgba(255,45,120,0.8); letter-spacing: 2px;
+  }
+  .opp-mini-stats { display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.64rem; color: var(--text-dim); }
+  .opp-mini-stats b { color: #fff; font-family: var(--num-font); }
+  #lobby-list {
+    display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; min-height: 0;
+  }
+  .lobby-chip {
+    background: rgba(0,240,255,0.06); border: 1px solid rgba(0,240,255,0.4); color: #cdeffc;
+    border-radius: 16px; padding: 4px 12px; font-size: 0.78rem;
+  }
+  .lobby-chip.host-chip { border-color: var(--gold); color: #ffe9a0; }
+  .btn-battle {
+    background: rgba(255,45,120,0.08); color: var(--pink); border: 2px solid var(--pink);
+  }
+  .btn-battle:hover { background: var(--pink); color: #fff; box-shadow: 0 0 22px rgba(255,45,120,0.7); }
+</style>
+<div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div>
+
+<div class="main-wrapper">
+  <h1>Neon Tetris Online</h1>
+
+  <div class="game-layout">
+    <!-- 왼쪽: 홀드 + 스탯 -->
+    <div class="side-panel">
+      <div class="info-box hold-ready" id="hold-box">
+        <div class="info-label">Hold (C)</div>
+        <canvas id="hold" width="100" height="72" style="margin:0 auto;"></canvas>
+      </div>
+      <div class="info-box"><div class="info-label">Score</div><div id="score" class="info-value">0</div></div>
+      <div class="info-box"><div class="info-label">Lines</div><div id="lines" class="info-value">0</div></div>
+      <div class="info-box"><div class="info-label">Level</div><div id="level" class="info-value">1</div></div>
+      <div class="info-box"><div class="info-label">Time</div><div id="time" class="info-value" style="font-size:1.05rem;">0:00</div></div>
+      <div id="pending-garbage"></div>
+    </div>
+
+    <!-- 내 보드 -->
+    <div>
+      <div class="player-tag tag-you" id="my-tag">YOU</div>
+      <div class="board-wrapper" id="my-board-wrapper">
+        <canvas id="board" width="260" height="520"></canvas>
+        <div id="fx-layer"></div>
+      </div>
+    </div>
+
+    <!-- 상대방 보드 (최대 3명, 동적 생성) -->
+    <div id="opponents-area" class="hidden"></div>
+
+    <!-- 오른쪽: 넥스트 + 코인 + 기록 -->
+    <div class="side-panel">
+      <div class="info-box"><div class="info-label">Next</div><canvas id="next" width="100" height="200" style="margin:0 auto;"></canvas></div>
+      <div class="info-box"><div class="info-label">Coins</div><div id="coin-display" class="info-value coin-value">0</div></div>
+      <div class="info-box"><div class="info-label">Best</div><div id="high-display" class="info-value" style="font-size:1.0rem;">0</div></div>
+      <div class="info-box keys-guide">
+        <b>&#8592;&#8594;</b> 이동 &nbsp;<b>&#8593;/Z</b> 회전<br>
+        <b>&#8595;</b> 소프트드롭<br>
+        <b>SPACE</b> 하드드롭<br>
+        <b>C</b> 홀드 &nbsp;<b>P</b> 일시정지
+      </div>
+      <button class="icon-btn" id="mute-btn" onclick="toggleMute()">&#128266; 사운드 ON</button>
+    </div>
+  </div>
+
+  <!-- [HOME SCREEN] -->
+  <div id="home-screen" class="screen-overlay">
+    <h2 style="font-family:var(--num-font); color:var(--cyan); margin:0 0 10px; letter-spacing:3px; text-shadow:0 0 12px rgba(0,240,255,0.6);">MAIN MENU</h2>
+    <div style="display:flex; gap:12px;">
+      <div class="info-box" style="width:150px;"><div class="info-label">보유 코인</div><div id="home-coin-display" class="info-value coin-value">0</div></div>
+      <div class="info-box" style="width:150px;"><div class="info-label">최고 기록</div><div id="home-high-display" class="info-value">0</div></div>
+    </div>
+    <div id="connection-status" style="margin-top:10px; font-weight:bold; color:#00ff66;">싱글 플레이 모드</div>
+    <button class="btn-main" onclick="startGame()">싱글 게임 시작</button>
+
+    <div class="shop-container">
+      <div class="shop-box">
+        <div class="info-label" style="color:var(--gold);">&#127920; 테마 뽑기 (50코인)</div>
+        <button class="btn-main" style="width:auto; font-size:0.9rem; padding:5px 15px;" onclick="drawTheme()">뽑기</button>
+        <div id="gacha-result" style="font-size:0.8rem; margin-top:5px; height:15px;"></div>
+      </div>
+      <div class="inventory-trigger-box">
+        <div class="info-label" style="color:var(--cyan);">&#127890; 커스텀 보관함</div>
+        <button class="btn-main" style="width:auto; font-size:0.9rem; padding:5px 15px;" onclick="openInventory()">인벤토리 열기</button>
+        <div id="active-theme-name" style="font-size:0.8rem; margin-top:8px; color:#aaa;">네온 (기본) 장착 중</div>
+      </div>
+    </div>
+
+    <!-- P2P 온라인 4인 대전 로비 -->
+    <div class="multi-box">
+      <div class="info-label" style="color:#fff; font-size:0.85rem;">&#127760; 최대 4인 P2P 배틀로얄 · 전원 같은 블록 순서 · 공격은 무작위 상대에게!</div>
+      <div class="multi-inputs">
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-dim);">닉네임:</div>
+          <input type="text" id="nickname" maxlength="8" placeholder="닉네임" style="width:110px;" onchange="saveNickname()">
+        </div>
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-dim);">내 ID (친구에게 공유 = 내가 방장):</div>
+          <div class="id-row">
+            <input type="text" id="my-peer-id" readonly placeholder="발급 대기중...">
+            <button class="btn-copy" onclick="copyMyId()">복사</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-dim);">방장 ID 입력 후 참가:</div>
+          <input type="text" id="target-peer-id" placeholder="방장 ID 입력">
+        </div>
+      </div>
+      <button class="btn-main" style="width:150px; font-size:0.9rem; padding:6px; margin-top:10px;" onclick="joinRoom()">방 참가</button>
+      <div id="lobby-list"></div>
+      <button class="btn-main btn-battle hidden" id="btn-host-start" style="width:220px; font-size:0.95rem; padding:7px; margin-top:8px;" onclick="hostStartMatch()">&#9876;&#65039; 대전 시작</button>
+      <div id="net-status" class="status-text" style="color:#aaa;">PeerJS 서버 연결 중...</div>
+    </div>
+
+    <!-- 인벤토리 모달 -->
+    <div id="inventory-overlay" class="inventory-overlay hidden">
+      <div class="inv-header">
+        <button class="btn-exit" onclick="closeInventory()">X</button>
+        <div class="inv-title">THEME INVENTORY</div>
+      </div>
+      <div class="inv-body">
+        <div class="inv-list-side" id="inv-list"></div>
+        <div class="inv-preview-side" id="inv-preview-box">
+          <div>
+            <div class="info-label">Selected Theme</div>
+            <div class="preview-theme-name" id="preview-name">테마명</div>
+          </div>
+          <canvas id="preview-canvas" width="200" height="200"></canvas>
+          <button class="btn-main" id="btn-equip" style="width:100%; margin:0;" onclick="equipSelectedTheme()">장착하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- [PAUSE] -->
+  <div id="pause-screen" class="screen-overlay hidden">
+    <h2 class="result-title" style="color:var(--cyan); text-shadow:0 0 16px rgba(0,240,255,0.6);">PAUSED</h2>
+    <p style="color:var(--text-dim);" id="pause-hint">P 키를 누르면 계속합니다</p>
+    <button class="btn-main" onclick="togglePause()">계속하기</button>
+    <button class="btn-main" style="border-color:var(--pink); color:var(--pink);" onclick="quitToHome()">게임 포기</button>
+  </div>
+
+  <!-- [GAME OVER] -->
+  <div id="game-over-screen" class="screen-overlay hidden">
+    <h2 class="result-title" style="color:var(--pink); text-shadow:0 0 18px rgba(255,45,120,0.7);">GAME OVER</h2>
+    <div id="new-record-msg" class="new-record hidden">&#127942; 신기록 달성!</div>
+    <div id="spectate-msg" class="hidden" style="color:var(--text-dim); font-size:0.85rem; margin:4px 0;">다른 플레이어들의 대전이 진행 중입니다...</div>
+    <div class="result-stats">
+      <div class="info-box"><div class="info-label">최종 점수</div><div class="info-value" id="final-score">0</div></div>
+      <div class="info-box"><div class="info-label">지운 줄</div><div class="info-value" id="final-lines">0</div></div>
+      <div class="info-box"><div class="info-label">획득 코인</div><div class="info-value coin-value" id="earned-coins">0</div></div>
+    </div>
+    <button class="btn-main" id="btn-retry" onclick="startGame()">다시 도전</button>
+    <button class="btn-main" onclick="backToHome()">홈으로 이동</button>
+  </div>
+
+  <!-- [VICTORY] -->
+  <div id="win-screen" class="screen-overlay hidden">
+    <h2 class="result-title" style="color:var(--gold); text-shadow:0 0 20px rgba(255,215,0,0.7);">YOU WIN!</h2>
+    <p style="margin:4px 0;" id="win-msg">최후의 1인이 되었습니다! &#128081;</p>
+    <p style="color:var(--gold);">승리 보너스: +30 &#128176;</p>
+    <button class="btn-main" onclick="backToHome()">홈으로 이동 (로비 유지)</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('board'); const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('next'); const nextCtx = nextCanvas.getContext('2d');
+const holdCanvas = document.getElementById('hold'); const holdCtx = holdCanvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas'); const previewCtx = previewCanvas.getContext('2d');
+
+const COLS = 10, ROWS = 20, BLOCK_SIZE = 26;
+const GARBAGE_COLOR = '#4a5066';
+
+// --- 테마 프리셋 (기존 4종 + 신규 2종) ---
+const THEMES = {
+    neon:   { name: '네온 (기본)',  bg: '#06070f', colors: { I:'#00f0ff', O:'#ffea00', T:'#a000ff', S:'#00ff66', Z:'#ff0055', J:'#3355ff', L:'#ff9900' }},
+    pastel: { name: '🌸 파스텔',    bg: '#231820', colors: { I:'#ffb3ba', O:'#ffdfba', T:'#ffffba', S:'#baffc9', Z:'#bae1ff', J:'#e8bcf0', L:'#fcd3de' }},
+    cyber:  { name: '💛 미래도시',  bg: '#0b120a', colors: { I:'#fcee0a', O:'#00f0ff', T:'#ff0055', S:'#39ff14', Z:'#ff00ff', J:'#1f51ff', L:'#ff3131' }},
+    gold:   { name: '👑 황금제국',  bg: '#1c170b', colors: { I:'#ffd700', O:'#ffc800', T:'#e6b800', S:'#d4af37', Z:'#aa8c2c', J:'#f3e5ab', L:'#ffdf00' }},
+    aurora: { name: '🌌 오로라',    bg: '#070d1d', colors: { I:'#7df9ff', O:'#c3f584', T:'#b388ff', S:'#69f0ae', Z:'#ff8a80', J:'#82b1ff', L:'#ffd180' }},
+    retro:  { name: '🕹️ 레트로',    bg: '#101208', colors: { I:'#9bbc0f', O:'#c4cfa1', T:'#e0a832', S:'#7fdc58', Z:'#d04648', J:'#597dce', L:'#dc9852' }}
+};
+
+const SHAPES = {
+    'I': [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], 'O': [[1,1],[1,1]], 'T': [[0,1,0],[1,1,1],[0,0,0]],
+    'S': [[0,1,1],[1,1,0],[0,0,0]], 'Z': [[1,1,0],[0,1,1],[0,0,0]], 'J': [[1,0,0],[1,1,1],[0,0,0]], 'L': [[0,0,1],[1,1,1],[0,0,0]]
+};
+const TYPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+
+let totalCoins = parseInt(localStorage.getItem('t_coins')) || 0;
+let unlockedThemes = JSON.parse(localStorage.getItem('t_inv')) || ['neon'];
+let currentThemeKey = localStorage.getItem('t_current') || 'neon';
+if (!THEMES[currentThemeKey]) currentThemeKey = 'neon';
+let selectedThemeKey = currentThemeKey;
+let highScore = parseInt(localStorage.getItem('t_high')) || 0;
+
+let board, score, lines, level, gameOver, currentPiece, nextQueue, holdType, canHold;
+let dropCounter, dropInterval, lastTime, animationId, earnedCoinsThisGame;
+let paused = false, gameStartTime = 0, pausedAccum = 0, pauseStart = 0;
+let combo = 0, lastClearWasTetris = false, pendingGarbage = 0;
+let particles = [], flashes = [], shakeUntil = 0;
+let blockBag = [];
+
+// ===== 4인 멀티플레이 네트워크 상태 =====
+let peer = null, isHost = false, joined = false, hostConn = null;
+const clientConns = new Map();            // 방장 전용: peerId -> connection
+let roster = [];                          // 로비 참가자 [{id, name}]
+let matchLive = false, matchIds = [], aliveMap = {}, oppViews = {};
+let myFullId = '';
+let myName = localStorage.getItem('t_name') || '';
+
+// 시드 기반 RNG: 대전 시 전원이 동일한 블록 순서를 받도록 함
+let bagRng = Math.random;
+function mulberry32(a) {
+    return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+// ===== 사운드 엔진 (Web Audio 신디사이저) =====
+const SFX = {
+    ctx: null,
+    muted: localStorage.getItem('t_mute') === '1',
+    ensure() {
+        if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    },
+    tone(freq, dur = 0.08, type = 'square', vol = 0.12, slideTo = 0) {
+        if (this.muted) return;
+        this.ensure(); if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = type; o.frequency.setValueAtTime(freq, t);
+        if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t + dur);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(t); o.stop(t + dur + 0.02);
+    },
+    move()   { this.tone(210, 0.035, 'square', 0.06); },
+    rotate() { this.tone(330, 0.05, 'square', 0.08); },
+    softdrop(){ this.tone(160, 0.03, 'triangle', 0.05); },
+    lock()   { this.tone(150, 0.08, 'triangle', 0.16, 90); },
+    harddrop(){ this.tone(120, 0.1, 'sawtooth', 0.14, 60); },
+    hold()   { this.tone(260, 0.06, 'sine', 0.12, 380); },
+    clear(n) {
+        if (n >= 4) [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.13, 'square', 0.13), i * 70));
+        else this.tone(420 + n * 70, 0.12, 'square', 0.11, 640 + n * 80);
+    },
+    levelup(){ [392, 523, 659].forEach((f, i) => setTimeout(() => this.tone(f, 0.1, 'square', 0.11), i * 85)); },
+    garbage(){ this.tone(100, 0.16, 'sawtooth', 0.15, 60); },
+    over()   { [330, 262, 196, 131].forEach((f, i) => setTimeout(() => this.tone(f, 0.2, 'sawtooth', 0.11), i * 150)); },
+    win()    { [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => this.tone(f, 0.15, 'square', 0.12), i * 100)); }
+};
+function toggleMute() {
+    SFX.muted = !SFX.muted;
+    localStorage.setItem('t_mute', SFX.muted ? '1' : '0');
+    updateMuteBtn();
+    if (!SFX.muted) SFX.tone(440, 0.08, 'sine', 0.1);
+}
+function updateMuteBtn() {
+    document.getElementById('mute-btn').innerHTML = SFX.muted ? '&#128263; 사운드 OFF' : '&#128266; 사운드 ON';
+}
+
+// ===== 색상 유틸 =====
+function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+    r = Math.round(r + (t - r) * p); g = Math.round(g + (t - g) * p); b = Math.round(b + (t - b) * p);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+// ===== 7-Bag 시스템 =====
+function refillBag() {
+    let tempBag = [...TYPES];
+    for (let i = tempBag.length - 1; i > 0; i--) {
+        const j = Math.floor(bagRng() * (i + 1));
+        [tempBag[i], tempBag[j]] = [tempBag[j], tempBag[i]];
+    }
+    blockBag = tempBag;
+}
+function getNextBlockType() {
+    if (blockBag.length === 0) refillBag();
+    return blockBag.pop();
+}
+
+// ===== 인벤토리 / 상점 =====
+function openInventory() {
+    selectedThemeKey = currentThemeKey;
+    document.getElementById('inventory-overlay').classList.remove('hidden');
+    renderInventoryList();
+    updatePreviewPanel();
+}
+function closeInventory() {
+    document.getElementById('inventory-overlay').classList.add('hidden');
+    document.getElementById('active-theme-name').innerText = `${THEMES[currentThemeKey].name} 장착 중`;
+}
+function renderInventoryList() {
+    const listContainer = document.getElementById('inv-list');
+    listContainer.innerHTML = '';
+    Object.keys(THEMES).forEach(key => {
+        if (!unlockedThemes.includes(key)) return;
+        const row = document.createElement('div');
+        row.className = `inv-item-row ${key === selectedThemeKey ? 'selected' : ''}`;
+        const nameLabel = document.createElement('span');
+        nameLabel.innerText = THEMES[key].name;
+        row.appendChild(nameLabel);
+        if (key === currentThemeKey) {
+            const badge = document.createElement('span');
+            badge.innerText = '장착됨';
+            badge.style.cssText = 'font-size:0.75rem; color:#00f0ff; border:1px solid #00f0ff; padding:2px 6px; border-radius:4px;';
+            row.appendChild(badge);
+        }
+        row.onclick = () => { selectedThemeKey = key; renderInventoryList(); updatePreviewPanel(); SFX.move(); };
+        listContainer.appendChild(row);
+    });
+}
+function updatePreviewPanel() {
+    const theme = THEMES[selectedThemeKey];
+    document.getElementById('preview-name').innerText = theme.name;
+    document.getElementById('inv-preview-box').style.backgroundColor = theme.bg;
+    const btnEquip = document.getElementById('btn-equip');
+    if (selectedThemeKey === currentThemeKey) {
+        btnEquip.innerText = '장착됨'; btnEquip.style.borderColor = '#636693'; btnEquip.style.color = '#636693'; btnEquip.disabled = true;
+    } else {
+        btnEquip.innerText = '장착하기'; btnEquip.style.borderColor = '#00f0ff'; btnEquip.style.color = '#00f0ff'; btnEquip.disabled = false;
+    }
+    previewCtx.fillStyle = '#05060c';
+    previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+    let startY = 15;
+    TYPES.forEach(type => {
+        const matrix = SHAPES[type];
+        for (let r = 0; r < matrix.length; r++)
+            for (let c = 0; c < matrix[r].length; c++)
+                if (matrix[r][c]) drawBlock(previewCtx, (35 + c * 14) / 14, (startY + (r - (type === 'I' ? 1 : 0)) * 14) / 14, 14, theme.colors[type]);
+        previewCtx.fillStyle = '#8a8cb0';
+        previewCtx.font = '10px sans-serif';
+        previewCtx.fillText(type, 15, startY + 8);
+        startY += 26;
+    });
+}
+function equipSelectedTheme() {
+    currentThemeKey = selectedThemeKey;
+    localStorage.setItem('t_current', currentThemeKey);
+    document.body.style.backgroundColor = THEMES[currentThemeKey].bg;
+    renderInventoryList(); updatePreviewPanel();
+    SFX.hold();
+}
+function drawTheme() {
+    const resultEl = document.getElementById('gacha-result');
+    if (totalCoins < 50) { resultEl.innerText = '코인 부족!'; return; }
+    const locked = Object.keys(THEMES).filter(k => !unlockedThemes.includes(k));
+    if (locked.length === 0) { resultEl.innerText = '모든 테마 보유 중!'; return; }
+    totalCoins -= 50;
+    const picked = locked[Math.floor(Math.random() * locked.length)];
+    unlockedThemes.push(picked);
+    localStorage.setItem('t_inv', JSON.stringify(unlockedThemes));
+    resultEl.innerText = `🎉 획득: ${THEMES[picked].name}`;
+    updateCoinDisplays();
+    SFX.win();
+}
+function updateCoinDisplays() {
+    document.getElementById('coin-display').innerText = totalCoins;
+    document.getElementById('home-coin-display').innerText = totalCoins;
+    document.getElementById('high-display').innerText = highScore;
+    document.getElementById('home-high-display').innerText = highScore;
+    localStorage.setItem('t_coins', totalCoins);
+}
+</script>
+<script>
+// ===== 4인 P2P 멀티플레이어 통신 엔진 (호스트 중계 방식) =====
+const MAX_PLAYERS = 4;
+
+function displayName() {
+    return (myName && myName.trim()) ? myName.trim() : 'P' + myFullId.slice(-2);
+}
+function saveNickname() {
+    myName = document.getElementById('nickname').value;
+    localStorage.setItem('t_name', myName);
+    if (isHost) {
+        const me = roster.find(p => p.id === myFullId);
+        if (me) { me.name = displayName(); broadcastRoster(); updateLobbyUI(); }
+    }
+}
+function initMultiplayer() {
+    if (typeof Peer === 'undefined') {
+        document.getElementById('net-status').innerText = '⚠ 오프라인 상태 (인터넷 연결 시 대전 가능)';
+        return;
+    }
+    const randId = Math.floor(1000 + Math.random() * 9000);
+    peer = new Peer(`tetris-${randId}`);
+    peer.on('open', id => {
+        myFullId = id;
+        document.getElementById('my-peer-id').value = id.replace('tetris-', '');
+        document.getElementById('net-status').innerText = '온라인 대기 중 · 방장이 되려면 내 ID를 친구들에게 공유하세요';
+    });
+    peer.on('connection', connection => acceptClient(connection));
+    peer.on('error', err => {
+        document.getElementById('net-status').innerText = '⚠ 연결 오류: ' + err.type;
+    });
+}
+function copyMyId() {
+    const el = document.getElementById('my-peer-id');
+    if (!el.value) return;
+    el.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(el.value).catch(() => document.execCommand('copy'));
+    } else { document.execCommand('copy'); }
+    document.getElementById('net-status').innerText = '📋 ID가 복사되었습니다!';
+}
+
+// --- 방장(호스트) 로직 ---
+function acceptClient(c) {
+    if (joined) { c.on('open', () => c.close()); return; } // 이미 다른 방 참가자는 방장이 될 수 없음
+    c.on('data', d => hostOnData(c, d));
+    c.on('close', () => hostDropClient(c));
+    c.on('error', () => hostDropClient(c));
+}
+function hostOnData(c, d) {
+    const from = c.peer;
+    if (d.type === 'hello') {
+        if (!clientConns.has(from) && roster.length >= MAX_PLAYERS) {
+            try { c.send({ type: 'full' }); } catch(e) {}
+            setTimeout(() => c.close(), 300);
+            return;
+        }
+        if (!isHost) { isHost = true; roster = [{ id: myFullId, name: displayName() }]; }
+        clientConns.set(from, c);
+        if (!roster.find(p => p.id === from)) roster.push({ id: from, name: d.name || ('P' + from.slice(-2)) });
+        broadcastRoster();
+        updateLobbyUI();
+        SFX.hold();
+    } else if (d.type === 'sync') {
+        applySync(d);
+        hostBroadcast(d, from);
+    } else if (d.type === 'garbage') {
+        if (d.to === myFullId) receiveGarbage(d.n, d.from);
+        else { const t = clientConns.get(d.to); if (t && t.open) t.send(d); }
+    } else if (d.type === 'dead') {
+        applyDead(d.id);
+        hostBroadcast(d, from);
+    }
+}
+function hostDropClient(c) {
+    const id = c.peer;
+    if (!clientConns.has(id)) return;
+    clientConns.delete(id);
+    roster = roster.filter(p => p.id !== id);
+    if (matchLive && aliveMap[id]) {
+        applyDead(id);
+        hostBroadcast({ type: 'dead', id: id }, null);
+    }
+    broadcastRoster();
+    updateLobbyUI();
+    if (clientConns.size === 0 && !matchLive) { isHost = false; roster = []; updateLobbyUI(); }
+}
+function hostBroadcast(msg, exceptId) {
+    clientConns.forEach((c, id) => {
+        if (id !== exceptId && c.open) { try { c.send(msg); } catch(e) {} }
+    });
+}
+function broadcastRoster() {
+    hostBroadcast({ type: 'roster', players: roster }, null);
+}
+function hostStartMatch() {
+    if (!isHost || roster.length < 2) return;
+    const seed = Math.floor(Math.random() * 2147483647);
+    const ids = roster.map(p => p.id);
+    hostBroadcast({ type: 'start', seed: seed, ids: ids }, null);
+    beginMatch(seed, ids);
+}
+
+// --- 참가자(클라이언트) 로직 ---
+function joinRoom() {
+    if (!peer) return alert('네트워크에 연결되어 있지 않습니다.');
+    if (isHost) return alert('이미 방장입니다. 친구들이 내 ID로 접속하면 됩니다.');
+    if (joined) return alert('이미 방에 참가 중입니다.');
+    const targetId = document.getElementById('target-peer-id').value.trim();
+    if (!targetId) return alert('방장 ID를 입력하세요.');
+    saveNickname();
+    document.getElementById('net-status').innerText = '방 참가 시도 중...';
+    hostConn = peer.connect(`tetris-${targetId}`);
+    hostConn.on('open', () => {
+        joined = true;
+        hostConn.send({ type: 'hello', name: displayName() });
+        document.getElementById('net-status').innerText = '⚡ 방 참가 완료! 방장이 시작할 때까지 대기';
+        SFX.win();
+    });
+    hostConn.on('data', d => clientOnData(d));
+    hostConn.on('close', () => resetNet('방장과의 연결이 종료되었습니다'));
+    hostConn.on('error', () => resetNet('연결 오류가 발생했습니다'));
+}
+function clientOnData(d) {
+    if (d.type === 'roster') { roster = d.players; updateLobbyUI(); }
+    else if (d.type === 'start') beginMatch(d.seed, d.ids);
+    else if (d.type === 'sync') applySync(d);
+    else if (d.type === 'garbage') { if (d.to === myFullId) receiveGarbage(d.n, d.from); }
+    else if (d.type === 'dead') applyDead(d.id);
+    else if (d.type === 'full') { document.getElementById('net-status').innerText = '⚠ 방이 가득 찼습니다 (최대 4인)'; }
+}
+function resetNet(msg) {
+    joined = false; hostConn = null; roster = []; matchLive = false;
+    document.getElementById('opponents-area').classList.add('hidden');
+    document.getElementById('connection-status').innerText = '싱글 플레이 모드';
+    if (msg) document.getElementById('net-status').innerText = '⚠ ' + msg;
+    updateLobbyUI();
+}
+
+// --- 공통 송신 ---
+function broadcast(msg) {
+    if (isHost) hostBroadcast(msg, null);
+    else if (hostConn && hostConn.open) { try { hostConn.send(msg); } catch(e) {} }
+}
+function sendGameData() {
+    if (matchLive) broadcast({ type: 'sync', id: myFullId, score: score, lines: lines, board: board });
+}
+function sendGarbageTo(to, n) {
+    const msg = { type: 'garbage', n: n, to: to, from: myFullId };
+    if (isHost) { const t = clientConns.get(to); if (t && t.open) t.send(msg); }
+    else broadcast(msg);
+}
+function receiveGarbage(n, fromId) {
+    pendingGarbage += n;
+    updateGarbageWarning();
+    SFX.garbage();
+    const p = roster.find(x => x.id === fromId);
+    showPopup('⚠ ' + (p ? p.name : '상대') + '의 공격 +' + n + '줄', '#ff2d78', 0.95, '0.85rem');
+}
+function updateGarbageWarning() {
+    document.getElementById('pending-garbage').innerText = pendingGarbage > 0 ? '⚠ 공격 대기: ' + pendingGarbage + '줄' : '';
+}
+
+// --- 로비 / 매치 ---
+function updateLobbyUI() {
+    const list = document.getElementById('lobby-list');
+    list.innerHTML = '';
+    roster.forEach((p, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'lobby-chip' + (i === 0 ? ' host-chip' : '');
+        chip.innerText = (i === 0 ? '👑 ' : '') + p.name + (p.id === myFullId ? ' (나)' : '');
+        list.appendChild(chip);
+    });
+    const startBtn = document.getElementById('btn-host-start');
+    if (isHost && roster.length >= 2) {
+        startBtn.classList.remove('hidden');
+        startBtn.innerHTML = '&#9876;&#65039; 대전 시작 (' + roster.length + '명)';
+    } else startBtn.classList.add('hidden');
+    const status = document.getElementById('connection-status');
+    if (matchLive) status.innerText = '⚔️ ' + matchIds.length + '인 대전 진행 중';
+    else if (roster.length >= 2) status.innerText = '🏟️ 로비 대기 중 (' + roster.length + '/' + MAX_PLAYERS + '명)';
+    else status.innerText = '싱글 플레이 모드';
+}
+function beginMatch(seed, ids) {
+    matchLive = true;
+    matchIds = ids.slice();
+    aliveMap = {};
+    matchIds.forEach(id => aliveMap[id] = true);
+    bagRng = mulberry32(seed);
+    buildOpponentBoards();
+    document.getElementById('my-tag').innerText = 'YOU · ' + displayName();
+    startGame(true);
+    updateLobbyUI();
+}
+function buildOpponentBoards() {
+    const area = document.getElementById('opponents-area');
+    area.innerHTML = '';
+    oppViews = {};
+    matchIds.filter(id => id !== myFullId).forEach(id => {
+        const p = roster.find(x => x.id === id);
+        const card = document.createElement('div'); card.className = 'opp-card';
+        const nm = document.createElement('div'); nm.className = 'opp-name'; nm.innerText = p ? p.name : id.slice(-4);
+        const wrap = document.createElement('div'); wrap.className = 'opp-board-wrap';
+        const cv = document.createElement('canvas'); cv.width = 120; cv.height = 240;
+        const ko = document.createElement('div'); ko.className = 'ko-overlay hidden'; ko.innerText = 'K.O.';
+        wrap.appendChild(cv); wrap.appendChild(ko);
+        const stats = document.createElement('div'); stats.className = 'opp-mini-stats';
+        const sc = document.createElement('span'); sc.innerHTML = '점수 <b>0</b>';
+        const ln = document.createElement('span'); ln.innerHTML = '줄 <b>0</b>';
+        stats.appendChild(sc); stats.appendChild(ln);
+        card.appendChild(nm); card.appendChild(wrap); card.appendChild(stats);
+        area.appendChild(card);
+        oppViews[id] = { ctx: cv.getContext('2d'), cv: cv, score: sc.querySelector('b'), lines: ln.querySelector('b'), ko: ko };
+        oppViews[id].ctx.fillStyle = '#05060c';
+        oppViews[id].ctx.fillRect(0, 0, cv.width, cv.height);
+    });
+    area.classList.remove('hidden');
+}
+function applySync(d) {
+    const v = oppViews[d.id];
+    if (!v) return;
+    v.score.innerText = d.score;
+    v.lines.innerText = d.lines;
+    drawOppBoard(v.ctx, v.cv, d.board);
+}
+function applyDead(id) {
+    if (aliveMap[id] === false) return;
+    aliveMap[id] = false;
+    const v = oppViews[id];
+    if (v) v.ko.classList.remove('hidden');
+    checkVictory();
+}
+function checkVictory() {
+    if (!matchLive || gameOver) return;
+    const others = matchIds.filter(id => id !== myFullId);
+    if (others.length > 0 && others.every(id => !aliveMap[id])) {
+        matchLive = false;
+        triggerVictory();
+    }
+}
+function announceMyDeath() {
+    if (matchLive && aliveMap[myFullId]) {
+        aliveMap[myFullId] = false;
+        broadcast({ type: 'dead', id: myFullId });
+    }
+}
+
+// ===== 인게임 엔진 핵심부 =====
+function startGame(isMatch) {
+    if (!isMatch) {
+        matchLive = false;
+        bagRng = Math.random;
+        document.getElementById('opponents-area').classList.add('hidden');
+        document.getElementById('my-tag').innerText = 'YOU';
+    }
+    document.getElementById('home-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('win-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    blockBag = []; refillBag();
+    score = 0; lines = 0; level = 1; gameOver = false; paused = false;
+    dropCounter = 0; dropInterval = 1000; lastTime = 0; earnedCoinsThisGame = 0;
+    combo = 0; lastClearWasTetris = false; pendingGarbage = 0;
+    holdType = null; canHold = true;
+    particles = []; flashes = [];
+    gameStartTime = performance.now(); pausedAccum = 0;
+    updateCoinDisplays(); updateHud(); updateGarbageWarning(); drawHold();
+    document.getElementById('fx-layer').innerHTML = '';
+    nextQueue = [createPiece(), createPiece(), createPiece()];
+    spawnPiece();
+    if (animationId) cancelAnimationFrame(animationId);
+    animationId = requestAnimationFrame(update);
+    SFX.ensure();
+}
+function quitToHome() {
+    announceMyDeath();
+    gameOver = true;
+    if (animationId) cancelAnimationFrame(animationId);
+    backToHome();
+}
+function backToHome() {
+    announceMyDeath();
+    matchLive = false;
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('win-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('home-screen').classList.remove('hidden');
+    closeInventory();
+    updateCoinDisplays();
+    updateLobbyUI();
+}
+function updateHud() {
+    document.getElementById('score').innerText = score;
+    document.getElementById('lines').innerText = lines;
+    document.getElementById('level').innerText = level;
+}
+function createPiece(forcedType) {
+    const type = forcedType || getNextBlockType();
+    return {
+        type: type, matrix: JSON.parse(JSON.stringify(SHAPES[type])),
+        color: THEMES[currentThemeKey].colors[type],
+        x: Math.floor((COLS - SHAPES[type][0].length) / 2), y: type === 'I' ? -1 : 0
+    };
+}
+function spawnPiece() {
+    currentPiece = nextQueue.shift();
+    nextQueue.push(createPiece());
+    canHold = true;
+    document.getElementById('hold-box').classList.remove('hold-used');
+    drawNext();
+    if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) { gameOver = true; triggerGameOver(); }
+    sendGameData();
+}
+function holdPiece() {
+    if (!canHold || gameOver || paused) return;
+    canHold = false;
+    document.getElementById('hold-box').classList.add('hold-used');
+    const curType = currentPiece.type;
+    if (holdType === null) {
+        holdType = curType;
+        spawnPiece();
+        canHold = false;
+        document.getElementById('hold-box').classList.add('hold-used');
+    } else {
+        const swap = holdType;
+        holdType = curType;
+        currentPiece = createPiece(swap);
+    }
+    drawHold();
+    SFX.hold();
+}
+function checkCollision(matrix, offsetX, offsetY) {
+    for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+            if (matrix[r][c]) {
+                let newX = offsetX + c, newY = offsetY + r;
+                if (newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                if (newY >= 0 && board[newY][newX]) return true;
+            }
+        }
+    }
+    return false;
+}
+function getGhostPosition() {
+    let ghostY = currentPiece.y;
+    while (!checkCollision(currentPiece.matrix, currentPiece.x, ghostY + 1)) ghostY++;
+    return ghostY;
+}
+function addGarbageRows(n) {
+    for (let i = 0; i < n; i++) {
+        board.shift();
+        const row = Array(COLS).fill(GARBAGE_COLOR);
+        row[Math.floor(Math.random() * COLS)] = 0;
+        board.push(row);
+    }
+    triggerShake();
+    SFX.garbage();
+}
+function lockPiece() {
+    const m = currentPiece.matrix;
+    for (let r = 0; r < m.length; r++) {
+        for (let c = 0; c < m[r].length; c++) {
+            if (m[r][c]) {
+                if (currentPiece.y + r < 0) { gameOver = true; triggerGameOver(); return; }
+                board[currentPiece.y + r][currentPiece.x + c] = currentPiece.color;
+            }
+        }
+    }
+    const cleared = clearLines();
+    if (cleared === 0) {
+        combo = 0;
+        SFX.lock();
+        if (pendingGarbage > 0) { addGarbageRows(pendingGarbage); pendingGarbage = 0; updateGarbageWarning(); }
+    }
+    spawnPiece();
+}
+function clearLines() {
+    let clearedRows = [];
+    for (let r = 0; r < ROWS; r++) {
+        if (board[r].every(v => v !== 0)) clearedRows.push(r);
+    }
+    const cleared = clearedRows.length;
+    if (cleared === 0) return 0;
+
+    const now = performance.now();
+    clearedRows.forEach(r => {
+        flashes.push({ y: r, until: now + 200 });
+        for (let i = 0; i < 16; i++) {
+            particles.push({
+                x: Math.random() * canvas.width, y: r * BLOCK_SIZE + BLOCK_SIZE / 2,
+                vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 5 - 1,
+                life: 1, color: board[r][Math.floor(Math.random() * COLS)] || '#fff'
+            });
+        }
+    });
+    clearedRows.forEach(() => {
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (board[r].every(v => v !== 0)) { board.splice(r, 1); board.unshift(Array(COLS).fill(0)); break; }
+        }
+    });
+
+    const lineScores = [0, 100, 300, 500, 800];
+    let added = lineScores[cleared] * level;
+    const isTetris = cleared === 4;
+    let b2b = false;
+    if (isTetris && lastClearWasTetris) { added = Math.floor(added * 1.5); b2b = true; }
+    combo++;
+    const comboBonus = combo > 1 ? (combo - 1) * 50 * level : 0;
+    added += comboBonus;
+    lastClearWasTetris = isTetris;
+
+    score += added; lines += cleared;
+    let coinBonus = Math.max(1, Math.floor(added * 0.1));
+    earnedCoinsThisGame += coinBonus; totalCoins += coinBonus;
+    const newLevel = Math.floor(lines / 10) + 1;
+    if (newLevel > level) { level = newLevel; SFX.levelup(); showPopup('LEVEL ' + level + '!', '#00ff66', 0.5); }
+    dropInterval = Math.max(90, 1000 - (level - 1) * 90);
+    updateHud(); updateCoinDisplays();
+
+    if (isTetris) showPopup(b2b ? 'B2B TETRIS!' : 'TETRIS!', '#00f0ff', 0.35, '1.5rem');
+    else if (cleared > 1) showPopup(['','','DOUBLE!','TRIPLE!'][cleared], '#ffd700', 0.4);
+    if (combo > 1) showPopup('COMBO x' + combo, '#ff9900', 0.62, '0.95rem');
+    showPopup('+' + added, '#ffffff', 0.5, '0.85rem', 250);
+
+    triggerShake();
+    SFX.clear(cleared);
+
+    // 배틀로얄 공격: 무작위 생존자 1명에게 (더블1/트리플2/테트리스4, B2B+1)
+    const attack = [0, 0, 1, 2, 4][cleared] + (b2b ? 1 : 0);
+    if (matchLive && attack > 0) {
+        const targets = matchIds.filter(id => id !== myFullId && aliveMap[id]);
+        if (targets.length > 0) {
+            const to = targets[Math.floor(Math.random() * targets.length)];
+            sendGarbageTo(to, attack);
+            const tp = roster.find(x => x.id === to);
+            showPopup('→ ' + (tp ? tp.name : '상대') + ' 공격 +' + attack, '#ff9900', 0.72, '0.78rem', 120);
+        }
+    }
+    if (pendingGarbage > 0) {
+        const offset = Math.min(pendingGarbage, cleared);
+        pendingGarbage -= offset;
+        if (pendingGarbage > 0) { addGarbageRows(pendingGarbage); pendingGarbage = 0; }
+        updateGarbageWarning();
+    }
+    return cleared;
+}
+function triggerGameOver() {
+    if (animationId) cancelAnimationFrame(animationId);
+    const wasMatch = matchLive;
+    announceMyDeath();
+    let isNewRecord = false;
+    if (score > highScore) { highScore = score; localStorage.setItem('t_high', highScore); isNewRecord = true; }
+    document.getElementById('final-score').innerText = score;
+    document.getElementById('final-lines').innerText = lines;
+    document.getElementById('earned-coins').innerText = earnedCoinsThisGame;
+    document.getElementById('new-record-msg').classList.toggle('hidden', !isNewRecord);
+    document.getElementById('spectate-msg').classList.toggle('hidden', !wasMatch);
+    document.getElementById('btn-retry').classList.toggle('hidden', wasMatch); // 대전 중엔 개인 재시작 불가
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    updateCoinDisplays();
+    SFX.over();
+}
+function triggerVictory() {
+    gameOver = true;
+    if (animationId) cancelAnimationFrame(animationId);
+    totalCoins += 30; earnedCoinsThisGame += 30;
+    if (score > highScore) { highScore = score; localStorage.setItem('t_high', highScore); }
+    updateCoinDisplays();
+    document.getElementById('win-msg').innerText = matchIds.length + '인 대전에서 최후의 1인이 되었습니다! 👑';
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('win-screen').classList.remove('hidden');
+    SFX.win();
+}
+function togglePause() {
+    if (gameOver || !document.getElementById('home-screen').classList.contains('hidden')) return;
+    if (matchLive) { showPopup('대전 중에는 일시정지 불가!', '#ff2d78', 0.5, '0.8rem'); return; }
+    paused = !paused;
+    document.getElementById('pause-screen').classList.toggle('hidden', !paused);
+    if (paused) pauseStart = performance.now();
+    else pausedAccum += performance.now() - pauseStart;
+}
+function showPopup(text, color, yRatio, size, delay) {
+    const layer = document.getElementById('fx-layer');
+    const el = document.createElement('div');
+    el.className = 'popup-text';
+    el.innerText = text;
+    el.style.color = color;
+    el.style.top = (canvas.height * (yRatio || 0.4)) + 'px';
+    el.style.fontSize = size || '1.15rem';
+    const add = () => { layer.appendChild(el); setTimeout(() => el.remove(), 950); };
+    if (delay) setTimeout(add, delay); else add();
+}
+function triggerShake() {
+    const w = document.getElementById('my-board-wrapper');
+    w.classList.remove('shaking'); void w.offsetWidth; w.classList.add('shaking');
+}
+</script>
+<script>
+// ===== 렌더링 =====
+function drawBlock(context, x, y, size, color, isGhost = false, glow = false) {
+    const px = x * size, py = y * size;
+    if (isGhost) {
+        context.strokeStyle = color;
+        context.lineWidth = 1.5;
+        context.strokeRect(px + 2.5, py + 2.5, size - 5, size - 5);
+        return;
+    }
+    if (glow) { context.shadowColor = color; context.shadowBlur = 9; }
+    const grad = context.createLinearGradient(px, py, px, py + size);
+    grad.addColorStop(0, shade(color, 0.4));
+    grad.addColorStop(0.45, color);
+    grad.addColorStop(1, shade(color, -0.35));
+    context.fillStyle = grad;
+    context.fillRect(px + 1, py + 1, size - 2, size - 2);
+    context.shadowBlur = 0;
+    context.fillStyle = 'rgba(255,255,255,0.35)';
+    context.fillRect(px + 2, py + 2, size - 4, 2);
+    context.strokeStyle = 'rgba(0,0,0,0.35)';
+    context.lineWidth = 1;
+    context.strokeRect(px + 1.5, py + 1.5, size - 3, size - 3);
+}
+function draw() {
+    ctx.fillStyle = '#05060c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            ctx.strokeRect(c * BLOCK_SIZE + 0.5, r * BLOCK_SIZE + 0.5, BLOCK_SIZE, BLOCK_SIZE);
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            if (board[r][c]) drawBlock(ctx, c, r, BLOCK_SIZE, board[r][c]);
+
+    if (currentPiece && !gameOver) {
+        const m = currentPiece.matrix, ghostY = getGhostPosition();
+        ctx.save(); ctx.globalAlpha = 0.35;
+        for (let r = 0; r < m.length; r++)
+            for (let c = 0; c < m[r].length; c++)
+                if (m[r][c] && ghostY + r >= 0) drawBlock(ctx, currentPiece.x + c, ghostY + r, BLOCK_SIZE, currentPiece.color, true);
+        ctx.restore();
+        for (let r = 0; r < m.length; r++)
+            for (let c = 0; c < m[r].length; c++)
+                if (m[r][c] && currentPiece.y + r >= 0) drawBlock(ctx, currentPiece.x + c, currentPiece.y + r, BLOCK_SIZE, currentPiece.color, false, true);
+    }
+
+    const now = performance.now();
+    flashes = flashes.filter(f => f.until > now);
+    flashes.forEach(f => {
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (f.until - now) / 200) + ')';
+        ctx.fillRect(0, f.y * BLOCK_SIZE, canvas.width, BLOCK_SIZE);
+    });
+    particles = particles.filter(p => p.life > 0);
+    particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.life -= 0.03;
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    });
+    ctx.globalAlpha = 1;
+}
+function drawMini(context, cvEl, type, color, size, centerY) {
+    const m = SHAPES[type];
+    let minR = 4, maxR = -1, minC = 4, maxC = -1;
+    for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++)
+        if (m[r][c]) { minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c); }
+    const w = (maxC - minC + 1) * size, h = (maxR - minR + 1) * size;
+    const ox = (cvEl.width - w) / 2, oy = centerY - h / 2;
+    for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++)
+        if (m[r][c]) drawBlock(context, (ox + (c - minC) * size) / size, (oy + (r - minR) * size) / size, size, color);
+}
+function drawNext() {
+    nextCtx.fillStyle = '#05060c';
+    nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+    nextQueue.forEach((p, i) => {
+        const size = i === 0 ? 20 : 15;
+        drawMini(nextCtx, nextCanvas, p.type, i === 0 ? p.color : shade(p.color, -0.15), size, 38 + i * 62);
+    });
+}
+function drawHold() {
+    holdCtx.fillStyle = '#05060c';
+    holdCtx.fillRect(0, 0, holdCanvas.width, holdCanvas.height);
+    if (holdType) {
+        const color = THEMES[currentThemeKey].colors[holdType];
+        drawMini(holdCtx, holdCanvas, holdType, canHold ? color : shade(color, -0.3), 17, holdCanvas.height / 2);
+    }
+}
+// 상대 미니보드 렌더링 (4인 대전용 범용)
+function drawOppBoard(context, cvEl, oppBoard) {
+    const size = cvEl.width / COLS;
+    context.fillStyle = '#05060c';
+    context.fillRect(0, 0, cvEl.width, cvEl.height);
+    if (!oppBoard) return;
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            if (oppBoard[r][c]) {
+                context.fillStyle = oppBoard[r][c];
+                context.fillRect(c * size + 0.5, r * size + 0.5, size - 1, size - 1);
+            }
+}
+
+// ===== 게임 루프 =====
+let lastHudSec = -1;
+function update(time = 0) {
+    if (gameOver) return;
+    const deltaTime = time - lastTime; lastTime = time;
+    if (!paused) {
+        dropCounter += deltaTime;
+        if (dropCounter > dropInterval) {
+            currentPiece.y++;
+            if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) { currentPiece.y--; lockPiece(); }
+            dropCounter = 0;
+            sendGameData();
+        }
+        const sec = Math.floor((performance.now() - gameStartTime - pausedAccum) / 1000);
+        if (sec !== lastHudSec) {
+            lastHudSec = sec;
+            document.getElementById('time').innerText = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+        }
+        draw();
+    }
+    if (!gameOver) animationId = requestAnimationFrame(update);
+}
+
+// ===== 회전 (벽차기 포함) =====
+function rotate(matrix) {
+    const n = matrix.length;
+    const rotated = Array.from({ length: n }, () => Array(n).fill(0));
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) rotated[c][n - 1 - r] = matrix[r][c];
+    return rotated;
+}
+function rotateCCW(matrix) {
+    const n = matrix.length;
+    const rotated = Array.from({ length: n }, () => Array(n).fill(0));
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) rotated[n - 1 - c][r] = matrix[r][c];
+    return rotated;
+}
+function tryRotate(ccw) {
+    const rotated = ccw ? rotateCCW(currentPiece.matrix) : rotate(currentPiece.matrix);
+    const kicks = [0, -1, 1, -2, 2];
+    for (const k of kicks) {
+        if (!checkCollision(rotated, currentPiece.x + k, currentPiece.y)) {
+            currentPiece.matrix = rotated;
+            currentPiece.x += k;
+            SFX.rotate();
+            return;
+        }
+    }
+}
+
+// ===== 입력 =====
+window.addEventListener('keydown', event => {
+    if (!document.getElementById('home-screen').classList.contains('hidden')) return;
+    if (event.key === 'p' || event.key === 'P' || event.key === 'Escape') { togglePause(); return; }
+    if (gameOver || paused) return;
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
+
+    if (event.key === 'ArrowLeft') {
+        currentPiece.x--;
+        if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) currentPiece.x++; else SFX.move();
+    }
+    if (event.key === 'ArrowRight') {
+        currentPiece.x++;
+        if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) currentPiece.x--; else SFX.move();
+    }
+    if (event.key === 'ArrowUp' || event.key === 'x' || event.key === 'X') tryRotate(false);
+    if (event.key === 'z' || event.key === 'Z') tryRotate(true);
+    if (event.key === 'ArrowDown') {
+        currentPiece.y++;
+        if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) { currentPiece.y--; lockPiece(); }
+        else { score += 1; updateHud(); SFX.softdrop(); }
+        dropCounter = 0;
+    }
+    if (event.key === ' ') {
+        const ghostY = getGhostPosition();
+        score += (ghostY - currentPiece.y) * 2;
+        currentPiece.y = ghostY;
+        updateHud();
+        SFX.harddrop();
+        triggerShake();
+        lockPiece();
+        dropCounter = 0;
+    }
+    if (event.key === 'c' || event.key === 'C' || event.key === 'Shift') holdPiece();
+    sendGameData();
+});
+
+// ===== 초기화 =====
+document.body.style.backgroundColor = THEMES[currentThemeKey].bg;
+document.getElementById('nickname').value = myName;
+updateCoinDisplays();
+updateMuteBtn();
+initMultiplayer();
+</script>
+</body>
+</html>
