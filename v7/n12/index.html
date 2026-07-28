@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grow a Garden Web Edition - Harvest & Sell Ver.</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: 'Fredoka', '맑은 고딕', sans-serif;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #87CEEB;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(to bottom, #60afb8 0%, #89d3dc 55%, #4a9e4a 55%, #3b8e3b 100%);
+            overflow: hidden;
+        }
+
+        .rain-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 20, 60, 0.3);
+            pointer-events: none;
+            display: none;
+            z-index: 5;
+        }
+
+        /* 상단 UI */
+        #top-bar {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .hud-card {
+            background: rgba(255, 255, 255, 0.92);
+            border: 2px solid #1b5e20;
+            border-radius: 10px;
+            padding: 5px 12px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #1b5e20;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 건물 */
+        .building {
+            position: absolute;
+            bottom: 35%;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        .building:active { transform: translateY(2px); }
+
+        #seed-shop-building {
+            left: 5%;
+            width: 100px;
+            height: 75px;
+            background: #e67e22;
+            border: 3px solid #d35400;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        #sell-shop-building {
+            right: 5%;
+            width: 100px;
+            height: 75px;
+            background: #2ecc71;
+            border: 3px solid #27ae60;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 밭 */
+        #farm-field {
+            position: absolute;
+            bottom: 4%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50%;
+            height: 26%;
+            background: #5d4037;
+            border: 5px solid #3e2723;
+            border-radius: 10px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 6px;
+            padding: 8px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 0 6px 0 #271c19;
+        }
+
+        .farm-plot {
+            background: radial-gradient(circle, #4e342e 30%, #3e2723 90%);
+            border: 2px solid #6d4c41;
+            border-radius: 6px;
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+        }
+        .farm-plot:hover { background: #5d4037; }
+        
+        .farm-plot.ready-to-harvest {
+            border-color: #f1c40f;
+            animation: pulse-border 0.8s infinite alternate;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: #f1c40f; box-shadow: 0 0 4px #f1c40f; }
+            100% { border-color: #ffffff; box-shadow: 0 0 8px #ffffff; }
+        }
+
+        /* 캐릭터 (눈 없음) */
+        #player {
+            position: absolute;
+            bottom: 33%;
+            left: 50%;
+            width: 28px;
+            height: 42px;
+            background: #e74c3c;
+            border: 2px solid #c0392b;
+            border-radius: 4px;
+            z-index: 8;
+            pointer-events: none;
+            box-shadow: 0 3px 0 rgba(0,0,0,0.2);
+            transform: translateX(-50%);
+        }
+
+        /* 하단 인벤토리 영역 */
+        #inventory-container {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .inv-bar {
+            display: flex;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+
+        .inv-title {
+            color: #aaa;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .item-slot {
+            width: 75px;
+            height: 30px;
+            background: #2c3e50;
+            border: 2px solid #7f8c8d;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+        }
+        .item-slot.selected {
+            border-color: #f1c40f;
+            background: #34495e;
+            transform: scale(1.05);
+        }
+
+        /* 모달 UI */
+        .modal {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 75%;
+            max-width: 480px;
+            max-height: 75vh;
+            background: #1e1e1e;
+            border: 3px solid #f1c40f;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+            display: none;
+            flex-direction: column;
+            z-index: 20;
+            color: white;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            background: #111;
+            padding: 8px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #f1c40f;
+        }
+        .modal-title { font-size: 16px; color: #f1c40f; font-weight: bold; }
+        .close-btn { cursor: pointer; color: #e74c3c; font-size: 18px; font-weight: bold; }
+
+        .modal-content {
+            padding: 10px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
+        }
+
+        .shop-card {
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .shop-card.out-of-stock { opacity: 0.4; }
+        .buy-btn {
+            margin-top: 6px;
+            background: #27ae60;
+            border: none;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+        }
+        .buy-btn:disabled { background: #555; cursor: not-allowed; }
+
+        /* 희귀도 연출 */
+        .rarity-gold canvas { filter: drop-shadow(0 0 4px #ffd700); }
+        .rarity-diamond canvas { filter: drop-shadow(0 0 4px #00ffff); }
+        .rarity-rainbow canvas { animation: rainbow-glow 1s infinite alternate; }
+
+        @keyframes rainbow-glow {
+            0% { filter: drop-shadow(0 0 4px red); }
+            50% { filter: drop-shadow(0 0 4px green); }
+            100% { filter: drop-shadow(0 0 4px blue); }
+        }
+
+        .wet-effect canvas { filter: drop-shadow(0 0 4px #00aaff); }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="rain-overlay" class="rain-overlay"></div>
+
+    <div id="top-bar">
+        <div class="hud-card">💰 <span id="money-display">0</span> 원</div>
+        <div class="hud-card">🌤️ <span id="weather-display">맑음</span></div>
+    </div>
+
+    <!-- 씨앗 상점 -->
+    <div id="seed-shop-building" class="building">
+        <span style="font-size:18px">🌱</span>
+        <span>씨앗 상점</span>
+    </div>
+
+    <!-- 판매 상점 (수확물을 파는 곳) -->
+    <div id="sell-shop-building" class="building">
+        <span style="font-size:18px">🧺</span>
+        <span>판매 상점</span>
+    </div>
+
+    <div id="player"></div>
+
+    <div id="farm-field"></div>
+
+    <!-- 인벤토리 (씨앗 / 수확한 작물) -->
+    <div id="inventory-container">
+        <div class="inv-title">🌱 씨앗 가방</div>
+        <div id="seed-bar" class="inv-bar"></div>
+        <div class="inv-title">🧺 수확한 작물 가방 (판매 상점에서 판매 가능)</div>
+        <div id="harvest-bar" class="inv-bar"></div>
+    </div>
+</div>
+
+<div id="shop-modal" class="modal">
+    <div class="modal-header">
+        <div class="modal-title">🌱 SEED SHOP</div>
+        <div class="close-btn" onclick="closeModal()">✖</div>
+    </div>
+    <div id="shop-items" class="modal-content"></div>
+</div>
+
+<script>
+const CROPS = {
+    carrot:    { name: "당근", price: 20, seedPrice: 10, stockProb: 1.0, addStockProb: 0.9, singleUse: true, type: "single", fruits: 1, colors: { leaf: '#2ecc71', body: '#e67e22' } },
+    strawberry:{ name: "딸기", price: 15, seedPrice: 50, stockProb: 1.0, addStockProb: 0.7, singleUse: false, type: "bush", fruits: 4, colors: { leaf: '#27ae60', body: '#e74c3c' } },
+    blueberry: { name: "블루베리", price: 30, seedPrice: 100, stockProb: 1.0, addStockProb: 0.5, singleUse: false, type: "bush", fruits: 8, colors: { leaf: '#27ae60', body: '#2980b9' } },
+    tomato:    { name: "토마토", price: 100, seedPrice: 300, stockProb: 1.0, addStockProb: 0.5, singleUse: false, type: "stem", fruits: 4, colors: { leaf: '#2ecc71', body: '#c0392b' } },
+    apple:     { name: "사과", price: 300, seedPrice: 1000, stockProb: 0.7, addStockProb: 0.3, singleUse: false, type: "tree", fruits: 5, colors: { leaf: '#1e8449', body: '#e74c3c' } },
+    pumpkin:   { name: "호박", price: 2000, seedPrice: 1000, stockProb: 0.4, addStockProb: 0.7, singleUse: true, type: "single", fruits: 1, colors: { leaf: '#27ae60', body: '#d35400' } },
+    watermelon:{ name: "수박", price: 2500, seedPrice: 1100, stockProb: 0.4, addStockProb: 0.7, singleUse: true, type: "single", fruits: 1, colors: { leaf: '#2ecc71', body: '#196f3d' } },
+    coconut:   { name: "코코넛", price: 500, seedPrice: 3000, stockProb: 0.2, addStockProb: 0.1, singleUse: false, type: "tree", fruits: 12, colors: { leaf: '#196f3d', body: '#6e2c00' } },
+    banana:    { name: "바나나", price: 700, seedPrice: 5000, stockProb: 0.1, addStockProb: 0.05, singleUse: false, type: "tree", fruits: 4, colors: { leaf: '#2ecc71', body: '#f1c40f' } },
+    grape:     { name: "포도", price: 1000, seedPrice: 8000, stockProb: 0.05, addStockProb: 0.05, singleUse: false, type: "stem", fruits: 3, colors: { leaf: '#27ae60', body: '#8e44ad' } },
+    mango:     { name: "망고", price: 2000, seedPrice: 10000, stockProb: 0.02, addStockProb: 0.01, singleUse: false, type: "tree", fruits: 8, colors: { leaf: '#1e8449', body: '#f39c12' } },
+    chili:     { name: "고추", price: 5000, seedPrice: 30000, stockProb: 0.01, addStockProb: 0.005, singleUse: false, type: "stem", fruits: 4, colors: { leaf: '#2ecc71', body: '#c0392b' } },
+    dragon:    { name: "용과", price: 10000, seedPrice: 100000, stockProb: 0.3, addStockProb: 0.1, singleUse: false, type: "tree", fruits: 6, colors: { leaf: '#27ae60', body: '#fd79a8' } },
+    sugarapple:{ name: "슈가애플", price: 50000, seedPrice: 300000, stockProb: 0.1, addStockProb: 0.05, singleUse: false, type: "stem", fruits: 5, colors: { leaf: '#1e8449', body: '#a29bfe' } }
+};
+
+let gameState = {
+    money: 0,
+    seeds: { carrot: 1 }, // 보유 씨앗
+    harvested: [],        // 수확한 작물 객체 배열 [{type, price}]
+    selectedSeed: 'carrot',
+    shopStock: {},
+    plots: Array(10).fill(null),
+    playerX: 50,
+    targetX: 50,
+    isRaining: false
+};
+
+const keysPressed = {};
+
+function initGame() {
+    refreshShopStock(true);
+    renderFarm();
+    renderInventory();
+    updateUI();
+
+    setInterval(checkWeather, 60000);
+    setInterval(growthLoop, 200);
+
+    requestAnimationFrame(gameLoop);
+
+    window.addEventListener('keydown', (e) => keysPressed[e.key] = true);
+    window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
+
+    document.getElementById('game-container').addEventListener('click', handleMapClick);
+    document.getElementById('seed-shop-building').addEventListener('click', (e) => { e.stopPropagation(); openShop(); });
+    document.getElementById('sell-shop-building').addEventListener('click', (e) => { e.stopPropagation(); sellAllHarvested(); });
+}
+
+function gameLoop() {
+    if (keysPressed['ArrowLeft']) gameState.targetX = Math.max(5, gameState.targetX - 0.8);
+    if (keysPressed['ArrowRight']) gameState.targetX = Math.min(95, gameState.targetX + 0.8);
+
+    gameState.playerX += (gameState.targetX - gameState.playerX) * 0.15;
+    document.getElementById('player').style.left = gameState.playerX + '%';
+
+    requestAnimationFrame(gameLoop);
+}
+
+function handleMapClick(e) {
+    if (e.target.id === 'game-container') {
+        const percent = (e.clientX / window.innerWidth) * 100;
+        gameState.targetX = Math.min(95, Math.max(5, percent));
+    }
+}
+
+// 🌾 밭 클릭: 심기 OR 수확하여 인벤토리에 넣기
+function handlePlotClick(plotIndex) {
+    const plot = gameState.plots[plotIndex];
+
+    if (plot) {
+        if (plot.stage >= 100) {
+            harvestToInventory(plotIndex);
+        }
+    } else {
+        plantSeed(plotIndex);
+    }
+}
+
+// 작물을 수확해 가방으로 전송
+function harvestToInventory(plotIndex) {
+    const plot = gameState.plots[plotIndex];
+    if (!plot || plot.stage < 100) return;
+
+    let basePrice = CROPS[plot.type].price;
+    let finalPrice = basePrice * plot.sizeMultiplier * plot.rarityMultiplier;
+    if (plot.isWet) finalPrice *= 1.5;
+
+    let yieldCount = plot.fruitCount * (plot.isGiantTree ? 2 : 1);
+    let totalValue = Math.floor(finalPrice * yieldCount);
+
+    // 수확물 가방에 저장
+    gameState.harvested.push({
+        type: plot.type,
+        name: CROPS[plot.type].name,
+        value: totalValue
+    });
+
+    // 땅 리셋
+    if (CROPS[plot.type].singleUse) {
+        gameState.plots[plotIndex] = null;
+    } else {
+        plot.stage = 30;
+    }
+
+    renderInventory();
+    renderFarm();
+}
+
+// 🧺 판매 상점에서 수확물 일괄 판매
+function sellAllHarvested() {
+    if (gameState.harvested.length === 0) {
+        alert("판매할 수확물이 가방에 없습니다!");
+        return;
+    }
+
+    let totalEarned = 0;
+    gameState.harvested.forEach(item => {
+        totalEarned += item.value;
+    });
+
+    gameState.money += totalEarned;
+    alert(`🧺 수확물 ${gameState.harvested.length}개를 판매했습니다! +${totalEarned}원`);
+    
+    gameState.harvested = []; // 가방 비우기
+    updateUI();
+    renderInventory();
+}
+
+function plantSeed(plotIndex) {
+    const seed = gameState.selectedSeed;
+    if (!seed || !gameState.seeds[seed] || gameState.seeds[seed] <= 0) return;
+
+    gameState.seeds[seed]--;
+
+    let rarityMult = 1;
+    let rarityType = 'normal';
+    const rand = Math.random() * 100;
+
+    if (rand < 0.5) { rarityMult = 1000; rarityType = 'rainbow'; }
+    else if (rand < 1.5) { rarityMult = 100; rarityType = 'diamond'; }
+    else if (rand < 4.5) { rarityMult = 10; rarityType = 'gold'; }
+    else if (rand < 9.5) { rarityMult = 5; rarityType = 'giant'; }
+
+    let isGiantTree = !CROPS[seed].singleUse && Math.random() < 0.005;
+
+    gameState.plots[plotIndex] = {
+        type: seed,
+        stage: 0,
+        sizeMultiplier: (0.8 + Math.random() * 0.4).toFixed(2),
+        rarityMultiplier: rarityMult,
+        rarityType: rarityType,
+        isWet: gameState.isRaining,
+        isGiantTree: isGiantTree,
+        fruitCount: CROPS[seed].fruits
+    };
+
+    renderInventory();
+    renderFarm();
+}
+
+function checkWeather() {
+    if (!gameState.isRaining && Math.random() < 0.10) {
+        startRain();
+    }
+}
+
+function startRain() {
+    gameState.isRaining = true;
+    document.getElementById('rain-overlay').style.display = 'block';
+    document.getElementById('weather-display').innerText = "🌧️ 비 (x1.5 가치 / x2 성장)";
+    
+    gameState.plots.forEach(plot => {
+        if (plot) plot.isWet = true;
+    });
+    renderFarm();
+
+    setTimeout(() => {
+        gameState.isRaining = false;
+        document.getElementById('rain-overlay').style.display = 'none';
+        document.getElementById('weather-display').innerText = "🌤️ 맑음";
+        renderFarm();
+    }, 120000);
+}
+
+function refreshShopStock(isInitial = false) {
+    Object.keys(CROPS).forEach(key => {
+        const crop = CROPS[key];
+        let prob = isInitial ? crop.stockProb : crop.addStockProb;
+        if (Math.random() <= prob) {
+            gameState.shopStock[key] = (gameState.shopStock[key] || 0) + 1;
+        }
+    });
+}
+
+function openShop() {
+    const itemsContainer = document.getElementById('shop-items');
+    itemsContainer.innerHTML = '';
+
+    Object.keys(CROPS).forEach(key => {
+        const crop = CROPS[key];
+        const stock = gameState.shopStock[key] || 0;
+
+        const card = document.createElement('div');
+        card.className = `shop-card ${stock === 0 ? 'out-of-stock' : ''}`;
+        card.innerHTML = `
+            <div style="font-size: 13px; font-weight: bold;">${crop.name}</div>
+            <div style="font-size: 10px; color: #aaa; margin: 2px 0;">${crop.seedPrice}원</div>
+            <div style="font-size: 10px; color: #f1c40f;">재고: ${stock}개</div>
+            <button class="buy-btn" ${stock === 0 || gameState.money < crop.seedPrice ? 'disabled' : ''} onclick="buySeed('${key}')">구매</button>
+        `;
+        itemsContainer.appendChild(card);
+    });
+
+    document.getElementById('shop-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('shop-modal').style.display = 'none';
+}
+
+function buySeed(cropKey) {
+    const crop = CROPS[cropKey];
+    if (gameState.shopStock[cropKey] > 0 && gameState.money >= crop.seedPrice) {
+        gameState.money -= crop.seedPrice;
+        gameState.shopStock[cropKey]--;
+        gameState.seeds[cropKey] = (gameState.seeds[cropKey] || 0) + 1;
+        updateUI();
+        renderInventory();
+        openShop();
+    }
+}
+
+function growthLoop() {
+    gameState.plots.forEach(plot => {
+        if (plot && plot.stage < 100) {
+            let speed = 6;
+            if (gameState.isRaining || plot.isWet) speed *= 2;
+            plot.stage = Math.min(100, plot.stage + speed);
+        }
+    });
+    renderFarm();
+}
+
+function drawPixelCrop(canvas, cropType, stage, colors) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const size = canvas.width;
+    const pSize = size / 8;
+
+    if (stage < 40) {
+        ctx.fillStyle = colors.leaf;
+        ctx.fillRect(pSize * 3, pSize * 5, pSize * 2, pSize * 2);
+        ctx.fillRect(pSize * 2, pSize * 4, pSize * 4, pSize * 1);
+    } else if (stage < 100) {
+        ctx.fillStyle = colors.leaf;
+        ctx.fillRect(pSize * 2, pSize * 2, pSize * 4, pSize * 3);
+        ctx.fillStyle = colors.body;
+        ctx.fillRect(pSize * 3, pSize * 5, pSize * 2, pSize * 2);
+    } else {
+        ctx.fillStyle = colors.leaf;
+        ctx.fillRect(pSize * 2, pSize * 1, pSize * 4, pSize * 2);
+        
+        ctx.fillStyle = colors.body;
+        ctx.fillRect(pSize * 2, pSize * 3, pSize * 4, pSize * 3);
+        ctx.fillRect(pSize * 3, pSize * 6, pSize * 2, pSize * 1);
+    }
+}
+
+function renderFarm() {
+    const farmEl = document.getElementById('farm-field');
+    farmEl.innerHTML = '';
+
+    gameState.plots.forEach((plot, idx) => {
+        const plotEl = document.createElement('div');
+        plotEl.className = 'farm-plot';
+        
+        if (plot && plot.stage >= 100) {
+            plotEl.classList.add('ready-to-harvest');
+        }
+
+        plotEl.onclick = (e) => {
+            e.stopPropagation();
+            handlePlotClick(idx);
+        };
+
+        if (plot) {
+            const container = document.createElement('div');
+            container.className = `rarity-${plot.rarityType} ${plot.isWet ? 'wet-effect' : ''}`;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+
+            const scale = (0.5 + (plot.stage / 100) * 0.5) * (plot.isGiantTree ? 1.4 : 1.0);
+            canvas.style.transform = `scale(${scale})`;
+
+            drawPixelCrop(canvas, plot.type, plot.stage, CROPS[plot.type].colors);
+
+            container.appendChild(canvas);
+            plotEl.appendChild(container);
+        }
+        farmEl.appendChild(plotEl);
+    });
+}
+
+function renderInventory() {
+    // 씨앗 바
+    const seedBar = document.getElementById('seed-bar');
+    seedBar.innerHTML = '';
+
+    Object.keys(gameState.seeds).forEach(key => {
+        const count = gameState.seeds[key];
+        if (count > 0) {
+            const slot = document.createElement('div');
+            slot.className = `item-slot ${gameState.selectedSeed === key ? 'selected' : ''}`;
+            slot.onclick = (e) => {
+                e.stopPropagation();
+                gameState.selectedSeed = key;
+                renderInventory();
+            };
+            slot.innerHTML = `
+                <span>${CROPS[key].name}</span>
+                <span style="color:#f1c40f">x${count}</span>
+            `;
+            seedBar.appendChild(slot);
+        }
+    });
+
+    // 수확한 작물 바
+    const harvestBar = document.getElementById('harvest-bar');
+    harvestBar.innerHTML = '';
+
+    if (gameState.harvested.length === 0) {
+        harvestBar.innerHTML = '<span style="color:#aaa; font-size:10px;">수확한 작물이 없습니다</span>';
+    } else {
+        // 종류별 개수 카운트
+        const counts = {};
+        gameState.harvested.forEach(item => {
+            counts[item.name] = (counts[item.name] || 0) + 1;
+        });
+
+        Object.keys(counts).forEach(name => {
+            const slot = document.createElement('div');
+            slot.className = 'item-slot';
+            slot.style.borderColor = '#2ecc71';
+            slot.innerHTML = `
+                <span>${name}</span>
+                <span style="color:#2ecc71">x${counts[name]}</span>
+            `;
+            harvestBar.appendChild(slot);
+        });
+    }
+}
+
+function updateUI() {
+    document.getElementById('money-display').innerText = gameState.money.toLocaleString();
+}
+
+initGame();
+</script>
+</body>
+</html>

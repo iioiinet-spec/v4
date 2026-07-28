@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>숙제 피하기 게임 - Deluxe Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0f1020;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            color: #fff;
+        }
+        #game-container {
+            position: relative;
+            width: 900px;
+            height: 600px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+            border-radius: 15px;
+            overflow: hidden;
+            border: 3px solid #333;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.7);
+            pointer-events: none;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 25, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        h1 {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #ffe600;
+            text-shadow: 0 0 15px rgba(255, 230, 0, 0.6);
+        }
+        p {
+            font-size: 19px;
+            margin-bottom: 30px;
+            color: #ddd;
+            text-align: center;
+            line-height: 1.6;
+        }
+        button {
+            padding: 14px 35px;
+            font-size: 22px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ff5722, #f4511e);
+            color: white;
+            border: none;
+            border-radius: 35px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(255, 87, 34, 0.5);
+            transition: all 0.2s ease;
+        }
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(255, 87, 34, 0.8);
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    
+    <div id="ui">
+        <div id="hearts-display">❤️❤️❤️</div>
+        <div id="stats-display">레벨: 1 | 시간: 0.0초</div>
+    </div>
+
+    <!-- 시작 화면 -->
+    <div id="start-screen" class="screen">
+        <h1>📚 숙제 피하기</h1>
+        <p>현실감 넘치는 과목별 교과서를 피해 생존하세요!<br>좌우 방향키(← →)로 이동, 스페이스바(Space)로 점프!<br>떨어지는 하트를 먹어 생명을 회복하세요.</p>
+        <button onclick="startGame()">게임 시작</button>
+    </div>
+
+    <!-- 게임 오버 화면 -->
+    <div id="game-over-screen" class="screen hidden">
+        <h1>GAME OVER</h1>
+        <p id="final-score">살아남은 시간: 0.0초</p>
+        <button onclick="startGame()">다시하기</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 게임 상태 변수
+    let gameState = 'START'; 
+    let score = 0;
+    let level = 1;
+    let lives = 3;
+    let invincibleTime = 0; 
+    let gameTimer = 0;
+    let levelTimer = 0;
+    let homeworkTimer = 0;
+    let heartSpawnTimer = 0;
+
+    let currentSpawnIntervalSetting = 600; 
+
+    // 플레이어 객체 (크기와 위치 업그레이드)
+    const player = {
+        x: 425,
+        y: 470, // 바닥(500) 위 기준
+        width: 45,
+        height: 60,
+        speed: 6,
+        jumpForce: -13,
+        vy: 0,
+        gravity: 0.55,
+        isJumping: false
+    };
+
+    let homeworks = [];
+    let hearts = [];
+    let particles = [];
+    const keys = {};
+
+    window.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        if (e.code === 'Space' && !player.isJumping && gameState === 'PLAYING') {
+            player.vy = player.jumpForce;
+            player.isJumping = true;
+            e.preventDefault();
+        }
+    });
+
+    window.addEventListener('keyup', e => {
+        keys[e.code] = false;
+    });
+
+    function startGame() {
+        gameState = 'PLAYING';
+        score = 0;
+        level = 1;
+        lives = 3;
+        invincibleTime = 0;
+        gameTimer = 0;
+        levelTimer = 0;
+        homeworkTimer = 0;
+        heartSpawnTimer = 0;
+        currentSpawnIntervalSetting = 600; 
+        homeworks = [];
+        hearts = [];
+        particles = [];
+        
+        player.x = 425;
+        player.y = 470;
+        player.vy = 0;
+        player.isJumping = false;
+
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+    }
+
+    function triggerGameOver() {
+        gameState = 'GAMEOVER';
+        document.getElementById('final-score').innerText = `살아남은 시간: ${(gameTimer / 60).toFixed(1)}초`;
+        document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function createParticles(x, y, color) {
+        for (let i = 0; i < 18; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 7,
+                vy: (Math.random() - 0.5) * 7,
+                radius: Math.random() * 4 + 2,
+                color: color,
+                alpha: 1,
+                decay: Math.random() * 0.03 + 0.015
+            });
+        }
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        gameTimer++;
+        levelTimer++;
+        homeworkTimer++;
+        heartSpawnTimer++;
+
+        if (invincibleTime > 0) invincibleTime--;
+
+        // 30초마다 레벨 증가 (속도 증가 폭을 완만하게 조정)
+        if (levelTimer >= 1800) {
+            level++;
+            levelTimer = 0;
+        }
+
+        let timeInSeconds = gameTimer / 60;
+        if (timeInSeconds >= 60) {
+            currentSpawnIntervalSetting = 360; 
+        } else if (timeInSeconds >= 30) {
+            currentSpawnIntervalSetting = 420; 
+        } else {
+            currentSpawnIntervalSetting = 600; 
+        }
+
+        if (homeworkTimer >= currentSpawnIntervalSetting) {
+            spawnHomework(true); // 대형 책
+            homeworkTimer = 0;
+        } else {
+            if (Math.random() < 0.025 + (level * 0.003)) {
+                spawnHomework(false);
+            }
+        }
+
+        if (heartSpawnTimer >= 1200 && Math.random() < 0.4) {
+            hearts.push({
+                x: Math.random() * 820 + 40,
+                y: -30,
+                width: 32,
+                height: 32,
+                vy: 2
+            });
+            heartSpawnTimer = 0;
+        }
+
+        if (keys['ArrowLeft'] || keys['KeyA']) player.x -= player.speed;
+        if (keys['ArrowRight'] || keys['KeyD']) player.x += player.speed;
+
+        if (player.x < 0) player.x = 0;
+        if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+
+        player.vy += player.gravity;
+        player.y += player.vy;
+
+        // 바닥 충돌 위치 (캔버스 높이 600 기준, 바닥 높이 100이므로 500 - 캐릭터 높이)
+        const groundLevel = 500 - player.height;
+        if (player.y >= groundLevel) {
+            player.y = groundLevel;
+            player.vy = 0;
+            player.isJumping = false;
+        }
+
+        // 숙제 업데이트
+        for (let i = homeworks.length - 1; i >= 0; i--) {
+            let hw = homeworks[i];
+            hw.y += hw.vy;
+            hw.rotation += hw.rotSpeed;
+
+            if (
+                player.x < hw.x + hw.width &&
+                player.x + player.width > hw.x &&
+                player.y < hw.y + hw.height &&
+                player.y + player.height > hw.y
+            ) {
+                if (invincibleTime <= 0) {
+                    lives--;
+                    invincibleTime = 300; 
+                    createParticles(player.x + player.width/2, player.y + player.height/2, '#ff4757');
+                    if (lives <= 0) triggerGameOver();
+                }
+                homeworks.splice(i, 1);
+                continue;
+            }
+
+            if (hw.y > canvas.height) homeworks.splice(i, 1);
+        }
+
+        // 하트 업데이트
+        for (let i = hearts.length - 1; i >= 0; i--) {
+            let h = hearts[i];
+            h.y += h.vy;
+
+            if (
+                player.x < h.x + h.width &&
+                player.x + player.width > h.x &&
+                player.y < h.y + h.height &&
+                player.y + player.height > h.y
+            ) {
+                if (lives < 3) lives++;
+                createParticles(h.x + h.width/2, h.y + h.height/2, '#2ed573');
+                hearts.splice(i, 1);
+                continue;
+            }
+
+            if (h.y > canvas.height) hearts.splice(i, 1);
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.alpha -= p.decay;
+            if (p.alpha <= 0) particles.splice(i, 1);
+        }
+
+        document.getElementById('hearts-display').innerText = '❤️'.repeat(lives) + '🖤'.repeat(3 - lives);
+        document.getElementById('stats-display').innerText = `레벨: ${level} | 시간: ${(gameTimer / 60).toFixed(1)}초`;
+    }
+
+    function spawnHomework(isGiant) {
+        const types = [
+            { name: '수학', sub: 'MATH', color: '#e74c3c', spine: '#c0392b' },
+            { name: '국어', sub: 'KOREAN', color: '#2ecc71', spine: '#27ae60' },
+            { name: '영어', sub: 'ENGLISH', color: '#3498db', spine: '#2980b9' },
+            { name: '과학', sub: 'SCIENCE', color: '#9b59b6', spine: '#8e44ad' }
+        ];
+        const selectedType = types[Math.floor(Math.random() * types.length)];
+        
+        // 책 크기를 이전보다 대폭 축소하여 현실감 및 난이도 조절
+        let width = isGiant ? 65 : (Math.random() * 10 + 32);
+        let height = isGiant ? 85 : (Math.random() * 12 + 42);
+        
+        // 낙하 속도 완만하게 조정
+        let baseSpeed = 2.2 + (level * 0.15) + Math.random() * 1.5;
+        if (isGiant) baseSpeed *= 0.85;
+
+        homeworks.push({
+            x: Math.random() * (canvas.width - width),
+            y: -100,
+            width: width,
+            height: height,
+            vy: baseSpeed,
+            type: selectedType,
+            isGiant: isGiant,
+            rotation: 0,
+            rotSpeed: (Math.random() - 0.5) * 0.03
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 고도화된 하늘 배경 (그라데이션)
+        let skyGrad = ctx.createLinearGradient(0, 0, 0, 500);
+        skyGrad.addColorStop(0, '#4a90e2');
+        skyGrad.addColorStop(0.7, '#a1c4fd');
+        skyGrad.addColorStop(1, '#c2e9fb');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, canvas.width, 500);
+
+        // 배경 언덕 및 나무 실루엣 장식
+        ctx.fillStyle = '#81c784';
+        ctx.beginPath();
+        ctx.arc(200, 500, 180, Math.PI, 0, false);
+        ctx.arc(700, 500, 220, Math.PI, 0, false);
+        ctx.fill();
+
+        // 구름 장식
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.beginPath();
+        ctx.arc(150, 90, 25, 0, Math.PI * 2);
+        ctx.arc(180, 80, 35, 0, Math.PI * 2);
+        ctx.arc(210, 90, 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(700, 130, 30, 0, Math.PI * 2);
+        ctx.arc(735, 115, 42, 0, Math.PI * 2);
+        ctx.arc(770, 130, 28, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. 땅 배경 (500 ~ 600)
+        let groundGrad = ctx.createLinearGradient(0, 500, 0, 600);
+        groundGrad.addColorStop(0, '#68bb59');
+        groundGrad.addColorStop(1, '#3b7a2d');
+        ctx.fillStyle = groundGrad;
+        ctx.fillRect(0, 500, canvas.width, 100);
+
+        // 땅 위 풀잎 포인트 라인
+        ctx.fillStyle = '#4e9a37';
+        ctx.fillRect(0, 500, canvas.width, 8);
+
+        // 파티클 렌더링
+        particles.forEach(p => {
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+
+        // 하트 렌더링
+        hearts.forEach(h => {
+            ctx.font = '28px Arial';
+            ctx.fillText('💖', h.x, h.y + 26);
+        });
+
+        // 3. 현실 반영된 책(교과서) 렌더링
+        homeworks.forEach(hw => {
+            ctx.save();
+            ctx.translate(hw.x + hw.width / 2, hw.y + hw.height / 2);
+            ctx.rotate(hw.rotation);
+
+            // 네온 글로우 효과
+            ctx.shadowBlur = hw.isGiant ? 18 : 8;
+            ctx.shadowColor = hw.type.color;
+
+            // 책 표지 배경
+            ctx.fillStyle = hw.type.color;
+            ctx.fillRect(-hw.width / 2, -hw.height / 2, hw.width, hw.height);
+
+            // 실제 책 느낌의 왼쪽 책등(Spine) 표현
+            ctx.fillStyle = hw.type.spine;
+            ctx.fillRect(-hw.width / 2, -hw.height / 2, 6, hw.height);
+
+            // 책 테두리 및 디자인 라인
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(-hw.width / 2, -hw.height / 2, hw.width, hw.height);
+
+            // 표지 중앙 텍스트 (과목명)
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${hw.isGiant ? 13 : 10}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(hw.type.name, 3, -4);
+
+            ctx.font = `${hw.isGiant ? 8 : 6}px Arial`;
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.fillText(hw.type.sub, 3, 12);
+
+            ctx.restore();
+        });
+
+        // 4. 새로운 플레이어 캐릭터 (나 자신 - 학생 아바타) 렌더링
+        if (invincibleTime <= 0 || Math.floor(invincibleTime / 5) % 2 === 0) {
+            ctx.save();
+            let px = player.x;
+            let py = player.y;
+
+            // 몸통 (옷)
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(px + 8, py + 22, player.width - 16, player.height - 25);
+
+            // 얼굴 (살색)
+            ctx.fillStyle = '#ffe0bd';
+            ctx.fillRect(px + 7, py + 5, player.width - 14, 20);
+
+            // 머리카락 (모자 또는 헤어)
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(px + 6, py + 2, player.width - 12, 8);
+            ctx.fillRect(px + 4, py + 6, 6, 8); // 옆머리
+
+            // 눈
+            ctx.fillStyle = '#000';
+            ctx.fillRect(px + 13, py + 12, 3, 3);
+            ctx.fillRect(px + 28, py + 12, 3, 3);
+
+            // 가방(등에 멘 짐) 표현
+            ctx.fillStyle = '#e67e22';
+            ctx.fillRect(px - 3, py + 25, 8, 20);
+
+            ctx.restore();
+        }
+    }
+
+    function mainLoop() {
+        update();
+        draw();
+        requestAnimationFrame(mainLoop);
+    }
+
+    requestAnimationFrame(mainLoop);
+</script>
+
+</body>
+</html>

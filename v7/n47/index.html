@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>NEON PHOENIX FIGHTER</title>
+<style>
+body{
+margin:0;
+background:#020617;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+overflow:hidden;
+}
+canvas{
+background:#030712;
+border-radius:25px;
+box-shadow:0 0 50px cyan;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="500" height="700"></canvas>
+
+<script>
+
+const c=document.getElementById("game");
+const ctx=c.getContext("2d");
+
+let keys={};
+
+let ship={
+x:250,
+y:600,
+hp:150,
+shield:100,
+speed:7,
+level:1,
+damage:2
+};
+
+let bullets=[];
+let enemies=[];
+let particles=[];
+let stars=[];
+
+let score=0;
+let stage=1;
+let ultimate=100;
+let over=false;
+
+
+for(let i=0;i<150;i++){
+stars.push({
+x:Math.random()*500,
+y:Math.random()*700,
+s:Math.random()*2+1
+});
+}
+
+
+document.onkeydown=e=>{
+
+keys[e.key]=1;
+
+if(e.code==="Space")
+shoot();
+
+if(e.key==="v"||e.key==="V")
+ult();
+
+if(over&&e.code==="Enter")
+location.reload();
+
+}
+
+document.onkeyup=e=>keys[e.key]=0;
+
+
+
+function shoot(){
+
+let spread=Math.min(5,ship.level);
+
+for(let i=0;i<spread;i++){
+
+let offset=(i-(spread-1)/2)*12;
+
+bullets.push({
+
+x:ship.x+offset,
+y:ship.y-30,
+power:ship.damage
+
+});
+
+}
+
+}
+
+
+
+function ult(){
+
+if(ultimate>=100){
+
+for(let i=0;i<50;i++){
+
+particles.push({
+
+x:250,
+y:350,
+dx:(Math.random()-.5)*15,
+dy:(Math.random()-.5)*15,
+life:60
+
+});
+
+}
+
+enemies.forEach(e=>e.hp=0);
+
+ultimate=0;
+
+}
+
+}
+
+
+
+function spawn(){
+
+if(over)return;
+
+
+if(score>stage*700){
+
+stage++;
+
+ship.level++;
+ship.damage++;
+
+}
+
+
+enemies.push({
+
+x:Math.random()*480,
+y:-30,
+r:15+stage,
+hp:stage*2,
+speed:2+stage*.3
+
+});
+
+}
+
+setInterval(spawn,600);
+
+
+
+function boom(x,y){
+
+for(let i=0;i<25;i++){
+
+particles.push({
+
+x,y,
+dx:(Math.random()-.5)*8,
+dy:(Math.random()-.5)*8,
+life:40
+
+});
+
+}
+
+}
+
+
+
+function update(){
+
+if(over)return;
+
+
+if(keys.ArrowLeft)ship.x-=ship.speed;
+if(keys.ArrowRight)ship.x+=ship.speed;
+if(keys.ArrowUp)ship.y-=ship.speed;
+if(keys.ArrowDown)ship.y+=ship.speed;
+
+
+ship.x=Math.max(20,Math.min(480,ship.x));
+ship.y=Math.max(40,Math.min(680,ship.y));
+
+
+// 실드 자동 회복
+
+ship.shield=Math.min(
+100,
+ship.shield+.05
+);
+
+
+
+stars.forEach(s=>{
+s.y+=2;
+if(s.y>700)s.y=0;
+});
+
+
+
+bullets.forEach(b=>b.y-=14);
+
+
+
+enemies.forEach(e=>{
+
+e.y+=e.speed;
+
+
+bullets.forEach(b=>{
+
+if(Math.hypot(
+b.x-e.x,
+b.y-e.y
+)<e.r){
+
+e.hp-=b.power;
+b.y=-100;
+
+if(e.hp<=0){
+
+score+=50;
+boom(e.x,e.y);
+
+}
+
+}
+
+});
+
+
+if(Math.hypot(
+ship.x-e.x,
+ship.y-e.y
+)<30){
+
+if(ship.shield>0)
+ship.shield-=40;
+
+else
+ship.hp-=30;
+
+
+boom(e.x,e.y);
+e.hp=0;
+
+}
+
+});
+
+
+
+enemies=enemies.filter(e=>e.hp>0&&e.y<750);
+
+bullets=bullets.filter(b=>b.y>-50);
+
+
+
+particles.forEach(p=>{
+
+p.x+=p.dx;
+p.y+=p.dy;
+p.life--;
+
+});
+
+particles=particles.filter(p=>p.life>0);
+
+
+
+ultimate=Math.min(
+100,
+ultimate+.08
+);
+
+
+if(ship.hp<=0)
+over=true;
+
+}
+
+
+
+
+function draw(){
+
+ctx.clearRect(0,0,500,700);
+
+
+
+stars.forEach(s=>{
+
+ctx.fillStyle="white";
+ctx.fillRect(
+s.x,s.y,s.s,s.s
+);
+
+});
+
+
+
+// ⭐ 최종형 전투기
+
+ctx.save();
+
+ctx.translate(ship.x,ship.y);
+
+
+// 잔상
+
+ctx.globalAlpha=.2;
+ctx.fillStyle="cyan";
+
+ctx.beginPath();
+ctx.arc(0,20,25,0,7);
+ctx.fill();
+
+ctx.globalAlpha=1;
+
+
+
+// 엔진
+
+ctx.shadowBlur=30;
+ctx.shadowColor="orange";
+
+ctx.fillStyle="#ff9900";
+
+ctx.fillRect(
+-5,
+15,
+10,
+25+Math.random()*15
+);
+
+
+
+// 날개
+
+ctx.shadowBlur=40;
+ctx.shadowColor="cyan";
+
+ctx.fillStyle="#00aaff";
+
+ctx.beginPath();
+
+ctx.moveTo(0,-30);
+ctx.lineTo(25,20);
+ctx.lineTo(8,10);
+ctx.lineTo(0,18);
+ctx.lineTo(-8,10);
+ctx.lineTo(-25,20);
+
+ctx.fill();
+
+
+
+// 몸체
+
+ctx.fillStyle="white";
+
+ctx.beginPath();
+
+ctx.moveTo(0,-40);
+ctx.lineTo(8,15);
+ctx.lineTo(0,25);
+ctx.lineTo(-8,15);
+
+ctx.fill();
+
+
+// 조종석
+
+ctx.fillStyle="#00ffff";
+
+ctx.beginPath();
+
+ctx.arc(0,-12,6,0,7);
+
+ctx.fill();
+
+
+ctx.restore();
+
+
+
+// 탄환
+
+bullets.forEach(b=>{
+
+ctx.shadowBlur=20;
+ctx.shadowColor="cyan";
+
+ctx.fillStyle="cyan";
+
+ctx.fillRect(
+b.x-3,
+b.y,
+6,
+25
+);
+
+});
+
+
+
+// 적
+
+enemies.forEach(e=>{
+
+ctx.fillStyle="#ff2255";
+
+ctx.beginPath();
+
+ctx.arc(
+e.x,e.y,e.r,0,7
+);
+
+ctx.fill();
+
+});
+
+
+
+// 파티클
+
+particles.forEach(p=>{
+
+ctx.fillStyle="orange";
+
+ctx.fillRect(
+p.x,p.y,5,5
+);
+
+});
+
+
+// UI
+
+ctx.fillStyle="white";
+ctx.font="18px Arial";
+
+ctx.fillText("❤️ "+ship.hp,20,30);
+ctx.fillText("🛡️ "+Math.floor(ship.shield),20,55);
+ctx.fillText("⭐ "+score,20,80);
+ctx.fillText("🚀 LV "+ship.level,350,30);
+ctx.fillText("⚡ "+Math.floor(ultimate)+"%",350,55);
+
+
+
+if(over){
+
+ctx.fillStyle="black";
+ctx.fillRect(0,0,500,700);
+
+ctx.fillStyle="cyan";
+ctx.font="45px Arial";
+
+ctx.fillText(
+"GAME OVER",
+90,350
+);
+
+}
+
+}
+
+
+
+function loop(){
+
+update();
+draw();
+
+requestAnimationFrame(loop);
+
+}
+
+loop();
+
+</script>
+
+</body>
+</html>

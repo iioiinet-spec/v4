@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>🚗 Car Explosion Tetris</title>
+<style>
+body{
+margin:0;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+background:#061426;
+color:white;
+font-family:Arial;
+overflow:hidden;
+}
+
+body:before{
+content:"🚗 🏎️ 🚘 🚙";
+position:fixed;
+font-size:90px;
+opacity:.05;
+inset:0;
+line-height:160px;
+letter-spacing:70px;
+}
+
+#box{
+display:flex;
+gap:20px;
+position:relative;
+}
+
+canvas{
+background:#081c35;
+border:3px solid #00eaff;
+box-shadow:0 0 30px #00eaff;
+}
+
+#info{
+width:150px;
+}
+
+button{
+width:100%;
+padding:10px;
+background:#00dfff;
+border:0;
+font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<div id="box">
+
+<canvas id="game" width="300" height="600"></canvas>
+
+<div id="info">
+<h2>🚗 TETRIS</h2>
+
+<p>점수 :
+<span id="score">0</span>
+</p>
+
+<p>폭발 :
+<span id="boom">0</span>
+</p>
+
+<button onclick="reset()">다시하기</button>
+
+<p>
+← → 이동<br>
+↑ 회전<br>
+↓ 낙하<br>
+SPACE 즉시
+</p>
+
+</div>
+
+</div>
+
+
+<script>
+
+const c=document.getElementById("game");
+const x=c.getContext("2d");
+
+const W=10,H=20,S=30;
+
+let board=[],piece,score=0,boom=0;
+let particles=[];
+
+
+let colors=[
+"#00ffff","#ffff00","#ff00ff",
+"#00ff66","#ff3333",
+"#3388ff","#ff9900",
+"#00aaff"
+];
+
+
+let blocks=[
+
+[[1,1,1,1]],
+
+[[1,1],[1,1]],
+
+[[0,1,0],[1,1,1]],
+
+[[0,1,1],[1,1,0]],
+
+[[1,1,0],[0,1,1]],
+
+[[1,0,0],[1,1,1]],
+
+[[0,0,1],[1,1,1]],
+
+
+// 🚗 자동차
+[
+[0,1,1,0],
+[1,1,1,1],
+[1,0,0,1]
+]
+
+];
+
+
+function reset(){
+
+board=[];
+
+for(let y=0;y<H;y++)
+board.push(Array(W).fill(0));
+
+score=0;
+boom=0;
+
+document.getElementById("score").innerHTML=0;
+document.getElementById("boom").innerHTML=0;
+
+newBlock();
+
+}
+
+
+function newBlock(){
+
+let n=Math.floor(Math.random()*blocks.length);
+
+piece={
+shape:blocks[n],
+color:colors[n],
+x:3,
+y:0,
+car:n==7
+};
+
+}
+
+
+function cell(a,b,col){
+
+x.fillStyle=col;
+
+if(col=="#00aaff"){
+x.shadowColor="#00ffff";
+x.shadowBlur=20;
+}
+
+x.fillRect(a*S,b*S,S,S);
+
+x.shadowBlur=0;
+
+x.strokeStyle="#18344d";
+x.strokeRect(a*S,b*S,S,S);
+
+}
+
+
+
+function draw(){
+
+x.clearRect(0,0,300,600);
+
+
+for(let y=0;y<H;y++)
+for(let a=0;a<W;a++)
+cell(a,y,board[y][a]||"#09213b");
+
+
+piece.shape.forEach((r,y)=>
+r.forEach((v,a)=>{
+if(v)cell(piece.x+a,piece.y+y,piece.color);
+})
+);
+
+
+
+particles.forEach((p,i)=>{
+
+x.fillStyle=p.c;
+x.beginPath();
+x.arc(p.x,p.y,p.s,0,Math.PI*2);
+x.fill();
+
+p.x+=p.vx;
+p.y+=p.vy;
+p.life--;
+
+if(p.life<=0)
+particles.splice(i,1);
+
+});
+
+}
+
+
+
+function hit(px,py,s){
+
+for(let y=0;y<s.length;y++)
+for(let a=0;a<s[y].length;a++){
+
+if(!s[y][a])continue;
+
+let nx=px+a;
+let ny=py+y;
+
+if(nx<0||nx>=W||ny>=H)return true;
+
+if(ny>=0&&board[ny][nx])return true;
+
+}
+
+return false;
+
+}
+
+
+
+function merge(){
+
+piece.shape.forEach((r,y)=>
+r.forEach((v,a)=>{
+if(v)
+board[piece.y+y][piece.x+a]=piece.color;
+})
+);
+
+}
+
+
+
+function explosion(){
+
+
+let cx=piece.x+1;
+let cy=piece.y+1;
+
+
+for(let y=-1;y<=1;y++)
+for(let a=-1;a<=1;a++){
+
+let nx=cx+a;
+let ny=cy+y;
+
+if(board[ny]?.[nx])
+board[ny][nx]=0;
+
+}
+
+
+for(let i=0;i<40;i++){
+
+particles.push({
+
+x:cx*S+15,
+y:cy*S+15,
+
+vx:(Math.random()-0.5)*10,
+vy:(Math.random()-0.5)*10,
+
+s:Math.random()*5+2,
+
+life:30,
+
+c:["#00ffff","#ffff00","#ff5500"]
+[Math.floor(Math.random()*3)]
+
+});
+
+}
+
+
+boom++;
+score+=300;
+
+document.getElementById("boom").innerHTML=boom;
+document.getElementById("score").innerHTML=score;
+
+}
+
+
+
+function clear(){
+
+for(let y=H-1;y>=0;y--){
+
+if(board[y].every(v=>v)){
+
+board.splice(y,1);
+board.unshift(Array(W).fill(0));
+
+score+=100;
+
+}
+
+}
+
+}
+
+
+
+function rotate(s){
+
+return s[0].map((_,i)=>
+s.map(r=>r[i]).reverse()
+);
+
+}
+
+
+
+function down(){
+
+if(!hit(piece.x,piece.y+1,piece.shape))
+
+piece.y++;
+
+else{
+
+if(piece.car)
+explosion();
+else
+merge();
+
+clear();
+
+newBlock();
+
+}
+
+draw();
+
+}
+
+
+
+document.addEventListener("keydown",e=>{
+
+
+if(e.key=="ArrowLeft"&&!hit(piece.x-1,piece.y,piece.shape))
+piece.x--;
+
+
+if(e.key=="ArrowRight"&&!hit(piece.x+1,piece.y,piece.shape))
+piece.x++;
+
+
+if(e.key=="ArrowDown")
+down();
+
+
+if(e.key=="ArrowUp"){
+
+let r=rotate(piece.shape);
+
+if(!hit(piece.x,piece.y,r))
+piece.shape=r;
+
+}
+
+
+if(e.code=="Space"){
+
+while(!hit(piece.x,piece.y+1,piece.shape))
+piece.y++;
+
+down();
+
+}
+
+
+draw();
+
+});
+
+
+reset();
+
+setInterval(down,500);
+
+draw();
+
+</script>
+
+</body>
+</html>

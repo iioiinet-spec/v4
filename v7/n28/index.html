@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA SPORTS FC - FIFA 스타일 프로 3D 페널티 킥</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        h1.game-title { margin: 0 0 5px 0; font-size: 22px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); color: #00ffcc; letter-spacing: 1px; }
+        #scoreboard { font-size: 16px; background: rgba(0,0,0,0.7); padding: 6px 16px; border-radius: 15px; border: 1px solid #00ffcc; }
+        
+        #message {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            font-weight: bold;
+            color: #ffe600;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #restart-btn {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 12px 25px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #00ffcc;
+            color: #111;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 20;
+        }
+        #restart-btn:hover { background-color: #00b38f; }
+
+        #target-circle {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #00ffcc;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            pointer-events: none;
+            z-index: 15;
+            box-shadow: 0 0 12px #00ffcc;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1 class="game-title">⚡ EA SPORTS FC™ - PRO STRIKER ENGINE</h1>
+        <div id="scoreboard">점수: <span id="score">0</span> | 남은 기회: <span id="chance">5</span></div>
+    </div>
+
+    <div id="target-circle"></div>
+    <div id="message">골대 안쪽을 클릭하여 과녁을 지정하고 정교한 슛을 날리세요!</div>
+    <button id="restart-btn" onclick="resetGame()">다시 시작하기</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer;
+        let ball, kickerGroup, goalkeeperGroup;
+        let kSpine, kLeftArm, kRightArm, kLeftLeg, kRightLeg;
+        let gkSpine, gkLeftArm, gkRightArm, gkLeftLeg, gkRightLeg;
+        let score = 0, chance = 5;
+        let isPlaying = false;
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+        let netPlane;
+
+        const scoreEl = document.getElementById('score');
+        const chanceEl = document.getElementById('chance');
+        const msgEl = document.getElementById('message');
+        const restartBtn = document.getElementById('restart-btn');
+        const targetCircle = document.getElementById('target-circle');
+
+        initThree();
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x133b26);
+            scene.fog = new THREE.Fog(0x133b26, 20, 55);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3.2, 8.2);
+            camera.lookAt(0, 1.4, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+            dirLight.position.set(6, 14, 6);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // 잔디 그라운드
+            const floorGeo = new THREE.PlaneGeometry(35, 35);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x1b5e3a, roughness: 0.85 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // 페널티 스팟
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const spotGeo = new THREE.CircleGeometry(0.1, 16);
+            const spot = new THREE.Mesh(spotGeo, lineMat);
+            spot.rotation.x = -Math.PI / 2;
+            spot.position.set(0, 0.01, 3.8);
+            scene.add(spot);
+
+            // 골대 (가로 5.8, 높이 2.8)
+            const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+            const crossbarGeo = new THREE.BoxGeometry(5.8, 0.16, 0.16);
+            const postGeo = new THREE.BoxGeometry(0.16, 2.8, 0.16);
+
+            const crossbar = new THREE.Mesh(crossbarGeo, postMat);
+            crossbar.position.set(0, 2.88, -5);
+            scene.add(crossbar);
+
+            const leftPost = new THREE.Mesh(postGeo, postMat);
+            leftPost.position.set(-2.9, 1.48, -5);
+            scene.add(leftPost);
+
+            const rightPost = new THREE.Mesh(postGeo, postMat);
+            rightPost.position.set(2.9, 1.48, -5);
+            scene.add(rightPost);
+
+            // 클릭 감지 평면
+            const netGeo = new THREE.PlaneGeometry(5.8, 2.8);
+            const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+            netPlane = new THREE.Mesh(netGeo, netMat);
+            netPlane.position.set(0, 1.48, -4.95);
+            scene.add(netPlane);
+
+            // --- [FIFA 스타일 정밀 휴노이드 골키퍼 생성] ---
+            goalkeeperGroup = new THREE.Group();
+            const gkKit = new THREE.MeshStandardMaterial({ color: 0x00d2ff }); // 프로 키퍼 킷 (네온 블루)
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5c9a6 });
+            const gloveMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const shortsMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+            // 머리
+            const gkHead = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 16), skinMat);
+            gkHead.position.y = 1.95;
+            goalkeeperGroup.add(gkHead);
+
+            // 상체 (척추 관절 그룹)
+            gkSpine = new THREE.Group();
+            gkSpine.position.y = 1.35;
+            let gkTorso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.26), gkKit);
+            gkTorso.position.y = 0;
+            gkSpine.add(gkTorso);
+
+            let gkShorts = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.3, 0.24), shortsMat);
+            gkShorts.position.y = -0.48;
+            gkSpine.add(gkShorts);
+            goalkeeperGroup.add(gkSpine);
+
+            // 어깨/팔 (관절 구조)
+            gkLeftArm = new THREE.Group();
+            gkLeftArm.position.set(-0.38, 1.6, 0);
+            let lUArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.14), gkKit);
+            lUArm.position.y = -0.25;
+            let lGlove = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.18), gloveMat);
+            lGlove.position.y = -0.58;
+            gkLeftArm.add(lUArm, lGlove);
+            goalkeeperGroup.add(gkLeftArm);
+
+            gkRightArm = new THREE.Group();
+            gkRightArm.position.set(0.38, 1.6, 0);
+            let rUArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.14), gkKit);
+            rUArm.position.y = -0.25;
+            let rGlove = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.18), gloveMat);
+            rGlove.position.y = -0.58;
+            gkRightArm.add(rUArm, rGlove);
+            goalkeeperGroup.add(gkRightArm);
+
+            goalkeeperGroup.position.set(0, 0, -4.85);
+            scene.add(goalkeeperGroup);
+
+
+            // --- [FIFA 스타일 정밀 휴노이드 공격수 생성] ---
+            kickerGroup = new THREE.Group();
+            const strikerKit = new THREE.MeshStandardMaterial({ color: 0xcc0000 }); // 홈 킷 (레드)
+            const sShortsMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const bootMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+            // 머리
+            let kHead = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 16), skinMat);
+            kHead.position.y = 1.92;
+            kickerGroup.add(kHead);
+
+            // 상체 (척추 관절)
+            kSpine = new THREE.Group();
+            kSpine.position.y = 1.32;
+            let kTorso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.26), strikerKit);
+            kTorso.position.y = 0;
+            kSpine.add(kTorso);
+
+            let kShorts = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.3, 0.24), sShortsMat);
+            kShorts.position.y = -0.48;
+            kSpine.add(kShorts);
+            kickerGroup.add(kSpine);
+
+            // 양팔
+            kLeftArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.14), strikerKit);
+            kLeftArm.position.set(-0.35, 1.4, 0);
+            kickerGroup.add(kLeftArm);
+
+            kRightArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.14), strikerKit);
+            kRightArm.position.set(0.35, 1.4, 0);
+            kickerGroup.add(kRightArm);
+
+            // 디딤발 (고정된 왼다리)
+            kLeftLeg = new THREE.Group();
+            kLeftLeg.position.set(-0.14, 0.8, 0);
+            let lLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.15), strikerKit);
+            lLegMesh.position.y = -0.35;
+            let lBoot = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.3), bootMat);
+            lBoot.position.set(0, -0.72, 0.08);
+            kLeftLeg.add(lLegMesh, lBoot);
+            kickerGroup.add(kLeftLeg);
+
+            // 슈팅발 (오른다리 - 관절 그룹)
+            kRightLeg = new THREE.Group();
+            kRightLeg.position.set(0.14, 0.8, 0);
+            let rLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.15), strikerKit);
+            rLegMesh.position.y = -0.35;
+            let rBoot = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.3), bootMat);
+            rBoot.position.set(0, -0.72, 0.08);
+            kRightLeg.add(rLegMesh, rBoot);
+            kickerGroup.add(kRightLeg);
+
+            // 메시/손흥민처럼 측면 뒤에서 스타트하는 위치 세팅
+            kickerGroup.position.set(0.8, 0, 5.2);
+            kickerGroup.rotation.y = -0.2;
+            scene.add(kickerGroup);
+
+
+            // --- [축구공 생성] ---
+            const ballGeo = new THREE.SphereGeometry(0.3, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
+            ball = new THREE.Mesh(ballGeo, ballMat);
+            ball.position.set(0, 0.3, 3.8);
+            ball.castShadow = true;
+            scene.add(ball);
+
+            window.addEventListener('click', onDocumentClick);
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function onDocumentClick(e) {
+            if (isPlaying || chance <= 0) return;
+
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            let intersects = raycaster.intersectObject(netPlane);
+
+            if (intersects.length > 0) {
+                let hitPoint = intersects[0].point;
+
+                targetCircle.style.left = e.clientX + 'px';
+                targetCircle.style.top = e.clientY + 'px';
+                targetCircle.style.display = 'block';
+
+                triggerFIFAKickAnimation(hitPoint.x, hitPoint.y);
+            }
+        }
+
+        function triggerFIFAKickAnimation(targetX, targetY) {
+            isPlaying = true;
+            msgEl.textContent = "EA SPORTS FC™ - 슈팅 감행! 🚀";
+
+            const gkChoices = [-1.4, 0, 1.4];
+            let gkDiveX = gkChoices[Math.floor(Math.random() * gkChoices.length)];
+
+            let startTime = performance.now();
+            let duration = 950;
+            let startBallPos = ball.position.clone();
+            let endZ = -4.85;
+
+            function animateAction(currentTime) {
+                let elapsed = currentTime - startTime;
+                let progress = Math.min(elapsed / duration, 1);
+
+                // --- [실제 FIFA 게임 엔진 급의 유기적 모션 인터폴레이션] ---
+                
+                // 1단계: 빌드업 및 도움닫기 스텝 (0.0 ~ 0.35)
+                if (progress < 0.35) {
+                    let runProg = progress / 0.35;
+                    kickerGroup.position.x = 0.8 - (runProg * 0.8);
+                    kickerGroup.position.z = 5.2 - (runProg * 1.4);
+                    kickerGroup.rotation.y = -0.2 + (runProg * 0.2);
+                    kRightLeg.rotation.x = Math.sin(runProg * Math.PI * 4) * 0.5;
+                } 
+                // 2단계: 디딤발 확정 및 슈팅 임팩트 (0.35 ~ 0.7)
+                else if (progress < 0.7) {
+                    let kickProg = (progress - 0.35) / 0.35;
+                    kickerGroup.position.set(0, 0, 3.8);
+                    kickerGroup.rotation.y = 0;
+
+                    if (kickProg < 0.35) {
+                        // 백스윙: 상체 후경 및 다리 후방 꺾기
+                        kSpine.rotation.x = -0.3;
+                        kRightLeg.rotation.x = -1.35;
+                        kLeftArm.rotation.x = 0.4;
+                        kRightArm.rotation.x = -0.4;
+                    } else {
+                        // 전경 및 강렬한 타격 임팩트
+                        kSpine.rotation.x = 0.45;
+                        kRightLeg.rotation.x = 1.55;
+                        kLeftArm.rotation.x = -0.6;
+                        kRightArm.rotation.x = 0.6;
+                    }
+
+                    // 공 궤적 연산
+                    let shotProg = (kickProg - 0.35) / 0.65;
+                    if (shotProg >= 0) {
+                        let currentX = startBallPos.x + (targetX - startBallPos.x) * shotProg;
+                        let currentY = startBallPos.y + (targetY - startBallPos.y * 0.1 - startBallPos.y) * shotProg + Math.sin(shotProg * Math.PI) * 1.25;
+                        let realZ = startBallPos.z + (endZ - startBallPos.z) * shotProg;
+                        ball.position.set(currentX, currentY, realZ);
+                    }
+                } 
+                // 3단계: 팔로우 스루 복귀 (0.7 ~ 1.0)
+                else {
+                    kSpine.rotation.x = 0;
+                    kRightLeg.rotation.x = 0.1;
+                    kLeftArm.rotation.x = 0;
+                    kRightArm.rotation.x = 0;
+                }
+
+                // --- [골키퍼의 동물적인 반응 및 다이브] ---
+                goalkeeperGroup.position.x += (gkDiveX - goalkeeperGroup.position.x) * 0.17;
+                if (gkDiveX < 0) {
+                    goalkeeperGroup.rotation.z = 0.7;
+                    gkLeftArm.rotation.z = 0.9;
+                } else if (gkDiveX > 0) {
+                    goalkeeperGroup.rotation.z = -0.7;
+                    gkRightArm.rotation.z = -0.9;
+                } else {
+                    goalkeeperGroup.rotation.z = 0;
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateAction);
+                } else {
+                    checkResult(targetX, targetY, goalkeeperGroup.position.x);
+                }
+            }
+
+            requestAnimationFrame(animateAction);
+        }
+
+        function checkResult(ballX, ballY, gkX) {
+            let isGoal = true;
+
+            if (Math.abs(ballX - gkX) < 1.3 && ballY < 2.3) {
+                isGoal = false;
+                msgEl.textContent = "❌ [세이브] 골키퍼의 경이로운 선방!";
+            } else {
+                msgEl.textContent = "⚽ [GOAL!!] 구석을 찌르는 완벽한 득점!";
+                score++;
+                scoreEl.textContent = score;
+            }
+
+            chance--;
+            chanceEl.textContent = chance;
+
+            if (chance <= 0) {
+                setTimeout(() => {
+                    msgEl.textContent = `매치 종료! 최종 점수: ${score}점`;
+                    restartBtn.style.display = 'block';
+                }, 1000);
+            } else {
+                setTimeout(resetPosition, 1600);
+            }
+        }
+
+        function resetPosition() {
+            ball.position.set(0, 0.3, 3.8);
+            kickerGroup.position.set(0.8, 0, 5.2);
+            kickerGroup.rotation.y = -0.2;
+            goalkeeperGroup.position.set(0, 0, -4.85);
+            goalkeeperGroup.rotation.z = 0;
+            gkLeftArm.rotation.z = 0;
+            gkRightArm.rotation.z = 0;
+            kRightLeg.rotation.x = 0;
+            kSpine.rotation.x = 0;
+            targetCircle.style.display = 'none';
+            msgEl.textContent = "골대 안쪽을 클릭하여 과녁을 지정하고 정교한 슛을 날리세요!";
+            isPlaying = false;
+        }
+
+        function resetGame() {
+            score = 0;
+            chance = 5;
+            scoreEl.textContent = score;
+            chanceEl.textContent = chance;
+            restartBtn.style.display = 'none';
+            resetPosition();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

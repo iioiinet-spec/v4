@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>월드컵 축구 승부차기 - 얼티밋 에디션</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #070a12;
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            overflow: hidden;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 950px;
+            height: 680px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 3px solid #222;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 10, 20, 0.96);
+            z-index: 30;
+            pointer-events: auto;
+            backdrop-filter: blur(6px);
+        }
+        h1 { font-size: 38px; margin-bottom: 10px; color: #f39c12; text-shadow: 0 0 15px rgba(243, 156, 18, 0.5); text-align: center; }
+        p { font-size: 14px; margin-bottom: 15px; color: #bdc3c7; text-align: center; line-height: 1.4; }
+        
+        /* 16개국 팀 정하기 버튼 그리드 */
+        .country-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+            max-width: 680px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 5px;
+            z-index: 35;
+            pointer-events: auto;
+        }
+        .country-btn {
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+            pointer-events: auto;
+        }
+        .country-btn span {
+            display: block;
+            font-size: 11px;
+            color: #f1c40f;
+            margin-top: 2px;
+        }
+        .country-btn:hover {
+            background: #f39c12;
+            border-color: #f39c12;
+            transform: translateY(-2px);
+        }
+        .country-btn.selected {
+            background: #d35400;
+            border-color: #f1c40f;
+            box-shadow: 0 0 12px #f1c40f;
+        }
+
+        .btn {
+            padding: 12px 35px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(to bottom, #27ae60, #219653);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            z-index: 35;
+            pointer-events: auto;
+        }
+        .btn:hover { background: linear-gradient(to bottom, #2ecc71, #27ae60); transform: scale(1.05); }
+        .hidden { display: none !important; pointer-events: none !important; }
+
+        #ui-layer {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.9);
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div>토너먼트: <span id="round-text" style="color:#f39c12;">16강</span> | 국가: <span id="country-text" style="color:#3498db;">-</span> (<span id="player-text"></span>)</div>
+        <div>성공: <span id="goal-count">0</span> / 5 | 실축기회: <span id="miss-text">3</span> | 목숨: <span id="hearts-text" style="color:#e74c3c;">❤️❤️</span></div>
+    </div>
+
+    <div id="start-screen" class="screen">
+        <h1>🏆 월드컵 축구 승부차기 게임 🏆</h1>
+        <p>16개국 중 응원하는 <strong>팀 정하기 버튼</strong>을 클릭해 선택하세요!<br>진짜 선수 얼굴과 진짜 축구공으로 즐기는 완벽한 승부차기 아케이드.</p>
+        
+        <div class="country-grid" id="country-grid">
+            </div>
+
+        <button class="btn" id="start-btn" onclick="startGame()" disabled style="opacity: 0.5; cursor: not-allowed;">팀을 먼저 선택해주세요</button>
+    </div>
+
+    <div id="result-screen" class="screen hidden">
+        <h1 id="result-title">게임 오버</h1>
+        <p id="result-desc" style="font-size: 16px; margin-bottom: 25px;">탈락하셨습니다.</p>
+        <button class="btn" onclick="resetToStart()">다시 하기</button>
+    </div>
+
+    <canvas id="gameCanvas" width="950" height="680"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 16개국 및 실제 선수 얼굴 사진(이미지 URL) 매핑
+    const countryData = [
+        { name: '스페인', player: '라민 야말', color: '#aa151b', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Lamine_Yamal_2024_%28cropped%29.jpg/220px-Lamine_Yamal_2024_%28cropped%29.jpg' },
+        { name: '프랑스', player: '킬리안 음바페', color: '#002395', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Kylian_Mbapp%C3%A9_2018_%28cropped%29.jpg/220px-Kylian_Mbapp%C3%A9_2018_%28cropped%29.jpg' },
+        { name: '아르헨티나', player: '리오넬 메시', color: '#75aadb', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Lionel-Messi-Argentina-2022_FIFA_World_Cup_%28cropped%29.jpg/220px-Lionel-Messi-Argentina-2022_FIFA_World_Cup_%28cropped%29.jpg' },
+        { name: '브라질', player: '비니시우스', color: '#009b3a', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Vin%C3%ADcius_Junior_2023.jpg/220px-Vin%C3%ADcius_Junior_2023.jpg' },
+        { name: '포르투갈', player: '크리스티아누 호날두', color: '#da291c', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Cristiano_Ronaldo_2018.jpg/220px-Cristiano_Ronaldo_2018.jpg' },
+        { name: '잉글랜드', player: '주드 벨링엄', color: '#cf081f', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Jude_Bellingham_2023.jpg/220px-Jude_Bellingham_2023.jpg' },
+        { name: '독일', player: '자말 무시알라', color: '#ffffff', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Jamal_Musiala_2022.jpg/220px-Jamal_Musiala_2022.jpg' },
+        { name: '노르웨이', player: '엘링 홀란드', color: '#ba0c2f', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Erling_Haaland_2023_%28cropped%29.jpg/220px-Erling_Haaland_2023_%28cropped%29.jpg' },
+        { name: '벨기에', player: '케빈 더 브라위너', color: '#e31b23', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Kevin_De_Bruyne_2018.jpg/220px-Kevin_De_Bruyne_2018.jpg' },
+        { name: '네덜란드', player: '버질 반 다이크', color: '#ff6600', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Virgil_van_Dijk_2022.jpg/220px-Virgil_van_Dijk_2022.jpg' },
+        { name: '이탈리아', player: '페데리코 키에사', color: '#0066cc', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Federico_Chiesa_2021.jpg/220px-Federico_Chiesa_2021.jpg' },
+        { name: '크로아티아', player: '루카 모드리치', color: '#ff0000', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Luka_Modric_2018.jpg/220px-Luka_Modric_2018.jpg' },
+        { name: '우루과이', player: '페데리코 발베르데', color: '#0038b8', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Federico_Valverde_2022.jpg/220px-Federico_Valverde_2022.jpg' },
+        { name: '세네갈', player: '사디오 마네', color: '#00853f', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Sadio_Mane_2018.jpg/220px-Sadio_Mane_2018.jpg' },
+        { name: '미국', player: '크리스찬 풀리식', color: '#3c3b6e', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Christian_Pulisic_2019.jpg/220px-Christian_Pulisic_2019.jpg' },
+        { name: '대한민국', player: '손흥민', color: '#cc0000', imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Son_Heung-min_in_2019.jpg/220px-Son_Heung-min_in_2019.jpg' }
+    ];
+
+    let selectedCountryObj = null;
+    let playerAvatarImage = null;
+
+    // 토너먼트 스테이지 설정 (16강 -> 8강 -> 4강 -> 결승)
+    let currentStageIndex = 0;
+    const stages = [
+        { name: '16강', keeperSpeed: 2.2 },
+        { name: '8강', keeperSpeed: 3.8 },
+        { name: '4강', keeperSpeed: 5.5 },
+        { name: '결승', keeperSpeed: 7.5 }
+    ];
+
+    let gameState = 'START'; 
+    let score = 0;
+    let goalsInStage = 0;
+    let missedChances = 3; 
+    let totalLives = 2;    
+
+    // 골대 영역 좌표
+    const goalBox = {
+        left: 235,
+        right: 715,
+        top: 140,
+        bottom: 320
+    };
+
+    // 공 객체 (진짜 축구공)
+    let ball = {
+        x: 475, y: 560, radius: 22,
+        startX: 475, startY: 560,
+        targetX: 475, targetY: 300,
+        progress: 0, isMoving: false, scale: 1
+    };
+
+    // 공격수 고정 위치
+    const kicker = {
+        x: 475, y: 610
+    };
+
+    // 골키퍼 객체
+    let keeper = {
+        x: 450, y: 220, width: 50, height: 90,
+        dir: 1, speed: 2.2
+    };
+
+    let kickerState = 'idle'; // 'idle', 'kick'
+    let kickAnimTimer = 0;
+
+    let messageTimer = 0;
+    let messageText = '';
+    let messageColor = '#ffd700';
+
+    // 16개국 팀 정하기 버튼 동적 생성
+    const gridContainer = document.getElementById('country-grid');
+    countryData.forEach(item => {
+        const btn = document.createElement('button');
+        btn.className = 'country-btn';
+        btn.innerHTML = `${item.name}<span>대표: ${item.player}</span>`;
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            selectCountry(item, btn);
+        };
+        gridContainer.appendChild(btn);
+    });
+
+    function selectCountry(item, btnElement) {
+        document.querySelectorAll('.country-btn').forEach(b => b.classList.remove('selected'));
+        btnElement.classList.add('selected');
+        selectedCountryObj = item;
+        
+        playerAvatarImage = new Image();
+        playerAvatarImage.crossOrigin = "anonymous";
+        playerAvatarImage.src = item.imgUrl;
+
+        const startBtn = document.getElementById('start-btn');
+        startBtn.disabled = false;
+        startBtn.style.opacity = '1';
+        startBtn.style.cursor = 'pointer';
+        startBtn.innerText = `${item.name} (${item.player}) 팀으로 시작하기!`;
+    }
+
+    function startGame() {
+        if (!selectedCountryObj) return;
+        document.getElementById('country-text').innerText = selectedCountryObj.name;
+        document.getElementById('player-text').innerText = selectedCountryObj.player;
+        
+        currentStageIndex = 0;
+        score = 0;
+        goalsInStage = 0;
+        missedChances = 3;
+        totalLives = 2;
+
+        document.getElementById('start-screen').classList.add('hidden');
+        initStage();
+        gameState = 'PLAYING';
+    }
+
+    function initStage() {
+        goalsInStage = 0;
+        missedChances = 3;
+        keeper.speed = stages[currentStageIndex].keeperSpeed;
+        document.getElementById('round-text').innerText = stages[currentStageIndex].name;
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('goal-count').innerText = goalsInStage;
+        document.getElementById('miss-text').innerText = missedChances;
+        document.getElementById('hearts-text').innerText = '❤️'.repeat(totalLives);
+    }
+
+    // 골대 아무 곳이나 클릭하여 슈팅
+    canvas.addEventListener('click', (e) => {
+        if (gameState !== 'PLAYING' || ball.isMoving) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (mouseX >= goalBox.left - 25 && mouseX <= goalBox.right + 25 && 
+            mouseY >= goalBox.top - 25 && mouseY <= goalBox.bottom + 25) {
+            
+            ball.targetX = mouseX;
+            ball.targetY = mouseY;
+            ball.startX = ball.x;
+            ball.startY = ball.y;
+            ball.progress = 0;
+            ball.isMoving = true;
+            
+            kickerState = 'kick';
+            kickAnimTimer = 30;
+        }
+    });
+
+    function resetBall() {
+        ball.x = 475;
+        ball.y = 560;
+        ball.scale = 1;
+        ball.isMoving = false;
+        ball.progress = 0;
+    }
+
+    function triggerMessage(text, color = '#ffd700') {
+        messageText = text;
+        messageColor = color;
+        messageTimer = 70;
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        // 골키퍼 AI 이동
+        keeper.x += keeper.speed * keeper.dir;
+        if (keeper.x < goalBox.left + 15 || keeper.x + keeper.width > goalBox.right - 15) {
+            keeper.dir *= -1;
+        }
+
+        if (kickAnimTimer > 0) {
+            kickAnimTimer--;
+            if (kickAnimTimer === 0) kickerState = 'idle';
+        }
+
+        // 공 이동 및 원근감 계산
+        if (ball.isMoving) {
+            ball.progress += 0.035;
+            ball.x = ball.startX + (ball.targetX - ball.startX) * ball.progress;
+            ball.y = ball.startY + (ball.targetY - ball.startY) * ball.progress;
+            ball.scale = 1 - (ball.progress * 0.45);
+
+            if (ball.progress >= 1) {
+                checkGoalResult();
+                resetBall();
+            }
+        }
+
+        if (messageTimer > 0) messageTimer--;
+    }
+
+    function checkGoalResult() {
+        const gkHitbox = {
+            left: keeper.x - 12,
+            right: keeper.x + keeper.width + 12,
+            top: keeper.y - 10,
+            bottom: keeper.y + keeper.height + 10
+        };
+
+        const isSaved = (ball.targetX >= gkHitbox.left && ball.targetX <= gkHitbox.right &&
+                         ball.targetY >= gkHitbox.top && ball.targetY <= gkHitbox.bottom);
+
+        const isOut = (ball.targetX < goalBox.left || ball.targetX > goalBox.right || 
+                       ball.targetY < goalBox.top || ball.targetY > goalBox.bottom);
+
+        if (isSaved) {
+            handleMiss("골키퍼 선방! ❌", "#e74c3c");
+        } else if (isOut) {
+            handleMiss("골대 밖으로 이탈! ❌", "#e74c3c");
+        } else {
+            let distFromCenter = Math.abs(ball.targetX - 475);
+            let earnedScore = Math.floor(100 + (distFromCenter / 1.4));
+            score += earnedScore;
+            goalsInStage++;
+
+            triggerMessage(`GOAL!! +${earnedScore}점 ⚽ (${selectedCountryObj.player})`, "#2ecc71");
+            updateUI();
+
+            if (goalsInStage >= 5) {
+                nextStage();
+            }
+        }
+    }
+
+    function handleMiss(msg, color) {
+        triggerMessage(msg, color);
+        missedChances--;
+        updateUI();
+
+        if (missedChances <= 0) {
+            totalLives--;
+            updateUI();
+            if (totalLives <= 0) {
+                endGame(false);
+            } else {
+                missedChances = 3;
+                triggerMessage("⚠️ 목숨 1개 감소! 정신 차리세요!", "#f39c12");
+            }
+        }
+    }
+
+    function nextStage() {
+        currentStageIndex++;
+        if (currentStageIndex >= stages.length) {
+            endGame(true); // 토너먼트 결승 우승 및 트로피 수령
+        } else {
+            triggerMessage(`🎉 ${stages[currentStageIndex - 1].name} 돌파! 다음 라운드로!`, "#f1c40f");
+            missedChances = 3;
+            goalsInStage = 0;
+            updateUI();
+        }
+    }
+
+    function endGame(isVictory) {
+        gameState = isVictory ? 'VICTORY' : 'GAMEOVER';
+        const resultScreen = document.getElementById('result-screen');
+        const title = document.getElementById('result-title');
+        const desc = document.getElementById('result-desc');
+
+        resultScreen.classList.remove('hidden');
+        if (isVictory) {
+            title.innerHTML = "🏆 결승 승리 & 월드컵 트로피 획득! 🏆";
+            desc.innerHTML = `대단합니다! ${selectedCountryObj.name}의 ${selectedCountryObj.player} 선수가 이끄는 대표팀이<br>토너먼트 결승전에서 승리하여 <strong>월드컵 트로피</strong>를 높이 들어 올렸습니다!<br><br><b>최종 점수: ${score}점</b>`;
+        } else {
+            title.innerHTML = "GAME OVER";
+            desc.innerHTML = `아쉽게도 목숨을 모두 잃어 ${stages[currentStageIndex].name}에서 탈락하셨습니다.<br>다시 팀을 골라 도전해 보세요!<br><br><b>최종 점수: ${score}점</b>`;
+        }
+    }
+
+    function resetToStart() {
+        document.getElementById('result-screen').classList.add('hidden');
+        document.getElementById('start-screen').classList.remove('hidden');
+        gameState = 'START';
+    }
+
+    // 진짜 축구공 렌더링 함수
+    function drawRealSoccerBall(x, y, scale) {
+        let r = ball.radius * scale;
+        if (r < 4) r = 4;
+
+        ctx.beginPath();
+        ctx.arc(x + 4, y + 6, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fill();
+
+        let grad = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.75, '#e2e2e2');
+        grad.addColorStop(1, '#888888');
+
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#222';
+        ctx.stroke();
+        ctx.closePath();
+
+        if (r > 8) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.clip();
+
+            ctx.fillStyle = '#1c1c1c';
+            ctx.beginPath();
+            let pSize = r * 0.35;
+            for (let i = 0; i < 5; i++) {
+                let angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+                let px = x + pSize * Math.cos(angle);
+                let py = y + pSize * Math.sin(angle);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#1c1c1c';
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < 5; i++) {
+                let angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+                let px = x + pSize * Math.cos(angle);
+                let py = y + pSize * Math.sin(angle);
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + (px - x) * 0.8, py + (py - y) * 0.8);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+
+    // 골키퍼 렌더링
+    function drawRealisticGoalie(x, y, w, h) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(x + 5, y + h - 5, w - 10, 8);
+
+        ctx.fillStyle = '#8e44ad'; 
+        ctx.fillRect(x, y + 15, w, h - 15);
+        ctx.fillStyle = '#f1c40f'; 
+        ctx.fillRect(x + w/2 - 6, y + 30, 12, 18);
+
+        ctx.fillStyle = '#8e44ad';
+        ctx.fillRect(x - 8, y + 25, 10, 35);
+        ctx.fillRect(x + w - 2, y + 25, 10, 35);
+        ctx.fillStyle = '#e67e22'; 
+        ctx.fillRect(x - 10, y + 55, 12, 12);
+        ctx.fillRect(x + w - 2, y + 55, 12, 12);
+
+        let headX = x + w / 2;
+        let headY = y;
+        ctx.fillStyle = '#f5cd79'; 
+        ctx.beginPath();
+        ctx.arc(headX, headY, 13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#b7950b';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#333333';
+        ctx.beginPath();
+        ctx.arc(headX, headY - 4, 13, Math.PI, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#000';
+        ctx.fillRect(headX - 5, headY - 2, 2, 3);
+        ctx.fillRect(headX + 3, headY - 2, 2, 3);
+        ctx.fillRect(headX - 0.5, headY + 1, 1, 3);
+        ctx.beginPath();
+        ctx.moveTo(headX - 3, headY + 7);
+        ctx.lineTo(headX + 3, headY + 7);
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
+    // 실제 선수 사진(초상화)과 유니폼을 적용한 공격수 렌더링
+    function drawRealPlayerKicker(x, y, countryColor, state, avatarImg) {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 85, 26, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = countryColor;
+        let bodyOffsetY = (state === 'kick') ? -12 : 0;
+        
+        // 유니폼 몸통
+        ctx.fillRect(x - 22, y + 26 + bodyOffsetY, 44, 42);
+
+        // 팔
+        ctx.fillStyle = '#f5cd79';
+        if (state === 'kick') {
+            ctx.fillRect(x - 36, y + 28, 14, 10); 
+            ctx.fillRect(x + 22, y + 28, 14, 10);
+        } else {
+            ctx.fillRect(x - 28, y + 30, 8, 28);
+            ctx.fillRect(x + 20, y + 30, 8, 28);
+        }
+
+        // 다리
+        ctx.fillStyle = '#222222'; 
+        ctx.fillRect(x - 17, y + 68 + bodyOffsetY, 14, 22);
+        ctx.fillRect(x + 3, y + 68 + bodyOffsetY, 14, 22);
+
+        // 실제 선수 얼굴 사진(초상화) 부착
+        let headX = x;
+        let headY = y - 4 + bodyOffsetY;
+        let headRadius = 22;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(headX, headY, headRadius, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+
+        if (avatarImg && avatarImg.complete && avatarImg.naturalWidth !== 0) {
+            ctx.drawImage(avatarImg, headX - headRadius, headY - headRadius, headRadius * 2, headRadius * 2);
+        } else {
+            ctx.fillStyle = '#f5cd79';
+            ctx.fillRect(headX - headRadius, headY - headRadius, headRadius * 2, headRadius * 2);
+        }
+        ctx.restore();
+
+        // 얼굴 테두리 라인
+        ctx.beginPath();
+        ctx.arc(headX, headY, headRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#f1c40f';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+    }
+
+    // 경기장 그래픽 렌더링
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        let skyGrad = ctx.createLinearGradient(0, 0, 0, 240);
+        skyGrad.addColorStop(0, '#0f2027');
+        skyGrad.addColorStop(0.5, '#203a43');
+        skyGrad.addColorStop(1, '#2c5364');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, 950, 240);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        for(let i=0; i<950; i+=45) {
+            ctx.fillRect(i, 130, 25, 45);
+        }
+
+        let turfGrad = ctx.createLinearGradient(0, 240, 0, 680);
+        turfGrad.addColorStop(0, '#11521a');
+        turfGrad.addColorStop(1, '#1b7a28');
+        ctx.fillStyle = turfGrad;
+        ctx.fillRect(0, 240, 950, 440);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        for (let y = 240; y < 680; y += 45) {
+            ctx.fillRect(0, y, 950, 22);
+        }
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 3;
+        
+        ctx.beginPath();
+        ctx.moveTo(150, 240);
+        ctx.lineTo(150, 620);
+        ctx.lineTo(800, 620);
+        ctx.lineTo(800, 240);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(475, 510, 5, 0, Math.PI * 2);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1;
+        for (let gx = goalBox.left; gx <= goalBox.right; gx += 22) {
+            ctx.beginPath(); ctx.moveTo(gx, goalBox.top); ctx.lineTo(gx, goalBox.bottom); ctx.stroke();
+        }
+        for (let gy = goalBox.top; gy <= goalBox.bottom; gy += 18) {
+            ctx.beginPath(); ctx.moveTo(goalBox.left, gy); ctx.lineTo(goalBox.right, gy); ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(goalBox.left - 10, goalBox.bottom + 15);
+        ctx.lineTo(goalBox.left - 10, goalBox.top - 5);
+        ctx.lineTo(goalBox.right + 10, goalBox.top - 5);
+        ctx.lineTo(goalBox.right + 10, goalBox.bottom + 15);
+        ctx.stroke();
+
+        // 골키퍼 렌더링
+        drawRealisticGoalie(keeper.x, keeper.y, keeper.width, keeper.height);
+
+        // 실제 선수 얼굴 사진이 적용된 공격수 렌더링 (공격수는 제자리에 고정)
+        if (selectedCountryObj) {
+            drawRealPlayerKicker(kicker.x, kicker.y, selectedCountryObj.color, kickerState, playerAvatarImage);
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(kicker.x - 55, kicker.y + 94, 110, 22);
+            ctx.fillStyle = '#f1c40f';
+            ctx.font = 'bold 13px "Malgun Gothic"';
+            ctx.textAlign = 'center';
+            ctx.fillText(selectedCountryObj.player, kicker.x, kicker.y + 109);
+            ctx.textAlign = 'left';
+        }
+
+        // 진짜 축구공 렌더링 (공만 골대를 향해 날아감)
+        drawRealSoccerBall(ball.x, ball.y, ball.scale);
+
+        // 피드백 메시지
+        if (messageTimer > 0) {
+            ctx.fillStyle = 'rgba(10, 15, 25, 0.88)';
+            ctx.fillRect(285, 290, 380, 60);
+            ctx.strokeStyle = messageColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(285, 290, 380, 60);
+
+            ctx.fillStyle = messageColor;
+            ctx.font = 'bold 20px "Malgun Gothic"';
+            ctx.textAlign = 'center';
+            ctx.fillText(messageText, 475, 327);
+            ctx.textAlign = 'left';
+        }
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+</script>
+
+</body>
+</html>

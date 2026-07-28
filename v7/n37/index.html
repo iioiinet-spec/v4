@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1인칭 픽셀 던전 크롤러 - 상자선택 & 다양해진 상점</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: 'Press Start 2P', cursive, monospace;
+        }
+
+        body {
+            background-color: #050508;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 850px;
+            height: 620px;
+            background-color: #111;
+            border: 4px solid #4a4a68;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            image-rendering: pixelated;
+        }
+
+        #top-bar {
+            height: 45px;
+            background-color: #1a1a24;
+            border-bottom: 4px solid #4a4a68;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 11px;
+            color: #f1c40f;
+            z-index: 5;
+        }
+
+        #viewport {
+            flex: 1;
+            position: relative;
+            background: 
+                perspective(300px) rotateX(20deg),
+                radial-gradient(circle at 50% 40%, #2c1e38 0%, #0d0814 70%, #000 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-bottom: 4px solid #4a4a68;
+        }
+
+        #viewport::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                linear-gradient(90deg, rgba(0,0,0,0.8) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.8) 100%),
+                linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.8) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .overlay-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(5, 5, 8, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .title {
+            font-size: 18px;
+            color: #e74c3c;
+            text-shadow: 3px 3px #500;
+            margin-bottom: 15px;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .job-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            max-width: 600px;
+        }
+
+        .menu-btn {
+            background: #2c3e50;
+            color: #fff;
+            border: 3px solid #7f8c8d;
+            padding: 10px 15px;
+            margin: 4px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.1s;
+            width: 220px;
+        }
+
+        .menu-btn:hover {
+            background: #e67e22;
+            border-color: #f1c40f;
+            transform: scale(1.03);
+        }
+
+        #monster-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+
+        .monster-sprite {
+            width: 160px;
+            height: 160px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            image-rendering: pixelated;
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.8));
+            transition: all 0.3s;
+        }
+
+        .monster-sprite.boss {
+            width: 220px;
+            height: 220px;
+            filter: drop-shadow(0 0 20px rgba(231, 76, 60, 0.8));
+        }
+
+        .monster-hp-box {
+            width: 220px;
+            background: rgba(0,0,0,0.7);
+            padding: 6px;
+            border: 2px solid #555;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .hp-bar-bg, .exp-bar-bg {
+            width: 100%;
+            height: 10px;
+            background-color: #222;
+            border: 1px solid #fff;
+            margin-top: 3px;
+        }
+
+        .hp-bar-fill {
+            height: 100%;
+            background-color: #e74c3c;
+            width: 100%;
+            transition: width 0.25s ease-out;
+        }
+
+        .exp-bar-fill {
+            height: 100%;
+            background-color: #3498db;
+            width: 0%;
+            transition: width 0.3s ease-out;
+        }
+
+        #player-weapon {
+            position: absolute;
+            bottom: -10px;
+            right: 220px;
+            width: 130px;
+            height: 150px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            image-rendering: pixelated;
+            z-index: 3;
+            transition: transform 0.1s;
+        }
+
+        .slash-anim { animation: slash 0.25s ease-out; }
+        .monster-hit { animation: monsterDamage 0.3s ease-in-out; }
+        .player-hit { animation: playerDamage 0.3s ease-in-out; }
+
+        @keyframes slash {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(-80px, -60px) rotate(-30deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+        }
+
+        @keyframes monsterDamage {
+            0% { transform: scale(1); }
+            20% { transform: scale(0.9) translate(10px, -5px); filter: brightness(4); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes playerDamage {
+            0% { background-color: rgba(255, 0, 0, 0); }
+            30% { background-color: rgba(255, 0, 0, 0.4); }
+            100% { background-color: rgba(255, 0, 0, 0); }
+        }
+
+        #bottom-panel {
+            height: 190px;
+            background-color: #0c0c12;
+            display: flex;
+            padding: 10px;
+            gap: 10px;
+            z-index: 5;
+        }
+
+        #player-status-container {
+            width: 280px;
+            display: flex;
+            gap: 5px;
+        }
+
+        .player-card {
+            flex: 1;
+            background-color: #181824;
+            border: 2px solid #333348;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .player-card.active {
+            border-color: #f1c40f;
+            background-color: #222238;
+        }
+
+        #battle-log {
+            flex: 1;
+            background-color: #050508;
+            border: 2px solid #222233;
+            padding: 10px;
+            font-size: 9px;
+            line-height: 1.7;
+            overflow-y: auto;
+            color: #aaa;
+        }
+
+        #controls {
+            width: 180px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .action-btn {
+            flex: 1;
+            background: #2c3e50;
+            border: 2px solid #4a4a68;
+            color: #fff;
+            font-size: 9px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background: #e67e22;
+            border-color: #f1c40f;
+        }
+
+        .action-btn:disabled {
+            background: #15151c;
+            color: #555;
+            border-color: #222;
+            cursor: not-allowed;
+        }
+
+        .shop-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+
+        .shop-item {
+            width: 280px;
+            background: #1a1a24;
+            border: 2px solid #4a4a68;
+            padding: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #battle-log::-webkit-scrollbar { width: 5px; }
+        #battle-log::-webkit-scrollbar-thumb { background: #333; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- 시작 화면 -->
+    <div id="start-screen" class="overlay-screen">
+        <div class="title">DUNGEON CRAWLER</div>
+        <button class="menu-btn" onclick="selectMode(1, 'easy')">🎮 1인용 (쉬움)</button>
+        <button class="menu-btn" onclick="selectMode(1, 'hard')">💀 1인용 (어려움)</button>
+        <button class="menu-btn" onclick="selectMode(2, 'easy')" style="background:#27ae60;">👥 2인용 (쉬움)</button>
+        <button class="menu-btn" onclick="selectMode(2, 'hard')" style="background:#c0392b;">⚔️ 2인용 (어려움)</button>
+    </div>
+
+    <!-- 갈림길 선택 화면 -->
+    <div id="path-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#2ecc71;">🌲 갈림길 선택 🌲<br><span style="font-size:11px; color:#fff;">어느 문으로 들어가시겠습니까?</span></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+            <button class="menu-btn" style="height:80px; background:#c0392b;" onclick="choosePath('battle')">⚔️ 전투의 문<br><span style="font-size:8px; color:#ddd;">(일반 적 등장)</span></button>
+            <button class="menu-btn" style="height:80px; background:#8e44ad;" onclick="choosePath('boss')">🔥 보스의 문<br><span style="font-size:8px; color:#ddd;">(강력한 보스 도전)</span></button>
+            <button class="menu-btn" style="height:80px; background:#f39c12;" onclick="choosePath('treasure')">🎁 보물의 방<br><span style="font-size:8px; color:#ddd;">(상자 3개 중 선택)</span></button>
+            <button class="menu-btn" style="height:80px; background:#27ae60;" onclick="choosePath('shop')">🏪 비밀 상점<br><span style="font-size:8px; color:#ddd;">(장비/스킬 구매)</span></button>
+        </div>
+    </div>
+
+    <!-- 보물 상자 선택 화면 -->
+    <div id="chest-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#f1c40f;">🎁 보물상자 선택 🎁<br><span style="font-size:11px; color:#fff;">골드가 들어있는 상자를 하나 고르세요!</span></div>
+        <div style="display:flex; gap:20px; margin-top:20px;">
+            <button class="menu-btn" style="height:120px; width:130px; font-size:30px; background:#d35400;" onclick="openChest(1)">📦<br><span style="font-size:10px;">1번 상자</span></button>
+            <button class="menu-btn" style="height:120px; width:130px; font-size:30px; background:#d35400;" onclick="openChest(2)">📦<br><span style="font-size:10px;">2번 상자</span></button>
+            <button class="menu-btn" style="height:120px; width:130px; font-size:30px; background:#d35400;" onclick="openChest(3)">📦<br><span style="font-size:10px;">3번 상자</span></button>
+        </div>
+    </div>
+
+    <!-- 보유 스킬 선택/교체 팝업 -->
+    <div id="skill-select-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#3498db;">✨ 사용 스킬 선택<br><span style="font-size:11px; color:#fff;">사용할 스킬을 고르세요</span></div>
+        <div id="skill-options-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+        <button class="menu-btn" onclick="closeSkillSelect()" style="margin-top:15px; background:#7f8c8d;">취소</button>
+    </div>
+
+    <!-- 1차 전직 화면 -->
+    <div id="job-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#f1c40f;">[ 1차 전직 ]<br><span id="job-player-name" style="font-size:13px; color:#fff;">용사 1</span></div>
+        <button class="menu-btn" onclick="chooseJob('전사')">🛡️ 전사 (HP +100)</button>
+        <button class="menu-btn" onclick="chooseJob('마법사')">🔮 마법사 (ATK +40)</button>
+        <button class="menu-btn" onclick="chooseJob('힐러')">🌿 힐러 (HP +60)</button>
+        <button class="menu-btn" onclick="chooseJob('암살자')">🗡️ 암살자 (ATK +25)</button>
+    </div>
+
+    <!-- 2차 보스 전직 화면 -->
+    <div id="job2-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#e74c3c;">🏆 보스 처치! 2차 각성 전직<br><span id="job2-player-name" style="font-size:13px; color:#fff;">용사 1</span></div>
+        <div id="job2-btn-container" class="job-grid"></div>
+    </div>
+
+    <!-- 상점 화면 -->
+    <div id="shop-screen" class="overlay-screen" style="display: none;">
+        <div class="title" style="color:#f1c40f;">🏪 모든 장비 & 스킬 상점<br><span style="font-size:10px; color:#fff;">모든 품목 균일가: 50 GOLD</span></div>
+        <div style="font-size: 11px; margin-bottom: 10px;">소지 골드: <span id="shop-gold" style="color:#f1c40f;">0</span> GOLD</div>
+        <div id="shop-items-list" class="shop-container"></div>
+        <button class="menu-btn" onclick="closeShop()" style="margin-top: 15px; background: #e74c3c;">던전으로 돌아가기</button>
+    </div>
+
+    <!-- 상단 UI -->
+    <div id="top-bar">
+        <div>FLOOR: <span id="floor-num" style="color:#fff;">1</span>F</div>
+        <div>MONSTER: <span id="wave-num" style="color:#e74c3c;">1</span>/5</div>
+        <div>GOLD: <span id="gold-num" style="color:#f1c40f;">0</span></div>
+    </div>
+
+    <!-- 던전 뷰 -->
+    <div id="viewport">
+        <div id="monster-container">
+            <div class="monster-hp-box">
+                <div id="monster-name" style="font-size: 10px; color: #e74c3c;">MONSTER</div>
+                <div class="hp-bar-bg">
+                    <div id="monster-hp-bar" class="hp-bar-fill"></div>
+                </div>
+                <div style="font-size: 8px; margin-top:4px;">HP: <span id="monster-hp-text">100/100</span></div>
+            </div>
+            <div id="monster-sprite" class="monster-sprite"></div>
+        </div>
+        <div id="player-weapon"></div>
+    </div>
+
+    <!-- 하단 패널 -->
+    <div id="bottom-panel">
+        <div id="player-status-container"></div>
+        <div id="battle-log">던전에 입장했습니다.<br></div>
+
+        <div id="controls">
+            <button id="btn-attack" class="action-btn" onclick="playerAction('attack')">⚔️ 일반 공격</button>
+            <button id="btn-skill" class="action-btn" onclick="useSkill()" disabled>🔒 스킬 선택</button>
+            <button id="btn-heal" class="action-btn" onclick="playerAction('heal')">🧪 회복 (<span id="potion-count">3</span>)</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const WEAPON_SVGS = {
+        default: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23bdc3c7" d="M8 0h2v10H8z"/><path fill="%23f39c12" d="M6 10h6v2H6z"/><path fill="%23e67e22" d="M8 12h2v4H8z"/></svg>',
+        warrior: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23e74c3c" d="M7 0h3v11H7z"/><path fill="%23f1c40f" d="M4 11h9v2H4z"/><path fill="%237f8c8d" d="M7 13h3v3H7z"/></svg>',
+        axe: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%237f8c8d" d="M7 0h2v16H7z"/><path fill="%23e74c3c" d="M3 2h10v4H3z"/></svg>',
+        fireMage: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23e74c3c" d="M6 0h4v4H6z"/><path fill="%23f39c12" d="M7 1h2v2H7z"/><path fill="%23c0392b" d="M7 4h2v12H7z"/></svg>',
+        waterMage: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%233498db" d="M6 0h4v4H6z"/><path fill="%23ecf0f1" d="M7 1h2v2H7z"/><path fill="%232980b9" d="M7 4h2v12H7z"/></svg>',
+        elecMage: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23f1c40f" d="M6 0h4v4H6z"/><path fill="%23fff" d="M7 1h2v2H7z"/><path fill="%23f39c12" d="M7 4h2v12H7z"/></svg>',
+        bow: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%2327ae60" d="M2 2h2v12H2zM12 2h2v12h-2z"/><path fill="%23fff" d="M4 8h8v1H4z"/></svg>'
+    };
+
+    const MONSTER_DATABASE = [
+        { name: "방황하는 슬라임", svg: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%232ecc71" d="M4 6h8v2H4zM2 8h12v6H2z"/><path fill="%23fff" d="M4 9h2v2H4zM10 9h2v2h-2z"/></svg>' },
+        { name: "동굴 고블린", svg: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23e67e22" d="M4 2h8v3H4zM2 5h12v5H2z"/><path fill="%23f1c40f" d="M3 3h2v2H3zM11 3h2v2h-2z"/></svg>' },
+        { name: "저주받은 스켈레톤", svg: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23ecf0f1" d="M4 2h8v6H4zM5 8h6v6H5z"/><path fill="%23000" d="M5 4h2v2H5zM9 4h2v2H9z"/></svg>' }
+    ];
+    const BOSS_SVG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23c0392b" d="M2 1h12v3H2zM1 4h14v8H1z"/><path fill="%23f1c40f" d="M3 5h4v3H3zM9 5h4v3H9z"/></svg>';
+
+    const ADVANCED_JOBS = {
+        "마법사": [
+            { name: "불마법사", skill: "메테오", mult: 3.5, svg: WEAPON_SVGS.fireMage },
+            { name: "물마법사", skill: "폭포강타", mult: 2.8, svg: WEAPON_SVGS.waterMage },
+            { name: "전기마법사", skill: "벼락", mult: 3.2, svg: WEAPON_SVGS.elecMage },
+            { name: "바람마법사", skill: "칼바람", mult: 2.5, svg: WEAPON_SVGS.fireMage },
+            { name: "얼음마법사", skill: "눈보라", mult: 3.0, svg: WEAPON_SVGS.waterMage },
+            { name: "땅마법사", skill: "지진", mult: 2.7, svg: WEAPON_SVGS.fireMage }
+        ],
+        "전사": [
+            { name: "광전사", skill: "광기베기", mult: 3.0, svg: WEAPON_SVGS.axe },
+            { name: "성기사", skill: "신성한 돌격", mult: 2.2, svg: WEAPON_SVGS.warrior }
+        ],
+        "힐러": [
+            { name: "대사제", skill: "천상의 빛", mult: 2.0, svg: WEAPON_SVGS.waterMage },
+            { name: "드루이드", skill: "자연의 성난강타", mult: 2.5, svg: WEAPON_SVGS.fireMage }
+        ],
+        "암살자": [
+            { name: "그림자검사", skill: "환영 베기", mult: 3.8, svg: WEAPON_SVGS.default },
+            { name: "독살자", skill: "치사독 찌르기", mult: 3.2, svg: WEAPON_SVGS.default }
+        ]
+    };
+
+    // 직업별 상점 아이템 (모두 50 GOLD 균일가)
+    const SHOP_ITEMS_BY_JOB = {
+        "초보자": [
+            { id: "common_w_sword", name: "강철 장검", type: "weapon", val: 20, svg: WEAPON_SVGS.default },
+            { id: "common_w_axe", name: "낡은 도끼", type: "weapon", val: 25, svg: WEAPON_SVGS.axe },
+            { id: "common_s_slash", name: "강타", type: "skill", skillName: "강타", mult: 2.0 },
+            { id: "common_s_thunder", name: "연속베기", type: "skill", skillName: "연속베기", mult: 2.2 }
+        ],
+        "전사": [
+            { id: "warrior_w_greatsword", name: "대검", type: "weapon", val: 35, svg: WEAPON_SVGS.warrior },
+            { id: "warrior_w_axe", name: "파괴의 도끼", type: "weapon", val: 45, svg: WEAPON_SVGS.axe },
+            { id: "warrior_s_spin", name: "회전베기", type: "skill", skillName: "회전베기", mult: 2.7 },
+            { id: "warrior_s_rage", name: "광폭화", type: "skill", skillName: "광폭화", mult: 3.2 }
+        ],
+        "마법사": [
+            { id: "mage_w_staff", name: "마법지팡이", type: "weapon", val: 32, svg: WEAPON_SVGS.fireMage },
+            { id: "mage_w_sage", name: "현자의 지팡이", type: "weapon", val: 48, svg: WEAPON_SVGS.waterMage },
+            { id: "mage_s_fireball", name: "파이어볼", type: "skill", skillName: "파이어볼", mult: 3.0 },
+            { id: "mage_s_meteor", name: "메테오", type: "skill", skillName: "메테오", mult: 4.2 }
+        ],
+        "힐러": [
+            { id: "healer_w_staff", name: "성스러운 지팡이", type: "weapon", val: 28, svg: WEAPON_SVGS.waterMage },
+            { id: "healer_w_rod", name: "축복의 로드", type: "weapon", val: 38, svg: WEAPON_SVGS.elecMage },
+            { id: "healer_s_light", name: "천상의 빛", type: "skill", skillName: "천상의 빛", mult: 2.3 },
+            { id: "healer_s_bless", name: "축복의 강타", type: "skill", skillName: "축복의 강타", mult: 2.6 }
+        ],
+        "암살자": [
+            { id: "assassin_w_dagger", name: "그림자 단검", type: "weapon", val: 33, svg: WEAPON_SVGS.default },
+            { id: "assassin_w_poison", name: "맹독의 단검", type: "weapon", val: 43, svg: WEAPON_SVGS.default },
+            { id: "assassin_s_ambush", name: "암습", type: "skill", skillName: "암습", mult: 3.4 },
+            { id: "assassin_s_shadow", name: "환영 베기", type: "skill", skillName: "환영 베기", mult: 3.8 }
+        ]
+    };
+
+    let playerCount = 1;
+    let difficulty = 'easy';
+    let floor = 1, wave = 1, totalKills = 0, gold = 0;
+    let activePlayerIdx = 0;
+    let isTurnProcessing = false;
+    let jobQueue = [];
+    let bossJobQueue = [];
+    let forceBossNext = false;
+
+    const SETTINGS = {
+        easy: { playerHp: 200, playerAtk: 60, monsterHp: 100, monsterAtk: 10, potions: 4 },
+        hard: { playerHp: 80, playerAtk: 50, monsterHp: 150, monsterAtk: 20, potions: 2 }
+    };
+
+    let players = [];
+    let monster = { name: '', hp: 0, maxHp: 0, atk: 0, isBoss: false };
+
+    function selectMode(count, diff) {
+        playerCount = count; difficulty = diff;
+        floor = 1; wave = 1; totalKills = 0; gold = 0; activePlayerIdx = 0;
+        let cfg = SETTINGS[difficulty];
+        players = [];
+
+        for (let i = 0; i < playerCount; i++) {
+            players.push({
+                name: `용사 ${i + 1}`,
+                level: 1, exp: 0,
+                hp: cfg.playerHp, maxHp: cfg.playerHp,
+                atk: cfg.playerAtk, potions: cfg.potions,
+                job: "초보자", 
+                skills: [], // 스킬 다중 보유
+                currentSkillIdx: 0,
+                weaponSvg: WEAPON_SVGS.default, boughtItems: []
+            });
+        }
+
+        document.getElementById('start-screen').style.display = 'none';
+        logClear();
+        log(`[${playerCount}인용 / ${difficulty.toUpperCase()} 모드] 던전에 입장합니다!`);
+        spawnMonster();
+        renderPlayerCards();
+        updateUI();
+    }
+
+    function spawnMonster() {
+        let cfg = SETTINGS[difficulty];
+        let mSprite = document.getElementById('monster-sprite');
+
+        if (forceBossNext || (floor % 10 === 0 && wave === 5)) {
+            monster.isBoss = true;
+            monster.name = `[BOSS] 심연의 군주 (${floor}F)`;
+            let killScale = 1 + (totalKills * 0.15);
+            monster.maxHp = Math.floor(cfg.monsterHp * killScale * 2.5);
+            monster.hp = monster.maxHp;
+            monster.atk = Math.floor(cfg.monsterAtk * killScale * 1.5);
+            mSprite.style.backgroundImage = `url('${BOSS_SVG}')`;
+            mSprite.classList.add('boss');
+            log(`⚠️ [WARNING] 강력한 보스가 나타났습니다!`);
+            forceBossNext = false;
+        } else {
+            monster.isBoss = false;
+            mSprite.classList.remove('boss');
+            let mType = MONSTER_DATABASE[totalKills % MONSTER_DATABASE.length];
+            let killScale = 1 + (totalKills * 0.12);
+            monster.name = mType.name;
+            monster.maxHp = Math.floor(cfg.monsterHp * killScale);
+            monster.hp = monster.maxHp;
+            monster.atk = Math.floor(cfg.monsterAtk * killScale);
+            mSprite.style.backgroundImage = `url('${mType.svg}')`;
+            log(`▶ [${floor}층 ${wave}/5] ${monster.name} 등장!`);
+        }
+        updateUI();
+    }
+
+    function renderPlayerCards() {
+        let container = document.getElementById('player-status-container');
+        container.innerHTML = '';
+        players.forEach((p, idx) => {
+            let card = document.createElement('div');
+            card.className = `player-card ${idx === activePlayerIdx ? 'active' : ''}`;
+            card.innerHTML = `
+                <div style="font-size:8px; color:#f1c40f;">${p.name} [Lv.${p.level}]</div>
+                <div style="font-size:7px; color:#aaa; margin-top:2px;">직업: ${p.job}</div>
+                <div style="font-size:7px; color:#aaa; margin-top:2px;">HP: ${Math.max(0, p.hp)}/${p.maxHp}</div>
+                <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:${Math.max(0, (p.hp/p.maxHp)*100)}%; background-color:#2ecc71;"></div></div>
+                <div style="font-size:7px; color:#aaa; margin-top:4px;">EXP: ${p.exp}/5</div>
+                <div class="exp-bar-bg"><div class="exp-bar-fill" style="width:${(p.exp/5)*100}%;"></div></div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function updateUI() {
+        document.getElementById('floor-num').innerText = floor;
+        document.getElementById('wave-num').innerText = wave;
+        document.getElementById('gold-num').innerText = gold;
+
+        let curP = players[activePlayerIdx];
+        document.getElementById('potion-count').innerText = curP.potions;
+        document.getElementById('player-weapon').style.backgroundImage = `url('${curP.weaponSvg}')`;
+
+        document.getElementById('monster-name').innerText = monster.name;
+        document.getElementById('monster-hp-text').innerText = `${Math.max(0, monster.hp)}/${monster.maxHp}`;
+        document.getElementById('monster-hp-bar').style.width = Math.max(0, (monster.hp / monster.maxHp) * 100) + '%';
+
+        let skillBtn = document.getElementById("btn-skill");
+
+if (curP.skills.length > 0) {
+    skillBtn.disabled = false;
+    let currentSkill = curP.skills[curP.currentSkillIdx];
+    skillBtn.innerText = `✨ ${currentSkill.name}`;
+} else {
+    skillBtn.disabled = true;
+    skillBtn.innerText = "🔒 스킬 없음";
+}
+
+        renderPlayerCards();
+    }
+
+    /* 스킬 선택 창 열기 및 발사 */
+    function useSkill() {
+        let curP = players[activePlayerIdx];
+        if (curP.skills.length > 1) {
+            let list = document.getElementById('skill-options-list');
+            list.innerHTML = '';
+            curP.skills.forEach((sk, idx) => {
+                let btn = document.createElement('button');
+                btn.className = 'menu-btn';
+                btn.innerHTML = `✨ ${sk.name} (배율: x${sk.mult})`;
+                btn.onclick = () => {
+                    curP.currentSkillIdx = idx;
+                    document.getElementById('skill-select-screen').style.display = 'none';
+                    playerAction('skill');
+                };
+                list.appendChild(btn);
+            });
+            document.getElementById('skill-select-screen').style.display = 'flex';
+        } else {
+            playerAction('skill');
+        }
+    }
+
+    function closeSkillSelect() {
+        document.getElementById('skill-select-screen').style.display = 'none';
+    }
+
+    function playerAction(action) {
+        if (isTurnProcessing) return;
+        isTurnProcessing = true;
+
+        let curP = players[activePlayerIdx];
+
+        if (action === 'attack' || action === 'skill') {
+            let weapon = document.getElementById('player-weapon');
+            let mContainer = document.getElementById('monster-container');
+            weapon.classList.add('slash-anim');
+            setTimeout(() => weapon.classList.remove('slash-anim'), 250);
+
+            let multiplier = 1.0;
+            let skillName = "일반 공격";
+            if (action === 'skill' && curP.skills.length > 0) {
+                let activeSk = curP.skills[curP.currentSkillIdx];
+                multiplier = activeSk.mult;
+                skillName = activeSk.name;
+            }
+
+            let dmg = Math.floor(curP.atk * (0.9 + Math.random() * 0.2) * multiplier);
+            monster.hp -= dmg;
+
+            setTimeout(() => {
+                mContainer.classList.add('monster-hit');
+                setTimeout(() => mContainer.classList.remove('monster-hit'), 300);
+                log(`⚔️ [${curP.name}] ${skillName}! ${monster.name}에게 ${dmg} 데미지!`);
+                updateUI();
+
+                if (monster.hp <= 0) {
+                    setTimeout(onMonsterDefeated, 500);
+                } else {
+                    setTimeout(monsterTurn, 700);
+                }
+            }, 150);
+
+        } else if (action === 'heal') {
+            if (curP.potions > 0) {
+                curP.potions--;
+                let heal = Math.floor(curP.maxHp * 0.5);
+                curP.hp = Math.min(curP.maxHp, curP.hp + heal);
+                log(`🧪 [${curP.name}] 포션 사용! HP +${heal}`);
+                updateUI();
+                setTimeout(monsterTurn, 700);
+            } else {
+                isTurnProcessing = false;
+            }
+        }
+    }
+
+    function monsterTurn() {
+        activePlayerIdx = (activePlayerIdx + 1) % playerCount;
+        let targetP = players[activePlayerIdx];
+
+        if (targetP.hp <= 0) {
+            activePlayerIdx = (activePlayerIdx + 1) % playerCount;
+            targetP = players[activePlayerIdx];
+        }
+
+        let mContainer = document.getElementById('monster-container');
+        mContainer.style.transform = 'scale(1.2)';
+        setTimeout(() => mContainer.style.transform = 'scale(1)', 150);
+
+        let dmg = Math.floor(monster.atk * (0.9 + Math.random() * 0.2));
+        targetP.hp -= dmg;
+
+        setTimeout(() => {
+            document.getElementById('viewport').classList.add('player-hit');
+            setTimeout(() => document.getElementById('viewport').classList.remove('player-hit'), 300);
+
+            log(`💥 ${monster.name}의 공격! [${targetP.name}]이(가) ${dmg} 데미지를 입었습니다.`);
+            updateUI();
+
+            if (players.every(p => p.hp <= 0)) {
+                setTimeout(gameOver, 400);
+            } else {
+                isTurnProcessing = false;
+            }
+        }, 150);
+    }
+
+    function onMonsterDefeated() {
+        isTurnProcessing = false;
+        totalKills++;
+        let earnedGold = (monster.isBoss ? 100 : 15) + floor * 5;
+        gold += earnedGold;
+        log(`✨ ${monster.name} 처치! (+${earnedGold} Gold)`);
+
+        if (monster.isBoss) {
+            players.forEach(p => {
+                if (p.job !== "초보자" && !p.isSecondJob) {
+                    bossJobQueue.push(p);
+                }
+            });
+        }
+
+        players.forEach(p => {
+            if (p.hp > 0) {
+                p.exp++;
+                if (p.exp >= 5) {
+                    p.exp = 0; p.level++;
+                    p.maxHp += 30; p.hp = p.maxHp; p.atk += 10; p.potions++;
+                    log(`🎉 [${p.name}] LEVEL UP! (Lv.${p.level}) 체력 완충!`);
+
+                    if (p.level === 3 && p.job === "초보자") {
+                        jobQueue.push(p);
+                    }
+                }
+            }
+        });
+
+        if (players.some(p => p.exp === 0)) {
+            wave = 1; floor++;
+        } else {
+            wave++;
+        }
+
+        updateUI();
+
+        checkJobChange(() => {
+            checkBossJobChange(() => {
+                document.getElementById('path-screen').style.display = 'flex';
+            });
+        });
+    }
+
+    /* 갈림길 선택 */
+    function choosePath(type) {
+        document.getElementById('path-screen').style.display = 'none';
+
+        if (type === 'battle') {
+            log(`⚔️ 전투의 문을 선택했습니다.`);
+            spawnMonster();
+            isTurnProcessing = false;
+        } else if (type === 'boss') {
+            log(`🔥 강력한 보스의 방으로 들어섭니다!`);
+            forceBossNext = true;
+            spawnMonster();
+            isTurnProcessing = false;
+        } else if (type === 'treasure') {
+            document.getElementById('chest-screen').style.display = 'flex';
+        } else if (type === 'shop') {
+            openShop();
+        }
+    }
+
+    /* 🎁 보물상자 미니게임 (10~150 골드, 10 단위) */
+    function openChest(num) {
+    document.getElementById('chest-screen').style.display = 'none';
+
+    // 다른 상자는 다시 누를 수 없게
+    document.querySelectorAll("#chest-screen button").forEach(btn => {
+        btn.disabled = true;
+    });
+
+    // 코인 개수 (10~150골드)
+    let rewardGold = (Math.floor(Math.random() * 15) + 1) * 10;
+    gold += rewardGold;
+    updateUI();
+
+    // 코인 이미지와 획득량 표시
+    let coinPopup = document.createElement("div");
+    coinPopup.style.position = "absolute";
+    coinPopup.style.left = "50%";
+    coinPopup.style.top = "50%";
+    coinPopup.style.transform = "translate(-50%, -50%)";
+    coinPopup.style.background = "#222";
+    coinPopup.style.border = "4px solid gold";
+    coinPopup.style.padding = "30px";
+    coinPopup.style.fontSize = "28px";
+    coinPopup.style.zIndex = "9999";
+    coinPopup.style.textAlign = "center";
+    coinPopup.innerHTML = `
+        <div style="font-size:70px;">🪙</div>
+        <div>${rewardGold} GOLD 획득!</div>
+    `;
+
+    document.body.appendChild(coinPopup);
+
+    log(`🎁 ${num}번 상자를 열었습니다! (+${rewardGold} GOLD)`);
+
+    // 1.5초 후 몬스터 등장
+    setTimeout(() => {
+        coinPopup.remove();
+
+        spawnMonster();      // 바로 몬스터 생성
+        isTurnProcessing = false;
+
+        // 다음 보물방을 위해 버튼 다시 활성화
+        document.querySelectorAll("#chest-screen button").forEach(btn => {
+            btn.disabled = false;
+        });
+    }, 1500);
+}
+
+    /* 1차 전직 */
+    function checkJobChange(callback) {
+        if (jobQueue.length > 0) {
+            let p = jobQueue.shift();
+            document.getElementById('job-player-name').innerText = p.name;
+            document.getElementById('job-screen').style.display = 'flex';
+            window.currentJobPlayer = p;
+            window.jobCallback = callback;
+        } else {
+            callback();
+        }
+    }
+
+    function chooseJob(jobName) {
+        let p = window.currentJobPlayer;
+        p.job = jobName;
+        if (jobName === '전사') p.maxHp += 100, p.hp += 100, p.skills.push({ name: "강격", mult: 2.3 });
+        if (jobName === '마법사') p.atk += 40, p.skills.push({ name: "파이어볼", mult: 2.5 });
+        if (jobName === '힐러') p.maxHp += 60, p.hp += 60, p.skills.push({ name: "대회복", mult: 1.8 });
+        if (jobName === '암살자') p.atk += 25, p.skills.push({ name: "암습", mult: 3.0 });
+
+        p.currentSkillIdx = p.skills.length - 1;
+        log(`🌟 [${p.name}] 님이 [${jobName}] (으)로 전직했습니다!`);
+        document.getElementById('job-screen').style.display = 'none';
+        updateUI();
+        checkJobChange(window.jobCallback);
+    }
+
+    // 1차 직업명(2차 전직명 포함)을 ADVANCED_JOBS의 계열 키로 매칭
+    function getAdvancedJobKey(jobName) {
+        if (ADVANCED_JOBS[jobName]) return jobName;
+        if (jobName.includes("마법사")) return "마법사";
+        if (jobName.includes("전사") || jobName.includes("성기사")) return "전사";
+        if (jobName.includes("힐러") || jobName.includes("사제") || jobName.includes("드루이드")) return "힐러";
+        if (jobName.includes("암살") || jobName.includes("그림자") || jobName.includes("독")) return "암살자";
+        return "전사";
+    }
+
+    /* 2차 보스 전직 */
+    function checkBossJobChange(callback) {
+        if (bossJobQueue.length > 0) {
+            let p = bossJobQueue.shift();
+            let baseJob = getAdvancedJobKey(p.job);
+            let options = ADVANCED_JOBS[baseJob];
+
+            document.getElementById('job2-player-name').innerText = `${p.name} (현재: ${p.job})`;
+            let container = document.getElementById('job2-btn-container');
+            container.innerHTML = '';
+
+            options.forEach(opt => {
+                let btn = document.createElement('button');
+                btn.className = 'menu-btn';
+                btn.innerHTML = `🔮 ${opt.name}<br><span style="font-size:7px; color:#aaa;">[스킬: ${opt.skill}]</span>`;
+                btn.onclick = () => chooseJob2(p, opt);
+                container.appendChild(btn);
+            });
+
+            document.getElementById('job2-screen').style.display = 'flex';
+            window.bossJobCallback = callback;
+        } else {
+            callback();
+        }
+    }
+
+    function chooseJob2(p, jobOpt) {
+        p.job = jobOpt.name;
+        p.isSecondJob = true;
+        p.skills.push({ name: jobOpt.skill, mult: jobOpt.mult });
+        p.currentSkillIdx = p.skills.length - 1;
+        if (jobOpt.svg) p.weaponSvg = jobOpt.svg;
+
+        log(`🔥 [${p.name}] 님이 2차 전직 [${jobOpt.name}] (으)로 각성했습니다!`);
+        document.getElementById('job2-screen').style.display = 'none';
+        updateUI();
+        checkBossJobChange(window.bossJobCallback);
+    }
+
+    // 2차 전직명(예: 불마법사, 광전사)도 알맞은 상점 계열로 매칭
+    function getShopJobKey(jobName) {
+        if (SHOP_ITEMS_BY_JOB[jobName]) return jobName;
+        if (jobName.includes("마법사")) return "마법사";
+        if (jobName.includes("전사") || jobName.includes("성기사")) return "전사";
+        if (jobName.includes("힐러") || jobName.includes("사제") || jobName.includes("드루이드")) return "힐러";
+        if (jobName.includes("암살") || jobName.includes("그림자") || jobName.includes("독")) return "암살자";
+        return "초보자";
+    }
+
+    /* 상점 (직업별 무기/스킬, 50 GOLD 단일가) */
+    function openShop() {
+        let curP = players[activePlayerIdx];
+        document.getElementById('shop-gold').innerText = gold;
+        let listContainer = document.getElementById('shop-items-list');
+        listContainer.innerHTML = '';
+
+        let items = SHOP_ITEMS_BY_JOB[getShopJobKey(curP.job)];
+
+        items.forEach(item => {
+            let isBought = curP.boughtItems.includes(item.id);
+            let div = document.createElement('div');
+            div.className = 'shop-item';
+            div.innerHTML = `
+                <div>
+                    <div style="font-size:9px; color:#f1c40f;">${item.name}</div>
+                    <div style="font-size:7px; color:#aaa; margin-top:2px;">가격: 50 Gold</div>
+                </div>
+                <button class="menu-btn" style="width:80px; padding:5px; font-size:8px;" 
+                    onclick="buyItem('${item.id}', '${item.type}', ${item.val || 0}, '${item.skillName || ''}', ${item.mult || 2.0}, '${item.svg || ''}')"
+                    ${isBought ? 'disabled' : ''}>
+                    ${isBought ? '구매완료' : '구매'}
+                </button>
+            `;
+            listContainer.appendChild(div);
+        });
+
+        document.getElementById('shop-screen').style.display = 'flex';
+    }
+
+    function buyItem(id, type, val, skillName, mult, weaponSvg) {
+        if (gold < 50) { alert('골드가 부족합니다! (50 GOLD 필요)'); return; }
+        gold -= 50;
+        let curP = players[activePlayerIdx];
+        curP.boughtItems.push(id);
+
+        if (type === 'weapon') {
+            curP.atk += val;
+            curP.weaponSvg = weaponSvg;
+            log(`🗡️ [${curP.name}] 무기 구매! 공격력 +${val}`);
+        } else if (type === 'skill') {
+            curP.skills.push({
+                name: skillName,
+                mult: mult
+            });
+            curP.currentSkillIdx = curP.skills.length - 1;
+            log(`✨ [${curP.name}] 새로운 스킬 [${skillName}] 습득!`);
+        }
+
+        updateUI();
+        openShop(); // 상점 목록 새로고침 (구매완료 표시 갱신), 상점은 계속 열어둠
+    }
+
+    function closeShop() {
+        document.getElementById('shop-screen').style.display = 'none';
+        document.getElementById('path-screen').style.display = 'flex';
+    }
+
+    function gameOver() {
+        log(`☠️ 용사 일행이 모두 쓰러졌습니다...`);
+        alert(`GAME OVER\n최종 도달: ${floor}층\n획득 골드: ${gold}`);
+        document.getElementById('start-screen').style.display = 'flex';
+        isTurnProcessing = false;
+    }
+
+    function log(msg) {
+        let logBox = document.getElementById('battle-log');
+        logBox.innerHTML += msg + '<br>';
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function logClear() {
+        document.getElementById('battle-log').innerHTML = '';
+    }
+</script>
+</body>
+</html>

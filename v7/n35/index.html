@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Hero Shooter - Game Over Restart</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a2e; font-family: sans-serif; }
+        
+        #menu-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; z-index: 100;
+        }
+        #menu-screen h1 { font-size: 48px; margin-bottom: 10px; color: #ffaa00; text-shadow: 0 0 10px rgba(255,170,0,0.5); }
+        #menu-screen p { font-size: 18px; color: #ccc; margin-bottom: 30px; }
+        
+        .menu-btn {
+            background-color: #e94560; color: white; border: none;
+            padding: 15px 40px; font-size: 20px; font-weight: bold;
+            border-radius: 8px; cursor: pointer; transition: 0.2s;
+            box-shadow: 0 4px 15px rgba(233,69,96,0.4); margin: 10px; width: 220px;
+        }
+        .menu-btn:hover { background-color: #ff6b81; transform: scale(1.05); }
+
+        #tutorial-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 12, 41, 0.95); display: none; flex-direction: column;
+            justify-content: center; align-items: center; color: white; z-index: 100;
+            text-align: center; padding: 20px;
+        }
+        #tutorial-screen h2 { color: #00ff00; font-size: 36px; margin-bottom: 20px; }
+        #tutorial-screen p { font-size: 20px; line-height: 1.6; color: #ddd; margin-bottom: 30px; }
+
+        #hud {
+            position: absolute; bottom: 20px; right: 20px;
+            color: white; font-size: 20px; font-weight: bold; 
+            background: rgba(0,0,0,0.6); padding: 15px 25px; 
+            border-radius: 8px; z-index: 10; text-align: right;
+            display: none; pointer-events: none;
+        }
+        #player-hp {
+            position: absolute; top: 20px; left: 20px;
+            color: #00ff00; font-size: 24px; font-weight: bold;
+            background: rgba(0,0,0,0.6); padding: 10px 20px;
+            border-radius: 8px; z-index: 10; display: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8); pointer-events: none;
+        }
+        #stage-banner {
+            position: absolute; top: 20px; left: 50%;
+            transform: translateX(-50%); color: #ff3333;
+            font-size: 28px; font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10;
+            display: none; pointer-events: none;
+        }
+
+        #minimap {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 140px; height: 140px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; display: none;
+            overflow: hidden; z-index: 10;
+            pointer-events: none;
+        }
+        #minimap-canvas { width: 100%; height: 100%; }
+
+        #stage-clear-modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: none; flex-direction: column;
+            justify-content: center; align-items: center; color: white; z-index: 200;
+        }
+        #stage-clear-modal h2 { color: #00ff00; font-size: 40px; margin-bottom: 15px; }
+        #stage-clear-modal p { font-size: 22px; color: #ccc; margin-bottom: 30px; }
+
+        /* 게임 오버 창 스타일 수정 */
+        #game-over {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 200;
+        }
+        #game-over h1 { color: #ff3333; font-size: 64px; margin: 0 0 10px 0; text-shadow: 0 0 15px rgba(255,0,0,0.5); }
+        #game-over p { font-size: 24px; color: #ccc; margin-bottom: 30px; margin-top: 0; }
+
+        #game-clear-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); display: none; flex-direction: column;
+            justify-content: center; align-items: center; color: #ffaa00; z-index: 200;
+            font-size: 48px; font-weight: bold; text-shadow: 0 0 15px rgba(255,170,0,0.5);
+        }
+        .sub-text { font-size: 20px; color: #ccc; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div id="menu-screen">
+        <h1>VALORANT x BRAWL STARS</h1>
+        <p>좀비 웨이브 서바이벌 슈팅 게임 (총 5 스테이지)</p>
+        <button class="menu-btn" onclick="startSurvivalGame()">게임 시작</button>
+        <button class="menu-btn" style="background-color: #3b82f6;" onclick="openTutorial()">튜토리얼</button>
+    </div>
+
+    <div id="tutorial-screen">
+        <h2>게임 조작 가이드</h2>
+        <p>
+            <b>[ 이동 ]</b> WASD 키를 눌러 캐릭터를 움직이세요.<br>
+            <b>[ 조준 및 사격 ]</b> 마우스 커서 방향으로 총구가 회전하며, 좌클릭 시 사격합니다.<br>
+            <b>[ 무기 교체 ]</b> 1번(쉐리프), 2번(밴달), 3번(오퍼레이터), 4번(오딘)<br>
+            <b>[ 재장전 ]</b> 탄약이 부족할 때 [ R ] 키를 누르세요.<br>
+            <b>[ 목표 ]</b> 총 5개의 스테이지를 클리어하여 생존하세요!
+        </p>
+        <button class="menu-btn" onclick="closeTutorial()">메뉴로 돌아가기</button>
+    </div>
+
+    <div id="stage-clear-modal">
+        <h2 id="stage-clear-title">STAGE 1 클리어!</h2>
+        <p>다음 스테이지로 넘어가시겠습니까?</p>
+        <div>
+            <button class="menu-btn" style="background-color: #22c55e; width: 150px; margin-right: 15px;" onclick="onStageClearYes()">예</button>
+            <button class="menu-btn" style="background-color: #ef4444; width: 150px;" onclick="onStageClearNo()">아니오</button>
+        </div>
+    </div>
+
+    <!-- 게임 오버 창에 재도전 여부 추가 -->
+    <div id="game-over">
+        <h1>GAME OVER</h1>
+        <p>다시 시작하시겠습니까?</p>
+        <div>
+            <button class="menu-btn" style="background-color: #22c55e; width: 150px; margin-right: 15px;" onclick="onRestartYes()">예</button>
+            <button class="menu-btn" style="background-color: #ef4444; width: 150px;" onclick="onRestartNo()">아니오</button>
+        </div>
+    </div>
+
+    <div id="game-clear-screen">
+        VICTORY!
+        <p class="sub-text" style="color: white;">축하합니다! 5개의 스테이지를 모두 클리어했습니다!</p>
+        <button class="menu-btn" style="margin-top: 30px; width: 220px;" onclick="location.reload()">메뉴로 돌아가기</button>
+    </div>
+
+    <div id="stage-banner">STAGE 1</div>
+    <div id="player-hp">HP: 100 / 100</div>
+    
+    <div id="minimap">
+        <canvas id="minimap-canvas" width="140" height="140"></canvas>
+    </div>
+
+    <div id="hud">
+        <div id="weapon-name">무기: 밴달</div>
+        <div id="ammo-count" style="color: #00ff00; margin-top: 5px;">탄약: 25 / 75</div>
+        <div id="zombie-count" style="color: #ff5555; margin-top: 5px;">남은 좀비: 0</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e); 
+        scene.fog = new THREE.Fog(0x1a1a2e, 40, 120); 
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const playerRadius = 0.6;
+        const playerPos = new THREE.Vector3(0, 0, 25);
+
+        let playerHp = 100;
+        const maxPlayerHp = 100;
+        let isGameOver = false;
+        let isStageClearPaused = false; 
+
+        camera.position.set(0, 32, 42); 
+        camera.lookAt(playerPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 50, 20);
+        scene.add(dirLight);
+
+        const playerGroup = new THREE.Group();
+        scene.add(playerGroup);
+
+        const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshLambertMaterial({ color: 0x3b82f6 }));
+        bodyMesh.position.y = 0.4;
+        playerGroup.add(bodyMesh);
+
+        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshLambertMaterial({ color: 0xfcd34d }));
+        headMesh.position.set(0, 1.0, 0);
+        playerGroup.add(headMesh);
+
+        const gunMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.9), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
+        gunMesh.position.set(0.3, 0.5, -0.6);
+        playerGroup.add(gunMesh);
+
+        const walls = []; 
+        const collidableObjects = []; 
+
+        function createTexturedObject(w, h, d, x, y, z, color, isBush = false) {
+            const geo = new THREE.BoxGeometry(w, h, d);
+            const mat = new THREE.MeshLambertMaterial({ color: color, transparent: isBush, opacity: isBush ? 0.6 : 1.0 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y + h / 2, z); 
+            scene.add(mesh);
+
+            if (!isBush && h > 1) {
+                const wireGeo = new THREE.EdgesGeometry(geo);
+                const wireMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+                const wireframe = new THREE.LineSegments(wireGeo, wireMat);
+                mesh.add(wireframe);
+            }
+            
+            if (!isBush) {
+                walls.push(mesh);
+                collidableObjects.push(mesh);
+            }
+            return mesh;
+        }
+
+        const gridHelper = new THREE.GridHelper(250, 50, 0x444455, 0x2a2a3b);
+        gridHelper.position.y = -0.49;
+        scene.add(gridHelper);
+
+        createTexturedObject(250, 1, 250, 0, -1, 0, 0x222233); 
+        createTexturedObject(250, 20, 2, 0, 0, -100, 0x444455); 
+        createTexturedObject(250, 20, 2, 0, 0, 100, 0x444455); 
+        createTexturedObject(2, 20, 200, -125, 0, 0, 0x444455); 
+        createTexturedObject(2, 20, 200, 125, 0, 0, 0x444455); 
+
+        createTexturedObject(15, 2, 10, -28, 0, -38, 0x2e8b57, true);
+        createTexturedObject(15, 2, 10, 28, 0, -38, 0x2e8b57, true);
+        createTexturedObject(15, 2, 10, -28, 0, 38, 0x2e8b57, true);
+        createTexturedObject(15, 2, 10, 28, 0, 38, 0x2e8b57, true);
+
+        createTexturedObject(6, 4, 6, 0, 0, 0, 0x3b82f6); 
+        createTexturedObject(10, 3, 10, -25, 0, -20, 0x4f4f6b); 
+        createTexturedObject(10, 3, 10, 25, 0, -20, 0x4f4f6b); 
+        createTexturedObject(10, 3, 10, -25, 0, 20, 0x4f4f6b); 
+        createTexturedObject(10, 3, 10, 25, 0, 20, 0x4f4f6b); 
+
+        let currentStage = 0;
+        let zombies = [];
+        const zombieRadius = 0.4;
+        
+        function spawnZombies() {
+            for (let i = 0; i < zombies.length; i++) {
+                scene.remove(zombies[i].mesh);
+            }
+            zombies = [];
+
+            document.getElementById('stage-banner').innerText = `STAGE ${currentStage}`;
+            const zombieCount = 3 + (currentStage * 2);
+            
+            for (let i = 0; i < zombieCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 35 + Math.random() * 15;
+                const zx = Math.cos(angle) * radius;
+                const zz = Math.sin(angle) * radius;
+
+                const zGeo = new THREE.BoxGeometry(0.7, 0.8, 0.7);
+                const zMat = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+                const zombieMesh = new THREE.Mesh(zGeo, zMat);
+                zombieMesh.position.set(zx, 0.4, zz);
+                scene.add(zombieMesh);
+
+                zombies.push({
+                    mesh: zombieMesh,
+                    speed: 0.11 + (currentStage * 0.008),
+                    hp: 2,
+                    angleOffset: (Math.random() - 0.5) * 1.5,
+                    lastAttackTime: 0
+                });
+            }
+            updateHUD();
+        }
+
+        function checkZombieCollision(x, z) {
+            const zBox = new THREE.Box3(
+                new THREE.Vector3(x - zombieRadius, 0.1, z - zombieRadius),
+                new THREE.Vector3(x + zombieRadius, 1.5, z + zombieRadius)
+            );
+            for (let i = 0; i < walls.length; i++) {
+                if (i > 0 && zBox.intersectsBox(new THREE.Box3().setFromObject(walls[i]))) return true;
+            }
+            return false;
+        }
+
+        const arsenal = {
+            'Digit1': { name: '쉐리프', magazine: 6, maxMag: 6, reserve: 24, rpm: 160, auto: false, color: 0xcccccc },
+            'Digit2': { name: '밴달', magazine: 25, maxMag: 25, reserve: 75, rpm: 600, auto: true, color: 0xffaa00 },
+            'Digit3': { name: '오퍼레이터', magazine: 5, maxMag: 5, reserve: 15, rpm: 40, auto: false, color: 0xff3333 },
+            'Digit4': { name: '오딘', magazine: 100, maxMag: 100, reserve: 200, rpm: 950, auto: true, color: 0xffdd00 }
+        };
+
+        let currentWeaponKey = 'Digit2';
+        let currentWeapon = arsenal[currentWeaponKey];
+        let isReloading = false;
+
+        // 게임 시작 및 리스타트 시 총알 완전 초기화
+        function resetAmmo() {
+            arsenal['Digit1'].magazine = 6; arsenal['Digit1'].reserve = 24;
+            arsenal['Digit2'].magazine = 25; arsenal['Digit2'].reserve = 75;
+            arsenal['Digit3'].magazine = 5; arsenal['Digit3'].reserve = 15;
+            arsenal['Digit4'].magazine = 100; arsenal['Digit4'].reserve = 200;
+            equipWeapon('Digit2'); // 밴달 기본 장착
+        }
+
+        function updateHUD() {
+            document.getElementById('weapon-name').innerText = '무기: ' + currentWeapon.name;
+            document.getElementById('ammo-count').innerText = `탄약: ${currentWeapon.magazine} / ${currentWeapon.reserve}`;
+            document.getElementById('zombie-count').innerText = `남은 좀비: ${zombies.length}`;
+            document.getElementById('player-hp').innerText = `HP: ${playerHp} / ${maxPlayerHp}`;
+        }
+
+        function equipWeapon(key) {
+            if(!arsenal[key]) return;
+            currentWeaponKey = key;
+            currentWeapon = arsenal[key];
+            isReloading = false;
+            updateHUD();
+        }
+
+        let gameStarted = false;
+        const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false, KeyR: false };
+        
+        function startSurvivalGame() {
+            document.getElementById('menu-screen').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('player-hp').style.display = 'block';
+            document.getElementById('stage-banner').style.display = 'block';
+            document.getElementById('minimap').style.display = 'block';
+            gameStarted = true;
+            isGameOver = false;
+            isStageClearPaused = false;
+            playerHp = maxPlayerHp;
+            currentStage = 1;
+            
+            resetAmmo();
+            spawnZombies();
+        }
+
+        function onStageClearYes() {
+            document.getElementById('stage-clear-modal').style.display = 'none';
+            isStageClearPaused = false;
+            currentStage++;
+            spawnZombies();
+        }
+
+        function onStageClearNo() {
+            document.getElementById('stage-clear-modal').style.display = 'none';
+            returnToMenu();
+        }
+
+        // 게임 오버 - [예] 클릭 시
+        function onRestartYes() {
+            document.getElementById('game-over').style.display = 'none';
+            playerPos.set(0, 0, 25); // 플레이어 위치 원상복구
+            startSurvivalGame();
+        }
+
+        // 게임 오버 - [아니오] 클릭 시
+        function onRestartNo() {
+            document.getElementById('game-over').style.display = 'none';
+            returnToMenu();
+        }
+
+        // 메인 메뉴로 완전 복귀하는 함수
+        function returnToMenu() {
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('player-hp').style.display = 'none';
+            document.getElementById('stage-banner').style.display = 'none';
+            document.getElementById('minimap').style.display = 'none';
+            document.getElementById('menu-screen').style.display = 'flex';
+            
+            gameStarted = false;
+            isGameOver = false;
+            isStageClearPaused = false;
+
+            for (let i = 0; i < zombies.length; i++) {
+                scene.remove(zombies[i].mesh);
+            }
+            zombies = [];
+            playerPos.set(0, 0, 25);
+        }
+
+        function openTutorial() {
+            document.getElementById('menu-screen').style.display = 'none';
+            document.getElementById('tutorial-screen').style.display = 'flex';
+        }
+
+        function closeTutorial() {
+            document.getElementById('tutorial-screen').style.display = 'none';
+            document.getElementById('menu-screen').style.display = 'flex';
+        }
+
+        document.addEventListener('keydown', (e) => { 
+            if (!gameStarted || isGameOver || isStageClearPaused) return;
+            if(keys[e.code] !== undefined) keys[e.code] = true; 
+            if(arsenal[e.code]) equipWeapon(e.code);
+            if(e.code === 'KeyR') reload();
+        });
+        document.addEventListener('keyup', (e) => { 
+            if(keys[e.code] !== undefined) keys[e.code] = false; 
+        });
+
+        const mouse = new THREE.Vector2();
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const raycaster = new THREE.Raycaster();
+        let mouseWorldPos = new THREE.Vector3();
+
+        window.addEventListener('mousemove', (e) => {
+            if (!gameStarted || isGameOver || isStageClearPaused) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            raycaster.ray.intersectPlane(plane, mouseWorldPos);
+        });
+
+        function reload() {
+            if (isReloading || currentWeapon.magazine === currentWeapon.maxMag || currentWeapon.reserve <= 0) return;
+            isReloading = true;
+            document.getElementById('ammo-count').innerText = "재장전 중...";
+            
+            setTimeout(() => {
+                const needed = currentWeapon.maxMag - currentWeapon.magazine;
+                const reloadAmount = Math.min(needed, currentWeapon.reserve);
+                currentWeapon.magazine += reloadAmount;
+                currentWeapon.reserve -= reloadAmount;
+                isReloading = false;
+                updateHUD();
+            }, 600); 
+        }
+
+        let isMouseDown = false;
+        let lastShootTime = 0;
+        const bullets = [];
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && gameStarted && !isGameOver && !isStageClearPaused) {
+                isMouseDown = true;
+                if (!currentWeapon.auto) shoot();
+            }
+        });
+        window.addEventListener('mouseup', (e) => { if (e.button === 0) isMouseDown = false; });
+
+        function shoot() {
+            if (isReloading || zombies.length === 0) return;
+            const now = Date.now();
+            const cooldown = 60000 / currentWeapon.rpm;
+
+            if (now - lastShootTime >= cooldown) {
+                if (currentWeapon.magazine <= 0) {
+                    reload();
+                    return;
+                }
+
+                currentWeapon.magazine--;
+                updateHUD();
+
+                const bulletGeo = new THREE.SphereGeometry(0.25, 8, 8);
+                const bulletMat = new THREE.MeshBasicMaterial({ color: currentWeapon.color });
+                const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+                
+                bullet.position.copy(playerPos);
+                bullet.position.y = 0.5;
+
+                const shootDir = new THREE.Vector3().subVectors(mouseWorldPos, playerPos);
+                shootDir.y = 0;
+                shootDir.normalize();
+
+                bullets.push({ mesh: bullet, dir: shootDir, speed: 0.8, life: 80 });
+                scene.add(bullet);
+
+                lastShootTime = now;
+            }
+        }
+
+        function checkPlayerCollision(x, z) {
+            const playerBox = new THREE.Box3(
+                new THREE.Vector3(x - playerRadius, 0, z - playerRadius),
+                new THREE.Vector3(x + playerRadius, 2, z + playerRadius)
+            );
+            for (let i = 0; i < walls.length; i++) {
+                if (playerBox.intersectsBox(new THREE.Box3().setFromObject(walls[i]))) return true;
+            }
+            return false;
+        }
+
+        const minimapCanvas = document.getElementById('minimap-canvas');
+        const ctx = minimapCanvas.getContext('2d');
+        const mapRadiusScale = 45; 
+
+        function drawMinimap() {
+            ctx.clearRect(0, 0, 140, 140);
+
+            ctx.fillStyle = 'rgba(20, 20, 35, 0.8)';
+            ctx.beginPath();
+            ctx.arc(70, 70, 68, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const center = 70;
+
+            ctx.fillStyle = '#666677';
+            for (let i = 1; i < walls.length; i++) {
+                const wObj = walls[i];
+                const wPos = wObj.position;
+                
+                const relX = wPos.x - playerPos.x;
+                const relZ = wPos.z - playerPos.z;
+
+                const mapX = center + (relX / mapRadiusScale) * 60;
+                const mapY = center + (relZ / mapRadiusScale) * 60;
+
+                if (Math.hypot(mapX - center, mapY - center) < 64) {
+                    ctx.fillRect(mapX - 2, mapY - 2, 4, 4);
+                }
+            }
+
+            ctx.fillStyle = '#ff3333';
+            for (let i = 0; i < zombies.length; i++) {
+                const zPos = zombies[i].mesh.position;
+                const relX = zPos.x - playerPos.x;
+                const relZ = zPos.z - playerPos.z;
+
+                const mapX = center + (relX / mapRadiusScale) * 60;
+                const mapY = center + (relZ / mapRadiusScale) * 60;
+
+                if (Math.hypot(mapX - center, mapY - center) < 62) {
+                    ctx.beginPath();
+                    ctx.arc(mapX, mapY, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.fillStyle = '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(center, center, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        const speed = 0.18;
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            if (gameStarted && !isGameOver && !isStageClearPaused) {
+                if (isMouseDown && currentWeapon.auto) shoot();
+
+                let moveX = 0;
+                let moveZ = 0;
+                if (keys.KeyW) moveZ -= speed;
+                if (keys.KeyS) moveZ += speed;
+                if (keys.KeyA) moveX -= speed;
+                if (keys.KeyD) moveX += speed;
+
+                if (moveX !== 0 && moveZ !== 0) {
+                    moveX *= 0.7071;
+                    moveZ *= 0.7071;
+                }
+
+                if (!checkPlayerCollision(playerPos.x + moveX, playerPos.z)) playerPos.x += moveX;
+                if (!checkPlayerCollision(playerPos.x, playerPos.z + moveZ)) playerPos.z += moveZ;
+
+                playerGroup.position.copy(playerPos);
+                playerGroup.lookAt(new THREE.Vector3(mouseWorldPos.x, playerPos.y, mouseWorldPos.z));
+
+                camera.position.x = THREE.MathUtils.lerp(camera.position.x, playerPos.x, 0.1);
+                camera.position.z = THREE.MathUtils.lerp(camera.position.z, playerPos.z + 17, 0.1);
+                camera.lookAt(playerPos.x, 0, playerPos.z);
+
+                const now = Date.now();
+                for (let i = 0; i < zombies.length; i++) {
+                    const z = zombies[i];
+                    const zPos = z.mesh.position;
+                    
+                    const zDir = new THREE.Vector3().subVectors(playerPos, zPos);
+                    zDir.y = 0;
+                    const distanceToPlayer = zDir.length();
+                    zDir.normalize();
+
+                    if (distanceToPlayer < 1.0) {
+                        if (now - z.lastAttackTime > 1000) {
+                            playerHp -= 10;
+                            updateHUD();
+                            z.lastAttackTime = now;
+
+                            bodyMesh.material.color.setHex(0xff0000);
+                            setTimeout(() => { bodyMesh.material.color.setHex(0x3b82f6); }, 200);
+
+                            if (playerHp <= 0) {
+                                isGameOver = true;
+                                document.getElementById('game-over').style.display = 'flex';
+                            }
+                        }
+                    }
+
+                    const lookAheadDist = 1.2;
+                    const checkX = zPos.x + zDir.x * lookAheadDist;
+                    const checkZ = zPos.z + zDir.z * lookAheadDist;
+
+                    if (checkZombieCollision(checkX, checkZ)) {
+                        z.angleOffset += 0.08;
+                    } else {
+                        z.angleOffset *= 0.92;
+                    }
+
+                    const idealDir = zDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), z.angleOffset);
+
+                    const nextX = zPos.x + idealDir.x * z.speed;
+                    if (!checkZombieCollision(nextX, zPos.z)) {
+                        zPos.x = nextX;
+                    } else {
+                        z.angleOffset += 1.5;
+                    }
+
+                    const nextZ = zPos.z + idealDir.z * z.speed;
+                    if (!checkZombieCollision(zPos.x, nextZ)) {
+                        zPos.z = nextZ;
+                    } else {
+                        z.angleOffset += 1.5;
+                    }
+
+                    z.mesh.lookAt(playerPos);
+                }
+
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const b = bullets[i];
+                    b.mesh.position.addScaledVector(b.dir, b.speed);
+                    b.life--;
+
+                    const bBox = new THREE.Box3().setFromObject(b.mesh);
+                    let hit = false;
+                    let hitZombieIndex = -1;
+
+                    for (let j = 0; j < zombies.length; j++) {
+                        const zBox = new THREE.Box3().setFromObject(zombies[j].mesh);
+                        if (bBox.intersectsBox(zBox)) {
+                            hitZombieIndex = j;
+                            hit = true;
+                            break;
+                        }
+                    }
+
+                    if (hitZombieIndex !== -1) {
+                        zombies[hitZombieIndex].hp--;
+                        if (zombies[hitZombieIndex].hp <= 0) {
+                            scene.remove(zombies[hitZombieIndex].mesh);
+                            zombies.splice(hitZombieIndex, 1);
+                            updateHUD();
+
+                            if (zombies.length === 0) {
+                                if (currentStage >= 5) {
+                                    document.getElementById('game-clear-screen').style.display = 'flex';
+                                    document.getElementById('hud').style.display = 'none';
+                                    document.getElementById('player-hp').style.display = 'none';
+                                    document.getElementById('stage-banner').style.display = 'none';
+                                    document.getElementById('minimap').style.display = 'none';
+                                    isGameOver = true;
+                                } else {
+                                    document.getElementById('stage-clear-title').innerText = `STAGE ${currentStage} 클리어!`;
+                                    document.getElementById('stage-clear-modal').style.display = 'flex';
+                                    isStageClearPaused = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!hit) {
+                        for (let k = 0; k < walls.length; k++) {
+                            if (bBox.intersectsBox(new THREE.Box3().setFromObject(walls[k]))) {
+                                hit = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hit || b.life <= 0) {
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                drawMinimap();
+            }
+            renderer.render(scene, camera);
+        }
+        gameLoop();
+    </script>
+</body>
+</html>

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>네온 벽돌깨기</title>
+<style>
+body{
+    margin:0;
+    background:#050510;
+    color:white;
+    text-align:center;
+    font-family:Arial;
+}
+
+#score{
+    font-size:22px;
+    padding:10px;
+}
+
+canvas{
+    background:#09091f;
+    border:2px solid #333;
+    display:block;
+    margin:auto;
+}
+
+#message{
+    position:absolute;
+    top:35%;
+    width:100%;
+    display:none;
+    font-size:45px;
+    text-shadow:0 0 20px white;
+}
+
+button{
+    padding:12px 30px;
+    font-size:20px;
+    border-radius:10px;
+    background:#00ffff;
+    border:0;
+}
+</style>
+</head>
+
+<body>
+
+<div id="score">
+점수 : <span id="scoreText">0</span>
+</div>
+
+<canvas id="game" width="800" height="600"></canvas>
+
+<div id="message">
+<div id="result"></div>
+<br>
+<button onclick="restart()">다시하기</button>
+</div>
+
+
+<script>
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let paddle;
+let balls=[];
+let bricks=[];
+let score=0;
+let running=true;
+
+let left=false;
+let right=false;
+
+
+const brickColors=[
+"#00ffff",
+"#00ff66",
+"#ffff00",
+"#ff8800",
+"#ff00ff",
+"#9900ff"
+];
+
+const ballColors=[
+"#008cff",
+"#ff7700",
+"#9900ff"
+];
+
+
+
+function init(){
+
+score=0;
+running=true;
+
+document.getElementById("scoreText").innerHTML=0;
+document.getElementById("message").style.display="none";
+
+
+paddle={
+x:330,
+y:560,
+w:140,
+h:15,
+speed:8
+};
+
+
+balls=[
+{
+x:400,
+y:520,
+dx:4,
+dy:-4,
+color:0
+}
+];
+
+
+bricks=[];
+
+
+let bw=45;
+let bh=20;
+
+
+// 15 x 12 = 180개
+for(let r=0;r<12;r++){
+
+for(let c=0;c<15;c++){
+
+
+bricks.push({
+
+x:c*bw+55,
+y:r*bh+40,
+
+w:bw-4,
+h:bh-4,
+
+alive:true,
+
+// -- 벽돌 여러 개
+power:(Math.random()<0.05),
+
+row:r%6
+
+});
+
+
+}
+
+}
+
+
+}
+
+
+
+
+document.addEventListener("keydown",e=>{
+
+if(e.key==="ArrowLeft")
+left=true;
+
+if(e.key==="ArrowRight")
+right=true;
+
+});
+
+
+document.addEventListener("keyup",e=>{
+
+if(e.key==="ArrowLeft")
+left=false;
+
+if(e.key==="ArrowRight")
+right=false;
+
+});
+
+
+canvas.addEventListener("mousemove",e=>{
+
+let rect=canvas.getBoundingClientRect();
+
+paddle.x=e.clientX-rect.left-paddle.w/2;
+
+});
+
+
+
+function draw(){
+
+ctx.clearRect(0,0,800,600);
+
+drawBricks();
+drawPaddle();
+
+
+balls.forEach(ball=>{
+
+ctx.beginPath();
+ctx.arc(ball.x,ball.y,8,0,Math.PI*2);
+
+ctx.fillStyle=ballColors[ball.color];
+
+ctx.shadowBlur=20;
+ctx.shadowColor=ballColors[ball.color];
+
+ctx.fill();
+
+ctx.shadowBlur=0;
+
+});
+
+
+if(running){
+
+update();
+
+requestAnimationFrame(draw);
+
+}
+
+}
+
+
+
+function drawPaddle(){
+
+ctx.fillStyle="#00ffff";
+
+ctx.shadowBlur=20;
+ctx.shadowColor="#00ffff";
+
+ctx.fillRect(
+paddle.x,
+paddle.y,
+paddle.w,
+paddle.h
+);
+
+ctx.shadowBlur=0;
+
+}
+
+
+
+function drawBricks(){
+
+bricks.forEach(b=>{
+
+if(!b.alive)return;
+
+
+ctx.fillStyle=brickColors[b.row];
+
+ctx.shadowBlur=15;
+ctx.shadowColor=brickColors[b.row];
+
+ctx.fillRect(
+b.x,
+b.y,
+b.w,
+b.h
+);
+
+ctx.shadowBlur=0;
+
+
+if(b.power){
+
+ctx.fillStyle="white";
+ctx.font="18px Arial";
+
+ctx.fillText(
+"--",
+b.x+12,
+b.y+16
+);
+
+}
+
+});
+
+}
+
+function update(){
+
+
+if(left)
+paddle.x-=paddle.speed;
+
+if(right)
+paddle.x+=paddle.speed;
+
+
+paddle.x=Math.max(
+0,
+Math.min(800-paddle.w,paddle.x)
+);
+
+
+
+balls.forEach(ball=>{
+
+
+ball.x+=ball.dx;
+ball.y+=ball.dy;
+
+
+
+if(ball.x<=0 || ball.x>=800){
+
+ball.dx*=-1;
+changeColor(ball);
+
+}
+
+
+
+if(ball.y<=0){
+
+ball.dy*=-1;
+changeColor(ball);
+
+}
+
+
+
+
+// 패들 충돌
+if(
+ball.y+8>=paddle.y &&
+ball.x>=paddle.x &&
+ball.x<=paddle.x+paddle.w &&
+ball.dy>0
+){
+
+
+let hit=
+(ball.x-(paddle.x+paddle.w/2))
+/(paddle.w/2);
+
+
+ball.dx=hit*7;
+ball.dy=-Math.abs(ball.dy);
+
+changeColor(ball);
+
+}
+
+
+
+
+
+// 벽돌 충돌
+
+bricks.forEach(brick=>{
+
+
+if(
+brick.alive &&
+ball.x>brick.x &&
+ball.x<brick.x+brick.w &&
+ball.y>brick.y &&
+ball.y<brick.y+brick.h
+){
+
+
+brick.alive=false;
+
+
+score+=(12-brick.row)*10;
+
+document.getElementById("scoreText").innerHTML=score;
+
+
+
+// 속도 증가
+ball.dx*=1.015;
+ball.dy*=1.015;
+
+
+
+// -- 벽돌이면 공 2개 추가
+if(brick.power){
+
+
+for(let i=0;i<2;i++){
+
+
+balls.push({
+
+x:ball.x,
+y:ball.y,
+
+dx:(Math.random()*6)-3,
+
+dy:-4,
+
+color:ball.color
+
+});
+
+
+}
+
+
+}
+
+
+
+ball.dy*=-1;
+
+
+}
+
+
+});
+
+
+});
+
+
+
+
+
+// 떨어진 공 제거
+balls=balls.filter(
+b=>b.y<620
+);
+
+
+
+if(balls.length===0){
+
+finish(false);
+
+}
+
+
+
+if(bricks.every(b=>!b.alive)){
+
+finish(true);
+
+}
+
+
+
+}
+
+
+
+
+
+function changeColor(ball){
+
+ball.color++;
+
+if(ball.color>=3)
+
+ball.color=0;
+
+}
+
+
+
+
+
+function finish(win){
+
+running=false;
+
+document.getElementById("message").style.display="block";
+
+document.getElementById("result").innerHTML=
+win ? "🎉 승리!" : "💥 게임 오버!";
+
+}
+
+
+
+
+
+function restart(){
+
+init();
+
+draw();
+
+}
+
+
+
+init();
+
+draw();
+
+
+</script>
+
+</body>
+</html>

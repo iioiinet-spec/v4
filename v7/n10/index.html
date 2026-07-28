@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>산 배경 벽돌깨기 - Stage & Lives</title>
+    <style>
+        body {
+            /* 산뜻한 자연 분위기의 배경 */
+            background: linear-gradient(to bottom, #87ceeb 0%, #e0f6ff 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #1b4332;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        h1 {
+            margin-bottom: 5px;
+            font-size: 26px;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 3px rgba(255, 255, 255, 0.8);
+        }
+        canvas {
+            border: 4px solid #2d6a4f;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+        }
+        .info {
+            margin-top: 10px;
+            color: #2d6a4f;
+            font-weight: bold;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>MOUNTAIN BRICK BREAKER ⛰️</h1>
+<canvas id="gameCanvas" width="600" height="450"></canvas>
+<div class="info">좌우 화살표 키 또는 마우스로 조종하세요</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// 1. 상태 변수 (스테이지, 목숨, 점수)
+let stage = 1;
+let lives = 3;
+let score = 0;
+
+// 2. 공 설정
+const ball = {
+    x: canvas.width / 2,
+    y: canvas.height - 60,
+    radius: 7,
+    dx: 4,
+    dy: -4,
+    color: '#ff4757'
+};
+
+// 3. 패들 설정 (통나무/목재 느낌)
+const paddle = {
+    width: 100,
+    height: 14,
+    x: (canvas.width - 100) / 2,
+    y: canvas.height - 35,
+    color: '#8b5a2b'
+};
+
+// 4. 벽돌 설정
+const brickRowCount = 4;
+const brickColumnCount = 6;
+const brickWidth = 75;
+const brickHeight = 20;
+const brickPadding = 12;
+const brickOffsetTop = 50;
+const brickOffsetLeft = 40;
+
+let bricks = [];
+
+// 벽돌 초기화 함수 (Stage에 따라 내구성 다름)
+function initBricks() {
+    bricks = [];
+    for (let c = 0; c < brickColumnCount; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < brickRowCount; r++) {
+            // Stage 2의 맨 위 행(r === 0)은 내구성(hp) 2개!
+            let hp = (stage === 2 && r === 0) ? 2 : 1;
+            
+            const colors = ['#e67e22', '#2ecc71', '#3498db', '#f1c40f'];
+            bricks[c][r] = { 
+                x: 0, 
+                y: 0, 
+                hp: hp,           // 현재 남은 체력
+                maxHp: hp,        // 최대 체력
+                color: colors[r] 
+            };
+        }
+    }
+}
+
+// 5. 파티클(폭발 입자) 배열
+let particles = [];
+
+// 키보드 및 마우스 조작
+let rightPressed = false;
+let leftPressed = false;
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'Right') rightPressed = true;
+    if (e.key === 'ArrowLeft' || e.key === 'Left') leftPressed = true;
+});
+
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'Right') rightPressed = false;
+    if (e.key === 'ArrowLeft' || e.key === 'Left') leftPressed = false;
+});
+
+document.addEventListener('mousemove', (e) => {
+    const relativeX = e.clientX - canvas.offsetLeft;
+    if (relativeX > 0 && relativeX < canvas.width) {
+        paddle.x = relativeX - paddle.width / 2;
+    }
+});
+
+// ⛰️ 산 풍경 배경 그리기 함수
+function drawMountainBackground() {
+    // 1) 하늘
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, 250);
+    skyGradient.addColorStop(0, '#74b9ff');
+    skyGradient.addColorStop(1, '#dfe6e9');
+    ctx.fillStyle = skyGradient;
+    ctx.fillRect(0, 0, canvas.width, 250);
+
+    // 2) 해 (Sun)
+    ctx.beginPath();
+    ctx.arc(80, 60, 30, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbc531';
+    ctx.fill();
+    ctx.closePath();
+
+    // 3) 구름
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.arc(420, 70, 18, 0, Math.PI * 2);
+    ctx.arc(440, 60, 25, 0, Math.PI * 2);
+    ctx.arc(465, 70, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4) 먼 산 (원경)
+    ctx.fillStyle = '#a8e6cf';
+    ctx.beginPath();
+    ctx.moveTo(100, 320);
+    ctx.lineTo(230, 160);
+    ctx.lineTo(360, 320);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(300, 320);
+    ctx.lineTo(450, 140);
+    ctx.lineTo(580, 320);
+    ctx.fill();
+
+    // 5) 가까운 산 (근경)
+    ctx.fillStyle = '#55efc4';
+    ctx.beginPath();
+    ctx.moveTo(-30, 350);
+    ctx.lineTo(120, 210);
+    ctx.lineTo(270, 350);
+    ctx.fill();
+
+    ctx.fillStyle = '#00b894';
+    ctx.beginPath();
+    ctx.moveTo(180, 350);
+    ctx.lineTo(330, 190);
+    ctx.lineTo(480, 350);
+    ctx.fill();
+
+    // 6) 잔디 들판 (바닥)
+    const grassGradient = ctx.createLinearGradient(0, 320, 0, canvas.height);
+    grassGradient.addColorStop(0, '#2ed573');
+    grassGradient.addColorStop(1, '#26de81');
+    ctx.fillStyle = grassGradient;
+    ctx.fillRect(0, 320, canvas.width, canvas.height - 320);
+}
+
+// 6. 폭발 생성 함수
+function createExplosion(x, y, customColor = null) {
+    const particleCount = 20;
+    for (let i = 0; i < particleCount; i++) {
+        const color = customColor || `hsl(${Math.random() * 40 + 20}, 100%, 50%)`;
+        particles.push({
+            x: x,
+            y: y,
+            radius: Math.random() * 3 + 2,
+            dx: (Math.random() - 0.5) * 8,
+            dy: (Math.random() - 0.5) * 8,
+            color: color,
+            alpha: 1,
+            decay: Math.random() * 0.02 + 0.02
+        });
+    }
+}
+
+// 7. 파티클 업데이트 및 출력
+function handleParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.dx;
+        p.y += p.dy;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0) {
+            particles.splice(i, 1);
+        } else {
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            ctx.closePath();
+            ctx.restore();
+        }
+    }
+}
+
+// 8. 벽돌 충돌 감지
+function collisionDetection() {
+    let allCleared = true;
+
+    for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+            const b = bricks[c][r];
+            if (b.hp > 0) {
+                allCleared = false; // 깨지 않은 벽돌이 존재함
+
+                if (
+                    ball.x + ball.radius > b.x &&
+                    ball.x - ball.radius < b.x + brickWidth &&
+                    ball.y + ball.radius > b.y &&
+                    ball.y - ball.radius < b.y + brickHeight
+                ) {
+                    ball.dy = -ball.dy;
+                    b.hp -= 1; // 체력 차감
+                    score += 10;
+
+                    // 폭발 효과
+                    createExplosion(ball.x, ball.y, b.color);
+                }
+            }
+        }
+    }
+
+    // 스테이지 클리어 처리
+    if (allCleared) {
+        if (stage === 1) {
+            stage = 2;
+            lives = 3; // ★ 다음 스테이지 진입 시 소진된 목숨을 다시 3개로 회복!
+            alert('🎉 Stage 1 클리어! 목숨이 3개로 다시 채워졌습니다.\nStage 2 시작 (맨 위 벽돌은 2번 때려야 파괴됩니다!)');
+            resetBallAndPaddle();
+            initBricks();
+        } else {
+            alert('🏆 모든 스테이지를 클리어하셨습니다! 축하합니다!');
+            document.location.reload();
+        }
+    }
+}
+
+// 9. 벽돌 그리기
+function drawBricks() {
+    for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+            const b = bricks[c][r];
+            if (b.hp > 0) {
+                const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                b.x = brickX;
+                b.y = brickY;
+
+                ctx.beginPath();
+                ctx.roundRect(brickX, brickY, brickWidth, brickHeight, 4);
+
+                // 2번 때려야 하는 벽돌이 1번 맞았을 때 색상을 흐리게 표시
+                if (b.maxHp === 2 && b.hp === 1) {
+                    ctx.fillStyle = '#fab1a0'; // 금 간 표현
+                } else {
+                    ctx.fillStyle = b.color;
+                }
+
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.closePath();
+
+                // 2번 때리는 벽돌의 경우 숫자 '2' 표시
+                if (b.hp === 2) {
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText('2', brickX + brickWidth / 2 - 4, brickY + 14);
+                }
+            }
+        }
+    }
+}
+
+// 공과 패들 초기화
+function resetBallAndPaddle() {
+    ball.x = canvas.width / 2;
+    ball.y = canvas.height - 60;
+    ball.dx = 4 * (Math.random() > 0.5 ? 1 : -1);
+    ball.dy = -4;
+    paddle.x = (canvas.width - paddle.width) / 2;
+}
+
+// 10. 상단 UI (점수, 스테이지, 목숨 표시)
+function drawUI() {
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillStyle = '#1b4332';
+    
+    // 점수 및 Stage
+    ctx.fillText(`STAGE: ${stage}`, 20, 30);
+    ctx.fillText(`SCORE: ${score}`, 120, 30);
+
+    // 하트 목숨 표시
+    let hearts = '';
+    for (let i = 0; i < lives; i++) hearts += '❤️ ';
+    ctx.fillText(`LIVES: ${hearts}`, canvas.width - 150, 30);
+}
+
+// 11. 메인 루프
+function draw() {
+    drawMountainBackground();
+    drawBricks();
+
+    // 공 그리기
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fillStyle = ball.color;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.closePath();
+
+    // 패들 그리기
+    ctx.beginPath();
+    ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 6);
+    ctx.fillStyle = paddle.color;
+    ctx.fill();
+    ctx.strokeStyle = '#5c3a21';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.closePath();
+
+    // 파티클 처리
+    handleParticles();
+
+    // 벽돌 충돌 검사
+    collisionDetection();
+
+    // 좌/우 벽 충돌
+    if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+        ball.dx = -ball.dx;
+    }
+
+    // 천장 충돌
+    if (ball.y + ball.dy < ball.radius) {
+        ball.dy = -ball.dy;
+    }
+
+    // 패들 충돌
+    const isHitY = (ball.y + ball.radius >= paddle.y) && (ball.y - ball.radius <= paddle.y + paddle.height);
+    const isHitX = (ball.x >= paddle.x) && (ball.x <= paddle.x + paddle.width);
+
+    if (isHitY && isHitX && ball.dy > 0) {
+        ball.dy = -ball.dy;
+        ball.y = paddle.y - ball.radius;
+
+        // 패들에 부딪힐 때 폭발 파티클
+        createExplosion(ball.x, paddle.y, '#ffffff');
+    }
+
+    // 바닥 추락 (목숨 차감)
+    if (ball.y + ball.dy > canvas.height) {
+        lives -= 1;
+
+        if (lives > 0) {
+            alert(`💥 앗! 공을 놓쳤습니다. 남은 목숨: ${lives}개`);
+            resetBallAndPaddle();
+        } else {
+            alert('💀 게임 오버! 목숨을 모두 소진했습니다.');
+            document.location.reload();
+            return;
+        }
+    }
+
+    // 패들 키보드 이동
+    if (rightPressed && paddle.x < canvas.width - paddle.width) {
+        paddle.x += 7;
+    } else if (leftPressed && paddle.x > 0) {
+        paddle.x -= 7;
+    }
+
+    // 공 이동
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+
+    drawUI();
+
+    requestAnimationFrame(draw);
+}
+
+// 게임 시작
+initBricks();
+draw();
+</script>
+
+</body>
+</html>

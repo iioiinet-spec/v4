@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>몬스터 배틀 아레나</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'DungGeunMo', 'Courier New', Courier, monospace, sans-serif;
+        }
+
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            background: #1e1e1e;
+            border: 4px solid #444;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        /* 공통 화면 스타일 */
+        .screen {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: #1e1e1e;
+            border-radius: 8px;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 1. 몬스터 선택 화면 */
+        #select-screen {
+            overflow-y: auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #ffcc00;
+            font-size: 24px;
+            text-shadow: 2px 2px #333;
+        }
+
+        .monster-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding-bottom: 20px;
+        }
+
+        .monster-card {
+            background: #2a2a2a;
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s, border-color 0.2s;
+        }
+
+        .monster-card:hover {
+            transform: translateY(-4px);
+            background: #3a3a3a;
+            border-color: #ffcc00;
+        }
+
+        .monster-card .emoji {
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+
+        .monster-card .name {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .monster-card .type {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        /* 2. 전투 화면 */
+        #battle-screen {
+            justify-content: space-between;
+            background: linear-gradient(to bottom, #2b2b2b, #1e1e1e);
+        }
+
+        .battle-arena {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: radial-gradient(circle, #333 0%, #1a1a1a 100%);
+            border: 3px solid #444;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        /* 상태창 (HP바 등) */
+        .status-box {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #666;
+            border-radius: 8px;
+            padding: 10px;
+            width: 240px;
+            position: absolute;
+        }
+
+        #enemy-status {
+            top: 20px;
+            right: 20px;
+        }
+
+        #player-status {
+            bottom: 20px;
+            left: 20px;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .hp-bar-container {
+            width: 100%;
+            height: 14px;
+            background: #444;
+            border-radius: 7px;
+            overflow: hidden;
+            border: 1px solid #222;
+        }
+
+        .hp-bar {
+            height: 100%;
+            width: 100%;
+            background-color: #4caf50;
+            transition: width 0.4s ease, background-color 0.4s ease;
+        }
+
+        .hp-text {
+            font-size: 11px;
+            text-align: right;
+            margin-top: 2px;
+            color: #bbb;
+        }
+
+        /* 몬스터 스프라이트/이모지 위치 */
+        .fighter {
+            font-size: 70px;
+            position: absolute;
+            transition: transform 0.2s;
+        }
+
+        #enemy-fighter {
+            top: 90px;
+            right: 60px;
+        }
+
+        #player-fighter {
+            bottom: 90px;
+            left: 60px;
+        }
+
+        /* 하단 컨트롤 영역 */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 160px;
+        }
+
+        .log-box {
+            flex: 1;
+            background: #111;
+            border: 2px solid #444;
+            border-radius: 6px;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            color: #ddd;
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            height: 70px;
+        }
+
+        .btn {
+            background: #333;
+            color: white;
+            border: 2px solid #666;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #4a4a4a;
+            border-color: #ffcc00;
+            color: #ffcc00;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* 결과 모달/오버레이 */
+        #result-screen {
+            background: rgba(0, 0, 0, 0.85);
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        #result-title {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .win-text { color: #4caf50; }
+        .lose-text { color: #f44336; }
+
+        .restart-btn {
+            padding: 12px 24px;
+            font-size: 18px;
+            background: #ffcc00;
+            color: #111;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: transform 0.1s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+            background: #ffd633;
+        }
+
+        /* 타입별 색상 클래스 */
+        .type-fire { background-color: #d32f2f; color: #fff; }
+        .type-water { background-color: #1976d2; color: #fff; }
+        .type-grass { background-color: #388e3c; color: #fff; }
+        .type-electric { background-color: #fbc02d; color: #111; }
+        .type-psychic { background-color: #c2185b; color: #fff; }
+        .type-dark { background-color: #424242; color: #fff; }
+        .type-steel { background-color: #616161; color: #fff; }
+        .type-poison { background-color: #7b1fa2; color: #fff; }
+        .type-ice { background-color: #00acc1; color: #fff; }
+        .type-dragon { background-color: #303f9f; color: #fff; }
+        .type-fighting { background-color: #e64a19; color: #fff; }
+        .type-ground { background-color: #a1887f; color: #fff; }
+        .type-rock { background-color: #795548; color: #fff; }
+        .type-ghost { background-color: #512da8; color: #fff; }
+        .type-flying { background-color: #0288d1; color: #fff; }
+        .type-bug { background-color: #689f38; color: #fff; }
+        .type-normal { background-color: #9e9e9e; color: #fff; }
+        .type-fairy { background-color: #ec407a; color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 1. 몬스터 선택 화면 -->
+        <div id="select-screen" class="screen">
+            <h2>전투할 몬스터를 선택하세요 (1/18)</h2>
+            <div class="monster-grid" id="monster-grid">
+                <!-- JS로 동적 생성 -->
+            </div>
+        </div>
+
+        <!-- 2. 전투 화면 -->
+        <div id="battle-screen" class="screen hidden">
+            <div class="battle-arena">
+                <!-- 상대 몬스터 상태 -->
+                <div class="status-box" id="enemy-status">
+                    <div class="status-header">
+                        <span id="enemy-name">상대</span>
+                        <span id="enemy-type-badge">타입</span>
+                    </div>
+                    <div class="hp-bar-container">
+                        <div class="hp-bar" id="enemy-hp-bar"></div>
+                    </div>
+                    <div class="hp-text" id="enemy-hp-text">100 / 100</div>
+                </div>
+                <div class="fighter" id="enemy-fighter">👾</div>
+
+                <!-- 내 몬스터 상태 -->
+                <div class="status-box" id="player-status">
+                    <div class="status-header">
+                        <span id="player-name">플레이어</span>
+                        <span id="player-type-badge">타입</span>
+                    </div>
+                    <div class="hp-bar-container">
+                        <div class="hp-bar" id="player-hp-bar"></div>
+                    </div>
+                    <div class="hp-text" id="player-hp-text">100 / 100</div>
+                </div>
+                <div class="fighter" id="player-fighter">🐱</div>
+            </div>
+
+            <!-- 하단 컨트롤 및 로그 -->
+            <div class="control-panel">
+                <div class="log-box" id="battle-log">
+                    전투가 시작되었습니다! 기술을 선택하세요.
+                </div>
+                <div class="action-grid">
+                    <button class="btn" id="move-0" onclick="handlePlayerMove(0)">기술 1</button>
+                    <button class="btn" id="move-1" onclick="handlePlayerMove(1)">기술 2</button>
+                    <button class="btn" id="move-2" onclick="handlePlayerMove(2)">기술 3</button>
+                    <button class="btn" id="move-3" onclick="handlePlayerMove(3)">회복 (남은 횟수: 2)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 결과 화면 -->
+        <div id="result-screen" class="screen hidden">
+            <h1 id="result-title" class="win-text">승리했습니다!</h1>
+            <button class="restart-btn" onclick="resetGame()">다시하기</button>
+        </div>
+    </div>
+
+    <script>
+        // 18마리 오리지널 몬스터 데이터 정의
+        const monstersData = [
+            { id: 1, name: "파이로", emoji: "🔥", type: "FIRE", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "화염방사 (강함)", type: "FIRE", power: 35 },
+                { name: "불꽃송이 (약함)", type: "FIRE", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 2, name: "아쿠아", emoji: "💧", type: "WATER", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "하이드로펌프 (강함)", type: "WATER", power: 35 },
+                { name: "물대포 (약함)", type: "WATER", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 3, name: "리프론", emoji: "🌿", type: "GRASS", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "솔라빔 (강함)", type: "GRASS", power: 35 },
+                { name: "잎날가르기 (약함)", type: "GRASS", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 4, name: "포이존", emoji: "☠️", type: "POISON", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "맹독찌르기 (강함)", type: "POISON", power: 35 },
+                { name: "독침 (약함)", type: "POISON", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 5, name: "스틸록", emoji: "🦾", type: "STEEL", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "아이언테일 (강함)", type: "STEEL", power: 35 },
+                { name: "메탈클로 (약함)", type: "STEEL", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 6, name: "프시케", emoji: "🔮", type: "PSYCHIC", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "사이코키네시스 (강함)", type: "PSYCHIC", power: 35 },
+                { name: "염동력 (약함)", type: "PSYCHIC", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 7, name: "다크나이트", emoji: "🖤", type: "DARK", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "악의파동 (강함)", type: "DARK", power: 35 },
+                { name: "바이트 (약함)", type: "DARK", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 8, name: "볼트", emoji: "⚡", type: "ELECTRIC", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "번개 (강함)", type: "ELECTRIC", power: 35 },
+                { name: "스파크 (약함)", type: "ELECTRIC", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 9, name: "프로스트", emoji: "❄️", type: "ICE", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "눈보라 (강함)", type: "ICE", power: 35 },
+                { name: "얼음뭉치 (약함)", type: "ICE", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 10, name: "드라코", emoji: "🐉", type: "DRAGON", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "용의노래 (강함)", type: "DRAGON", power: 35 },
+                { name: "용의숨결 (약함)", type: "DRAGON", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 11, name: "파이터", emoji: "🥊", type: "FIGHTING", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "인파이트 (강함)", type: "FIGHTING", power: 35 },
+                { name: "로우킥 (약함)", type: "FIGHTING", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 12, name: "테라", emoji: "🏜️", type: "GROUND", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "지진 (강함)", type: "GROUND", power: 35 },
+                { name: "진흙슛 (약함)", type: "GROUND", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 13, name: "록키", emoji: "🗿", type: "ROCK", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "스톤에지 (강함)", type: "ROCK", power: 35 },
+                { name: "돌던지기 (약함)", type: "ROCK", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 14, name: "스펙터", emoji: "👻", type: "GHOST", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "섀도볼 (강함)", type: "GHOST", power: 35 },
+                { name: "나이트헤드 (약함)", type: "GHOST", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 15, name: "에어로", emoji: "🦅", type: "FLYING", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "브레이브버드 (강함)", type: "FLYING", power: 35 },
+                { name: "에어커터 (약함)", type: "FLYING", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 16, name: "인섹트", emoji: "🐛", type: "BUG", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "시저크로스 (강함)", type: "BUG", power: 35 },
+                { name: "벌레의야금야금 (약함)", type: "BUG", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 17, name: "노멀리", emoji: "⭐", type: "NORMAL", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "파괴광선 (강함)", type: "NORMAL", power: 35 },
+                { name: "할퀴기 (약함)", type: "NORMAL", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]},
+            { id: 18, name: "페어리", emoji: "🌸", type: "FAIRY", moves: [
+                { name: "몸통박치기 (일반)", type: "NORMAL", power: 20 },
+                { name: "문포스 (강함)", type: "FAIRY", power: 35 },
+                { name: "요정의바람 (약함)", type: "FAIRY", power: 15 },
+                { name: "HP 회복", type: "HEAL", power: 30 }
+            ]}
+        ];
+
+        // 포켓몬 타입 상성표 (공격자 타입 -> 방어자 타입 배율)
+        const typeChart = {
+            FIRE: { GRASS: 2, ICE: 2, BUG: 2, STEEL: 2, FIRE: 0.5, WATER: 0.5, ROCK: 0.5, DRAGON: 0.5 },
+            WATER: { FIRE: 2, GROUND: 2, ROCK: 2, WATER: 0.5, GRASS: 0.5, DRAGON: 0.5 },
+            GRASS: { WATER: 2, GROUND: 2, ROCK: 2, FIRE: 0.5, GRASS: 0.5, POISON: 0.5, FLYING: 0.5, BUG: 0.5, DRAGON: 0.5, STEEL: 0.5 },
+            ELECTRIC: { WATER: 2, FLYING: 2, ELECTRIC: 0.5, GRASS: 0.5, DRAGON: 0.5, GROUND: 0 },
+            PSYCHIC: { FIGHTING: 2, POISON: 2, PSYCHIC: 0.5, STEEL: 0.5, DARK: 0 },
+            DARK: { PSYCHIC: 2, GHOST: 2, DARK: 0.5, FIGHTING: 0.5, FAIRY: 0.5 },
+            STEEL: { ICE: 2, ROCK: 2, FAIRY: 2, FIRE: 0.5, WATER: 0.5, ELECTRIC: 0.5, STEEL: 0.5 },
+            POISON: { GRASS: 2, FAIRY: 2, POISON: 0.5, GROUND: 0.5, ROCK: 0.5, GHOST: 0.5, STEEL: 0 },
+            ICE: { GRASS: 2, GROUND: 2, FLYING: 2, DRAGON: 2, FIRE: 0.5, WATER: 0.5, ICE: 0.5, STEEL: 0.5 },
+            DRAGON: { DRAGON: 2, STEEL: 0.5, FAIRY: 0 },
+            FIGHTING: { NORMAL: 2, ICE: 2, ROCK: 2, DARK: 2, STEEL: 2, POISON: 0.5, FLYING: 0.5, PSYCHIC: 0.5, BUG: 0.5, FAIRY: 0.5, GHOST: 0 },
+            GROUND: { FIRE: 2, ELECTRIC: 2, POISON: 2, ROCK: 2, STEEL: 2, GRASS: 0.5, BUG: 0.5, FLYING: 0 },
+            ROCK: { FIRE: 2, ICE: 2, FLYING: 2, BUG: 2, FIGHTING: 0.5, GROUND: 0.5, STEEL: 0.5 },
+            GHOST: { PSYCHIC: 2, GHOST: 2, DARK: 0.5, NORMAL: 0 },
+            FLYING: { GRASS: 2, FIGHTING: 2, BUG: 2, ELECTRIC: 0.5, ROCK: 0.5, STEEL: 0.5 },
+            BUG: { GRASS: 2, PSYCHIC: 2, DARK: 2, FIRE: 0.5, FIGHTING: 0.5, POISON: 0.5, FLYING: 0.5, GHOST: 0.5, STEEL: 0.5, FAIRY: 0.5 },
+            NORMAL: { ROCK: 0.5, STEEL: 0.5, GHOST: 0 },
+            FAIRY: { FIGHTING: 2, DRAGON: 2, DARK: 2, FIRE: 0.5, POISON: 0.5, STEEL: 0.5 }
+        };
+
+        let playerMonster = null;
+        let enemyMonster = null;
+        let playerHp = 100;
+        let enemyHp = 100;
+        let playerHealsLeft = 2;
+        let enemyHealsLeft = 2;
+        let isTurn = true; // true: 플레이어 턴, false: 컴퓨터 턴
+
+        // 초기 화면 설정 (몬스터 카드 렌더링)
+        function initSelectScreen() {
+            const grid = document.getElementById('monster-grid');
+            grid.innerHTML = '';
+            monstersData.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'monster-card';
+                card.onclick = () => selectMonster(m);
+                card.innerHTML = `
+                    <div class="emoji">${m.emoji}</div>
+                    <div class="name">${m.name}</div>
+                    <div class="type type-${m.type.toLowerCase()}">${m.type}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // 몬스터 선택 완료
+        function selectMonster(monster) {
+            // 깊은 복사로 게임 상태 관리
+            playerMonster = JSON.parse(JSON.stringify(monster));
+            
+            // 컴퓨터 몬스터 무작위 선택
+            const randomIndex = Math.floor(Math.random() * monstersData.length);
+            enemyMonster = JSON.parse(JSON.stringify(monstersData[randomIndex]));
+
+            playerHp = 100;
+            enemyHp = 100;
+            playerHealsLeft = 2;
+            enemyHealsLeft = 2;
+            isTurn = true;
+
+            // 화면 전환
+            document.getElementById('select-screen').classList.add('hidden');
+            document.getElementById('battle-screen').classList.remove('hidden');
+
+            // 배틀 UI 초기화
+            updateBattleUI();
+            logMessage(`야생의 상대 ${enemyMonster.emoji} ${enemyMonster.name}(이)가 나타났다!`);
+            logMessage(`가라! ${playerMonster.emoji} ${playerMonster.name}!`);
+            updateMoveButtons();
+        }
+
+        // 전투 UI 및 HP바 갱신
+        function updateBattleUI() {
+            document.getElementById('player-name').innerText = `${playerMonster.emoji} ${playerMonster.name}`;
+            document.getElementById('player-type-badge').innerText = playerMonster.type;
+            document.getElementById('player-type-badge').className = `type type-${playerMonster.type.toLowerCase()}`;
+            document.getElementById('player-fighter').innerText = playerMonster.emoji;
+
+            document.getElementById('enemy-name').innerText = `${enemyMonster.emoji} ${enemyMonster.name}`;
+            document.getElementById('enemy-type-badge').innerText = enemyMonster.type;
+            document.getElementById('enemy-type-badge').className = `type type-${enemyMonster.type.toLowerCase()}`;
+            document.getElementById('enemy-fighter').innerText = enemyMonster.emoji;
+
+            updateHpBar('player', playerHp, 100);
+            updateHpBar('enemy', enemyHp, 100);
+        }
+
+        function updateHpBar(target, current, max) {
+            const percentage = Math.max(0, (current / max) * 100);
+            const bar = document.getElementById(`${target}-hp-bar`);
+            const text = document.getElementById(`${target}-hp-text`);
+
+            bar.style.width = `${percentage}%`;
+            text.innerText = `${Math.max(0, current)} / ${max}`;
+
+            // 색상 변화 규칙: 초록(>50) > 노랑(>25) > 주황(>10) > 빨강(<=10)
+            if (percentage > 50) {
+                bar.style.backgroundColor = '#4caf50';
+            } else if (percentage > 25) {
+                bar.style.backgroundColor = '#ffeb3b';
+            } else if (percentage > 10) {
+                bar.style.backgroundColor = '#ff9800';
+            } else {
+                bar.style.backgroundColor = '#f44336';
+            }
+        }
+
+        function updateMoveButtons() {
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`move-${i}`);
+                const move = playerMonster.moves[i];
+                if (i === 3) {
+                    btn.innerText = `HP 회복 (남은 횟수: ${playerHealsLeft})`;
+                    btn.disabled = !isTurn || playerHealsLeft <= 0;
+                } else {
+                    btn.innerText = move.name;
+                    btn.disabled = !isTurn;
+                }
+            }
+        }
+
+        function logMessage(msg) {
+            const logBox = document.getElementById('battle-log');
+            logBox.innerHTML += `<br>${msg}`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // 타입 상성 계산
+        function getEffectiveness(attackerType, defenderType) {
+            if (!typeChart[attackerType]) return 1.0;
+            if (typeChart[attackerType][defenderType] !== undefined) {
+                return typeChart[attackerType][defenderType];
+            }
+            return 1.0;
+        }
+
+        // 플레이어 기술 선택 처리
+        function handlePlayerMove(moveIndex) {
+            if (!isTurn) return;
+            isTurn = false;
+            updateMoveButtons();
+
+            const move = playerMonster.moves[moveIndex];
+
+            if (move.type === 'HEAL') {
+                if (playerHealsLeft > 0) {
+                    playerHealsLeft--;
+                    playerHp = Math.min(100, playerHp + move.power);
+                    logMessage(`✨ ${playerMonster.name}은(는) 체력을 회복했다! (+${move.power})`);
+                    updateHpBar('player', playerHp, 100);
+                } else {
+                    logMessage(`회복 횟수를 모두 소모하여 실패했다!`);
+                }
+                endPlayerTurn();
+            } else {
+                // 공격 처리
+                logMessage(`👉 ${playerMonster.name}의 ${move.name}!`);
+                setTimeout(() => {
+                    executeAttack(playerMonster, enemyMonster, move, true);
+                }, 600);
+            }
+        }
+
+        function executeAttack(attacker, defender, move, isPlayerAttacking) {
+            let damage = move.power;
+            let multiplier = 1.0;
+
+            if (move.type !== 'NORMAL') {
+                multiplier = getEffectiveness(move.type, defender.type);
+                damage = Math.floor(damage * multiplier);
+            }
+
+            if (isPlayerAttacking) {
+                enemyHp = Math.max(0, enemyHp - damage);
+                updateHpBar('enemy', enemyHp, 100);
+            } else {
+                playerHp = Math.max(0, playerHp - damage);
+                updateHpBar('player', playerHp, 100);
+            }
+
+            // 상성 메시지 출력
+            if (multiplier === 2.0) {
+                logMessage(`🔥 효과가 굉장했다!`);
+            } else if (multiplier === 0.5) {
+                logMessage(`💧 효과가로 별로였다...`);
+            } else if (multiplier === 0.0) {
+                logMessage(`🛡️ 효과가 없는 것 같다...`);
+            }
+
+            // 승패 체크
+            if (enemyHp <= 0) {
+                setTimeout(() => showResult(true), 800);
+                return;
+            }
+            if (playerHp <= 0) {
+                setTimeout(() => showResult(false), 800);
+                return;
+            }
+
+            if (isPlayerAttacking) {
+                // 상대 턴으로 전환
+                setTimeout(startCpuTurn, 1000);
+            } else {
+                // 플레이어 턴으로 복귀
+                isTurn = true;
+                updateMoveButtons();
+            }
+        }
+
+        // 컴퓨터 턴 AI
+        function startCpuTurn() {
+            logMessage(`--- 상대 턴 ---`);
+            setTimeout(() => {
+                // 체력이 30 이하이고 회복이 남았다면 일정 확률로 회복 사용
+                let chosenMove;
+                if (enemyHp < 40 && enemyHealsLeft > 0 && Math.random() < 0.6) {
+                    enemyHealsLeft--;
+                    enemyHp = Math.min(100, enemyHp + 30);
+                    logMessage(`✨ 상대 ${enemyMonster.name}은(는) 체력을 회복했다! (+30)`);
+                    updateHpBar('enemy', enemyHp, 100);
+                    endPlayerTurnFromCpu();
+                } else {
+                    // 무작위 공격 기술 선택 (0~2번 인덱스)
+                    const attackMoves = enemyMonster.moves.filter(m => m.type !== 'HEAL');
+                    const randomMove = attackMoves[Math.floor(Math.random() * attackMoves.length)];
+                    logMessage(`👉 상대 ${enemyMonster.name}의 ${randomMove.name}!`);
+                    setTimeout(() => {
+                        executeAttack(enemyMonster, playerMonster, randomMove, false);
+                    }, 600);
+                }
+            }, 800);
+        }
+
+        function endPlayerTurn() {
+            if (enemyHp <= 0) {
+                setTimeout(() => showResult(true), 800);
+                return;
+            }
+            setTimeout(startCpuTurn, 1000);
+        }
+
+        function endPlayerTurnFromCpu() {
+            if (playerHp <= 0) {
+                setTimeout(() => showResult(false), 800);
+                return;
+            }
+            isTurn = true;
+            updateMoveButtons();
+        }
+
+        // 결과 화면 표시
+        function showResult(isWin) {
+            document.getElementById('battle-screen').classList.add('hidden');
+            const resultScreen = document.getElementById('result-screen');
+            const resultTitle = document.getElementById('result-title');
+
+            resultScreen.classList.remove('hidden');
+
+            if (isWin) {
+                resultTitle.innerText = "🎉 승리했습니다! 🎉";
+                resultTitle.className = "win-text";
+            } else {
+                resultTitle.innerText = "💥 패배했습니다... 💥";
+                resultTitle.className = "lose-text";
+            }
+        }
+
+        // 게임 초기화 및 재시작
+        function resetGame() {
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('select-screen').classList.remove('hidden');
+            initSelectScreen();
+        }
+
+        // 최초 실행
+        window.onload = () => {
+            initSelectScreen();
+        };
+    </script>
+</body>
+</html>

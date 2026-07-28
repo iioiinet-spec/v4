@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>몬스터 배틀 아레나 - 최종 보스 레이드</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background: #0f1016;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-wrapper {
+            width: 850px;
+            height: 620px;
+            background: linear-gradient(135deg, #1b1e2f, #11131c);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid #2a2e45;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* 1. 시작 화면 */
+        #start-screen h1 {
+            font-size: 2.3rem;
+            color: #ffd700;
+            margin-bottom: 8px;
+            text-shadow: 0 4px 10px rgba(255, 215, 0, 0.3);
+        }
+
+        #start-screen p {
+            font-size: 1rem;
+            color: #a0a8c0;
+            margin-bottom: 20px;
+        }
+
+        .select-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 15px;
+            padding: 0 10px;
+        }
+
+        .monster-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #323852;
+            border-radius: 12px;
+            padding: 15px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 150px;
+        }
+
+        .monster-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #ffd700;
+            box-shadow: 0 8px 16px rgba(255, 215, 0, 0.15);
+        }
+
+        .monster-card .card-emoji {
+            font-size: 3rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .monster-card h3 {
+            font-size: 1rem;
+            margin-bottom: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        .tag {
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: bold;
+            display: inline-block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .tag-fire { background: #e74c3c; color: #fff; }
+        .tag-water { background: #3498db; color: #fff; }
+        .tag-grass { background: #2ecc71; color: #fff; }
+        .tag-electric { background: #f1c40f; color: #111; }
+        .tag-dark { background: #8e44ad; color: #fff; }
+        .tag-boss { background: linear-gradient(135deg, #ff0055, #7700ff); color: #fff; }
+
+        /* 보스 도전 카드 */
+        .boss-card {
+            grid-column: span 5;
+            background: linear-gradient(135deg, rgba(255, 0, 85, 0.15), rgba(119, 0, 255, 0.15));
+            border: 2px dashed #ff0055;
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .boss-card:hover:not(.locked) {
+            transform: translateY(-3px);
+            border-style: solid;
+            box-shadow: 0 8px 20px rgba(255, 0, 85, 0.3);
+        }
+
+        .boss-card.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: #444;
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* 2. 전투 화면 */
+        #battle-screen {
+            justify-content: space-between;
+            padding: 20px;
+            background: radial-gradient(circle at center, #22273e 0%, #111422 100%);
+        }
+
+        .battle-arena {
+            width: 100%;
+            height: 300px;
+            position: relative;
+            background: linear-gradient(to bottom, #2b3b5c, #162035);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 0 25px rgba(0,0,0,0.6);
+            border: 1px solid #3a4b70;
+            perspective: 600px;
+        }
+
+        .battle-arena::before {
+            content: '';
+            position: absolute;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%) rotateX(60deg);
+            width: 750px;
+            height: 250px;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.5) 75%);
+            border-radius: 50%;
+        }
+
+        .combatant {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+        }
+
+        #opponent-side {
+            top: 25px;
+            right: 50px;
+        }
+
+        #player-side {
+            bottom: 15px;
+            left: 50px;
+        }
+
+        .monster-sprite {
+            font-size: 5.5rem;
+            filter: drop-shadow(0 12px 10px rgba(0,0,0,0.5));
+            animation: idleFloat 3s ease-in-out infinite;
+        }
+
+        #opponent-side .monster-sprite {
+            animation-delay: 1.5s;
+        }
+
+        @keyframes idleFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .status-panel {
+            background: rgba(22, 27, 44, 0.92);
+            border: 2px solid #50618a;
+            border-radius: 10px;
+            padding: 10px 14px;
+            width: 230px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+
+        .status-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+            font-weight: bold;
+        }
+
+        .hp-gauge-bg {
+            width: 100%;
+            height: 10px;
+            background: #2a314c;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid #141824;
+        }
+
+        .hp-gauge-fill {
+            width: 100%;
+            height: 100%;
+            background-color: #2ecc71;
+            transition: width 0.4s ease, background-color 0.4s ease;
+        }
+
+        .hp-numeric {
+            font-size: 0.75rem;
+            text-align: right;
+            margin-top: 3px;
+            color: #94a3b8;
+        }
+
+        .control-layout {
+            width: 100%;
+            height: 190px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .log-box {
+            flex: 2;
+            background: #151926;
+            border: 2px solid #2b3452;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 0.95rem;
+            line-height: 1.45;
+            color: #e2e8f0;
+            overflow-y: auto;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
+        }
+
+        .skills-grid {
+            flex: 3;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .skill-btn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: all 0.15s ease;
+        }
+
+        .skill-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            filter: brightness(1.15);
+        }
+
+        .skill-btn:disabled {
+            background: #374151;
+            color: #9ca3af;
+            cursor: not-allowed;
+            box-shadow: none;
+            opacity: 0.7;
+        }
+
+        .skill-desc {
+            font-size: 0.72rem;
+            font-weight: normal;
+            opacity: 0.85;
+            margin-top: 3px;
+        }
+
+        /* 3. 결과 화면 */
+        #result-screen h1 {
+            font-size: 3.2rem;
+            margin-bottom: 15px;
+            text-shadow: 0 4px 15px rgba(0,0,0,0.6);
+        }
+
+        .win-title { color: #2ecc71; }
+        .lose-title { color: #e74c3c; }
+
+        #result-screen p {
+            font-size: 1.2rem;
+            color: #cbd5e1;
+            margin-bottom: 35px;
+        }
+
+        .common-btn {
+            background-color: #ffd700;
+            color: #11131c;
+            border: none;
+            padding: 14px 35px;
+            font-size: 1.15rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 6px 15px rgba(255, 215, 0, 0.3);
+            transition: all 0.2s;
+        }
+
+        .common-btn:hover {
+            background-color: #ffca00;
+            transform: scale(1.05);
+        }
+
+        @keyframes damageFlash {
+            0% { transform: translateX(0); }
+            20% { transform: translateX(-12px) scale(0.92); filter: brightness(2.5) grayscale(0.5); }
+            40% { transform: translateX(12px) scale(0.92); filter: brightness(2.5) grayscale(0.5); }
+            60% { transform: translateX(-6px); }
+            80% { transform: translateX(6px); }
+            100% { transform: translateX(0); filter: none; }
+        }
+
+        .hit-effect {
+            animation: damageFlash 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <!-- 1. 시작 화면 -->
+        <div id="start-screen" class="screen active">
+            <h1>몬스터 배틀 아레나 (보스 레이드)</h1>
+            <p>파트너를 선택하거나 모든 속성을 해제해 최종 보스에게 도전하세요!</p>
+            
+            <div class="select-container" id="monster-select-container">
+                <!-- 동적으로 생성됨 -->
+            </div>
+        </div>
+
+        <!-- 2. 전투 화면 -->
+        <div id="battle-screen" class="screen">
+            <div class="battle-arena">
+                <div id="opponent-side" class="combatant">
+                    <div class="status-panel">
+                        <div class="status-top">
+                            <span id="opp-name">상대</span>
+                            <span id="opp-badge">💧</span>
+                        </div>
+                        <div class="hp-gauge-bg">
+                            <div id="opp-hp-bar" class="hp-gauge-fill"></div>
+                        </div>
+                        <div class="hp-numeric"><span id="opp-hp-num">100</span> / 100</div>
+                    </div>
+                    <div id="opp-emoji" class="monster-sprite">💧</div>
+                </div>
+
+                <div id="player-side" class="combatant">
+                    <div id="player-emoji" class="monster-sprite">🔥</div>
+                    <div class="status-panel">
+                        <div class="status-top">
+                            <span id="player-name">플레이어</span>
+                            <span id="player-badge">🔥</span>
+                        </div>
+                        <div class="hp-gauge-bg">
+                            <div id="player-hp-bar" class="hp-gauge-fill"></div>
+                        </div>
+                        <div class="hp-numeric"><span id="player-hp-num">100</span> / 100</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-layout">
+                <div id="battle-log" class="log-box">
+                    배틀 아레나에 입장했습니다. 기술을 선택하세요!
+                </div>
+                <div class="skills-grid">
+                    <button class="skill-btn" id="btn-0" onclick="onSkillClick(0)">
+                        <span id="txt-name-0">일반 공격</span>
+                        <span class="skill-desc" id="txt-desc-0">위력 20</span>
+                    </button>
+                    <button class="skill-btn" id="btn-1" onclick="onSkillClick(1)">
+                        <span id="txt-name-1">강한 기술</span>
+                        <span class="skill-desc" id="txt-desc-1">상성 우위</span>
+                    </button>
+                    <button class="skill-btn" id="btn-2" onclick="onSkillClick(2)">
+                        <span id="txt-name-2">약한 기술</span>
+                        <span class="skill-desc" id="txt-desc-2">상성 열세</span>
+                    </button>
+                    <button class="skill-btn" id="btn-3" onclick="onSkillClick(3)">
+                        <span id="txt-name-3">회복</span>
+                        <span class="skill-desc" id="txt-desc-3">잔여 2회</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 결과 화면 -->
+        <div id="result-screen" class="screen">
+            <h1 id="result-title" class="win-title">승리했습니다!</h1>
+            <p id="result-desc">상대 몬스터를 제압했습니다.</p>
+            <button class="common-btn" onclick="returnToStart()">메인으로</button>
+        </div>
+    </div>
+
+    <script>
+        const monsterDatabase = {
+            fire: {
+                name: "마그마곤", type: "fire", emoji: "🔥", tagClass: "tag-fire", unlocked: true,
+                skills: [
+                    { name: "할퀴기", type: "normal", power: 20, desc: "위력 20" },
+                    { name: "화염 방사", type: "strong", power: 35, desc: "풀/전기 우위" },
+                    { name: "불꽃 파편", type: "weak", power: 15, desc: "물/어둠 열세" },
+                    { name: "HP 회복", type: "heal", power: 30, desc: "잔여 2회" }
+                ]
+            },
+            water: {
+                name: "아쿠아리", type: "water", emoji: "💧", tagClass: "tag-water", unlocked: true,
+                skills: [
+                    { name: "몸통 박치기", type: "normal", power: 20, desc: "위력 20" },
+                    { name: "하이드로펌프", type: "strong", power: 35, desc: "불/어둠 우위" },
+                    { name: "물총", type: "weak", power: 15, desc: "풀/전기 열세" },
+                    { name: "HP 회복", type: "heal", power: 30, desc: "잔여 2회" }
+                ]
+            },
+            grass: {
+                name: "포리프", type: "grass", emoji: "🌿", tagClass: "tag-grass", unlocked: true,
+                skills: [
+                    { name: "잎날 가르기", type: "normal", power: 20, desc: "위력 20" },
+                    { name: "솔라빔", type: "strong", power: 35, desc: "물/전기 우위" },
+                    { name: "덩굴 채찍", type: "weak", power: 15, desc: "불/어둠 열세" },
+                    { name: "HP 회복", type: "heal", power: 30, desc: "잔여 2회" }
+                ]
+            },
+            electric: {
+                name: "볼트론", type: "electric", emoji: "⚡", tagClass: "tag-electric", unlocked: false,
+                skills: [
+                    { name: "스파크", type: "normal", power: 20, desc: "위력 20" },
+                    { name: "10만 볼트", type: "strong", power: 35, desc: "물/풀 우위" },
+                    { name: "전기 충격", type: "weak", power: 15, desc: "불/어둠 열세" },
+                    { name: "HP 회복", type: "heal", power: 30, desc: "잔여 2회" }
+                ]
+            },
+            dark: {
+                name: "섀도우록", type: "dark", emoji: "🌑", tagClass: "tag-dark", unlocked: false,
+                skills: [
+                    { name: "어둠의 손톱", type: "normal", power: 20, desc: "위력 20" },
+                    { name: "다크 볼텍스", type: "strong", power: 35, desc: "불/전기 우위" },
+                    { name: "그림자 제압", type: "weak", power: 15, desc: "물/풀 열세" },
+                    { name: "HP 회복", type: "heal", power: 30, desc: "잔여 2회" }
+                ]
+            }
+        };
+
+        // 최종 보스 정의 (모든 속성의 힘을 합친 존재)
+        const bossMonster = {
+            name: "오메가 드래곤", type: "boss", emoji: "🐉", tagClass: "tag-boss",
+            hp: 200, maxHp: 200, healCount: 3,
+            skills: [
+                { name: "원소의 숨결", type: "normal", power: 25, desc: "위력 25" },
+                { name: "오메가 임팩트", type: "strong", power: 45, desc: "강력한 일격" },
+                { name: "재앙의 파동", type: "weak", power: 20, desc: "안정적 공격" },
+                { name: "초월 재생", type: "heal", power: 50, desc: "잔여 3회" }
+            ]
+        };
+
+        let player = null;
+        let opponent = null;
+        let isBossBattle = false;
+        let turnLock = false;
+        let lastPlayerSkillIndex = -1;
+
+        function areAllMonstersUnlocked() {
+            return Object.values(monsterDatabase).every(m => m.unlocked);
+        }
+
+        function renderStartScreen() {
+            const container = document.getElementById('monster-select-container');
+            container.innerHTML = '';
+
+            for (let key in monsterDatabase) {
+                const m = monsterDatabase[key];
+                const card = document.createElement('div');
+                card.className = 'monster-card';
+                
+                if (m.unlocked) {
+                    card.onclick = () => initGame(key, false);
+                    card.innerHTML = `
+                        <span class="card-emoji">${m.emoji}</span>
+                        <h3>${m.name}</h3>
+                        <span class="tag ${m.tagClass}">${m.name}</span>
+                    `;
+                } else {
+                    card.style.opacity = "0.5";
+                    card.innerHTML = `
+                        <span class="card-emoji">🔒</span>
+                        <h3>${m.name}</h3>
+                        <span class="tag ${m.tagClass}">도전 필요</span>
+                    `;
+                }
+                container.appendChild(card);
+            }
+
+            // 보스 카드 추가 (모든 속성 해제 시 활성화)
+            const allUnlocked = areAllMonstersUnlocked();
+            const bossCard = document.createElement('div');
+            bossCard.className = `boss-card ${allUnlocked ? '' : 'locked'}`;
+            
+            if (allUnlocked) {
+                bossCard.onclick = () => initGame(null, true);
+                bossCard.innerHTML = `
+                    <span style="font-size: 2.5rem;">🐉</span>
+                    <div style="text-align: left;">
+                        <h3 style="color: #ff0055; font-size: 1.1rem; margin-bottom: 2px;">최종 보스 레이드: 오메가 드래곤</h3>
+                        <p style="font-size: 0.8rem; color: #cbd5e1; margin: 0;">모든 속성의 힘을 합쳐서 싸우는 연합군 출격!</p>
+                    </div>
+                `;
+            } else {
+                bossCard.innerHTML = `
+                    <span style="font-size: 2.5rem;">🔒</span>
+                    <div style="text-align: left;">
+                        <h3 style="color: #888; font-size: 1.1rem; margin-bottom: 2px;">최종 보스 레이드 (잠김)</h3>
+                        <p style="font-size: 0.8rem; color: #666; margin: 0;">모든 속성 몬스터(5마리)를 해제해야 도전할 수 있습니다.</p>
+                    </div>
+                `;
+            }
+            container.appendChild(bossCard);
+        }
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function initGame(type, bossMode) {
+            isBossBattle = bossMode;
+            lastPlayerSkillIndex = -1;
+
+            if (isBossBattle) {
+                // 보스전: 모든 속성의 힘을 합친 연합군 플레이어 생성
+                player = {
+                    name: "속성 연합군",
+                    type: "all",
+                    emoji: "✨",
+                    hp: 150,
+                    maxHp: 150,
+                    healCount: 3,
+                    skills: [
+                        { name: "원소 난무", type: "normal", power: 30, desc: "위력 30" },
+                        { name: "오버로드 버스트", type: "strong", power: 45, desc: "모든 속성 힘 집중" },
+                        { name: "엘리멘탈 빔", type: "weak", power: 25, desc: "안정적 타격" },
+                        { name: "연합 회복", type: "heal", power: 40, desc: "잔여 3회" }
+                    ]
+                };
+                opponent = JSON.parse(JSON.stringify(bossMonster));
+            } else {
+                player = JSON.parse(JSON.stringify(monsterDatabase[type]));
+                player.hp = 100;
+                player.maxHp = 100;
+                player.healCount = 2;
+
+                const keys = Object.keys(monsterDatabase);
+                const compKey = keys[Math.floor(Math.random() * keys.length)];
+                opponent = JSON.parse(JSON.stringify(monsterDatabase[compKey]));
+                opponent.hp = 100;
+                opponent.maxHp = 100;
+                opponent.healCount = 2;
+            }
+
+            document.getElementById('player-name').innerText = player.name;
+            document.getElementById('player-emoji').innerText = player.emoji;
+            document.getElementById('player-badge').innerText = player.emoji;
+
+            document.getElementById('opp-name').innerText = opponent.name;
+            document.getElementById('opp-emoji').innerText = opponent.emoji;
+            document.getElementById('opp-badge').innerText = isBossBattle ? "🐉" : opponent.emoji;
+
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`txt-name-${i}`).innerText = player.skills[i].name;
+                document.getElementById(`txt-desc-${i}`).innerText = player.skills[i].desc;
+            }
+
+            refreshDisplays();
+            if (isBossBattle) {
+                setLogText(`최종 보스 ${opponent.name} 등장! 모든 속성이 힘을 합쳐 레이드를 시작합니다!`);
+            } else {
+                setLogText(`야생의 ${opponent.name} (${opponent.type})이(가) 나타났다! 배틀 시작!`);
+            }
+            
+            turnLock = false;
+            setButtonsActive(true);
+            switchScreen('battle-screen');
+        }
+
+        function getMultiplier(at, dt) {
+            if (at === 'all') return 1.5; // 연합군은 항상 우수한 데미지 보정
+            if (dt === 'boss') return 1.0;
+
+            if (at === 'fire' && dt === 'grass') return 2.0;
+            if (at === 'grass' && dt === 'water') return 2.0;
+            if (at === 'water' && dt === 'fire') return 2.0;
+            if (at === 'electric' && (dt === 'water' || dt === 'grass')) return 2.0;
+            if (at === 'dark' && (dt === 'fire' || dt === 'electric')) return 2.0;
+
+            if (dt === 'fire' && at === 'grass') return 0.5;
+            if (dt === 'grass' && at === 'water') return 0.5;
+            if (dt === 'water' && at === 'fire') return 0.5;
+            if ((dt === 'water' || dt === 'grass') && at === 'electric') return 0.5;
+            if ((dt === 'fire' || dt === 'electric') && at === 'dark') return 0.5;
+
+            return 1.0;
+        }
+
+        function onSkillClick(index) {
+            if (turnLock) return;
+            turnLock = true;
+            setButtonsActive(false);
+
+            const skill = player.skills[index];
+
+            if (skill.type === 'heal') {
+                if (player.healCount <= 0) {
+                    setLogText("회복 기술을 모두 소모했습니다!");
+                    turnLock = false;
+                    setButtonsActive(true);
+                    return;
+                }
+                player.healCount--;
+                player.hp = Math.min(player.maxHp, player.hp + skill.power);
+                document.getElementById('txt-desc-3').innerText = `잔여 ${player.healCount}회`;
+                
+                setLogText(`[내 턴] ${player.name}(이)가 ${skill.name}을(를) 사용하여 HP를 회복했다!`);
+                refreshDisplays();
+
+                setTimeout(aiTurn, 1000);
+                return;
+            }
+
+            lastPlayerSkillIndex = index;
+
+            let dmg = skill.power;
+            let mult = getMultiplier(player.type, opponent.type);
+
+            if (skill.type === 'strong' || skill.type === 'weak') {
+                dmg = Math.floor(dmg * mult);
+            }
+
+            opponent.hp = Math.max(0, opponent.hp - dmg);
+            playHitAnimation('opp-emoji');
+
+            let msg = `[내 턴] ${player.name}의 ${skill.name}!`;
+            if (mult > 1.0) msg += " 효과가 굉장했다!";
+            else if (mult < 1.0) msg += " 효과가 별로였다...";
+            setLogText(msg);
+
+            refreshDisplays();
+
+            if (opponent.hp <= 0) {
+                setTimeout(() => showEndScreen(true), 1000);
+                return;
+            }
+
+            setTimeout(aiTurn, 1200);
+        }
+
+        function aiTurn() {
+            let skill;
+
+            if (opponent.hp < (opponent.maxHp * 0.4) && opponent.healCount > 0 && Math.random() < 0.7) {
+                skill = opponent.skills[3];
+                opponent.healCount--;
+                opponent.hp = Math.min(opponent.maxHp, opponent.hp + skill.power);
+                setLogText(`[보스 턴] ${opponent.name}(이)가 ${skill.name}을(를) 사용하여 HP를 회복했다!`);
+            } else {
+                const attacks = opponent.skills.slice(0, 3);
+                skill = attacks[Math.floor(Math.random() * attacks.length)];
+
+                let dmg = skill.power;
+                let mult = isBossBattle ? 1.2 : getMultiplier(opponent.type, player.type);
+
+                if (skill.type === 'strong' || skill.type === 'weak') {
+                    dmg = Math.floor(dmg * mult);
+                }
+
+                player.hp = Math.max(0, player.hp - dmg);
+                playHitAnimation('player-emoji');
+
+                let msg = `[상대 턴] ${opponent.name}의 ${skill.name}!`;
+                if (mult > 1.0) msg += " 강력한 일격이다!";
+                setLogText(msg);
+            }
+
+            refreshDisplays();
+
+            if (player.hp <= 0) {
+                setTimeout(() => showEndScreen(false), 1000);
+                return;
+            }
+
+            setTimeout(() => {
+                turnLock = false;
+                setButtonsActive(true);
+                setLogText("당신의 턴입니다. 기술을 선택하세요.");
+            }, 1000);
+        }
+
+        function refreshDisplays() {
+            const pPct = (player.hp / player.maxHp) * 100;
+            const pBar = document.getElementById('player-hp-bar');
+            pBar.style.width = pPct + '%';
+            pBar.style.backgroundColor = getHpColor(pPct);
+            document.getElementById('player-hp-num').innerText = player.hp;
+
+            const oPct = (opponent.hp / opponent.maxHp) * 100;
+            const oBar = document.getElementById('opp-hp-bar');
+            oBar.style.width = oPct + '%';
+            oBar.style.backgroundColor = getHpColor(oPct);
+            document.getElementById('opp-hp-num').innerText = opponent.hp;
+        }
+
+        function getHpColor(pct) {
+            if (pct > 50) return '#2ecc71';
+            if (pct > 20) return '#f1c40f';
+            return '#e74c3c';
+        }
+
+        function setLogText(text) {
+            const logBox = document.getElementById('battle-log');
+            logBox.innerHTML += `<br>${text}`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function playHitAnimation(id) {
+            const el = document.getElementById(id);
+            el.classList.add('hit-effect');
+            setTimeout(() => el.classList.remove('hit-effect'), 400);
+        }
+
+        function setButtonsActive(active) {
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`btn-${i}`);
+                if (!active) {
+                    btn.disabled = true;
+                    continue;
+                }
+
+                if (i === 3 && player.healCount <= 0) {
+                    btn.disabled = true;
+                } 
+                else if (i === lastPlayerSkillIndex && player.skills[i].type !== 'heal') {
+                    btn.disabled = true;
+                } else {
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        function showEndScreen(isWin) {
+            const title = document.getElementById('result-title');
+            const desc = document.getElementById('result-desc');
+
+            if (isWin) {
+                title.innerText = "승리했습니다!";
+                title.className = "win-title";
+                if (isBossBattle) {
+                    desc.innerText = "축하합니다! 최종 보스 오메가 드래곤을 물리치고 아레나를 평정했습니다! 👑";
+                } else {
+                    desc.innerText = `상대 ${opponent.name}(을)를 제압했습니다!`;
+                    if (!monsterDatabase[opponent.type].unlocked) {
+                        monsterDatabase[opponent.type].unlocked = true;
+                        desc.innerText += ` 🎉 [${opponent.name}]의 속성이 영구히 해제되었습니다!`;
+                    }
+                }
+            } else {
+                title.innerText = "패배했습니다...";
+                title.className = "lose-title";
+                desc.innerText = `내 몬스터 ${player.name}(이)가 쓰러지고 말았습니다...`;
+            }
+
+            switchScreen('result-screen');
+        }
+
+        function returnToStart() {
+            document.getElementById('battle-log').innerHTML = "배틀 아레나에 입장했습니다. 기술을 선택하세요!";
+            renderStartScreen();
+            switchScreen('start-screen');
+        }
+
+        renderStartScreen();
+    </script>
+</body>
+</html>

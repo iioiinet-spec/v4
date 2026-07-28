@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcade Breakout & 5-Stage Obby Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .main-wrapper {
+            display: flex;
+            gap: 25px;
+            align-items: flex-start;
+        }
+
+        .game-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            color: #1e293b;
+            position: relative;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        .info-panel {
+            display: flex;
+            gap: 15px;
+            font-size: 15px;
+            font-weight: bold;
+        }
+
+        .score-text { color: #2563eb; }
+        .lives-text { color: #ef4444; }
+
+        .canvas-container {
+            position: relative;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            transition: opacity 0.3s;
+        }
+
+        .overlay.hidden { display: none; }
+
+        .overlay h2 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .overlay.win h2 { color: #4ade80; }
+        .overlay.lose h2 { color: #f87171; }
+
+        .overlay p {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-bottom: 20px;
+            text-align: center;
+            padding: 0 10px;
+        }
+
+        .btn-restart {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .btn-restart:hover {
+            background: #1d4ed8;
+            transform: scale(1.05);
+        }
+
+        .obby-card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            border: 1px solid #334155;
+            color: #ffffff;
+            width: 320px;
+        }
+
+        .obby-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #38bdf8;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .obby-stage-text {
+            font-size: 13px;
+            color: #facc15;
+            font-weight: bold;
+        }
+
+        .controls-info {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <!-- 1. 벽돌깨기 게임 영역 -->
+        <div class="game-card">
+            <div class="card-header">
+                <div class="card-title">벽돌깨기</div>
+                <div class="info-panel">
+                    <div>SCORE: <span id="score" class="score-text">0</span></div>
+                    <div>LIVES: <span id="lives" class="lives-text">❤️❤️❤️</span></div>
+                </div>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="breakoutCanvas" width="480" height="520"></canvas>
+                
+                <div id="breakout-overlay" class="overlay hidden">
+                    <h2 id="breakout-title">GAME OVER</h2>
+                    <p id="breakout-desc">모든 기회를 소진하였습니다.</p>
+                    <button class="btn-restart" onclick="resetBreakout()">다시하기</button>
+                </div>
+            </div>
+
+            <div class="controls-info">
+                🕹️ <b>벽돌깨기 조작법:</b> 마우스 이동 또는 방향키 (←, →)
+            </div>
+        </div>
+
+        <!-- 2. 미니 오비(Obby) 5단계 영역 -->
+        <div class="obby-card">
+            <div class="obby-title">
+                <span>🏃‍♂️ 미니 오비</span>
+                <span id="obby-status" class="obby-stage-text">STAGE 1 / 5</span>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="obbyCanvas" width="280" height="520"></canvas>
+                
+                <div id="obby-overlay" class="overlay hidden">
+                    <h2 id="obby-title" style="color: #38bdf8;">STAGE CLEAR!</h2>
+                    <p id="obby-desc">다음 단계로 이동합니다.</p>
+                    <button id="obby-btn" class="btn-restart" style="background: #0284c7;" onclick="nextObbyStage()">다음 단계</button>
+                </div>
+            </div>
+
+            <div class="controls-info">
+                🕹️ <b>오비 조작법:</b> [A/D] 또는 [←/→] 이동, [W / ↑ / Space] 점프<br>
+                🟡 <b>캐릭터</b> | 🔥 <b>용암</b> | ↔️ <b>무빙 발판</b>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ===================================================
+           1. 벽돌깨기 게임 메인 로직
+           =================================================== */
+        const bCanvas = document.getElementById('breakoutCanvas');
+        const bCtx = bCanvas.getContext('2d');
+
+        const BRICK_ROWS = 5;
+        const BRICK_COLS = 8;
+        const BRICK_WIDTH = 50;
+        const BRICK_HEIGHT = 18;
+        const BRICK_PADDING = 8;
+        const BRICK_OFFSET_TOP = 40;
+        const BRICK_OFFSET_LEFT = 12;
+
+        const ROW_CONFIG = [
+            { color: '#ff0055', score: 50 },
+            { color: '#ff7700', score: 40 },
+            { color: '#ffe600', score: 30 },
+            { color: '#00ff66', score: 20 },
+            { color: '#00f0ff', score: 10 }
+        ];
+
+        const PADDLE_WIDTH = 80;
+        const PADDLE_HEIGHT = 12;
+        const BALL_RADIUS = 7;
+
+        let paddleX = (bCanvas.width - PADDLE_WIDTH) / 2;
+        let ballX, ballY, ballDX, ballDY, baseSpeed;
+        let ballTrail = [];
+
+        let bricks = [];
+        let score = 0;
+        let lives = 3;
+        let isBreakoutOver = false;
+
+        let rightPressed = false;
+        let leftPressed = false;
+
+        function initBricks() {
+            bricks = [];
+            for (let r = 0; r < BRICK_ROWS; r++) {
+                bricks[r] = [];
+                for (let c = 0; c < BRICK_COLS; c++) {
+                    bricks[r][c] = { x: 0, y: 0, alive: true };
+                }
+            }
+        }
+
+        function resetBall() {
+            ballX = bCanvas.width / 2;
+            ballY = bCanvas.height - 40;
+            baseSpeed = 4;
+            ballDX = baseSpeed * (Math.random() > 0.5 ? 1 : -1);
+            ballDY = -baseSpeed;
+            ballTrail = [];
+        }
+
+        function resetBreakout() {
+            score = 0;
+            lives = 3;
+            isBreakoutOver = false;
+            paddleX = (bCanvas.width - PADDLE_WIDTH) / 2;
+
+            document.getElementById('score').innerText = score;
+            document.getElementById('lives').innerText = '❤️'.repeat(lives);
+            document.getElementById('breakout-overlay').classList.add('hidden');
+
+            initBricks();
+            resetBall();
+            requestAnimationFrame(drawBreakout);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'Right') rightPressed = true;
+            if (e.key === 'ArrowLeft' || e.key === 'Left') leftPressed = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'Right') rightPressed = false;
+            if (e.key === 'ArrowLeft' || e.key === 'Left') leftPressed = false;
+        });
+
+        bCanvas.addEventListener('mousemove', (e) => {
+            const rect = bCanvas.getBoundingClientRect();
+            const relativeX = e.clientX - rect.left;
+            if (relativeX > 0 && relativeX < bCanvas.width) {
+                paddleX = relativeX - PADDLE_WIDTH / 2;
+            }
+        });
+
+        function checkBrickCollision() {
+            for (let r = 0; r < BRICK_ROWS; r++) {
+                for (let c = 0; c < BRICK_COLS; c++) {
+                    const b = bricks[r][c];
+                    if (b.alive) {
+                        if (
+                            ballX > b.x &&
+                            ballX < b.x + BRICK_WIDTH &&
+                            ballY > b.y &&
+                            ballY < b.y + BRICK_HEIGHT
+                        ) {
+                            ballDY = -ballDY;
+                            b.alive = false;
+
+                            score += ROW_CONFIG[r].score;
+                            document.getElementById('score').innerText = score;
+
+                            baseSpeed += 0.15;
+                            let currentAngle = Math.atan2(ballDY, ballDX);
+                            ballDX = Math.cos(currentAngle) * baseSpeed;
+                            ballDY = Math.sin(currentAngle) * baseSpeed;
+
+                            if (checkWin()) {
+                                showBreakoutOverlay(true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function checkWin() {
+            for (let r = 0; r < BRICK_ROWS; r++) {
+                for (let c = 0; c < BRICK_COLS; c++) {
+                    if (bricks[r][c].alive) return false;
+                }
+            }
+            return true;
+        }
+
+        function showBreakoutOverlay(isWin) {
+            isBreakoutOver = true;
+            const overlay = document.getElementById('breakout-overlay');
+            const title = document.getElementById('breakout-title');
+            const desc = document.getElementById('breakout-desc');
+
+            overlay.classList.remove('hidden');
+            if (isWin) {
+                overlay.className = 'overlay win';
+                title.innerText = 'STAGE CLEAR!';
+                desc.innerText = `모든 벽돌을 깨트렸습니다! 최종 점수: ${score}`;
+            } else {
+                overlay.className = 'overlay lose';
+                title.innerText = 'GAME OVER';
+                desc.innerText = `목숨을 모두 잃었습니다. 최종 점수: ${score}`;
+            }
+        }
+
+        function drawBreakout() {
+            if (isBreakoutOver) return;
+
+            bCtx.fillStyle = '#ffffff';
+            bCtx.fillRect(0, 0, bCanvas.width, bCanvas.height);
+
+            for (let r = 0; r < BRICK_ROWS; r++) {
+                for (let c = 0; c < BRICK_COLS; c++) {
+                    if (bricks[r][c].alive) {
+                        const bx = c * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT;
+                        const by = r * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP;
+                        bricks[r][c].x = bx;
+                        bricks[r][c].y = by;
+
+                        bCtx.fillStyle = ROW_CONFIG[r].color;
+                        bCtx.shadowColor = ROW_CONFIG[r].color;
+                        bCtx.shadowBlur = 8;
+                        
+                        bCtx.beginPath();
+                        bCtx.roundRect(bx, by, BRICK_WIDTH, BRICK_HEIGHT, 4);
+                        bCtx.fill();
+
+                        bCtx.shadowBlur = 0;
+                    }
+                }
+            }
+
+            ballTrail.push({ x: ballX, y: ballY });
+            if (ballTrail.length > 6) ballTrail.shift();
+
+            for (let i = 0; i < ballTrail.length; i++) {
+                const trail = ballTrail[i];
+                const opacity = (i + 1) / ballTrail.length * 0.4;
+                bCtx.fillStyle = `rgba(15, 23, 42, ${opacity})`;
+                bCtx.beginPath();
+                bCtx.arc(trail.x, trail.y, BALL_RADIUS * 0.8, 0, Math.PI * 2);
+                bCtx.fill();
+            }
+
+            bCtx.fillStyle = '#0f172a';
+            bCtx.beginPath();
+            bCtx.arc(ballX, ballY, BALL_RADIUS, 0, Math.PI * 2);
+            bCtx.fill();
+
+            bCtx.fillStyle = '#2563eb';
+            bCtx.shadowColor = 'rgba(37, 99, 235, 0.4)';
+            bCtx.shadowBlur = 6;
+            bCtx.beginPath();
+            bCtx.roundRect(paddleX, bCanvas.height - PADDLE_HEIGHT - 12, PADDLE_WIDTH, PADDLE_HEIGHT, 6);
+            bCtx.fill();
+            bCtx.shadowBlur = 0;
+
+            checkBrickCollision();
+
+            if (ballX + ballDX > bCanvas.width - BALL_RADIUS || ballX + ballDX < BALL_RADIUS) {
+                ballDX = -ballDX;
+            }
+
+            if (ballY + ballDY < BALL_RADIUS) {
+                ballDY = -ballDY;
+            }
+            else if (ballY + ballDY > bCanvas.height - BALL_RADIUS - PADDLE_HEIGHT - 12) {
+                if (ballX > paddleX && ballX < paddleX + PADDLE_WIDTH) {
+                    let hitPoint = (ballX - (paddleX + PADDLE_WIDTH / 2)) / (PADDLE_WIDTH / 2);
+                    let angle = hitPoint * (Math.PI / 3);
+
+                    ballDX = baseSpeed * Math.sin(angle);
+                    ballDY = -baseSpeed * Math.cos(angle);
+                } else if (ballY + ballDY > bCanvas.height - BALL_RADIUS) {
+                    lives--;
+                    document.getElementById('lives').innerText = '❤️'.repeat(Math.max(0, lives));
+
+                    if (lives <= 0) {
+                        showBreakoutOverlay(false);
+                        return;
+                    } else {
+                        resetBall();
+                    }
+                }
+            }
+
+            if (rightPressed && paddleX < bCanvas.width - PADDLE_WIDTH) {
+                paddleX += 7;
+            } else if (leftPressed && paddleX > 0) {
+                paddleX -= 7;
+            }
+
+            ballX += ballDX;
+            ballY += ballDY;
+
+            requestAnimationFrame(drawBreakout);
+        }
+
+
+        /* ===================================================
+           2. 미니 오비(Obby) 5단계 스테이지 로직
+           =================================================== */
+        const oCanvas = document.getElementById('obbyCanvas');
+        const oCtx = oCanvas.getContext('2d');
+
+        let currentStage = 1;
+        const TOTAL_STAGES = 5;
+
+        let obbyPlayer = {
+            x: 40,
+            y: 440,
+            width: 22,
+            height: 22,
+            vx: 0,
+            vy: 0,
+            isGrounded: false
+        };
+
+        // 1~5단계 전체 스테이지 구성
+        const STAGE_DATA = {
+            1: {
+                platformColor: '#0284c7',
+                platforms: [
+                    { x: 10, y: 480, w: 260, h: 16 },
+                    { x: 50, y: 390, w: 210, h: 16 },
+                    { x: 10, y: 300, w: 210, h: 16 },
+                    { x: 60, y: 210, w: 200, h: 16 },
+                    { x: 20, y: 120, w: 240, h: 16 }
+                ],
+                lava: [
+                    { x: 140, y: 376, w: 24, h: 14 }
+                ],
+                goal: { x: 200, y: 80, w: 22, h: 40 }
+            },
+            2: {
+                platformColor: '#0d9488',
+                platforms: [
+                    { x: 10, y: 480, w: 260, h: 16 },
+                    { x: 10, y: 390, w: 140, h: 16 },
+                    { x: 140, y: 300, w: 100, h: 16, speed: 1.8, minX: 40, maxX: 180, dir: 1 },
+                    { x: 20, y: 210, w: 130, h: 16 },
+                    { x: 100, y: 120, w: 160, h: 16 }
+                ],
+                lava: [
+                    { x: 70, y: 376, w: 30, h: 14 },
+                    { x: 50, y: 196, w: 30, h: 14 }
+                ],
+                goal: { x: 220, y: 80, w: 22, h: 40 }
+            },
+            3: {
+                platformColor: '#7c3aed',
+                platforms: [
+                    { x: 10, y: 480, w: 260, h: 16 },
+                    { x: 30, y: 400, w: 100, h: 16 },
+                    { x: 160, y: 320, w: 90, h: 16, speed: 2.2, minX: 110, maxX: 180, dir: 1 },
+                    { x: 20, y: 240, w: 90, h: 16 },
+                    { x: 130, y: 160, w: 100, h: 16, speed: 2.5, minX: 50, maxX: 150, dir: -1 },
+                    { x: 200, y: 90, w: 70, h: 16 }
+                ],
+                lava: [
+                    { x: 60, y: 386, w: 30, h: 14 },
+                    { x: 45, y: 226, w: 30, h: 14 }
+                ],
+                goal: { x: 235, y: 50, w: 22, h: 40 }
+            },
+            4: {
+                platformColor: '#e11d48',
+                platforms: [
+                    { x: 10, y: 480, w: 260, h: 16 },
+                    { x: 20, y: 400, w: 75, h: 16 },
+                    { x: 120, y: 330, w: 75, h: 16 },
+                    { x: 210, y: 260, w: 60, h: 16 },
+                    { x: 110, y: 190, w: 80, h: 16, speed: 2.0, minX: 30, maxX: 170, dir: 1 },
+                    { x: 10, y: 110, w: 100, h: 16 }
+                ],
+                lava: [
+                    { x: 40, y: 386, w: 25, h: 14 },
+                    { x: 140, y: 316, w: 25, h: 14 },
+                    { x: 35, y: 96, w: 30, h: 14 }
+                ],
+                goal: { x: 30, y: 70, w: 22, h: 40 }
+            },
+            5: {
+                platformColor: '#ea580c',
+                platforms: [
+                    { x: 10, y: 480, w: 260, h: 16 },
+                    { x: 100, y: 410, w: 80, h: 16, speed: 2.5, minX: 20, maxX: 180, dir: 1 },
+                    { x: 10, y: 330, w: 70, h: 16 },
+                    { x: 110, y: 250, w: 70, h: 16 },
+                    { x: 200, y: 180, w: 70, h: 16 },
+                    { x: 60, y: 110, w: 160, h: 16, speed: 2.2, minX: 30, maxX: 100, dir: -1 }
+                ],
+                lava: [
+                    { x: 30, y: 316, w: 25, h: 14 },
+                    { x: 130, y: 236, w: 25, h: 14 },
+                    { x: 220, y: 166, w: 25, h: 14 },
+                    { x: 110, y: 96, w: 35, h: 14 }
+                ],
+                goal: { x: 180, y: 70, w: 22, h: 40 }
+            }
+        };
+
+        let currentPlatforms = [];
+        let currentLava = [];
+        let currentGoal = {};
+        let obbyKeys = {};
+        let isObbyOver = false;
+
+        document.addEventListener('keydown', (e) => {
+            obbyKeys[e.key.toLowerCase()] = true;
+            obbyKeys[e.key] = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            obbyKeys[e.key.toLowerCase()] = false;
+            obbyKeys[e.key] = false;
+        });
+
+        function loadStage(stageNum) {
+            currentStage = stageNum;
+            const data = STAGE_DATA[stageNum];
+            
+            currentPlatforms = JSON.parse(JSON.stringify(data.platforms));
+            currentLava = JSON.parse(JSON.stringify(data.lava));
+            currentGoal = JSON.parse(JSON.stringify(data.goal));
+
+            document.getElementById('obby-status').innerText = `STAGE ${currentStage} / ${TOTAL_STAGES}`;
+
+            resetObbyPlayer();
+        }
+
+        function resetObbyPlayer() {
+            obbyPlayer.x = 40;
+            obbyPlayer.y = 440;
+            obbyPlayer.vx = 0;
+            obbyPlayer.vy = 0;
+            isObbyOver = false;
+            document.getElementById('obby-overlay').classList.add('hidden');
+            requestAnimationFrame(drawObby);
+        }
+
+        function nextObbyStage() {
+            if (currentStage < TOTAL_STAGES) {
+                loadStage(currentStage + 1);
+            } else {
+                loadStage(1);
+            }
+        }
+
+        function showObbyClearOverlay() {
+            isObbyOver = true;
+            const overlay = document.getElementById('obby-overlay');
+            const title = document.getElementById('obby-title');
+            const desc = document.getElementById('obby-desc');
+            const btn = document.getElementById('obby-btn');
+
+            overlay.classList.remove('hidden');
+
+            if (currentStage < TOTAL_STAGES) {
+                title.innerText = `STAGE ${currentStage} CLEAR!`;
+                title.style.color = '#38bdf8';
+                desc.innerText = '훌륭합니다! 다음 스테이지 도전!';
+                btn.innerText = '다음 단계 ▶';
+            } else {
+                title.innerText = 'ALL STAGES CLEAR! 🎉';
+                title.style.color = '#4ade80';
+                desc.innerText = '축하합니다! 5단계를 모두 통과하셨습니다!';
+                btn.innerText = '처음부터 다시';
+            }
+        }
+
+        function drawObby() {
+            if (isObbyOver) return;
+
+            oCtx.fillStyle = '#0f172a';
+            oCtx.fillRect(0, 0, oCanvas.width, oCanvas.height);
+
+            // 이동 처리
+            if (obbyKeys['a'] || obbyKeys['arrowleft']) obbyPlayer.vx = -4.5;
+            else if (obbyKeys['d'] || obbyKeys['arrowright']) obbyPlayer.vx = 4.5;
+            else obbyPlayer.vx = 0;
+
+            if ((obbyKeys['w'] || obbyKeys['arrowup'] || obbyKeys[' ']) && obbyPlayer.isGrounded) {
+                obbyPlayer.vy = -8.8;
+                obbyPlayer.isGrounded = false;
+            }
+
+            obbyPlayer.vy += 0.35;
+
+            // 무빙 발판 업데이트
+            for (let p of currentPlatforms) {
+                if (p.speed) {
+                    p.x += p.speed * p.dir;
+                    if (p.x < p.minX || p.x > p.maxX) {
+                        p.dir *= -1;
+                    }
+                }
+            }
+
+            obbyPlayer.x += obbyPlayer.vx;
+            obbyPlayer.y += obbyPlayer.vy;
+
+            if (obbyPlayer.x < 0) obbyPlayer.x = 0;
+            if (obbyPlayer.x > oCanvas.width - obbyPlayer.width) obbyPlayer.x = oCanvas.width - obbyPlayer.width;
+
+            // 추락 사망시 해당 스테이지 리셋
+            if (obbyPlayer.y > oCanvas.height) {
+                resetObbyPlayer();
+                return;
+            }
+
+            // 발판 충돌 판정
+            obbyPlayer.isGrounded = false;
+            for (let p of currentPlatforms) {
+                if (
+                    obbyPlayer.x + obbyPlayer.width > p.x &&
+                    obbyPlayer.x < p.x + p.w &&
+                    obbyPlayer.y + obbyPlayer.height >= p.y &&
+                    obbyPlayer.y + obbyPlayer.height <= p.y + p.h + obbyPlayer.vy + 2
+                ) {
+                    obbyPlayer.y = p.y - obbyPlayer.height;
+                    obbyPlayer.vy = 0;
+                    obbyPlayer.isGrounded = true;
+
+                    if (p.speed) {
+                        obbyPlayer.x += p.speed * p.dir;
+                    }
+                }
+            }
+
+            // 🔥 용암 충돌
+            for (let l of currentLava) {
+                if (
+                    obbyPlayer.x < l.x + l.w &&
+                    obbyPlayer.x + obbyPlayer.width > l.x &&
+                    obbyPlayer.y < l.y + l.h &&
+                    obbyPlayer.y + obbyPlayer.height > l.y
+                ) {
+                    resetObbyPlayer();
+                    return;
+                }
+            }
+
+            // 🏁 깃발 충돌
+            if (
+                obbyPlayer.x < currentGoal.x + currentGoal.w &&
+                obbyPlayer.x + obbyPlayer.width > currentGoal.x &&
+                obbyPlayer.y < currentGoal.y + currentGoal.h &&
+                obbyPlayer.y + obbyPlayer.height > currentGoal.y
+            ) {
+                showObbyClearOverlay();
+                return;
+            }
+
+            // 1. 발판 그리드
+            oCtx.fillStyle = STAGE_DATA[currentStage].platformColor;
+            for (let p of currentPlatforms) {
+                if (oCtx.roundRect) {
+                    oCtx.beginPath();
+                    oCtx.roundRect(p.x, p.y, p.w, p.h, 4);
+                    oCtx.fill();
+                } else {
+                    oCtx.fillRect(p.x, p.y, p.w, p.h);
+                }
+            }
+
+            // 2. 🔥 용암 장애물
+            for (let l of currentLava) {
+                oCtx.fillStyle = '#ff0055';
+                oCtx.shadowColor = '#ff0055';
+                oCtx.shadowBlur = 8;
+                oCtx.fillRect(l.x, l.y, l.w, l.h);
+                oCtx.shadowBlur = 0;
+            }
+
+            // 3. 🏁 깃발
+            oCtx.fillStyle = '#facc15';
+            oCtx.fillRect(currentGoal.x, currentGoal.y, 4, currentGoal.h);
+            oCtx.fillStyle = '#22c55e';
+            oCtx.beginPath();
+            oCtx.moveTo(currentGoal.x + 4, currentGoal.y);
+            oCtx.lineTo(currentGoal.x + 20, currentGoal.y + 10);
+            oCtx.lineTo(currentGoal.x + 4, currentGoal.y + 20);
+            oCtx.fill();
+
+            // 4. 🟡 캐릭터 (선글라스 형광 옐로우)
+            oCtx.fillStyle = '#facc15';
+            oCtx.shadowColor = '#facc15';
+            oCtx.shadowBlur = 8;
+            oCtx.beginPath();
+            if (oCtx.roundRect) {
+                oCtx.roundRect(obbyPlayer.x, obbyPlayer.y, obbyPlayer.width, obbyPlayer.height, 5);
+            } else {
+                oCtx.fillRect(obbyPlayer.x, obbyPlayer.y, obbyPlayer.width, obbyPlayer.height);
+            }
+            oCtx.fill();
+            oCtx.shadowBlur = 0;
+
+            // 선글라스
+            oCtx.fillStyle = '#0f172a';
+            oCtx.fillRect(obbyPlayer.x + 3, obbyPlayer.y + 6, 16, 5);
+
+            requestAnimationFrame(drawObby);
+        }
+
+        resetBreakout();
+        loadStage(1);
+    </script>
+</body>
+</html>

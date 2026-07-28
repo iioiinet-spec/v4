@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>멀티 타워 디펜스</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #1a1a1a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    #gameContainer {
+      position: relative;
+    }
+    canvas {
+      border: 3px solid #444;
+      background-color: #2b3a42;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+    }
+    #ui {
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .stats {
+      display: flex;
+      gap: 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      padding: 8px 14px;
+      background-color: #333;
+      color: white;
+      border: 2px solid #555;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background-color: #555;
+    }
+    .btn.active {
+      border-color: #ffaa00;
+      background-color: #444;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>🛡️ 멀티 타워 디펜스 🛡️</h2>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+  </div>
+
+  <div id="ui">
+    <div class="stats">
+      <span>골드: <span id="goldText" style="color: #ffd700;">200</span>G</span>
+      <span>체력: <span id="hpText" style="color: #ff4d4d;">20</span></span>
+      <span>처치: <span id="scoreText">0</span></span>
+    </div>
+    <div class="buttons">
+      <button class="btn" onclick="selectTower('fire')">🔥 파이어 타워 (50G)</button>
+      <button class="btn" onclick="selectTower('cannon')">💣 대포 타워 (75G)</button>
+      <button class="btn" onclick="selectTower('crossbow')">🏹 발리스타 타워 (80G)</button>
+      <button class="btn" onclick="selectTower('laser')">⚡ 레이저 센트리 (120G)</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let gold = 200;
+    let hp = 20;
+    let score = 0;
+    let selectedType = null;
+
+    const waypoints = [
+      { x: 0, y: 250 },
+      { x: 200, y: 250 },
+      { x: 200, y: 100 },
+      { x: 500, y: 100 },
+      { x: 500, y: 400 },
+      { x: 800, y: 400 }
+    ];
+
+    const towerPrices = { fire: 50, cannon: 75, crossbow: 80, laser: 120 };
+    const towers = [];
+    const enemies = [];
+    const bullets = [];
+
+    let spawnTimer = 0;
+    let spawnInterval = 80;
+
+    function selectTower(type) {
+      if (gold < towerPrices[type]) {
+        alert("골드가 부족합니다!");
+        return;
+      }
+      selectedType = type;
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (!selectedType) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      towers.push(new Tower(x, y, selectedType));
+      gold -= towerPrices[selectedType];
+      selectedType = null;
+      updateUI();
+    });
+
+    function updateUI() {
+      document.getElementById('goldText').innerText = gold;
+      document.getElementById('hpText').innerText = hp;
+      document.getElementById('scoreText').innerText = score;
+    }
+
+    // --- 기본 타워 베이스 (분홍/회색 성벽) ---
+    function drawTowerBase(x, y, isPink = false) {
+      ctx.save();
+      ctx.translate(x, y);
+
+      // 성채 베이스
+      ctx.fillStyle = isPink ? "#c08497" : "#a8a8a8";
+      ctx.fillRect(-20, -10, 40, 40);
+
+      // 입구 계단 & 문
+      ctx.fillStyle = "#8d5b4c";
+      ctx.fillRect(-8, 10, 16, 20);
+      ctx.fillStyle = isPink ? "#e8ae87" : "#888";
+      ctx.fillRect(-15, 20, 30, 10);
+
+      // 상단 성채
+      ctx.fillStyle = isPink ? "#d8a7b1" : "#c0c0c0";
+      ctx.fillRect(-22, -20, 44, 12);
+      ctx.clearRect(-10, -20, 8, 6);
+      ctx.clearRect(2, -20, 8, 6);
+
+      // 파란 깃발
+      ctx.fillStyle = "#4a90e2";
+      ctx.fillRect(-18, -12, 8, 16);
+      ctx.fillRect(10, -12, 8, 16);
+
+      ctx.restore();
+    }
+
+    // --- 통합 타워 클래스 ---
+    class Tower {
+      constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.cooldown = 0;
+        this.angle = 0;
+
+        if (type === 'fire') {
+          this.range = 120;
+          this.fireRate = 25;
+        } else if (type === 'cannon') {
+          this.range = 140;
+          this.fireRate = 50;
+        } else if (type === 'crossbow') {
+          this.range = 180;
+          this.fireRate = 40;
+        } else if (type === 'laser') {
+          this.range = 160;
+          this.fireRate = 5; // 아주 빠름
+        }
+      }
+
+      draw() {
+        if (this.type === 'laser') {
+          // 4. 레이저 삼각 삼각대 센트리
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          
+          // 삼각 다리
+          ctx.strokeStyle = "#3f4756";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(0, 0); ctx.lineTo(-18, 25);
+          ctx.moveTo(0, 0); ctx.lineTo(18, 25);
+          ctx.moveTo(0, 0); ctx.lineTo(0, 28);
+          ctx.stroke();
+
+          // 회전하는 레이저 총신
+          ctx.rotate(this.angle);
+          ctx.fillStyle = "#2c3e50";
+          ctx.fillRect(-10, -8, 28, 16);
+          ctx.fillStyle = "#00ff66";
+          ctx.fillRect(5, -6, 10, 3); // 초록 네온
+          
+          // 총구 레이저 가이드선
+          ctx.strokeStyle = "#00ff66";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(18, 0); ctx.lineTo(35, 0);
+          ctx.stroke();
+
+          ctx.restore();
+        } else {
+          // 1, 2, 3번 타워는 기본 성채 타워 탑승
+          const isPink = (this.type === 'cannon' || this.type === 'crossbow');
+          drawTowerBase(this.x, this.y, isPink);
+
+          ctx.save();
+          ctx.translate(this.x, this.y - 25);
+
+          if (this.type === 'fire') {
+            // 🔥 파이어 타워
+            ctx.beginPath();
+            ctx.fillStyle = "#ff3300";
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.fillStyle = "#ffcc00";
+            ctx.arc(0, 0, 6, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (this.type === 'cannon') {
+            // 💣 대포 타워 (회전 대포)
+            ctx.rotate(this.angle);
+            ctx.fillStyle = "#5c3d2e";
+            ctx.fillRect(-8, -8, 16, 16); // 대포 마운트
+            ctx.fillStyle = "#333";
+            ctx.fillRect(0, -6, 22, 12);  // 포신
+          } else if (this.type === 'crossbow') {
+            // 🏹 발리스타 타워 (회전 십자궁)
+            ctx.rotate(this.angle);
+            ctx.fillStyle = "#8b5a2b";
+            ctx.fillRect(-12, -3, 24, 6); // 활 몸통
+            ctx.fillRect(-4, -12, 8, 24); // 활 활대
+            ctx.fillStyle = "#4a2e18";
+            ctx.fillRect(2, -2, 14, 4);   // 화살
+          }
+          ctx.restore();
+        }
+      }
+
+      update() {
+        if (this.cooldown > 0) this.cooldown--;
+
+        // 사거리 내 가장 가까운 적 탐색
+        let target = null;
+        let minDist = this.range;
+
+        for (let enemy of enemies) {
+          const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+          if (dist < minDist) {
+            minDist = dist;
+            target = enemy;
+          }
+        }
+
+        if (target) {
+          // 각도 계산
+          const shootY = (this.type === 'laser') ? this.y : this.y - 25;
+          this.angle = Math.atan2(target.y - shootY, target.x - this.x);
+
+          if (this.cooldown === 0) {
+            bullets.push(new Bullet(this.x, shootY, target, this.type));
+            this.cooldown = this.fireRate;
+          }
+        }
+      }
+    }
+
+    // --- 총알/공격 효과 클래스 ---
+    class Bullet {
+      constructor(x, y, target, type) {
+        this.x = x;
+        this.y = y;
+        this.target = target;
+        this.type = type;
+        this.markedForDeletion = false;
+
+        if (type === 'fire') {
+          this.speed = 6; this.damage = 15;
+        } else if (type === 'cannon') {
+          this.speed = 4; this.damage = 40; // 느리지만 강함
+        } else if (type === 'crossbow') {
+          this.speed = 9; this.damage = 25; // 빠름
+        } else if (type === 'laser') {
+          this.speed = 15; this.damage = 3; // 매우 빠른 자잘한 딜
+        }
+      }
+
+      draw() {
+        ctx.save();
+        if (this.type === 'fire') {
+          ctx.fillStyle = "#ff5500";
+          ctx.beginPath(); ctx.arc(this.x, this.y, 5, 0, Math.PI * 2); ctx.fill();
+        } else if (this.type === 'cannon') {
+          ctx.fillStyle = "#111";
+          ctx.beginPath(); ctx.arc(this.x, this.y, 7, 0, Math.PI * 2); ctx.fill();
+        } else if (this.type === 'crossbow') {
+          ctx.strokeStyle = "#8b5a2b"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x - 8, this.y); ctx.stroke();
+        } else if (this.type === 'laser') {
+          ctx.strokeStyle = "#00ff66"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.target.x, this.target.y); ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      update() {
+        if (this.type === 'laser') {
+          // 레이저는 즉시 명중
+          this.target.hp -= this.damage;
+          this.markedForDeletion = true;
+          return;
+        }
+
+        const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        this.x += Math.cos(angle) * this.speed;
+        this.y += Math.sin(angle) * this.speed;
+
+        const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
+        if (dist < 8) {
+          this.target.hp -= this.damage;
+          this.markedForDeletion = true;
+        }
+      }
+    }
+
+    // --- 적 클래스 ---
+    class Enemy {
+      constructor() {
+        this.x = waypoints[0].x;
+        this.y = waypoints[0].y;
+        this.waypointIndex = 0;
+        this.speed = 1.2 + Math.random() * 0.5;
+        this.hp = 50;
+        this.maxHp = 50;
+        this.markedForDeletion = false;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.fillStyle = "#e74c3c";
+        ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 체력바
+        ctx.fillStyle = "red";
+        ctx.fillRect(this.x - 12, this.y - 18, 24, 4);
+        ctx.fillStyle = "#00ff00";
+        ctx.fillRect(this.x - 12, this.y - 18, Math.max(0, (this.hp / this.maxHp) * 24), 4);
+      }
+
+      update() {
+        const target = waypoints[this.waypointIndex + 1];
+        if (!target) return;
+
+        const angle = Math.atan2(target.y - this.y, target.x - this.x);
+        this.x += Math.cos(angle) * this.speed;
+        this.y += Math.sin(angle) * this.speed;
+
+        const dist = Math.hypot(target.x - this.x, target.y - this.y);
+        if (dist < 3) {
+          this.waypointIndex++;
+          if (this.waypointIndex >= waypoints.length - 1) {
+            hp -= 1;
+            this.markedForDeletion = true;
+            updateUI();
+          }
+        }
+
+        if (this.hp <= 0) {
+          gold += 20;
+          score += 1;
+          this.markedForDeletion = true;
+          updateUI();
+        }
+      }
+    }
+
+    // --- 메인 게임 루프 ---
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1. 길 그리기
+      ctx.beginPath();
+      ctx.strokeStyle = "#3a4b53";
+      ctx.lineWidth = 32;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.moveTo(waypoints[0].x, waypoints[0].y);
+      for (let i = 1; i < waypoints.length; i++) {
+        ctx.lineTo(waypoints[i].x, waypoints[i].y);
+      }
+      ctx.stroke();
+
+      // 2. 적 스폰
+      spawnTimer++;
+      if (spawnTimer > spawnInterval) {
+        enemies.push(new Enemy());
+        spawnTimer = 0;
+      }
+
+      // 3. 요소 업데이트 & 그리기
+      towers.forEach(tower => {
+        tower.update();
+        tower.draw();
+      });
+
+      enemies.forEach((enemy, index) => {
+        enemy.update();
+        enemy.draw();
+        if (enemy.markedForDeletion) enemies.splice(index, 1);
+      });
+
+      bullets.forEach((bullet, index) => {
+        bullet.update();
+        bullet.draw();
+        if (bullet.markedForDeletion) bullets.splice(index, 1);
+      });
+
+      // 게임 오버
+      if (hp <= 0) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff4d4d";
+        ctx.font = "bold 42px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+        return;
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>

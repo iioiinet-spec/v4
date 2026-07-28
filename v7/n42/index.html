@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>말랑말랑 네온 볼 테트리스</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #0b0f19;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .tetris-container {
+            display: flex;
+            background: #111827;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.2);
+            border: 2px solid #1f293d;
+            gap: 20px;
+        }
+        .board-wrapper {
+            position: relative;
+        }
+        canvas {
+            display: block;
+            background-color: #0d1322;
+            border: 2px solid #2b374e;
+            border-radius: 5px;
+        }
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 160px;
+        }
+        .panel {
+            background: #162032;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2b374e;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .panel h3 {
+            font-size: 14px;
+            color: #9ca3af;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .panel .value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00f3ff;
+            text-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+        }
+        #next-canvas {
+            background: #0d1322;
+            border: 1px solid #2b374e;
+            border-radius: 4px;
+            margin: 0 auto;
+            display: block;
+        }
+        .game-over-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 15, 25, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 5px;
+            display: none;
+            z-index: 10;
+        }
+        .game-over-overlay h2 {
+            color: #ff0055;
+            font-size: 28px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(255, 0, 85, 0.6);
+        }
+        .btn {
+            background: #00f3ff;
+            color: #0b0f19;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
+        }
+        .btn:hover {
+            background: #fff;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="tetris-container">
+        <!-- 메인 게임 보드 -->
+        <div class="board-wrapper">
+            <canvas id="tetris" width="300" height="600"></canvas>
+            <div id="game-over" class="game-over-overlay">
+                <h2>GAME OVER</h2>
+                <button class="btn" onclick="resetGame()">다시하기</button>
+            </div>
+        </div>
+
+        <!-- 우측 사이드바 -->
+        <div class="sidebar">
+            <div>
+                <div class="panel">
+                    <h3>다음 블록</h3>
+                    <canvas id="next-canvas" width="100" height="100"></canvas>
+                </div>
+                <div class="panel">
+                    <h3>점수</h3>
+                    <div id="score" class="value">0</div>
+                </div>
+                <div class="panel">
+                    <h3>제거한 줄</h3>
+                    <div id="lines" class="value">0</div>
+                </div>
+                <div class="panel">
+                    <h3>레벨</h3>
+                    <div id="level" class="value">1</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('next-canvas');
+        const nextContext = nextCanvas.getContext('2d');
+
+        const BLOCK_SIZE = 30;
+        const ROWS = 20;
+        const COLS = 10;
+
+        context.scale(BLOCK_SIZE, BLOCK_SIZE);
+        nextContext.scale(30, 30);
+
+        const SHAPES = {
+            'I': {
+                matrix: [
+                    [0, 0, 0, 0],
+                    [1, 1, 1, 1],
+                    [0, 0, 0, 0],
+                    [0, 0, 0, 0]
+                ],
+                color: '#00f3ff'
+            },
+            'J': {
+                matrix: [
+                    [2, 0, 0],
+                    [2, 2, 2],
+                    [0, 0, 0]
+                ],
+                color: '#0051ff'
+            },
+            'L': {
+                matrix: [
+                    [0, 0, 3],
+                    [3, 3, 3],
+                    [0, 0, 0]
+                ],
+                color: '#ff7700'
+            },
+            'O': {
+                matrix: [
+                    [4, 4],
+                    [4, 4]
+                ],
+                color: '#ffff00'
+            },
+            'S': {
+                matrix: [
+                    [0, 5, 5],
+                    [5, 5, 0],
+                    [0, 0, 0]
+                ],
+                color: '#00ff66'
+            },
+            'T': {
+                matrix: [
+                    [0, 6, 0],
+                    [6, 6, 6],
+                    [0, 0, 0]
+                ],
+                color: '#bf00ff'
+            },
+            'Z': {
+                matrix: [
+                    [7, 7, 0],
+                    [0, 7, 7],
+                    [0, 0, 0]
+                ],
+                color: '#ff0055'
+            }
+        };
+
+        const KEYS = Object.keys(SHAPES);
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        const arena = createMatrix(COLS, ROWS);
+
+        const player = {
+            pos: { x: 0, y: 0 },
+            matrix: null,
+            color: null,
+            shapeKey: null,
+            squishX: 1,
+            squishY: 1
+        };
+
+        const nextPlayer = {
+            matrix: null,
+            color: null,
+            shapeKey: null
+        };
+
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+
+        let score = 0;
+        let lines = 0;
+        let level = 1;
+        let isGameOver = false;
+
+        function getRandomShape() {
+            const randKey = KEYS[Math.floor(Math.random() * KEYS.length)];
+            return {
+                shapeKey: randKey,
+                matrix: SHAPES[randKey].matrix,
+                color: SHAPES[randKey].color
+            };
+        }
+
+        function triggerSquish(dirX = 0, dirY = 0) {
+            player.squishX = 1 + dirX * 0.25;
+            player.squishY = 1 + dirY * 0.25;
+        }
+
+        function playerReset() {
+            if (!nextPlayer.matrix) {
+                const first = getRandomShape();
+                player.shapeKey = first.shapeKey;
+                player.matrix = first.matrix;
+                player.color = first.color;
+            } else {
+                player.shapeKey = nextPlayer.shapeKey;
+                player.matrix = nextPlayer.matrix;
+                player.color = nextPlayer.color;
+            }
+
+            const next = getRandomShape();
+            nextPlayer.shapeKey = next.shapeKey;
+            nextPlayer.matrix = next.matrix;
+            nextPlayer.color = next.color;
+
+            player.pos.y = 0;
+            player.pos.x = Math.floor((COLS - player.matrix[0].length) / 2);
+            triggerSquish(0, 0.5);
+
+            if (checkCollision(arena, player)) {
+                isGameOver = true;
+                document.getElementById('game-over').style.display = 'flex';
+            }
+        }
+
+        function checkCollision(arena, player) {
+            const m = player.matrix;
+            const o = player.pos;
+            for (let r = 0; r < m.length; ++r) {
+                for (let c = 0; c < m[r].length; ++c) {
+                    if (m[r][c] !== 0 &&
+                       (arena[r + o.y] && arena[r + o.y][c + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, r) => {
+                row.forEach((value, c) => {
+                    if (value !== 0) {
+                        arena[r + player.pos.y][c + player.pos.x] = player.color;
+                    }
+                });
+            });
+        }
+
+        function rotateMatrix(matrix) {
+            const N = matrix.length;
+            const rotated = createMatrix(N, N);
+            for (let r = 0; r < N; ++r) {
+                for (let c = 0; c < N; ++c) {
+                    rotated[c][N - 1 - r] = matrix[r][c];
+                }
+            }
+            return rotated;
+        }
+
+        function playerRotate() {
+            const posX = player.pos.x;
+            let offset = 1;
+            const originalMatrix = player.matrix;
+            player.matrix = rotateMatrix(player.matrix);
+            
+            while (checkCollision(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    player.matrix = originalMatrix;
+                    player.pos.x = posX;
+                    return;
+                }
+            }
+            triggerSquish(0.2, -0.2);
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (checkCollision(arena, player)) {
+                player.pos.x -= dir;
+            } else {
+                triggerSquish(dir * 0.3, -0.1);
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (checkCollision(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+                triggerSquish(-0.4, 0.4);
+            } else {
+                triggerSquish(-0.1, 0.2);
+            }
+            dropCounter = 0;
+        }
+
+        function playerHardDrop() {
+            while (!checkCollision(arena, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(arena, player);
+            playerReset();
+            arenaSweep();
+            updateScore();
+            dropCounter = 0;
+            triggerSquish(-0.6, 0.6);
+        }
+
+        function arenaSweep() {
+            let rowCount = 0;
+            outer: for (let r = arena.length - 1; r > 0; --r) {
+                for (let c = 0; c < arena[r].length; ++c) {
+                    if (arena[r][c] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = arena.splice(r, 1)[0].fill(0);
+                arena.unshift(row);
+                ++r;
+                rowCount++;
+            }
+
+            if (rowCount > 0) {
+                lines += rowCount;
+                const baseScores = [0, 40, 100, 300, 1200];
+                score += baseScores[rowCount] * level;
+
+                const newLevel = Math.floor(lines / 10) + 1;
+                if (newLevel !== level) {
+                    level = newLevel;
+                    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+                }
+            }
+        }
+
+        // 블록 칸마다 둥근 공(구체)이 쏙 들어가도록 렌더링하는 함수
+        function drawCellBall(ctx, x, y, color, squishX, squishY) {
+            ctx.save();
+            ctx.translate(x + 0.5, y + 0.5);
+            ctx.scale(squishX, squishY);
+            ctx.translate(-0.5, -0.5);
+
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = color;
+
+            // 블록 배경 틀 (은은한 투명 둥근 사각형)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            const r = 0.2;
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.lineTo(1 - r, 0);
+            ctx.quadraticCurveTo(1, 0, 1, r);
+            ctx.lineTo(1, 1 - r);
+            ctx.quadraticCurveTo(1, 1, 1 - r, 1);
+            ctx.lineTo(r, 1);
+            ctx.quadraticCurveTo(0, 1, 0, 1 - r);
+            ctx.lineTo(0, r);
+            ctx.quadraticCurveTo(0, 0, r, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // 칸마다 꽉 찬 동그란 공 본체
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(0.5, 0.5, 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 공 테두리
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 0.05;
+            ctx.stroke();
+
+            // 공 광택 하이라이트
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.beginPath();
+            ctx.arc(0.35, 0.35, 0.14, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function draw() {
+            context.fillStyle = '#0d1322';
+            context.fillRect(0, 0, COLS, ROWS);
+
+            context.strokeStyle = '#162032';
+            context.lineWidth = 0.04;
+            for (let i = 0; i <= COLS; i++) {
+                context.beginPath();
+                context.moveTo(i, 0);
+                context.lineTo(i, ROWS);
+                context.stroke();
+            }
+            for (let j = 0; j <= ROWS; j++) {
+                context.beginPath();
+                context.moveTo(0, j);
+                context.lineTo(COLS, j);
+                context.stroke();
+            }
+
+            // 고정된 블록들 그리기
+            arena.forEach((row, r) => {
+                row.forEach((color, c) => {
+                    if (color !== 0) {
+                        drawCellBall(context, c, r, color, 1, 1);
+                    }
+                });
+            });
+
+            // 현재 조작 중인 플레이어 블록
+            player.squishX += (1 - player.squishX) * 0.15;
+            player.squishY += (1 - player.squishY) * 0.15;
+
+            if (player.matrix) {
+                player.matrix.forEach((row, r) => {
+                    row.forEach((value, c) => {
+                        if (value !== 0) {
+                            drawCellBall(context, c + player.pos.x, r + player.pos.y, player.color, player.squishX, player.squishY);
+                        }
+                    });
+                });
+            }
+
+            // 다음 블록 미리보기 그리기
+            nextContext.fillStyle = '#0d1322';
+            nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            if (nextPlayer.matrix) {
+                const matrix = nextPlayer.matrix;
+                const offsetX = (3.3 - matrix[0].length) / 2;
+                const offsetY = (3.3 - matrix.length) / 2;
+                matrix.forEach((row, r) => {
+                    row.forEach((value, c) => {
+                        if (value !== 0) {
+                            nextContext.save();
+                            nextContext.translate(c + offsetX + 0.5, r + offsetY + 0.5);
+                            nextContext.translate(-0.5, -0.5);
+                            
+                            nextContext.shadowBlur = 6;
+                            nextContext.shadowColor = nextPlayer.color;
+
+                            nextContext.fillStyle = nextPlayer.color;
+                            nextContext.beginPath();
+                            nextContext.arc(0.5, 0.5, 0.4, 0, Math.PI * 2);
+                            nextContext.fill();
+                            
+                            nextContext.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                            nextContext.lineWidth = 0.05;
+                            nextContext.stroke();
+
+                            nextContext.fillStyle = 'rgba(255, 255, 255, 0.65)';
+                            nextContext.beginPath();
+                            nextContext.arc(0.35, 0.35, 0.14, 0, Math.PI * 2);
+                            nextContext.fill();
+
+                            nextContext.restore();
+                        }
+                    });
+                });
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('lines').innerText = lines;
+            document.getElementById('level').innerText = level;
+        }
+
+        function update(time = 0) {
+            if (isGameOver) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function resetGame() {
+            arena.forEach(row => row.fill(0));
+            score = 0;
+            lines = 0;
+            level = 1;
+            dropInterval = 1000;
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            updateScore();
+            playerReset();
+            lastTime = performance.now();
+            update();
+        }
+
+        document.addEventListener('keydown', event => {
+            if (isGameOver) return;
+
+            if (event.key === 'ArrowLeft') {
+                playerMove(-1);
+            } else if (event.key === 'ArrowRight') {
+                playerMove(1);
+            } else if (event.key === 'ArrowDown') {
+                playerDrop();
+            } else if (event.key === 'ArrowUp') {
+                playerRotate();
+            } else if (event.key === ' ') {
+                event.preventDefault();
+                playerHardDrop();
+            }
+        });
+
+        playerReset();
+        updateScore();
+        update();
+    </script>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mega Mewtwo vs Mewtwo Battle Simulator</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0b0e14;
+      color: #ffffff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      width: 520px;
+      padding: 20px;
+      background: #121824;
+      border-radius: 16px;
+      box-shadow: 0 0 30px rgba(255, 0, 170, 0.25);
+      border: 1px solid #3d1f39;
+      position: relative;
+    }
+
+    .battle-field {
+      position: relative;
+      border: 2px solid #ff00aa;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(255, 0, 170, 0.4);
+      overflow: hidden;
+      margin-bottom: 15px;
+    }
+
+    canvas {
+      display: block;
+      background-color: #0d111a;
+    }
+
+    .battle-log {
+      background: #2a1a2e;
+      border-radius: 8px;
+      padding: 12px;
+      height: 95px;
+      overflow-y: auto;
+      border: 1px solid #542a4e;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #ff99ee;
+      margin-bottom: 15px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .skill-btn {
+      background: #2a1a2e;
+      color: #fff;
+      border: 1px solid #ff00aa;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .skill-btn.special {
+      border-color: #00f3ff;
+      color: #99f7ff;
+    }
+
+    .skill-btn.special:hover:not(:disabled) {
+      background: #00f3ff;
+      color: #000;
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.6);
+    }
+
+    .skill-btn:hover:not(:disabled) {
+      background: #ff00aa;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(255, 0, 170, 0.6);
+    }
+
+    .skill-btn:disabled {
+      border-color: #444;
+      color: #666;
+      cursor: not-allowed;
+    }
+
+    /* 게임 오버 / 승리 레이어 */
+    .game-over-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(11, 14, 20, 0.88);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-radius: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .game-over-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .game-over-title {
+      font-size: 32px;
+      font-weight: 900;
+      text-shadow: 0 0 15px currentColor;
+      margin-bottom: 10px;
+    }
+
+    .final-desc {
+      font-size: 16px;
+      color: #cccccc;
+      margin-bottom: 25px;
+    }
+
+    .restart-btn {
+      background: linear-gradient(135deg, #ff00aa, #00f3ff);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 25px;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(255, 0, 170, 0.5);
+      transition: transform 0.1s, box-shadow 0.2s;
+    }
+
+    .restart-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(255, 0, 170, 0.8);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-container">
+    <div class="battle-field">
+      <canvas id="battleCanvas" width="480" height="260"></canvas>
+    </div>
+
+    <div id="log" class="battle-log">배틀이 시작되었습니다! 메가뮤츠 vs 뮤츠의 대결입니다. [Q / W / E / R / T / Y]를 누르세요.</div>
+
+    <div class="controls">
+      <button class="skill-btn special" onclick="playTurn('psystrike')">💥 사이코브레이크 [Q]<br><small>(데미지 80)</small></button>
+      <button class="skill-btn special" onclick="playTurn('aura')">🌀 파동탄 [W]<br><small>(데미지 69)</small></button>
+      <button class="skill-btn special" onclick="playTurn('shadow')">🌌 섀도볼 [E]<br><small>(데미지 67)</small></button>
+      <button class="skill-btn" onclick="playTurn('swift')">✨ 스피드스타 [R]<br><small>(데미지 40)</small></button>
+      <button class="skill-btn" onclick="playTurn('tackle')">👊 격투 타격 [T]<br><small>(데미지 15)</small></button>
+      <button class="skill-btn" onclick="playTurn('recover')">🌟 HP 회복 [Y]<br><small>(체력 +35 회복)</small></button>
+    </div>
+
+    <div id="game-over" class="game-over-overlay">
+      <div id="game-over-title" class="game-over-title">VICTORY</div>
+      <div id="final-desc" class="final-desc">메가뮤츠가 압도적인 힘으로 뮤츠를 제압했습니다!</div>
+      <button class="restart-btn" onclick="resetGame()">다시 도전하기</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('battleCanvas');
+    const ctx = canvas.getContext('2d');
+    const logBox = document.getElementById('log');
+
+    // 캐릭터 이미지 로드
+    const megaMewtwoImg = new Image();
+    megaMewtwoImg.src = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/10043.png';
+    megaMewtwoImg.onload = () => draw();
+
+    const mewtwoImg = new Image();
+    mewtwoImg.src = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/150.png';
+    mewtwoImg.onload = () => draw();
+
+    let megaMewtwo = { name: '메가뮤츠', hp: 200, maxHp: 200, x: 30, y: 100 };
+    let mewtwo = { name: '뮤츠', hp: 350, maxHp: 350, x: 290, y: 20 };
+    let isBusy = false;
+
+    // 키보드 입력 이벤트 감지 (Q, W, E, R, T, Y)
+    window.addEventListener('keydown', (e) => {
+      if (isBusy || megaMewtwo.hp <= 0 || mewtwo.hp <= 0) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'q') playTurn('psystrike');
+      else if (key === 'w') playTurn('aura');
+      else if (key === 'e') playTurn('shadow');
+      else if (key === 'r') playTurn('swift');
+      else if (key === 't') playTurn('tackle');
+      else if (key === 'y') playTurn('recover');
+    });
+
+    function resetGame() {
+      megaMewtwo.hp = 200;
+      mewtwo.hp = 350;
+      isBusy = false;
+      logBox.innerHTML = "배틀이 시작되었습니다! 메가뮤츠 vs 뮤츠의 대결입니다. [Q / W / E / R / T / Y]를 누르세요.";
+      document.getElementById('game-over').classList.remove('active');
+      draw();
+    }
+
+    function addLog(text) {
+      logBox.innerHTML += `<br>${text}`;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function drawHPBar(x, y, hp, maxHp, name, barColor = '#ff00aa') {
+      const barWidth = 140;
+      const barHeight = 12;
+      const ratio = Math.max(0, hp) / maxHp;
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px Segoe UI';
+      ctx.fillText(`${name} HP: ${Math.max(0, hp)}/${maxHp}`, x, y - 8);
+
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(x, y, barWidth, barHeight);
+
+      ctx.fillStyle = ratio > 0.5 ? '#00ffcc' : ratio > 0.2 ? '#ffe600' : '#ff0055';
+      ctx.fillRect(x, y, barWidth * ratio, barHeight);
+
+      ctx.strokeStyle = barColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, barWidth, barHeight);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 발판 이펙트
+      ctx.strokeStyle = 'rgba(255, 0, 170, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(100, 220, 65, 18, 0, 0, Math.PI * 2);
+      ctx.ellipse(360, 130, 65, 22, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 메가뮤츠(플레이어) 그리기
+      if (megaMewtwoImg.complete) {
+        ctx.drawImage(megaMewtwoImg, megaMewtwo.x, megaMewtwo.y, 130, 130);
+      }
+
+      // 뮤츠(상대) 그리기
+      if (mewtwoImg.complete) {
+        ctx.drawImage(mewtwoImg, mewtwo.x, mewtwo.y, 130, 130);
+      }
+
+      // HP 바 렌더링
+      drawHPBar(20, 210, megaMewtwo.hp, megaMewtwo.maxHp, megaMewtwo.name, '#ff00aa');
+      drawHPBar(310, 35, mewtwo.hp, mewtwo.maxHp, mewtwo.name, '#00f3ff');
+    }
+
+    async function playTurn(skillType) {
+      if (isBusy || megaMewtwo.hp <= 0 || mewtwo.hp <= 0) return;
+      isBusy = true;
+
+      if (skillType === 'psystrike') {
+        addLog("💥 <b>메가뮤츠의 사이코브레이크!</b> 파괴적인 염동 파동으로 뮤츠를 강타합니다. (80 데미지)");
+        mewtwo.hp -= 80;
+      } else if (skillType === 'aura') {
+        addLog("🌀 <b>메가뮤츠의 파동탄!</b> 필중의 파동 에너지 구체를 날립니다. (69 데미지)");
+        mewtwo.hp -= 69;
+      } else if (skillType === 'shadow') {
+        addLog("🌌 <b>메가뮤츠의 섀도볼!</b> 그림자의 덩어리로 뮤츠를 공격합니다. (67 데미지)");
+        mewtwo.hp -= 67;
+      } else if (skillType === 'swift') {
+        addLog("✨ <b>메가뮤츠의 스피드스타!</b> 무수히 많은 별 모양 빛을 사방에 난사합니다. (40 데미지)");
+        mewtwo.hp -= 40;
+      } else if (skillType === 'tackle') {
+        addLog("👊 <b>메가뮤츠의 격투 타격!</b> 압도적인 신체 능력으로 근접 공격합니다. (15 데미지)");
+        mewtwo.hp -= 15;
+      } else if (skillType === 'recover') {
+        addLog("🌟 <b>메가뮤츠의 HP 회복!</b> 세포를 활성화하여 체력을 복구합니다. (+35 회복)");
+        megaMewtwo.hp = Math.min(megaMewtwo.maxHp, megaMewtwo.hp + 35);
+      }
+
+      draw();
+
+      if (checkWin()) {
+        isBusy = false;
+        return;
+      }
+
+      await new Promise(r => setTimeout(r, 800));
+
+      // 뮤츠 반격 스킬
+      const mewtwoSkills = [
+        { name: '🔮 사이코키네시스', dmg: 25 },
+        { name: '🌌 섀도볼', dmg: 30 },
+        { name: '🌀 파동탄', dmg: 35 },
+        { name: '💥 엠바고', dmg: 20 }
+      ];
+      const selectedSkill = mewtwoSkills[Math.floor(Math.random() * mewtwoSkills.length)];
+
+      addLog(`뮤츠의 <b>${selectedSkill.name}</b>! (${selectedSkill.dmg} 데미지)`);
+      megaMewtwo.hp -= selectedSkill.dmg;
+
+      draw();
+      checkWin();
+      isBusy = false;
+    }
+
+    function checkWin() {
+      const gameOverOverlay = document.getElementById('game-over');
+      const title = document.getElementById('game-over-title');
+      const desc = document.getElementById('final-desc');
+
+      if (mewtwo.hp <= 0) {
+        title.innerText = "VICTORY!";
+        title.style.color = "#ff00aa";
+        desc.innerText = "메가뮤츠가 압도적인 진화의 힘으로 뮤츠를 쓰러뜨렸습니다!";
+        gameOverOverlay.classList.add('active');
+        return true;
+      } else if (megaMewtwo.hp <= 0) {
+        title.innerText = "DEFEAT...";
+        title.style.color = "#ff0055";
+        desc.innerText = "메가뮤츠가 쓰러졌습니다.";
+        gameOverOverlay.classList.add('active');
+        return true;
+      }
+      return false;
+    }
+
+    resetGame();
+  </script>
+</body>
+</html>

@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Hide & Seek: Cartoon Cat (Wallhack AI)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000;
+      font-family: 'Courier New', Courier, monospace;
+      color: #fff;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    /* Dynamic Terror Vignette Overlay */
+    #vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 20%, rgba(0, 0, 0, 0.98) 85%);
+      opacity: 0.4;
+      transition: opacity 0.1s ease;
+    }
+    /* Red Alert / Darkness Flash */
+    #proximity-flash {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(circle at center, rgba(150, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.95) 90%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      pointer-events: none;
+      text-shadow: 2px 2px 5px #000;
+    }
+    #ui h2 {
+      margin: 0 0 5px 0;
+      color: #ff3333;
+      letter-spacing: 2px;
+    }
+    #status {
+      font-size: 16px;
+      color: #aaa;
+    }
+    #interact-prompt {
+      position: absolute;
+      top: 60%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      color: #ffff00;
+      font-weight: bold;
+      text-shadow: 0 0 8px #000;
+      display: none;
+      pointer-events: none;
+    }
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    /* Jumpscare Screen */
+    #jumpscare-overlay {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 100;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    #jumpscare-overlay h1 {
+      color: #ff0000;
+      font-size: 48px;
+      letter-spacing: 6px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px #ff0000;
+    }
+    #restart-btn {
+      padding: 12px 30px;
+      font-size: 20px;
+      background: #aa0000;
+      color: #fff;
+      border: 2px solid #ff0000;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: bold;
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+    }
+    #restart-btn:hover {
+      background: #ff0000;
+    }
+    /* Start Overlay */
+    #start-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 5, 5, 0.95);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      text-align: center;
+      padding: 20px;
+    }
+    #start-overlay h1 {
+      color: #ff1111;
+      font-size: 42px;
+      margin-bottom: 15px;
+      text-shadow: 0 0 15px #aa0000;
+    }
+    #start-overlay p {
+      max-width: 600px;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #ccc;
+    }
+    #start-btn {
+      margin-top: 25px;
+      padding: 15px 40px;
+      font-size: 22px;
+      background: #880000;
+      color: #fff;
+      border: 2px solid #ff0000;
+      cursor: pointer;
+      font-weight: bold;
+      font-family: inherit;
+    }
+    #start-btn:hover {
+      background: #ff0000;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+  <div id="vignette"></div>
+  <div id="proximity-flash"></div>
+  <div id="crosshair"></div>
+
+  <div id="ui">
+    <h2>CARTOON CAT: WALLHACK VISION</h2>
+    <div id="status">Status: Explore the maze</div>
+  </div>
+
+  <div id="interact-prompt">PRESS [E] TO HIDE UNDER TABLE</div>
+
+  <div id="start-overlay">
+    <h1>CARTOON CAT 3D</h1>
+    <p>
+      <b>WARNING:</b> Cartoon Cat can <b>SEE THROUGH WALLS</b>! Its glowing outline and piercing eyes track your position wherever you hide.<br><br>
+      • Use <b>WASD</b> or <b>Arrow Keys</b> to move.<br>
+      • Use the <b>Mouse</b> to look around (Click screen to lock cursor).<br>
+      • Find a <b>Table</b> and press <b>[E]</b> to hide under it.<br>
+      • As Cartoon Cat approaches through walls, darkness falls.
+    </p>
+    <button id="start-btn">ENTER THE MAZE</button>
+  </div>
+
+  <div id="jumpscare-overlay">
+    <h1 id="js-title">YOU WERE CAUGHT!</h1>
+    <button id="restart-btn" onclick="resetGame()">TRY AGAIN</button>
+  </div>
+
+  <script>
+    let scene, camera, renderer;
+    let player = {
+      x: 0,
+      z: 18,
+      height: 1.6,
+      rotY: 0,
+      rotX: 0,
+      hidden: false,
+      nearTable: null
+    };
+
+    let catMesh, catXRayEyes, catGroup;
+    let cat = {
+      x: 0,
+      y: 1.2,
+      z: -22,
+      speed: 0.055,
+      animTime: 0
+    };
+
+    let walls = [];
+    let tables = [];
+    let isPlaying = false;
+    let audioCtx = null;
+
+    const keys = {};
+    const moveSpeed = 0.09;
+    const mouseSensitivity = 0.0025;
+
+    // DOM Elements
+    const vignette = document.getElementById('vignette');
+    const proxFlash = document.getElementById('proximity-flash');
+    const statusText = document.getElementById('status');
+    const interactPrompt = document.getElementById('interact-prompt');
+    const startOverlay = document.getElementById('start-overlay');
+    const jumpscareOverlay = document.getElementById('jumpscare-overlay');
+
+    // Web Audio Horror Screech
+    function playScreech() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+      osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.8);
+
+      gain.gain.setValueAtTime(1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 1.0);
+    }
+
+    // Initialize 3D Environment
+    function init() {
+      const container = document.getElementById('canvas-container');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020202);
+      scene.fog = new THREE.FogExp2(0x020202, 0.08); // Horror fog
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(player.x, player.height, player.z);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0x222222);
+      scene.add(ambientLight);
+
+      // Player Flashlight
+      const flashlight = new THREE.SpotLight(0xffffff, 1.2, 15, Math.PI / 6, 0.5, 1);
+      flashlight.position.set(0, 0, 0);
+      flashlight.target.position.set(0, 0, -1);
+      camera.add(flashlight);
+      camera.add(flashlight.target);
+      scene.add(camera);
+
+      buildLevel();
+      createCartoonCat();
+
+      // Event Listeners
+      window.addEventListener('resize', onWindowResize);
+      document.addEventListener('keydown', (e) => {
+        keys[e.key.toLowerCase()] = true;
+        if (e.key.toLowerCase() === 'e' && player.nearTable) {
+          toggleHide();
+        }
+      });
+      document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+      document.addEventListener('click', () => {
+        if (isPlaying && document.pointerLockElement !== document.body) {
+          document.body.requestPointerLock();
+        }
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === document.body && !player.hidden) {
+          player.rotY -= e.movementX * mouseSensitivity;
+          player.rotX -= e.movementY * mouseSensitivity;
+          player.rotX = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.rotX));
+        }
+      });
+    }
+
+    // Build Horror Map with Maze Walls and Hideable Tables
+    function buildLevel() {
+      // Floor
+      const floorGeo = new THREE.PlaneGeometry(60, 60);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.8 });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      // Wall Material
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x22222c, roughness: 0.9 });
+
+      // Maze Layout (X, Z, W, D)
+      const layout = [
+        [0, -28, 60, 2], [0, 28, 60, 2], [-28, 0, 2, 60], [28, 0, 2, 60], // Outer walls
+        [-10, -10, 2, 20], [10, -5, 2, 25], [-15, 10, 20, 2], [12, 15, 18, 2],
+        [-5, -20, 18, 2], [5, 5, 2, 15]
+      ];
+
+      layout.forEach(([x, z, w, d]) => {
+        const wallGeo = new THREE.BoxGeometry(w, 4, d);
+        const wall = new THREE.Mesh(wallGeo, wallMat);
+        wall.position.set(x, 2, z);
+        scene.add(wall);
+        walls.push({ x, z, w, d });
+      });
+
+      // Spawn Hideable Tables
+      const tablePositions = [
+        [-18, -18], [18, -18], [-18, 18], [18, 18], [0, 0]
+      ];
+
+      const tableMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.6 });
+      tablePositions.forEach(([tx, tz]) => {
+        const group = new THREE.Group();
+
+        // Top
+        const topGeo = new THREE.BoxGeometry(3, 0.2, 2);
+        const top = new THREE.Mesh(topGeo, tableMat);
+        top.position.y = 1.1;
+        group.add(top);
+
+        // Legs
+        const legGeo = new THREE.BoxGeometry(0.15, 1.1, 0.15);
+        const legs = [[-1.3, -0.8], [1.3, -0.8], [-1.3, 0.8], [1.3, 0.8]];
+        legs.forEach(([lx, lz]) => {
+          const leg = new THREE.Mesh(legGeo, tableMat);
+          leg.position.set(lx, 0.55, lz);
+          group.add(leg);
+        });
+
+        group.position.set(tx, 0, tz);
+        scene.add(group);
+        tables.push({ x: tx, z: tz, mesh: group });
+      });
+    }
+
+    // Create 3D Cartoon Cat Model with SEE-THROUGH WALLS (X-Ray Depth Test) Material
+    function createCartoonCat() {
+      catGroup = new THREE.Group();
+
+      // Main Black Body
+      const bodyMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+      const bodyGeo = new THREE.CylinderGeometry(0.4, 0.3, 2.2, 16);
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 1.1;
+      catGroup.add(body);
+
+      // Head
+      const headGeo = new THREE.SphereGeometry(0.65, 16, 16);
+      const head = new THREE.Mesh(headGeo, bodyMat);
+      head.position.y = 2.1;
+      catGroup.add(head);
+
+      // Ears
+      const earGeo = new THREE.ConeGeometry(0.25, 0.5, 8);
+      const earL = new THREE.Mesh(earGeo, bodyMat);
+      earL.position.set(-0.35, 2.7, 0);
+      earL.rotation.z = 0.2;
+      const earR = earL.clone();
+      earR.position.x = 0.35;
+      earR.rotation.z = -0.2;
+      catGroup.add(earL, earR);
+
+      // X-RAY WALLHACK EYES & SMILE MATERIAL (Visible through walls!)
+      const xrayMat = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        depthTest: false,  // KEY: Renders on top of walls (Wallhack / See through walls)
+        transparent: true,
+        opacity: 0.95
+      });
+
+      const teethMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthTest: false, // Visible through walls
+        transparent: true,
+        opacity: 0.9
+      });
+
+      // Eyes Group
+      catXRayEyes = new THREE.Group();
+      const eyeGeo = new THREE.SphereGeometry(0.18, 12, 12);
+      const eyeL = new THREE.Mesh(eyeGeo, xrayMat);
+      eyeL.position.set(-0.2, 2.2, 0.55);
+
+      const eyeR = new THREE.Mesh(eyeGeo, xrayMat);
+      eyeR.position.set(0.2, 2.2, 0.55);
+
+      // Creepy Smile Teeth
+      const smileGeo = new THREE.BoxGeometry(0.5, 0.2, 0.1);
+      const smile = new THREE.Mesh(smileGeo, teethMat);
+      smile.position.set(0, 1.9, 0.58);
+
+      catXRayEyes.add(eyeL, eyeR, smile);
+      catGroup.add(catXRayEyes);
+
+      catGroup.position.set(cat.x, 0, cat.z);
+      scene.add(catGroup);
+    }
+
+    // Toggle Hiding under Table
+    function toggleHide() {
+      player.hidden = !player.hidden;
+
+      if (player.hidden && player.nearTable) {
+        player.x = player.nearTable.x;
+        player.z = player.nearTable.z;
+        camera.position.y = 0.45; // Crouch underneath table
+        statusText.innerText = "Status: HIDDEN under table";
+        statusText.style.color = "#00ff00";
+      } else {
+        camera.position.y = player.height;
+        statusText.innerText = "Status: Exploring";
+        statusText.style.color = "#aaa";
+      }
+    }
+
+    // Main Game Loop
+    function animate() {
+      if (!isPlaying) return;
+
+      requestAnimationFrame(animate);
+
+      updatePlayer();
+      updateCartoonCat();
+      updateHorrorEffects();
+
+      renderer.render(scene, camera);
+    }
+
+    // Player Controller
+    function updatePlayer() {
+      // Rotation
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = player.rotY;
+      camera.rotation.x = player.rotX;
+
+      if (player.hidden) return; // Frozen while hiding
+
+      // Movement vector
+      let moveX = 0;
+      let moveZ = 0;
+
+      if (keys['w'] || keys['arrowup']) moveZ -= 1;
+      if (keys['s'] || keys['arrowdown']) moveZ += 1;
+      if (keys['a'] || keys['arrowleft']) moveX -= 1;
+      if (keys['d'] || keys['arrowright']) moveX += 1;
+
+      if (moveX !== 0 || moveZ !== 0) {
+        const dir = new THREE.Vector3(moveX, 0, moveZ).normalize();
+        dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotY);
+
+        let newX = player.x + dir.x * moveSpeed;
+        let newZ = player.z + dir.z * moveSpeed;
+
+        // Wall collisions
+        if (!checkWallCollision(newX, player.z)) player.x = newX;
+        if (!checkWallCollision(player.x, newZ)) player.z = newZ;
+
+        camera.position.x = player.x;
+        camera.position.z = player.z;
+      }
+
+      // Check Table Hiding Proximity
+      player.nearTable = null;
+      interactPrompt.style.display = 'none';
+
+      for (let t of tables) {
+        const dist = Math.hypot(player.x - t.x, player.z - t.z);
+        if (dist < 2.0) {
+          player.nearTable = t;
+          interactPrompt.style.display = 'block';
+          break;
+        }
+      }
+    }
+
+    function checkWallCollision(x, z) {
+      const radius = 0.5;
+      for (let w of walls) {
+        if (
+          x + radius > w.x - w.w / 2 &&
+          x - radius < w.x + w.w / 2 &&
+          z + radius > w.z - w.d / 2 &&
+          z - radius < w.z + w.d / 2
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Cartoon Cat Wallhack AI
+    function updateCartoonCat() {
+      cat.animTime += 0.1;
+
+      // CAT HOLDS WALLHACK VISION: Directly targets player position regardless of walls!
+      const dx = player.x - cat.x;
+      const dz = player.z - cat.z;
+      const dist = Math.hypot(dx, dz);
+
+      // Turn towards player
+      const angle = Math.atan2(dx, dz);
+      catGroup.rotation.y = angle;
+
+      // Move straight through maze towards player
+      if (dist > 0.8) {
+        cat.x += (dx / dist) * cat.speed;
+        cat.z += (dz / dist) * cat.speed;
+        catGroup.position.set(cat.x, Math.sin(cat.animTime) * 0.1, cat.z);
+      }
+
+      // Catch Condition: Caught if unhidden & close
+      if (dist < 1.2 && !player.hidden) {
+        triggerJumpscare();
+      }
+    }
+
+    // Dynamic Fog & Screen Darkening as Cat approaches
+    function updateHorrorEffects() {
+      const dist = Math.hypot(player.x - cat.x, player.z - cat.z);
+      const maxDist = 25;
+
+      if (dist < maxDist) {
+        let intensity = 1 - (dist / maxDist);
+        intensity = Math.pow(intensity, 1.8);
+
+        // Screen darkens & pulses red
+        vignette.style.opacity = (0.4 + intensity * 0.6).toFixed(2);
+        proxFlash.style.opacity = (intensity * 0.7).toFixed(2);
+
+        // Fog thickens dramatically
+        scene.fog.density = 0.08 + intensity * 0.25;
+      } else {
+        vignette.style.opacity = '0.4';
+        proxFlash.style.opacity = '0';
+        scene.fog.density = 0.08;
+      }
+    }
+
+    // Jumpscare Sequence
+    function triggerJumpscare() {
+      isPlaying = false;
+      playScreech();
+
+      jumpscareOverlay.style.display = 'flex';
+      document.exitPointerLock();
+
+      // Flashing Horror Animation
+      let counter = 0;
+      const jsInterval = setInterval(() => {
+        counter++;
+        jumpscareOverlay.style.background = counter % 2 === 0 ? '#ff0000' : '#000000';
+        if (counter > 20) {
+          clearInterval(jsInterval);
+          jumpscareOverlay.style.background = '#000000';
+        }
+      }, 50);
+    }
+
+    // Reset Game
+    function resetGame() {
+      player.x = 0;
+      player.z = 18;
+      player.rotY = 0;
+      player.rotX = 0;
+      player.hidden = false;
+
+      cat.x = 0;
+      cat.z = -22;
+
+      camera.position.set(player.x, player.height, player.z);
+      catGroup.position.set(cat.x, 0, cat.z);
+
+      jumpscareOverlay.style.display = 'none';
+      statusText.innerText = "Status: Exploring";
+      statusText.style.color = "#aaa";
+
+      isPlaying = true;
+      document.body.requestPointerLock();
+      animate();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Start Button Event
+    document.getElementById('start-btn').addEventListener('click', () => {
+      init();
+      startOverlay.style.display = 'none';
+      isPlaying = true;
+      document.body.requestPointerLock();
+      animate();
+    });
+  </script>
+</body>
+</html>

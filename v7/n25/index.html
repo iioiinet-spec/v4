@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 에임 연습장</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #cfcfcf; font-family: 'Pretendard', 'Segoe UI', Tahoma, sans-serif; }
+        
+        #guideText {
+            position: absolute;
+            top: 20px; left: 20px;
+            color: #ffffff; font-size: 14px; font-weight: 500;
+            z-index: 100; pointer-events: none;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 12px; border-radius: 6px;
+        }
+
+        /* 게임 중 상단 HUD */
+        #hud {
+            position: absolute;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 40px;
+            color: #ffffff; font-size: 22px; font-weight: bold;
+            z-index: 100; pointer-events: none;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 24px; border-radius: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        /* 중앙 고정 조준점 (스코프 중에도 표시됨) */
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 6px; height: 6px;
+            background-color: #00ffff;
+            border: 1.5px solid #000000;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none; z-index: 160;
+            transition: opacity 0.1s;
+        }
+
+        /* 저격소총 실제 스코프 줌 오버레이 */
+        #scopeOverlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 150;
+            display: none;
+            background: radial-gradient(circle at center, transparent 32%, rgba(0, 0, 0, 0.97) 33%, #000 100%);
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.95);
+        }
+
+        /* 저격소총 재장전 중 안내 HUD */
+        #reloadIndicator {
+            position: absolute;
+            top: 60%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 18px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.65);
+            padding: 10px 22px; border-radius: 10px;
+            display: none; z-index: 160; pointer-events: none;
+            align-items: center; gap: 10px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .reload-icon {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 전체 메뉴 배경 */
+        #menu {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30, 35, 45, 0.88);
+            backdrop-filter: blur(8px);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: white; z-index: 200;
+        }
+
+        /* 중앙 상단 제목 */
+        #menuTitle {
+            position: absolute;
+            top: 40px;
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 4px 15px rgba(0, 114, 255, 0.3);
+        }
+
+        /* 양옆 세로형 직사각형 UI 패널 */
+        .side-panel {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 260px;
+            height: 440px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        #leftPanel { left: 40px; }
+        #rightPanel { right: 40px; justify-content: flex-start; }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ffff;
+            margin-bottom: 15px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            width: 100%;
+            padding-bottom: 8px;
+        }
+
+        /* 모드 선택 카드 버튼 */
+        .mode-card {
+            width: 100%;
+            padding: 16px 10px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .mode-card:hover { background: rgba(255, 255, 255, 0.15); }
+        .mode-card.active {
+            background: rgba(0, 198, 255, 0.15);
+            border-color: #00c6ff;
+            color: #00ffff;
+            box-shadow: 0 0 15px rgba(0, 198, 255, 0.3);
+        }
+
+        /* 환경 설정 내부 요소 스타일 */
+        .setting-group {
+            width: 100%;
+            text-align: left;
+            margin-bottom: 22px;
+        }
+        .setting-group label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #ddd;
+        }
+        .diff-container {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .diff-btn {
+            flex: 1;
+            padding: 9px 0;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+        }
+        .diff-btn:hover { background: rgba(255,255,255,0.2); }
+        .diff-btn.active { background: #ffcc00; color: #000; border-color: #ffcc00; }
+
+        /* 중앙 메인 시작/결과 영역 */
+        #centerArea {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .result-card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px; padding: 20px 35px;
+            margin-bottom: 20px; text-align: left; min-width: 240px;
+        }
+        .result-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px; }
+        .result-row span.val { font-weight: bold; color: #00ffff; }
+
+        .btn {
+            padding: 14px 36px; font-size: 18px; font-weight: bold;
+            cursor: pointer; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #00c6ff, #0072ff); color: white;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.6); }
+        .btn-red { background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4); }
+
+        input[type="range"] { width: 100%; margin-top: 6px; cursor: pointer; }
+
+        /* 무기 선택 팝업 모달 */
+        #weaponModal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 24, 33, 0.92);
+            backdrop-filter: blur(10px);
+            display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 300;
+        }
+        .weapon-card-container {
+            display: flex; gap: 30px; margin-top: 30px;
+        }
+        .weapon-select-card {
+            width: 240px; height: 300px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.25s;
+            padding: 20px; text-align: center;
+        }
+        .weapon-select-card:hover {
+            background: rgba(0, 198, 255, 0.1);
+            border-color: #00c6ff;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 198, 255, 0.3);
+        }
+        .weapon-select-card h3 { color: #00ffff; font-size: 22px; margin-bottom: 10px; }
+        .weapon-select-card p { color: #aaa; font-size: 14px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div id="guideText">ESC를 눌러 설정 변경 (저격소총 우클릭 스코프 줌 / 노줌 사격 시 탄이 튀김)</div>
+
+    <div id="hud">
+        <div>시간: <span id="timeText" style="color:#ffcc00;">30</span>초</div>
+        <div>점수: <span id="scoreText" style="color:#00ffff;">0</span>점</div>
+    </div>
+    <div id="crosshair"></div>
+
+    <!-- 저격소총 스코프 뷰 오버레이 -->
+    <div id="scopeOverlay"></div>
+
+    <!-- 저격소총 재장전 중 표시 UI -->
+    <div id="reloadIndicator">
+        <span class="reload-icon">🔄</span> 재장전 중...
+    </div>
+
+    <!-- 무기 선택 모달 화면 -->
+    <div id="weaponModal">
+        <h2 style="font-size: 32px; color: #fff; margin-bottom: 10px;">사용할 무기를 선택하세요</h2>
+        <p style="color: #aaa; font-size: 15px;">선택한 무기로 에임 연습을 시작합니다.</p>
+        <div class="weapon-card-container">
+            <div class="weapon-select-card" data-weapon="pistol">
+                <h3>권총 (Pistol)</h3>
+                <p>기본 연사 무기<br>기본 점수 획득<br>빠른 기동성</p>
+            </div>
+            <div class="weapon-select-card" data-weapon="sniper" id="sniperCard">
+                <h3>저격소총 (Sniper)</h3>
+                <p>우클릭 스코프 줌 지원<br>노줌 발사 시 탄 튐 (부정확)<br>스코프 줌 시 100% 명중</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 메뉴 화면 -->
+    <div id="menu">
+        <h1 id="menuTitle">3D 에임 트레이너</h1>
+
+        <!-- 좌측 패널: 게임 모드 선택 -->
+        <div id="leftPanel" class="side-panel">
+            <div class="panel-title">게임 모드 선택</div>
+            <div class="mode-card active" data-mode="click">클릭 에임 모드<br><small style="color:#aaa; font-weight:normal;">정해진 과녁 클릭</small></div>
+            <div class="mode-card" data-mode="tracking">트래킹 모드<br><small style="color:#aaa; font-weight:normal;">움직이는 공 따라가기 (권총 전용)</small></div>
+        </div>
+
+        <!-- 우측 패널: 환경 설정 (감도 + 난이도) -->
+        <div id="rightPanel" class="side-panel">
+            <div class="panel-title">환경 설정</div>
+
+            <div class="setting-group">
+                <label>마우스 감도 (<span id="sensValue" style="color:#00ffff;">0.5</span>)</label>
+                <input type="range" id="sensSlider" min="0.1" max="1.0" step="0.05" value="0.5">
+            </div>
+
+            <div class="setting-group">
+                <label>난이도 설정</label>
+                <div class="diff-container">
+                    <button class="diff-btn" data-diff="easy">쉬움</button>
+                    <button class="diff-btn active" data-diff="normal">보통</button>
+                    <button class="diff-btn" data-diff="hard">어려움</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 중앙 영역: 결과표 및 시작 버튼 -->
+        <div id="centerArea">
+            <div id="resultBoard" class="result-card" style="display: none;">
+                <h2 style="text-align:center; margin-top:0; color:#00ffff; font-size:20px;">🎯 최종 결과</h2>
+                <div class="result-row"><span>달성 점수:</span><span class="val" id="resScore">0점</span></div>
+                <div class="result-row" id="clickStats">
+                    <span>클릭 명중률:</span><span class="val" id="resAcc">0%</span>
+                </div>
+            </div>
+
+            <div>
+                <button id="startBtn" class="btn">게임 시작</button>
+                <button id="restartBtn" class="btn btn-red" style="display: none;">다시 시작</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.150.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xcfcfcf);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.6, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const canvasTexture = document.createElement('canvas');
+        canvasTexture.width = 512;
+        canvasTexture.height = 512;
+        const ctx = canvasTexture.getContext('2d');
+        ctx.fillStyle = '#cfcfcf';
+        ctx.fillRect(0, 0, 512, 512);
+        ctx.fillStyle = '#9b9b9b';
+        for (let i = 0; i < 512; i += 64) {
+            ctx.fillRect(i, 0, 24, 512);
+        }
+
+        const stripeTexture = new THREE.CanvasTexture(canvasTexture);
+        stripeTexture.wrapS = THREE.RepeatWrapping;
+        stripeTexture.wrapT = THREE.RepeatWrapping;
+        stripeTexture.repeat.set(12, 12);
+
+        const stripedMat = new THREE.MeshStandardMaterial({ map: stripeTexture, roughness: 0.5, metalness: 0.05 });
+
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), stripedMat);
+        floor.rotation.x = -Math.PI / 2; scene.add(floor);
+
+        const backWall = new THREE.Mesh(new THREE.PlaneGeometry(40, 15), stripedMat);
+        backWall.position.set(0, 7.5, -20); scene.add(backWall);
+
+        const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(40, 15), stripedMat);
+        leftWall.position.set(-20, 7.5, 0); leftWall.rotation.y = Math.PI / 2; scene.add(leftWall);
+
+        const rightWall = leftWall.clone(); rightWall.position.set(20, 7.5, 0); rightWall.rotation.y = -Math.PI / 2; scene.add(rightWall);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 15, 5);
+        scene.add(dirLight);
+
+        const weaponHolder = new THREE.Group();
+        camera.add(weaponHolder);
+        scene.add(camera);
+
+        // --- 더욱 세세하게 디테일이 강화된 권총 (Pistol) 모델링 ---
+        const pistolGroup = new THREE.Group();
+        const pMetal = new THREE.MeshStandardMaterial({ color: 0x1f242b, roughness: 0.25, metalness: 0.85 });
+        const pSlideMat = new THREE.MeshStandardMaterial({ color: 0x2e3540, roughness: 0.2, metalness: 0.95 });
+        const pBarrelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.15, metalness: 0.95 });
+        const pGripMat = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.6, metalness: 0.1 });
+        const pAccentMat = new THREE.MeshStandardMaterial({ color: 0x0a0c0f, roughness: 0.3, metalness: 0.9 });
+
+        const pSlide = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.062, 0.36), pSlideMat);
+        pSlide.position.set(0, 0.032, -0.16); pistolGroup.add(pSlide);
+        
+        // 슬라이드 후면/전면 톱니바퀴 홈 디테일
+        for(let i = -0.3; i <= -0.25; i += 0.02) {
+            const serration = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.064, 0.008), pMetal);
+            serration.position.set(0, 0.032, i);
+            pistolGroup.add(serration);
+        }
+
+        // 해머 (공격치) 및 안전장치 디테일 추가
+        const pHammer = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.03, 0.02), pAccentMat);
+        pHammer.position.set(0, 0.045, 0.025); pHammer.rotation.x = -Math.PI / 6; pistolGroup.add(pHammer);
+
+        const pSafety = new THREE.Mesh(new THREE.BoxGeometry(0.066, 0.012, 0.018), pAccentMat);
+        pSafety.position.set(0, 0.01, -0.01); pistolGroup.add(pSafety);
+
+        const pBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.06, 16), pBarrelMat);
+        pBarrel.rotation.x = Math.PI / 2; pBarrel.position.set(0, 0.038, -0.34); pistolGroup.add(pBarrel);
+
+        const pFrame = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.052, 0.28), pMetal);
+        pFrame.position.set(0, -0.015, -0.13); pistolGroup.add(pFrame);
+
+        // 하단 피카티니 레일 홈 디테일
+        for(let rx = -0.21; rx <= -0.17; rx += 0.015) {
+            const railGroove = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.006, 0.006), pAccentMat);
+            railGroove.position.set(0, -0.042, rx);
+            pistolGroup.add(railGroove);
+        }
+
+        const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.085), pGripMat);
+        pGrip.position.set(0, -0.10, -0.02); pGrip.rotation.x = Math.PI / 6.5; pistolGroup.add(pGrip);
+
+        const pGuard = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.048, 0.09), pMetal);
+        pGuard.position.set(0, -0.055, -0.095); pistolGroup.add(pGuard);
+
+        const pTrigger = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.038, 0.022), pBarrelMat);
+        pTrigger.rotation.x = -Math.PI / 6; pTrigger.position.set(0, -0.05, -0.09); pistolGroup.add(pTrigger);
+
+        const pFrontSight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.012, 0.015), pBarrelMat);
+        pFrontSight.position.set(0, 0.07, -0.33); pistolGroup.add(pFrontSight);
+
+        const pRearSight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.012, 0.02), pBarrelMat);
+        pRearSight.position.set(0, 0.07, -0.01); pistolGroup.add(pRearSight);
+
+        pistolGroup.position.set(0.22, -0.2, -0.38);
+
+
+        // --- 더욱 세세하게 디테일이 강화된 저격소총 (Sniper) 모델링 ---
+        const sniperGroup = new THREE.Group();
+        const sChassisMat = new THREE.MeshStandardMaterial({ color: 0x191d24, roughness: 0.4, metalness: 0.7 });
+        const sMetalMat = new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.2, metalness: 0.9 });
+        const sDarkMat = new THREE.MeshStandardMaterial({ color: 0x0d0f12, roughness: 0.5 });
+        const sAccentMat = new THREE.MeshStandardMaterial({ color: 0x222933, roughness: 0.3, metalness: 0.8 });
+
+        const sReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.082, 0.52), sMetalMat);
+        sReceiver.position.set(0, 0.02, -0.15); sniperGroup.add(sReceiver);
+
+        const sBolt = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8), sMetalMat);
+        sBolt.rotation.z = Math.PI / 2; sBolt.position.set(0.04, 0.035, -0.04); sniperGroup.add(sBolt);
+        const sBoltKnob = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 12), sDarkMat);
+        sBoltKnob.position.set(0.075, 0.035, -0.04); sniperGroup.add(sBoltKnob);
+
+        // 플루티드(골이 파인) 묵직한 배럴
+        const sBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.8, 16), sMetalMat);
+        sBarrel.rotation.x = Math.PI / 2; sBarrel.position.set(0, 0.03, -0.65); sniperGroup.add(sBarrel);
+
+        const sMuzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.14, 16), sDarkMat);
+        sMuzzle.rotation.x = Math.PI / 2; sMuzzle.position.set(0, 0.03, -1.08); sniperGroup.add(sMuzzle);
+
+        const sHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.07, 0.48), sChassisMat);
+        sHandguard.position.set(0, 0.02, -0.48); sniperGroup.add(sHandguard);
+
+        // 양각대(바이포드) 다리 및 접합부 관절 세세히 구현
+        const bipodBase = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.04), sDarkMat);
+        bipodBase.position.set(0, -0.01, -0.68); sniperGroup.add(bipodBase);
+        
+        const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.28, 8), sMetalMat);
+        bipodL.rotation.z = -Math.PI / 5; bipodL.position.set(-0.055, -0.08, -0.68); sniperGroup.add(bipodL);
+        const bipodR = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.28, 8), sMetalMat);
+        bipodR.rotation.z = Math.PI / 5; bipodR.position.set(0.055, -0.08, -0.68); sniperGroup.add(bipodR);
+
+        // 스톡(개머리판), 볼받침(치크패드), 높이 조절 나사 및 슬링 고리
+        const sStock = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.12, 0.5), sChassisMat);
+        sStock.position.set(0, -0.01, 0.26); sniperGroup.add(sStock);
+        const sCheekPad = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.04, 0.25), sDarkMat);
+        sCheekPad.position.set(0, 0.06, 0.22); sniperGroup.add(sCheekPad);
+        const sCheekKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 12), sAccentMat);
+        sCheekKnob.rotation.z = Math.PI / 2; sCheekKnob.position.set(0.032, 0.06, 0.15); sniperGroup.add(sCheekKnob);
+        
+        const sButtPad = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.06), sDarkMat);
+        sButtPad.position.set(0, -0.01, 0.52); sniperGroup.add(sButtPad);
+
+        const sGrip = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.18, 0.09), sDarkMat);
+        sGrip.position.set(0, -0.13, 0.05); sGrip.rotation.x = Math.PI / 5.5; sniperGroup.add(sGrip);
+
+        const sTriggerGuard = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.052, 0.095), sMetalMat);
+        sTriggerGuard.position.set(0, -0.065, -0.025); sniperGroup.add(sTriggerGuard);
+        const sTrigger = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.036, 0.02), sMetalMat);
+        sTrigger.rotation.x = -Math.PI / 6; sTrigger.position.set(0, -0.06, -0.02); sniperGroup.add(sTrigger);
+
+        // 하단 탄창 (매거진)
+        const sMag = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.12, 0.07), sDarkMat);
+        sMag.position.set(0, -0.09, -0.15); sniperGroup.add(sMag);
+
+        // 고배율 광학 스코프, 마운트 링 볼트 디테일
+        const sScope = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.36, 20), sMetalMat);
+        sScope.rotation.x = Math.PI / 2; sScope.position.set(0, 0.11, -0.18); sniperGroup.add(sScope);
+        
+        const sTurretH = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.022, 0.018), sAccentMat);
+        sTurretH.position.set(0, 0.14, -0.18); sniperGroup.add(sTurretH);
+        const sTurretV = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.022), sAccentMat);
+        sTurretV.position.set(0.032, 0.11, -0.18); sniperGroup.add(sTurretV);
+
+        const sScopeFront = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 20), sDarkMat);
+        sScopeFront.rotation.x = Math.PI / 2; sScopeFront.position.set(0, 0.11, -0.37); sniperGroup.add(sScopeFront);
+        const sScopeRear = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 20), sDarkMat);
+        sScopeRear.rotation.x = Math.PI / 2; sScopeRear.position.set(0, 0.11, 0.01); sniperGroup.add(sScopeRear);
+
+        const sMount1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.032), sMetalMat);
+        sMount1.position.set(0, 0.065, -0.1); sniperGroup.add(sMount1);
+        const sMount2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.032), sMetalMat);
+        sMount2.position.set(0, 0.065, -0.27); sniperGroup.add(sMount2);
+
+        // 마운트 링 고정 볼트 헤드
+        const sMountBolt = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.03, 8), sAccentMat);
+        sMountBolt.position.set(0.012, 0.075, -0.1); sniperGroup.add(sMountBolt);
+
+        sniperGroup.position.set(0.18, -0.24, -0.45);
+
+        weaponHolder.add(pistolGroup);
+        weaponHolder.add(sniperGroup);
+        sniperGroup.visible = false;
+
+        const controls = new PointerLockControls(camera, document.body);
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const resultBoard = document.getElementById('resultBoard');
+        const weaponModal = document.getElementById('weaponModal');
+        const reloadIndicator = document.getElementById('reloadIndicator');
+        const sniperCard = document.getElementById('sniperCard');
+
+        let currentMode = 'click';
+        let currentDiff = 'normal';
+        let currentWeapon = 'pistol';
+        let baseSens = 0.5;
+        
+        let score = 0, totalShots = 0, hits = 0, timeLeft = 30;
+        let timerInterval = null, isGameOver = false;
+        let isZoomed = false;
+        let lastSniperShotTime = 0;
+        const sniperReloadTime = 1500;
+        const clock = new THREE.Clock();
+
+        const clickLifespanMap = { easy: 4.0, normal: 3.2, hard: 2.7 };
+        const trackingSpeedMap = { easy: 3.5, normal: 6.0, hard: 9.5 };
+
+        const modeCards = document.querySelectorAll('.mode-card');
+        modeCards.forEach(card => {
+            card.addEventListener('click', () => {
+                modeCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                currentMode = card.getAttribute('data-mode');
+                
+                if (currentMode === 'tracking') {
+                    currentWeapon = 'pistol';
+                    pistolGroup.visible = true;
+                    sniperGroup.visible = false;
+                }
+                resetGame();
+            });
+        });
+
+        const diffBtns = document.querySelectorAll('[data-diff]');
+        diffBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                diffBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentDiff = btn.getAttribute('data-diff');
+                resetGame();
+            });
+        });
+
+        const sensSlider = document.getElementById('sensSlider');
+        baseSens = parseFloat(sensSlider.value);
+        controls.pointerSpeed = baseSens;
+        sensSlider.addEventListener('input', (e) => {
+            baseSens = parseFloat(e.target.value);
+            document.getElementById('sensValue').innerText = baseSens.toFixed(2);
+            controls.pointerSpeed = baseSens;
+        });
+
+        startBtn.addEventListener('click', () => {
+            if (currentMode === 'tracking') {
+                sniperCard.style.opacity = '0.35';
+                sniperCard.style.pointerEvents = 'none';
+                sniperCard.querySelector('p').innerHTML = '트래킹 모드<br>선택 불가';
+            } else {
+                sniperCard.style.opacity = '1';
+                sniperCard.style.pointerEvents = 'auto';
+                sniperCard.querySelector('p').innerHTML = '우클릭 스코프 줌 지원<br>노줌 발사 시 탄 튐 (부정확)<br>스코프 줌 시 100% 명중';
+            }
+            weaponModal.style.display = 'flex';
+        });
+
+        const weaponCards = document.querySelectorAll('.weapon-select-card');
+        weaponCards.forEach(card => {
+            card.addEventListener('click', () => {
+                const selectedW = card.getAttribute('data-weapon');
+                if (currentMode === 'tracking' && selectedW === 'sniper') return;
+
+                currentWeapon = selectedW;
+                if (currentWeapon === 'pistol') {
+                    pistolGroup.visible = true;
+                    sniperGroup.visible = false;
+                } else {
+                    pistolGroup.visible = false;
+                    sniperGroup.visible = true;
+                }
+                weaponModal.style.display = 'none';
+                controls.lock();
+            });
+        });
+
+        const clickTargets = [];
+        const activeExplosions = [];
+        const activeRings = [];
+        const activeSmoke = [];
+        let trackingTarget = null;
+        let trackingVelocity = new THREE.Vector3();
+        const targetGeo = new THREE.SphereGeometry(0.4, 32, 32);
+        const targetMat = new THREE.MeshStandardMaterial({ color: 0xff5500, roughness: 0.1, metalness: 0.2 });
+        const trackingActiveMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, roughness: 0.1, metalness: 0.2 });
+
+        function initModeObjects() {
+            clickTargets.forEach(t => scene.remove(t.mesh));
+            clickTargets.length = 0;
+            activeExplosions.forEach(group => group.forEach(p => scene.remove(p.mesh)));
+            activeExplosions.length = 0;
+            activeRings.forEach(r => scene.remove(r.mesh));
+            activeRings.length = 0;
+            activeSmoke.forEach(s => scene.remove(s.mesh));
+            activeSmoke.length = 0;
+
+            if (trackingTarget) {
+                scene.remove(trackingTarget);
+                trackingTarget = null;
+            }
+
+            if (currentMode === 'click') {
+                for (let i = 0; i < 4; i++) spawnClickTarget();
+            } else {
+                trackingTarget = new THREE.Mesh(targetGeo, targetMat);
+                trackingTarget.position.set(0, 2.5, -10);
+                scene.add(trackingTarget);
+                resetTrackingVelocity();
+            }
+        }
+
+        function spawnClickTarget() {
+            const target = new THREE.Mesh(targetGeo, targetMat);
+            target.position.set((Math.random() - 0.5) * 16, Math.random() * 4 + 1, -Math.random() * 8 - 8);
+            scene.add(target);
+            clickTargets.push({ mesh: target, life: clickLifespanMap[currentDiff] });
+        }
+
+        // 검정빛이 도는 묵직한 화약 연기 효과 생성
+        function createMuzzleSmoke(pos) {
+            const smokeColors = [0xd0d0d0, 0x888888, 0x555555, 0x333333, 0x1c1c1c];
+
+            for (let i = 0; i < 50; i++) {
+                const smokeGeo = new THREE.SphereGeometry(0.07 + Math.random() * 0.1, 8, 8);
+                const chosenColor = smokeColors[Math.floor(Math.random() * smokeColors.length)];
+                const smokeMat = new THREE.MeshBasicMaterial({ color: chosenColor, transparent: true, opacity: 0.85 });
+                const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+                
+                smoke.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*0.18, (Math.random()-0.5)*0.18, (Math.random()-0.5)*0.18));
+                scene.add(smoke);
+
+                activeSmoke.push({
+                    mesh: smoke,
+                    vel: new THREE.Vector3((Math.random() - 0.5) * 0.8, Math.random() * 1.5 + 0.5, (Math.random() - 0.5) * 0.8),
+                    life: 2.0,
+                    maxLife: 2.0
+                });
+            }
+        }
+
+        function createExplosionEffect(pos) {
+            for (let i = 0; i < 2; i++) {
+                const ringGeo = new THREE.RingGeometry(0.1, 0.5 + i * 0.3, 32);
+                const ringMat = new THREE.MeshBasicMaterial({ 
+                    color: i === 0 ? 0xffaa00 : 0xffffff, 
+                    side: THREE.DoubleSide, 
+                    transparent: true, 
+                    opacity: 1.0 
+                });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.copy(pos);
+                ring.lookAt(camera.position);
+                scene.add(ring);
+                activeRings.push({ mesh: ring, life: 0.35, maxLife: 0.35, expandSpeed: 14 + i * 6 });
+            }
+
+            const count = 65;
+            const particles = [];
+            const colors = [0xffffff, 0xffea00, 0xff5500, 0xff2200, 0x00ffff];
+
+            for (let i = 0; i < count; i++) {
+                const size = Math.random() * 0.12 + 0.04;
+                const pGeo = new THREE.SphereGeometry(size, 8, 8);
+                const chosenColor = colors[Math.floor(Math.random() * colors.length)];
+                const pMat = new THREE.MeshBasicMaterial({ color: chosenColor, transparent: true, opacity: 1.0 });
+
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(pos);
+                scene.add(p);
+
+                const speed = Math.random() * 16 + 4;
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5),
+                    (Math.random() - 0.5),
+                    (Math.random() - 0.5)
+                ).normalize().multiplyScalar(speed);
+
+                particles.push({ mesh: p, vel: velocity, life: 0.5, maxLife: 0.5 });
+            }
+            activeExplosions.push(particles);
+
+            const flashLight = new THREE.PointLight(0xffaa00, 4, 10);
+            flashLight.position.copy(pos);
+            scene.add(flashLight);
+            setTimeout(() => { scene.remove(flashLight); }, 70);
+        }
+
+        function resetTrackingVelocity() {
+            const speed = trackingSpeedMap[currentDiff];
+            trackingVelocity.set(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 1
+            ).normalize().multiplyScalar(speed);
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (controls.isLocked && !isGameOver) {
+                    timeLeft--;
+                    document.getElementById('timeText').innerText = timeLeft;
+                    if (timeLeft <= 0) endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            isGameOver = true;
+            controls.unlock();
+            resetZoom();
+            reloadIndicator.style.display = 'none';
+            
+            document.getElementById('resScore').innerText = `${score}점`;
+            const clickStats = document.getElementById('clickStats');
+
+            if (currentMode === 'click') {
+                clickStats.style.display = 'flex';
+                const accuracy = totalShots > 0 ? ((hits / totalShots) * 100).toFixed(1) : 0;
+                document.getElementById('resAcc').innerText = `${accuracy}%`;
+            } else {
+                clickStats.style.display = 'none';
+            }
+
+            resultBoard.style.display = 'block';
+            updateMenuButtons();
+        }
+
+        function resetGame() {
+            score = 0; totalShots = 0; hits = 0; timeLeft = 30; isGameOver = false;
+            lastSniperShotTime = 0;
+            document.getElementById('scoreText').innerText = score;
+            document.getElementById('timeText').innerText = timeLeft;
+            resultBoard.style.display = 'none';
+            reloadIndicator.style.display = 'none';
+            resetZoom();
+            
+            initModeObjects();
+            updateMenuButtons();
+        }
+
+        function resetZoom() {
+            isZoomed = false;
+            camera.fov = 75;
+            camera.updateProjectionMatrix();
+            controls.pointerSpeed = baseSens;
+            document.getElementById('crosshair').style.opacity = '1';
+            document.getElementById('scopeOverlay').style.display = 'none';
+        }
+
+        function updateMenuButtons() {
+            if (isGameOver) {
+                startBtn.style.display = 'inline-block';
+                startBtn.innerText = '게임 시작';
+                restartBtn.style.display = 'inline-block';
+            } else if (timeLeft < 30 && timeLeft > 0) {
+                startBtn.style.display = 'inline-block';
+                startBtn.innerText = '계속하기';
+                restartBtn.style.display = 'inline-block';
+            } else {
+                startBtn.style.display = 'inline-block';
+                startBtn.innerText = '게임 시작';
+                restartBtn.style.display = 'none';
+            }
+        }
+
+        restartBtn.addEventListener('click', () => { resetGame(); weaponModal.style.display = 'flex'; });
+
+        controls.addEventListener('lock', () => {
+            document.getElementById('menu').style.display = 'none';
+            clock.getDelta();
+            if (!timerInterval) startTimer();
+        });
+
+        controls.addEventListener('unlock', () => {
+            if (!isGameOver && weaponModal.style.display !== 'flex') {
+                document.getElementById('menu').style.display = 'flex';
+            }
+            resetZoom();
+            reloadIndicator.style.display = 'none';
+            updateMenuButtons();
+        });
+
+        resetGame();
+
+        const raycaster = new THREE.Raycaster();
+        const screenCenter = new THREE.Vector2(0, 0);
+
+        function createBulletTracer(startVec, endVec) {
+            const distance = startVec.distanceTo(endVec);
+            const tracerGeo = new THREE.CylinderGeometry(0.008, 0.008, distance, 8);
+            const tracerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
+            const tracer = new THREE.Mesh(tracerGeo, tracerMat);
+
+            const midPoint = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+            tracer.position.copy(midPoint); tracer.lookAt(endVec); tracer.rotateX(Math.PI / 2);
+            scene.add(tracer);
+
+            let opacity = 0.8;
+            const fade = setInterval(() => {
+                opacity -= 0.15;
+                tracerMat.opacity = opacity;
+                if (opacity <= 0) {
+                    clearInterval(fade); scene.remove(tracer); tracerGeo.dispose(); tracerMat.dispose();
+                }
+            }, 16);
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            if (!controls.isLocked || isGameOver) return;
+
+            if (currentWeapon === 'sniper' && e.button === 2) {
+                isZoomed = true;
+                camera.fov = 15;
+                camera.updateProjectionMatrix();
+                controls.pointerSpeed = baseSens * 0.25;
+                document.getElementById('crosshair').style.opacity = '1';
+                document.getElementById('scopeOverlay').style.display = 'block';
+                return;
+            }
+
+            if (e.button === 0) {
+                if (currentWeapon === 'sniper') {
+                    const now = performance.now();
+                    if (now - lastSniperShotTime < sniperReloadTime) return;
+                    lastSniperShotTime = now;
+                }
+
+                if (currentMode === 'click') {
+                    totalShots++;
+                    
+                    const activeGroup = currentWeapon === 'pistol' ? pistolGroup : sniperGroup;
+                    activeGroup.position.z += 0.05; activeGroup.rotation.x += 0.06;
+                    setTimeout(() => { activeGroup.position.z -= 0.05; activeGroup.rotation.x -= 0.06; }, 40);
+
+                    const muzzlePos = new THREE.Vector3(0, currentWeapon === 'pistol' ? 0.038 : 0.03, currentWeapon === 'pistol' ? -0.4 : -1.1);
+                    activeGroup.localToWorld(muzzlePos);
+
+                    if (currentWeapon === 'sniper') {
+                        createMuzzleSmoke(muzzlePos);
+                    }
+
+                    // 저격소총 노줌(Unscoped) 발사 시 탄 튀김(Spread) 적용
+                    let shootVector = screenCenter;
+                    if (currentWeapon === 'sniper' && !isZoomed) {
+                        const spreadRange = 0.12; // 탄이 튀는 정도
+                        shootVector = new THREE.Vector2(
+                            (Math.random() - 0.5) * spreadRange,
+                            (Math.random() - 0.5) * spreadRange
+                        );
+                    }
+
+                    const meshArray = clickTargets.map(t => t.mesh);
+                    raycaster.setFromCamera(shootVector, camera);
+                    const intersects = raycaster.intersectObjects(meshArray);
+
+                    let hitPoint = new THREE.Vector3();
+                    if (intersects.length > 0) {
+                        const hitMesh = intersects[0].object;
+                        hitPoint.copy(intersects[0].point);
+                        
+                        hits++;
+                        score += (currentWeapon === 'sniper' ? 2 : 1);
+                        document.getElementById('scoreText').innerText = score;
+
+                        createExplosionEffect(hitMesh.position);
+
+                        const idx = clickTargets.findIndex(t => t.mesh === hitMesh);
+                        if (idx !== -1) {
+                            scene.remove(hitMesh);
+                            clickTargets.splice(idx, 1);
+                            spawnClickTarget();
+                        }
+                    } else {
+                        raycaster.ray.at(40, hitPoint);
+                    }
+                    createBulletTracer(muzzlePos, hitPoint);
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!controls.isLocked || isGameOver) return;
+            if (currentWeapon === 'sniper' && e.button === 2) {
+                resetZoom();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        const baseTrackingDist = 10.0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (controls.isLocked && !isGameOver) {
+                if (currentWeapon === 'sniper') {
+                    const now = performance.now();
+                    if (now - lastSniperShotTime < sniperReloadTime) {
+                        reloadIndicator.style.display = 'flex';
+                    } else {
+                        reloadIndicator.style.display = 'none';
+                    }
+                } else {
+                    reloadIndicator.style.display = 'none';
+                }
+
+                if (currentMode === 'click') {
+                    for (let i = clickTargets.length - 1; i >= 0; i--) {
+                        clickTargets[i].life -= delta;
+                        if (clickTargets[i].life <= 0) {
+                            scene.remove(clickTargets[i].mesh);
+                            clickTargets.splice(i, 1);
+                            spawnClickTarget();
+                        }
+                    }
+                } else if (currentMode === 'tracking' && trackingTarget) {
+                    trackingTarget.position.addScaledVector(trackingVelocity, delta);
+
+                    if (Math.abs(trackingTarget.position.x) > 12) { trackingVelocity.x *= -1; trackingTarget.position.x = Math.sign(trackingTarget.position.x) * 12; }
+                    if (trackingTarget.position.y < 1 || trackingTarget.position.y > 6) { trackingVelocity.y *= -1; trackingTarget.position.y = Math.max(1, Math.min(6, trackingTarget.position.y)); }
+                    if (trackingTarget.position.z > -5 || trackingTarget.position.z < -18) { trackingVelocity.z *= -1; trackingTarget.position.z = Math.max(-18, Math.min(-5, trackingTarget.position.z)); }
+
+                    if (Math.random() < 0.02) {
+                        const speed = trackingSpeedMap[currentDiff];
+                        trackingVelocity.add(new THREE.Vector3((Math.random()-0.5)*2, (Math.random()-0.5)*2, (Math.random()-0.5)*1).multiplyScalar(0.5)).normalize().multiplyScalar(speed);
+                    }
+
+                    const distToCamera = camera.position.distanceTo(trackingTarget.position);
+                    const scaleFactor = distToCamera / baseTrackingDist;
+                    trackingTarget.scale.set(scaleFactor, scaleFactor, scaleFactor);
+
+                    raycaster.setFromCamera(screenCenter, camera);
+                    const intersects = raycaster.intersectObject(trackingTarget);
+
+                    if (intersects.length > 0) {
+                        trackingTarget.material = trackingActiveMat;
+                        score += Math.round(delta * 50 * (isZoomed ? 1.5 : 1.0));
+                        document.getElementById('scoreText').innerText = score;
+                    } else {
+                        trackingTarget.material = targetMat;
+                    }
+                }
+
+                for (let i = activeSmoke.length - 1; i >= 0; i--) {
+                    const s = activeSmoke[i];
+                    s.life -= delta;
+                    if (s.life > 0) {
+                        s.mesh.position.addScaledVector(s.vel, delta);
+                        s.mesh.scale.addScalar(delta * 0.9);
+                        s.mesh.material.opacity = (s.life / s.maxLife) * 0.8;
+                    } else {
+                        scene.remove(s.mesh);
+                        s.mesh.geometry.dispose();
+                        s.mesh.material.dispose();
+                        activeSmoke.splice(i, 1);
+                    }
+                }
+
+                for (let i = activeRings.length - 1; i >= 0; i--) {
+                    const r = activeRings[i];
+                    r.life -= delta;
+                    if (r.life > 0) {
+                        r.mesh.scale.addScalar(delta * r.expandSpeed);
+                        r.mesh.material.opacity = r.life / r.maxLife;
+                    } else {
+                        scene.remove(r.mesh);
+                        r.mesh.geometry.dispose();
+                        r.mesh.material.dispose();
+                        activeRings.splice(i, 1);
+                    }
+                }
+
+                for (let i = activeExplosions.length - 1; i >= 0; i--) {
+                    const group = activeExplosions[i];
+                    let allDead = true;
+                    for (let j = 0; j < group.length; j++) {
+                        const p = group[j];
+                        p.life -= delta;
+                        if (p.life > 0) {
+                            allDead = false;
+                            p.mesh.position.addScaledVector(p.vel, delta);
+                            p.mesh.scale.multiplyScalar(0.92);
+                            p.mesh.material.opacity = p.life / p.maxLife;
+                        } else {
+                            scene.remove(p.mesh);
+                            p.mesh.geometry.dispose();
+                            p.mesh.material.dispose();
+                        }
+                    }
+                    if (allDead) {
+                        activeExplosions.splice(i, 1);
+                    }
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

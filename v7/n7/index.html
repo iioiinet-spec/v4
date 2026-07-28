@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지하 감옥 탈출 수수께끼</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Malgun Gothic', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 20px;
+            background-image: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), 
+                              repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.03) 40px, rgba(255,255,255,0.03) 41px);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #b71c1c;
+            font-size: 2rem;
+            text-shadow: 2px 2px 4px #000;
+            margin-bottom: 5px;
+        }
+
+        p.subtitle {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #1a1a1a;
+            border: 4px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.7);
+            position: relative;
+        }
+
+        /* 문 그리드 */
+        .doors-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .doors-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .doors-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .door {
+            background: linear-gradient(135deg, #424242, #212121);
+            border: 4px solid #111;
+            border-radius: 6px;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            box-shadow: inset 0 0 10px #000, 0 4px 6px rgba(0,0,0,0.5);
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .door:hover:not(.locked):not(.cleared) {
+            transform: translateY(-3px);
+            background: linear-gradient(135deg, #505050, #2c2c2c);
+        }
+
+        .door.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(80%);
+        }
+
+        .door span.door-num {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #b0bec5;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        .door div.knob {
+            width: 10px;
+            height: 10px;
+            background-color: #ffb300;
+            border-radius: 50%;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            box-shadow: 0 0 4px #000;
+        }
+
+        /* 도장 효과 */
+        .door.cleared::after {
+            content: "CLEAR";
+            position: absolute;
+            color: #d32f2f;
+            border: 3px solid #d32f2f;
+            padding: 2px 6px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            transform: rotate(-15deg);
+            background-color: rgba(211, 47, 47, 0.1);
+            box-shadow: 0 0 5px rgba(211, 47, 47, 0.5);
+            letter-spacing: 1px;
+            z-index: 2;
+        }
+
+        /* 모달창 (수수께끼 풀이 화면) */
+        #modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background-color: #212121;
+            border: 3px solid #424242;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 500px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.9);
+            text-align: center;
+            position: relative;
+        }
+
+        .modal-content h2 {
+            color: #ffb300;
+            margin-bottom: 15px;
+            font-size: 1.4rem;
+        }
+
+        .riddle-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            color: #f5f5f5;
+            background: #121212;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #b71c1c;
+            text-align: left;
+        }
+
+        .answer-input-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px 15px;
+            background-color: #121212;
+            border: 2px solid #424242;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #ffb300;
+        }
+
+        button.action-btn {
+            padding: 10px 20px;
+            background-color: #b71c1c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button.action-btn:hover {
+            background-color: #d32f2f;
+        }
+
+        button.close-btn {
+            background-color: #424242;
+            margin-top: 5px;
+        }
+        button.close-btn:hover {
+            background-color: #616161;
+        }
+
+        #feedback {
+            margin-top: 10px;
+            font-size: 0.95rem;
+            font-weight: bold;
+        }
+
+        /* 최종 클리어 화면 및 다시하기 */
+        #complete-screen {
+            display: none;
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            background: #1f1f1f;
+            border: 2px dashed #ffb300;
+            border-radius: 8px;
+        }
+
+        #complete-screen h2 {
+            color: #ffb300;
+            margin-bottom: 10px;
+        }
+
+        #restart-btn {
+            padding: 12px 30px;
+            background-color: #2e7d32;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+
+        #restart-btn:hover {
+            background-color: #388e3c;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>지하 감옥 탈출 수수께끼</h1>
+        <p class="subtitle">총 20개의 문을 열고 감옥을 탈출하세요. 순서대로 난이도가 상승합니다.</p>
+    </header>
+
+    <div id="game-container">
+        <div class="doors-grid" id="doorsGrid">
+            <!-- 자바스크립트로 20개의 문이 동적 생성됩니다 -->
+        </div>
+
+        <div id="complete-screen">
+            <h2>🎉 모든 수수께끼를 풀고 지하 감옥을 탈출하셨습니다! 🎉</h2>
+            <p>당신은 뛰어난 지혜를 가졌군요.</p>
+            <button id="restart-btn" onclick="resetGame()">새로운 수수께끼로 다시하기</button>
+        </div>
+    </div>
+
+    <!-- 수수께끼 풀기 모달 -->
+    <div id="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">문 #1</h2>
+            <div class="riddle-text" id="riddleText">수수께끼 내용이 여기에 들어갑니다.</div>
+            <div class="answer-input-box">
+                <input type="text" id="answerInput" placeholder="정답을 입력하세요..." onkeypress="checkEnter(event)">
+                <button class="action-btn" onclick="submitAnswer()">제출</button>
+            </div>
+            <div id="feedback"></div>
+            <button class="action-btn close-btn" onclick="closeModal()">돌아가기</button>
+        </div>
+    </div>
+
+    <script>
+        // 원본 수수께끼 데이터베이스 (난이도 순 1~20)
+        const masterRiddles = [
+            { q: "글자 중에서 눈물이 가장 많은 글자는?", a: ["눈물", "ㅜ", "우"], hint: "초성이나 모음과 관련된 말장난입니다." },
+            { q: "세상에서 가장 가장 뜨거운 전화는?", a: ["화상전화", "화상"], hint: "불 화(火) 자가 들어갑니다." },
+            { q: "왕이실직하면 되는 것은?", a: ["왕실", "실왕"], hint: "단어의 순서를 바꿔보세요." },
+            { q: "소금의 원래 이름은 소금장수인데, 그렇다면 소금이 죽으면?", a: ["죽염", "구운소금"], hint: "소금을 불에 구우면?" },
+            { q: "바다 위에 목수들이 가장 싫어하는 집은?", a: ["대충", "대충집"], hint: "대충 짓는 집을 말합니다." },
+            { q: "토끼가 가장 좋아하는 사는 곳은?", a: ["토끼굴", "굴"], hint: "동물들이 파고 사는 곳입니다." },
+            { q: "아무리 예뻐도 여자에게 절대 상을 주지 않는 상은?", a: ["못생긴상", "못생긴 상", "모르는상", "상"], hint: "얼굴의 '상'을 뜻합니다." },
+            { q: "사람이 훔칠 수 없는 것은?", a: ["나이", "시간", "마음"], hint: "살면서 점점 늘어나는 것입니다." },
+            { q: "차를 치면 무엇이 될까요?", a: ["카치온", "카치온(cation)", "카"], hint: "과학/물리 용어 혹은 언어 유희입니다." },
+            { q: "왕이 궁에 들어갈 때 외치는 소리는?", a: ["킹콩", "킹콩!", "킹콩콩"], hint: "킹(King) + 콩?" },
+            { q: "세상에서 가장 빠른 닭은?", a: ["백스페이스", "백스페이스바"], hint: "컴퓨터 키보드와 관련이 있습니다." },
+            { q: "지구에서 가장 무거운 동물은?", a: ["고래", "흰긴수염고래", "대왕고래"], hint: "바다에 사는 거대한 포유류입니다." },
+            { q: "소화가 안 될 때 먹는 약 말고, 속이 뻥 뚫리는 시원한 바다는?", a: ["속시원한바다", "태평양", "동해"], hint: "넓고 큰 바다의 이름입니다.", customCheck: (ans) => ans.includes("속") || ans.includes("사이다") || ans.includes("시원") },
+            { q: "길을 가다가 나무를 만났을 때, 나무가 크게 웃은 이유는?", a: ["간지러워서", "나무가 웃어서", "나뭇가지"], hint: "나무의 '가지'를 이용한 말장난입니다." },
+            { q: "세상에서 가장 지루한 중학교는?", a: ["로딩중", "로딩중학교"], hint: "컴퓨터 화면이 멈췄을 때 뜨는 단어입니다." },
+            { q: "소변과 대변의 정반대 말은?", a: ["운전", "운전하다"], hint: "똥을 누는 것의 반대 개념?" },
+            { q: "바닷물이 짜디짠 진짜 이유는?", a: ["생선이 땀을 흘려서", "물고기가 땀을 흘려서", "소금이 녹아서"], hint: "바다에 사는 동물들과 관련이 있습니다." },
+            { q: "세상에서 가장 외로운 과일은?", a: ["독립문", "바나나", "쓸쓸한과일"], hint: "과일 이름이 아닙니다. 건물의 이름입니다." },
+            { q: "숫자 1이 9에게 심하게 화를 낸 이유는?", a: ["날씬해서", "자기보다 커서", "까불어서"], hint: "모양의 차이 때문입니다." },
+            { q: "【최종 관문】 다음 암호를 해독하라: \"I O E A U\" 의 다음 알파벳은?", a: ["Y", "y"], hint: "모음의 순서(A, E, I, O, U)를 거꾸로 배열한 뒤의 패턴, 혹은 자음/모음의 배열 규칙을 생각해보세요." }
+        ];
+
+        let currentRiddles = [];
+        let currentDoorIndex = null;
+        let clearedStatus = {}; // 각 문의 클리어 상태를 안전하게 저장할 객체
+
+        // 게임 초기화
+        function initGame() {
+            currentRiddles = [...masterRiddles];
+            clearedStatus = {}; // 초기화 시 상태 초기화
+            currentDoorIndex = null;
+            
+            document.getElementById('complete-screen').style.display = 'none';
+            document.getElementById('doorsGrid').style.display = 'grid';
+
+            renderDoors();
+        }
+
+        // 문 20개 렌더링
+        function renderDoors() {
+            const grid = document.getElementById('doorsGrid');
+            grid.innerHTML = '';
+
+            for (let i = 0; i < 20; i++) {
+                const door = document.createElement('div');
+                door.className = 'door';
+                door.id = `door-${i}`;
+                
+                // 이미 클리어한 문이면 도장 클래스 추가
+                if (clearedStatus[i]) {
+                    door.classList.add('cleared');
+                }
+
+                // 잠김 여부 확인 (첫 번째 문이거나 이전 문을 깼을 때 열림)
+                if (i > 0 && !isDoorUnlocked(i)) {
+                    door.classList.add('locked');
+                }
+
+                door.innerHTML = `
+                    <span class="door-num">${i + 1}</span>
+                    <div class="knob"></div>
+                `;
+
+                door.onclick = () => {
+                    if (door.classList.contains('locked')) {
+                        alert("이전 문을 먼저 클리어해야 합니다!");
+                        return;
+                    }
+                    openRiddle(i);
+                };
+
+                grid.appendChild(door);
+            }
+        }
+
+        // 문 잠금 해제 조건
+        function isDoorUnlocked(index) {
+            if (index === 0) return true;
+            // 이전 문이 클리어 상태인지 확인
+            return clearedStatus[index - 1] === true;
+        }
+
+        // 수수께끼 모달 열기
+        function openRiddle(index) {
+            currentDoorIndex = index;
+            const modal = document.getElementById('modal');
+            document.getElementById('modalTitle').innerText = `지하 감옥 문 #${index + 1} (난이도: ${index + 1}/20)`;
+            document.getElementById('riddleText').innerText = currentRiddles[index].q;
+            document.getElementById('answerInput').value = '';
+            document.getElementById('feedback').innerText = '';
+            modal.style.display = 'flex';
+            document.getElementById('answerInput').focus();
+        }
+
+        // 모달 닫기
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            renderDoors();
+        }
+
+        // 엔터 키 입력 처리
+        function checkEnter(event) {
+            if (event.key === 'Enter') {
+                submitAnswer();
+            }
+        }
+
+        // 정답 제출 확인
+        function submitAnswer() {
+            const userAns = document.getElementById('answerInput').value.trim().toLowerCase();
+            const currentRiddle = currentRiddles[currentDoorIndex];
+            const feedback = document.getElementById('feedback');
+
+            if (!userAns) {
+                feedback.style.color = '#ff5252';
+                feedback.innerText = "정답을 입력해주세요!";
+                return;
+            }
+
+            let isCorrect = false;
+            
+            if (currentRiddle.customCheck) {
+                isCorrect = currentRiddle.customCheck(userAns);
+            } else {
+                isCorrect = currentRiddle.a.some(ans => userAns.includes(ans.toLowerCase()));
+            }
+
+            if (isCorrect) {
+                feedback.style.color = '#66bb6a';
+                feedback.innerText = "정답입니다! 문이 열리며 도장이 찍힙니다.";
+                
+                // 해당 문 클리어 상태 기록
+                clearedStatus[currentDoorIndex] = true;
+
+                setTimeout(() => {
+                    closeModal();
+                    checkGameClear();
+                }, 1000);
+
+            } else {
+                feedback.style.color = '#ff5252';
+                feedback.innerText = `틀렸습니다! 💡 힌트: ${currentRiddle.hint}`;
+            }
+        }
+
+        // 전체 게임 클리어 체크
+        function checkGameClear() {
+            let allCleared = true;
+            for (let i = 0; i < 20; i++) {
+                if (!clearedStatus[i]) {
+                    allCleared = false;
+                    break;
+                }
+            }
+
+            if (allCleared) {
+                document.getElementById('doorsGrid').style.display = 'none';
+                document.getElementById('complete-screen').style.display = 'block';
+            } else {
+                renderDoors();
+            }
+        }
+
+        // 다시하기
+        function resetGame() {
+            masterRiddles.sort(() => Math.random() - 0.5);
+            initGame();
+        }
+
+        // 페이지 로드 시 게임 초기화
+        window.onload = initGame;
+    </script>
+</body>
+</html>

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>몬스터 배틀 마스터즈</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'DNF BitBit v2', 'D2Coding', sans-serif;
+        }
+        body {
+            background-color: #2b2b2b;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #game-container {
+            width: 800px;
+            height: 600px;
+            background: #1e1e1e;
+            border: 4px solid #555;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        /* 화면 공통 */
+        .screen {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .active {
+            display: flex;
+        }
+
+        /* 1. 시작 화면 */
+        #start-screen h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #ffd700;
+            text-shadow: 2px 2px #ff4500;
+        }
+        #start-screen p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+        .monster-choices {
+            display: flex;
+            gap: 20px;
+        }
+        .monster-card {
+            background: #333;
+            border: 3px solid #666;
+            border-radius: 10px;
+            padding: 20px;
+            width: 180px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .monster-card:hover {
+            transform: translateY(-5px);
+            border-color: #ffd700;
+            background: #444;
+        }
+        .monster-card .emoji {
+            font-size: 4rem;
+            margin-bottom: 10px;
+        }
+        .monster-card h3 {
+            margin-bottom: 5px;
+        }
+
+        /* 2. 전투 화면 */
+        #battle-screen {
+            justify-content: space-between;
+            background: linear-gradient(to bottom, #3a6073, #16222a);
+            padding: 20px;
+        }
+        .battle-field {
+            width: 100%;
+            height: 250px;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 40px;
+        }
+        .battle-unit {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .battle-unit .emoji {
+            font-size: 5rem;
+            animation: float 2s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .status-box {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #888;
+            border-radius: 8px;
+            padding: 10px;
+            width: 220px;
+            position: absolute;
+        }
+        #enemy-status { top: 20px; right: 40px; }
+        #player-status { bottom: 20px; left: 40px; }
+
+        .status-box h4 {
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .hp-bar-container {
+            width: 100%;
+            height: 14px;
+            background: #444;
+            border-radius: 7px;
+            overflow: hidden;
+            border: 1px solid #aaa;
+            margin-top: 5px;
+        }
+        .hp-bar {
+            height: 100%;
+            width: 100%;
+            background: #4caf50;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        .hp-text {
+            font-size: 0.8rem;
+            text-align: right;
+            margin-top: 2px;
+        }
+
+        /* 컨트롤 패널 */
+        .control-panel {
+            width: 100%;
+            height: 180px;
+            background: #111;
+            border: 3px solid #444;
+            border-radius: 8px;
+            display: flex;
+        }
+        #log-box {
+            flex: 1;
+            padding: 15px;
+            font-size: 1rem;
+            overflow-y: auto;
+            border-right: 2px solid #444;
+            line-height: 1.4;
+            background: #181818;
+        }
+        .action-box {
+            width: 320px;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 8px;
+            background: #222;
+        }
+        .btn {
+            background: #333;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.1s;
+            font-size: 0.9rem;
+        }
+        .btn:hover:not(:disabled) {
+            background: #555;
+            border-color: #ffd700;
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-switch {
+            grid-column: span 2;
+            background: #4a3b00;
+            border-color: #aa8800;
+        }
+        .btn-switch:hover:not(:disabled) {
+            background: #665000;
+        }
+
+        /* 3. 결과 화면 */
+        #result-screen h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        #result-message {
+            font-size: 1.3rem;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- 1. 시작 화면 -->
+    <div id="start-screen" class="screen active">
+        <h1>몬스터 배틀 마스터즈</h1>
+        <p>함께 모험할 첫 번째 몬스터를 선택하세요!</p>
+        <div class="monster-choices" id="monster-choices">
+            <!-- 자바스크립트로 동적 생성 -->
+        </div>
+    </div>
+
+    <!-- 2. 전투 화면 -->
+    <div id="battle-screen" class="screen">
+        <div class="battle-field">
+            <!-- 적 상태 -->
+            <div id="enemy-status" class="status-box">
+                <h4><span id="enemy-name">적 몬스터</span> <span id="enemy-type-badge"></span></h4>
+                <div class="hp-bar-container">
+                    <div id="enemy-hp-bar" class="hp-bar"></div>
+                </div>
+                <div class="hp-text"><span id="enemy-hp-current">100</span> / 100</div>
+            </div>
+            <div class="battle-unit" style="position: absolute; top: 20px; right: 120px;">
+                <div id="enemy-emoji" class="emoji">👾</div>
+            </div>
+
+            <!-- 내 상태 -->
+            <div class="battle-unit" style="position: absolute; bottom: 20px; left: 120px;">
+                <div id="player-emoji" class="emoji">🐲</div>
+            </div>
+            <div id="player-status" class="status-box">
+                <h4><span id="player-name">내 몬스터</span> <span id="player-type-badge"></span></h4>
+                <div class="hp-bar-container">
+                    <div id="player-hp-bar" class="hp-bar"></div>
+                </div>
+                <div class="hp-text"><span id="player-hp-current">100</span> / 100</div>
+            </div>
+        </div>
+
+        <!-- 조작부 -->
+        <div class="control-panel">
+            <div id="log-box">전투가 시작되었습니다!</div>
+            <div class="action-box" id="action-box">
+                <button class="btn" onclick="useSkill(0)" id="skill-0">기술 1</button>
+                <button class="btn" onclick="useSkill(1)" id="skill-1">기술 2</button>
+                <button class="btn" onclick="useSkill(2)" id="skill-2">기술 3</button>
+                <button class="btn" onclick="useSkill(3)" id="skill-3" style="grid-column: span 2;">기술 4 (회복)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 결과 화면 -->
+    <div id="result-screen" class="screen">
+        <h1 id="result-title">승리!</h1>
+        <p id="result-message">모든 적 몬스터를 쓰러뜨렸습니다!</p>
+        <button class="btn" style="padding: 15px 30px; font-size: 1.2rem;" onclick="resetGame()">다시하기</button>
+    </div>
+</div>
+
+<script>
+    // 몬스터 원본 데이터 정의
+    // 타입 상성: 전기 > 돌 > 물 > 전기 (강하면 2배, 약하면 0.5배)
+    // 전기(electric)는 돌(rock)에게 강함, 돌(rock)은 물(water)에게 강함, 물(water)은 전기(electric)에게 강함.
+    // 문제 규칙 상: 전기 > 돌 > 물 > 전기 (오타 방지를 위해 명확히 정의)
+    // 규칙: 전기 > 돌, 돌 > 물, 물 > 전기
+    const monsterTemplates = [
+        {
+            id: 'electric',
+            name: '볼트론',
+            emoji: '⚡',
+            type: '전기',
+            skills: [
+                { name: '스파크', type: 'normal', power: 20 },
+                { name: '번개 강타', type: 'electric', power: 35 }, // 돌에게 강함
+                { name: '정전기 충격', type: 'water', power: 15 },    // 돌에게 약함
+                { name: '자가 발전', type: 'heal', power: 30 }
+            ]
+        },
+        {
+            id: 'rock',
+            name: '바위곤',
+            emoji: '🗿',
+            type: '돌',
+            skills: [
+                { name: '몸통 박치기', type: 'normal', power: 20 },
+                { name: '대지 분쇄', type: 'rock', power: 35 },     // 물에게 강함
+                { name: '모래 뿌리기', type: 'electric', power: 15 }, // 물에게 약함
+                { name: '단단해지기', type: 'heal', power: 30 }
+            ]
+        },
+        {
+            id: 'water',
+            name: '아쿠아리',
+            emoji: '🌊',
+            type: '물이',
+            skills: [
+                { name: '물어뜯기', type: 'normal', power: 20 },
+                { name: '해일', type: 'water', power: 35 },        // 전기에게 강함
+                { name: '물방울 튀기기', type: 'rock', power: 15 },   // 전기에게 약함
+                { name: '꿀꺽꿀꺽', type: 'heal', power: 30 }
+            ]
+        }
+    ];
+
+    let playerTeam = [];
+    let enemyTeam = [];
+    let activePlayerIndex = 0;
+    let activeEnemyIndex = 0;
+    let healCounts = {}; // 각 포켓몬별 회복 남은 횟수 (최대 2회)
+    let isTurnProcessing = false;
+
+    // 시작 화면 몬스터 카드 생성
+    function initStartScreen() {
+        const container = document.getElementById('monster-choices');
+        container.innerHTML = '';
+        monsterTemplates.forEach((template, index) => {
+            const card = document.createElement('div');
+            card.className = 'monster-card';
+            card.innerHTML = `
+                <div class="emoji">${template.emoji}</div>
+                <h3>${template.name}</h3>
+                <p>타입: ${template.type}</p>
+            `;
+            card.onclick = () => selectStarter(index);
+            container.appendChild(card);
+        });
+    }
+
+    // 스타터 선택 및 게임 시작
+    function selectStarter(selectedIndex) {
+        // 플레이어 팀 생성 (선택한 것 + 나머지 2개)
+        playerTeam = [];
+        const selected = monsterTemplates[selectedIndex];
+        playerTeam.push(createMonsterObj(selected));
+        
+        monsterTemplates.forEach((t, idx) => {
+            if (idx !== selectedIndex) {
+                playerTeam.push(createMonsterObj(t));
+            }
+        });
+
+        // 컴퓨터 팀 생성 (랜덤 3마리, 순서 섞기)
+        enemyTeam = [];
+        const shuffledTemplates = [...monsterTemplates].sort(() => Math.random() - 0.5);
+        shuffledTemplates.forEach(t => {
+            enemyTeam.push(createMonsterObj(t));
+        });
+
+        // 회복 횟수 초기화
+        healCounts = {};
+        playerTeam.forEach(m => healCounts[m.uniqueId] = 2);
+        enemyTeam.forEach(m => healCounts[m.uniqueId] = 2);
+
+        activePlayerIndex = 0;
+        activeEnemyIndex = 0;
+
+        // 화면 전환
+        document.getElementById('start-screen').classList.remove('active');
+        document.getElementById('battle-screen').classList.add('active');
+
+        appendLog(`야생의 적 팀이 나타났다!`);
+        appendLog(`가장 먼저 ${playerTeam[activePlayerIndex].name}(을)를 출동시켰다!`);
+        updateBattleUI();
+    }
+
+    function createMonsterObj(template) {
+        return {
+            uniqueId: Math.random().toString(36).substr(2, 9),
+            name: template.name,
+            emoji: template.emoji,
+            type: template.type,
+            maxHp: 100,
+            hp: 100,
+            skills: JSON.parse(JSON.stringify(template.skills))
+        };
+    }
+
+    function switchPlayerMonster(newIndex) {
+        if (isTurnProcessing) return;
+        if (playerTeam[newIndex].hp <= 0) {
+            appendLog(`HP가 0인 몬스터는 교체할 수 없습니다!`);
+            return;
+        }
+        if (newIndex === activePlayerIndex) {
+            appendLog(`이미 필드에 나와있는 몬스터입니다.`);
+            return;
+        }
+
+        activePlayerIndex = newIndex;
+        appendLog(`[교체] 가라! ${playerTeam[activePlayerIndex].name}!`);
+        updateBattleUI();
+
+        // 플레이어가 턴을 써서 교체했으므로 적 턴으로 넘어감
+        isTurnProcessing = true;
+        setTimeout(enemyTurn, 1000);
+    }
+
+    // 타입 상성 계산 (전기 > 돌 > 물 > 전기)
+    // 전기('전기'), 돌('돌'), 물('물이')
+    function getDamageMultiplier(attackerType, skillType, defenderType) {
+        if (skillType === 'normal' || skillType === 'heal') return 1.0;
+
+        // 강한 타입 기술 체크
+        // 전기 기술은 돌에게 강함? 아니 문제 조건: "전기 > 전기 > 물 > 돌" -> 아마 전기 > 돌 > 물 > 전기 오타인듯.
+        // 문제 내용: "타입 상성: 전기 > 전기 > 물 > 돌 (강하면 데미지 2배, 약하면 0.5배)" -> 보통 전기 > 돌 > 물 > 전기 사이클
+        // 정의: 전기(전기)는 돌(돌)에게 강함, 돌(돌)은 물(물이)에게 강함, 물(물이)은 전기(전기)에게 강함.
+        let isStrong = false;
+        let isWeak = false;
+
+        if (skillType === 'electric' && defenderType === '돌') isStrong = true;
+        if (skillType === 'electric' && defenderType === '물이') isWeak = true;
+
+        if (skillType === 'rock' && defenderType === '물이') isStrong = true;
+        if (skillType === 'rock' && defenderType === '전기') isWeak = true;
+
+        if (skillType === 'water' && defenderType === '전기') isStrong = true;
+        if (skillType === 'water' && defenderType === '돌') isWeak = true;
+
+        if (isStrong) return 2.0;
+        if (isWeak) return 0.5;
+        return 1.0;
+    }
+
+    // 기술 사용
+    function useSkill(skillIndex) {
+        if (isTurnProcessing) return;
+        isTurnProcessing = true;
+
+        const playerMon = playerTeam[activePlayerIndex];
+        const enemyMon = enemyTeam[activeEnemyIndex];
+        const skill = playerMon.skills[skillIndex];
+
+        appendLog(`${playerMon.name}의 ${skill.name}!`);
+
+        if (skill.type === 'heal') {
+            if (healCounts[playerMon.uniqueId] <= 0) {
+                appendLog(`하지만 회복 횟수를 모두 소모했다! 실패!`);
+            } else {
+                healCounts[playerMon.uniqueId]--;
+                playerMon.hp = Math.min(playerMon.maxHp, playerMon.hp + skill.power);
+                appendLog(`${playerMon.name}이 체력을 ${skill.power} 회복했다! (남은 회복: ${healCounts[playerMon.uniqueId]}회)`);
+            }
+        } else {
+            const mult = getDamageMultiplier(playerMon.type, skill.type, enemyMon.type);
+            let damage = Math.round(skill.power * mult);
+            enemyMon.hp = Math.max(0, enemyMon.hp - damage);
+
+            if (mult > 1.0) {
+                appendLog(`효과가 굉장했다! (${damage} 데미지)`);
+            } else if (mult < 1.0) {
+                appendLog(`효과가 별로인 듯하다... (${damage} 데미지)`);
+            } else {
+                appendLog(`${damage}의 데미지를 입혔다!`);
+            }
+        }
+
+        updateBattleUI();
+
+        // 적 생존 여부 확인
+        if (enemyMon.hp <= 0) {
+            appendLog(`적의 ${enemyMon.name}(이)가 쓰러졌다!`);
+            
+            // 다음 적 생존 몬스터 찾기
+            const nextEnemyIdx = enemyTeam.findIndex(m => m.hp > 0);
+            if (nextEnemyIdx === -1) {
+                setTimeout(() => endGame(true), 1000);
+                return;
+            } else {
+                activeEnemyIndex = nextEnemyIdx;
+                appendLog(`적 상대로 ${enemyTeam[activeEnemyIndex].name}(이)가 나왔다!`);
+                updateBattleUI();
+                isTurnProcessing = false;
+                return;
+            }
+        }
+
+        // 1초 후 적 턴 진행
+        setTimeout(enemyTurn, 1000);
+    }
+
+    // 적 턴 로직
+    function enemyTurn() {
+        const playerMon = playerTeam[activePlayerIndex];
+        const enemyMon = enemyTeam[activeEnemyIndex];
+
+        // 1. 상대 턴 랜덤한 때에 내 몬스터의 상성 포켓몬으로 교체 가능 규칙 구현
+        // 적이 내 현재 몬스터에게 강한 상성인 내 포켓몬을 역으로 노리는 타이밍이나, 또는 적이 자신의 포켓몬을 교체할 수도 있음.
+        // 문제 조건: "상대 턴에서도 랜덤한 때에 내 몬스터의 상성포켓몬으로 교체" -> 적이 교체하거나, 적이 플레이어의 상성 포켓몬을 파악해 교체하는 연출
+        // 여기서는 일정 확률(30%)로 적이 살아있는 다른 몬스터로 교체하거나 플레이어의 몬스터 타입에 맞춰 유리한 녀석으로 교체하는 로직 구현
+        const aliveEnemies = enemyTeam.filter((m, idx) => m.hp > 0 && idx !== activeEnemyIndex);
+        if (aliveEnemies.length > 0 && Math.random() < 0.3) {
+            // 플레이어 몬스터를 공격하기 유리한 적 포켓몬으로 교체 시도
+            let bestIdx = -1;
+            enemyTeam.forEach((m, idx) => {
+                if (m.hp > 0) {
+                    // 간단히 무작위 혹은 유리한 타입 선택
+                    bestIdx = idx;
+                }
+            });
+            if (bestIdx !== activeEnemyIndex && bestIdx !== -1) {
+                activeEnemyIndex = bestIdx;
+                appendLog(`[상대 턴] 적이 ${enemyTeam[activeEnemyIndex].name}(으)로 교체했다!`);
+                updateBattleUI();
+            }
+        }
+
+        // 적의 공격
+        // 적 기술 중 랜덤 선택 (단 회복은 남은 횟수가 있고 HP가 50 이하일 때 확률적으로 사용)
+        let availableSkills = enemyMon.skills.filter(s => {
+            if (s.type === 'heal') {
+                return healCounts[enemyMon.uniqueId] > 0 && enemyMon.hp < 60;
+            }
+            return true;
+        });
+        if (availableSkills.length === 0) availableSkills = enemyMon.skills;
+
+        const chosenSkill = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+
+        appendLog(`적 ${enemyMon.name}의 ${chosenSkill.name}!`);
+
+        if (chosenSkill.type === 'heal') {
+            healCounts[enemyMon.uniqueId]--;
+            enemyMon.hp = Math.min(enemyMon.maxHp, enemyMon.hp + chosenSkill.power);
+            appendLog(`적 ${enemyMon.name}이 체력을 회복했다!`);
+        } else {
+            const mult = getDamageMultiplier(enemyMon.type, chosenSkill.type, playerMon.type);
+            let damage = Math.round(chosenSkill.power * mult);
+            playerMon.hp = Math.max(0, playerMon.hp - damage);
+
+            if (mult > 1.0) {
+                appendLog(`적의 공격이 효과가 굉장했다! (${damage} 데미지)`);
+            } else if (mult < 1.0) {
+                appendLog(`적의 공격이 효과가 별로인 듯하다... (${damage} 데미지)`);
+            } else {
+                appendLog(`${damage}의 데미지를 입었다!`);
+            }
+        }
+
+        updateBattleUI();
+
+        // 플레이어 몬스터가 쓰러졌을 때 강제 교체 규칙
+        if (playerMon.hp <= 0) {
+            appendLog(`내 ${playerMon.name}(이)가 쓰러졌다!`);
+            const nextPlayerIdx = playerTeam.findIndex(m => m.hp > 0);
+            if (nextPlayerIdx === -1) {
+                setTimeout(() => endGame(false), 1000);
+                return;
+            } else {
+                activePlayerIndex = nextPlayerIdx;
+                appendLog(`남은 몬스터 ${playerTeam[activePlayerIndex].name}(을)를 출동시켰다!`);
+                updateBattleUI();
+            }
+        }
+
+        isTurnProcessing = false;
+    }
+
+    // UI 업데이트 함수 (HP바 색상 변화 초록->노랑->빨강 포함)
+    function updateBattleUI() {
+        const playerMon = playerTeam[activePlayerIndex];
+        const enemyMon = enemyTeam[activeEnemyIndex];
+
+        // 텍스트 업데이트
+        document.getElementById('player-name').innerText = playerMon.name;
+        document.getElementById('player-type-badge').innerText = `[${playerMon.type}]`;
+        document.getElementById('player-emoji').innerText = playerMon.emoji;
+        document.getElementById('player-hp-current').innerText = playerMon.hp;
+        
+        document.getElementById('enemy-name').innerText = enemyMon.name;
+        document.getElementById('enemy-type-badge').innerText = `[${enemyMon.type}]`;
+        document.getElementById('enemy-emoji').innerText = enemyMon.emoji;
+        document.getElementById('enemy-hp-current').innerText = enemyMon.hp;
+
+        // HP 바 업데이트 및 색상 변경
+        updateHpBar('player', playerMon.hp, playerMon.maxHp);
+        updateHpBar('enemy', enemyMon.hp, enemyMon.maxHp);
+
+        // 기술 버튼 업데이트 (플레이어 기술 연동 + 교체 버튼 추가 구성)
+        const actionBox = document.getElementById('action-box');
+        let buttonsHtml = '';
+        playerMon.skills.forEach((skill, idx) => {
+            let label = `${skill.name}`;
+            if (skill.type === 'heal') {
+                label += ` (${healCounts[playerMon.uniqueId]})`;
+            }
+            buttonsHtml += `<button class="btn" onclick="useSkill(${idx})" ${isTurnProcessing ? 'disabled' : ''}>${label}</button>`;
+        });
+
+        // 나머지 두 몬스터 교체 버튼 생성
+        playerTeam.forEach((m, idx) => {
+            if (idx !== activePlayerIndex) {
+                const disabledAttr = (m.hp <= 0 || isTurnProcessing) ? 'disabled' : '';
+                buttonsHtml += `<button class="btn btn-switch" onclick="switchPlayerMonster(${idx})" ${disabledAttr}>교체: ${m.emoji} ${m.name} (${m.hp}HP)</button>`;
+            }
+        });
+
+        actionBox.innerHTML = buttonsHtml;
+    }
+
+    function updateHpBar(target, current, max) {
+        const percent = Math.max(0, (current / max) * 100);
+        const bar = document.getElementById(`${target}-hp-bar`);
+        bar.style.width = percent + '%';
+
+        if (percent > 50) {
+            bar.style.backgroundColor = '#4caf50'; // 초록
+        } else if (percent > 20) {
+            bar.style.backgroundColor = '#ffeb3b'; // 노랑
+        } else {
+            bar.style.backgroundColor = '#f44336'; // 빨강
+        }
+    }
+
+    // 로그 출력
+    function appendLog(message) {
+        const logBox = document.getElementById('log-box');
+        logBox.innerHTML += `<div>> ${message}</div>`;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // 게임 종료
+    function endGame(isWin) {
+        document.getElementById('battle-screen').classList.remove('active');
+        document.getElementById('result-screen').classList.add('active');
+
+        const title = document.getElementById('result-title');
+        const message = document.getElementById('result-message');
+
+        if (isWin) {
+            title.innerText = "승리!";
+            title.style.color = "#4caf50";
+            message.innerText = "상대 몬스터들을 모두 쓰러뜨리고 배틀에서 승리했습니다!";
+        } else {
+            title.innerText = "패배...";
+            title.style.color = "#f44336";
+            message.innerText = "모든 몬스터가 쓰러졌습니다. 다음 기회에 도전하세요!";
+        }
+    }
+
+    // 다시 시작
+    function resetGame() {
+        document.getElementById('result-screen').classList.remove('active');
+        document.getElementById('start-screen').classList.add('active');
+        isTurnProcessing = false;
+        initStartScreen();
+    }
+
+    // 초기 실행
+    window.onload = () => {
+        initStartScreen();
+    };
+</script>
+
+</body>
+</html>

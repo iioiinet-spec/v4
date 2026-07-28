@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>갤럭시 10K 브레이크아웃 (Galaxy 10K Breakout)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: #080711;
+      color: #ffffff;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      background: #0f0d22;
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8),
+                  0 0 25px rgba(186, 85, 211, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+    }
+
+    /* 상단 정보 패널 */
+    .header-panel {
+      display: flex;
+      justify-content: space-between;
+      width: 640px;
+      margin-bottom: 16px;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+    }
+
+    .info-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .info-label {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #b3a5d8;
+    }
+
+    .info-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #e0b0ff;
+      text-shadow: 0 0 10px rgba(224, 176, 255, 0.6);
+    }
+
+    /* 코스믹 하트 네온 CSS 스타일 */
+    .lives-value {
+      letter-spacing: 4px;
+      font-size: 20px;
+      background: linear-gradient(135deg, #e0b0ff 0%, #ff3385 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 8px rgba(224, 176, 255, 0.8));
+    }
+
+    /* 게임 캔버스 영역 */
+    .canvas-wrapper {
+      position: relative;
+      border: 2px solid rgba(186, 85, 211, 0.25);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9);
+      cursor: none;
+    }
+
+    canvas#gameCanvas {
+      display: block;
+      background-color: #05040a;
+    }
+
+    /* 하단 조작 가이드 */
+    .controls-guide {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #7b7495;
+      display: flex;
+      gap: 16px;
+    }
+
+    .controls-guide span {
+      color: #d8ceee;
+      font-weight: 600;
+    }
+
+    /* 오버레이 (게임 오버 / 승리) */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(8, 7, 17, 0.9);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-radius: 16px;
+      transition: opacity 0.3s ease;
+      z-index: 10;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    .overlay h1 {
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .overlay.game-over h1 {
+      color: #ff3385;
+      text-shadow: 0 0 20px rgba(255, 51, 133, 0.7);
+    }
+
+    .overlay.victory h1 {
+      color: #e0b0ff;
+      text-shadow: 0 0 20px rgba(224, 176, 255, 0.8);
+    }
+
+    .overlay p {
+      font-size: 16px;
+      color: #b3a5d8;
+      margin-bottom: 24px;
+    }
+
+    .restart-btn {
+      padding: 12px 28px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #080711;
+      background: #e0b0ff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(224, 176, 255, 0.5);
+      transition: all 0.2s ease;
+    }
+
+    .restart-btn:hover {
+      background: #ffffff;
+      box-shadow: 0 0 25px rgba(255, 255, 255, 0.9);
+      transform: translateY(-2px);
+    }
+
+    .restart-btn:active {
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-container">
+    <div class="header-panel">
+      <div class="info-group">
+        <span class="info-label">Score</span>
+        <span id="score" class="info-value">0</span>
+      </div>
+      <div class="info-group">
+        <span class="info-label">Lives</span>
+        <span id="lives" class="info-value lives-value">💜💜💜💜💜</span>
+      </div>
+    </div>
+
+    <div class="canvas-wrapper">
+      <canvas id="gameCanvas" width="640" height="480"></canvas>
+    </div>
+
+    <div class="controls-guide">
+      <p><span>← →</span> 또는 <span>마우스 이동</span> 탁구채 조작</p>
+      <p><span>Space</span> 큐브 발사 (게임 시작)</p>
+    </div>
+
+    <div id="overlay" class="overlay">
+      <h1 id="overlay-title">GALAXY 10K BREAKOUT</h1>
+      <p id="overlay-sub">스페이스바를 누르거나 아래 버튼을 눌러 시작하세요!</p>
+      <button id="start-btn" class="restart-btn" onclick="startGame()">게임 시작</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 🎯 총 10,000점이 되도록 재설정된 코스믹 젤리 타겟 설정 (5행 x 8열 = 40개)
+    const TARGET_ROWS = 5;
+    const TARGET_COLS = 8;
+    const ROW_CONFIG = [
+      { color: '#ff3385', score: 500 }, // 1행: 500 * 8 = 4,000점
+      { color: '#b026ff', score: 350 }, // 2행: 350 * 8 = 2,800점
+      { color: '#00dfff', score: 200 }, // 3행: 200 * 8 = 1,600점
+      { color: '#00ffaa', score: 125 }, // 4행: 125 * 8 = 1,000점
+      { color: '#ffaa00', score: 75 }   // 5행:  75 * 8 =   600점
+    ];                                  // 총합 = 10,000점
+
+    const TARGET_RADIUS = 18;
+    const OFFSET_TOP = 50;
+    const SPACING_X = 72;
+    const SPACING_Y = 45;
+    const OFFSET_LEFT = (canvas.width - (TARGET_COLS - 1) * SPACING_X) / 2;
+
+    let score = 0;
+    let lives = 5;
+    let gameStarted = false;
+    let isGameOver = false;
+    let ballLaunched = false;
+
+    const INITIAL_SPEED = 3.8;
+    const SPEED_INCREMENT = 0.03;
+    let currentSpeed = INITIAL_SPEED;
+
+    let galaxyTime = 0;
+
+    const ball = {
+      x: 0,
+      y: 0,
+      dx: 0,
+      dy: 0,
+      size: 14,
+      rotation: 0,
+      rotSpeed: 0.08,
+      trail: []
+    };
+
+    let particles = [];
+
+    const paddle = {
+      width: 90,
+      height: 18,
+      handleWidth: 14,
+      handleHeight: 18,
+      x: 0,
+      y: 0,
+      speed: 8,
+      isMovingLeft: false,
+      isMovingRight: false
+    };
+
+    let targets = [];
+    function initTargets() {
+      targets = [];
+      for (let r = 0; r < TARGET_ROWS; r++) {
+        targets[r] = [];
+        for (let c = 0; c < TARGET_COLS; c++) {
+          targets[r][c] = {
+            x: c * SPACING_X + OFFSET_LEFT,
+            y: r * SPACING_Y + OFFSET_TOP,
+            status: 1,
+            color: ROW_CONFIG[r].color,
+            score: ROW_CONFIG[r].score,
+            radius: TARGET_RADIUS
+          };
+        }
+      }
+    }
+
+    function resetPositions() {
+      paddle.x = (canvas.width - paddle.width) / 2;
+      paddle.y = canvas.height - 40;
+
+      ball.x = canvas.width / 2;
+      ball.y = paddle.y - ball.size / 2 - 2;
+      ball.dx = 0;
+      ball.dy = 0;
+      ball.rotation = 0;
+      ball.trail = [];
+      particles = [];
+      ballLaunched = false;
+    }
+
+    function launchBall() {
+      if (ballLaunched || isGameOver) return;
+      ballLaunched = true;
+
+      const angle = (Math.random() * 60 - 30) * (Math.PI / 180);
+      ball.dx = currentSpeed * Math.sin(angle);
+      ball.dy = -currentSpeed * Math.cos(angle);
+    }
+
+    function updateLivesDisplay() {
+      const hearts = '💜'.repeat(Math.max(0, lives));
+      document.getElementById('lives').innerText = hearts || '💀';
+    }
+
+    // 🍮 젤리 폭발 파티클
+    function createJellyBurstParticles(x, y, color) {
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 4.5 + 1.5;
+
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: Math.random() * 5 + 3,
+          color: color,
+          alpha: 1,
+          decay: Math.random() * 0.03 + 0.02,
+          isJellyChunk: true
+        });
+      }
+    }
+
+    function createGalaxyParticle(x, y, isBurst = false) {
+      const galaxyColors = ['#00f0ff', '#ffe600', '#ff0055', '#b026ff', '#00ffaa', '#ff7700', '#ffffff'];
+      const color = galaxyColors[Math.floor(Math.random() * galaxyColors.length)];
+
+      const speedFactor = isBurst ? 3 : 1.2;
+
+      particles.push({
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * speedFactor,
+        vy: (Math.random() - 0.5) * speedFactor,
+        size: Math.random() * (isBurst ? 3.5 : 2.5) + 1,
+        color: color,
+        alpha: 1,
+        decay: Math.random() * 0.025 + 0.015,
+        isStar: Math.random() > 0.6
+      });
+    }
+
+    function updateAndDrawParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
+        p.size *= 0.95;
+
+        if (p.alpha <= 0 || p.size <= 0.2) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = p.isJellyChunk ? 12 : 8;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (p.isStar && p.size > 1.5) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(p.x - p.size * 2, p.y);
+          ctx.lineTo(p.x + p.size * 2, p.y);
+          ctx.moveTo(p.x, p.y - p.size * 2);
+          ctx.lineTo(p.x, p.y + p.size * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // 🍮 둥글둥글 3D 코스믹 젤리 타겟 그리기
+    function drawTargets() {
+      for (let r = 0; r < TARGET_ROWS; r++) {
+        for (let c = 0; c < TARGET_COLS; c++) {
+          const t = targets[r][c];
+          if (t.status === 1) {
+            ctx.save();
+
+            // 은은한 상하 흔들림 애니메이션
+            const pulse = Math.sin(galaxyTime * 0.05 + r) * 1.5;
+
+            ctx.beginPath();
+            ctx.arc(t.x, t.y + pulse, t.radius, 0, Math.PI * 2);
+
+            ctx.fillStyle = t.color;
+            ctx.shadowColor = t.color;
+            ctx.shadowBlur = 15;
+            ctx.fill();
+
+            // 입체 하이라이트 광택
+            ctx.beginPath();
+            ctx.arc(t.x - 5, t.y - 5 + pulse, t.radius * 0.35, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.fill();
+
+            ctx.restore();
+          }
+        }
+      }
+    }
+
+    function drawPaddle() {
+      const centerX = paddle.x + paddle.width / 2;
+      const headY = paddle.y + paddle.height / 2;
+
+      ctx.save();
+
+      ctx.shadowColor = '#b026ff';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#b026ff';
+      ctx.fillRect(
+        centerX - paddle.handleWidth / 2,
+        paddle.y + paddle.height - 2,
+        paddle.handleWidth,
+        paddle.handleHeight
+      );
+
+      const angle = (galaxyTime * 0.03) % (Math.PI * 2);
+      const x1 = centerX + Math.cos(angle) * (paddle.width / 2);
+      const y1 = headY + Math.sin(angle) * (paddle.height / 2);
+      const x2 = centerX - Math.cos(angle) * (paddle.width / 2);
+      const y2 = headY - Math.sin(angle) * (paddle.height / 2);
+
+      const infinityGrad = ctx.createLinearGradient(x1, y1, x2, y2);
+      infinityGrad.addColorStop(0.00, '#00f0ff');
+      infinityGrad.addColorStop(0.20, '#ffe600');
+      infinityGrad.addColorStop(0.40, '#ff0055');
+      infinityGrad.addColorStop(0.60, '#b026ff');
+      infinityGrad.addColorStop(0.80, '#00ff66');
+      infinityGrad.addColorStop(1.00, '#ff7700');
+
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        headY,
+        paddle.width / 2,
+        paddle.height / 2,
+        0, 0, Math.PI * 2
+      );
+
+      ctx.fillStyle = infinityGrad;
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 20;
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawCubeShape(x, y, size, rotation, fillColor, strokeColor, shadowBlurAmount = 15) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+
+      const half = size / 2;
+
+      ctx.fillStyle = fillColor;
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = strokeColor;
+      ctx.shadowBlur = shadowBlurAmount;
+
+      ctx.beginPath();
+      ctx.rect(-half, -half, size, size);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-half, -half);
+      ctx.lineTo(half, half);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawBall() {
+      for (let i = 0; i < ball.trail.length; i++) {
+        const point = ball.trail[i];
+        const progress = (i + 1) / ball.trail.length;
+        const opacity = progress * 0.6;
+        const currentTrailSize = ball.size * (0.5 + progress * 0.8);
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        drawCubeShape(
+          point.x,
+          point.y,
+          currentTrailSize,
+          point.rotation,
+          point.color,
+          point.color,
+          12
+        );
+        ctx.restore();
+      }
+
+      const pulseColor = (Math.sin(galaxyTime * 0.1) > 0) ? '#ff3385' : '#00dfff';
+      drawCubeShape(
+        ball.x,
+        ball.y,
+        ball.size,
+        ball.rotation,
+        'rgba(255, 255, 255, 0.95)',
+        pulseColor,
+        22
+      );
+    }
+
+    function collisionDetection() {
+      let remainingTargets = 0;
+
+      for (let r = 0; r < TARGET_ROWS; r++) {
+        for (let c = 0; c < TARGET_COLS; c++) {
+          const t = targets[r][c];
+          if (t.status === 1) {
+            remainingTargets++;
+
+            // 구형 타겟 충돌 체크
+            const dist = Math.hypot(ball.x - t.x, ball.y - t.y);
+            if (dist < t.radius + ball.size / 2) {
+              // 입사각에 따른 부드러운 반사 계산
+              const angle = Math.atan2(ball.y - t.y, ball.x - t.x);
+              ball.dx = Math.cos(angle) * currentSpeed;
+              ball.dy = Math.sin(angle) * currentSpeed;
+
+              t.status = 0;
+              ball.rotSpeed = -ball.rotSpeed;
+
+              createJellyBurstParticles(t.x, t.y, t.color);
+
+              score += t.score;
+              document.getElementById('score').innerText = score;
+
+              currentSpeed += SPEED_INCREMENT;
+
+              remainingTargets--;
+            }
+          }
+        }
+      }
+
+      if (remainingTargets === 0 && gameStarted && !isGameOver) {
+        showVictory();
+      }
+    }
+
+    function update() {
+      if (!gameStarted || isGameOver) return;
+
+      galaxyTime += 1;
+
+      if (paddle.isMovingLeft && paddle.x > 0) {
+        paddle.x -= paddle.speed;
+      }
+      if (paddle.isMovingRight && paddle.x < canvas.width - paddle.width) {
+        paddle.x += paddle.speed;
+      }
+
+      if (!ballLaunched) {
+        ball.x = paddle.x + paddle.width / 2;
+        ball.y = paddle.y - ball.size / 2 - 2;
+        return;
+      }
+
+      ball.rotation += ball.rotSpeed;
+
+      const galaxyPalette = [
+        'rgba(176, 38, 255, 0.8)',
+        'rgba(255, 51, 133, 0.8)',
+        'rgba(0, 223, 255, 0.8)',
+        'rgba(112, 0, 255, 0.8)'
+      ];
+      const currentColorIndex = Math.floor((galaxyTime / 6) % galaxyPalette.length);
+
+      ball.trail.push({
+        x: ball.x,
+        y: ball.y,
+        rotation: ball.rotation,
+        color: galaxyPalette[currentColorIndex]
+      });
+      if (ball.trail.length > 14) {
+        ball.trail.shift();
+      }
+
+      for (let i = 0; i < 2; i++) {
+        createGalaxyParticle(ball.x, ball.y);
+      }
+
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      const radius = ball.size / 2;
+
+      if (ball.x + radius > canvas.width) {
+        ball.x = canvas.width - radius;
+        ball.dx = -ball.dx;
+        ball.rotSpeed = -ball.rotSpeed;
+      } else if (ball.x - radius < 0) {
+        ball.x = radius;
+        ball.dx = -ball.dx;
+        ball.rotSpeed = -ball.rotSpeed;
+      }
+
+      if (ball.y - radius < 0) {
+        ball.y = radius;
+        ball.dy = -ball.dy;
+        ball.rotSpeed = -ball.rotSpeed;
+      }
+
+      if (
+        ball.y + radius >= paddle.y &&
+        ball.y - radius <= paddle.y + paddle.height &&
+        ball.x >= paddle.x &&
+        ball.x <= paddle.x + paddle.width
+      ) {
+        const hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+        const maxAngle = 60 * (Math.PI / 180);
+        const reflectionAngle = hitPoint * maxAngle;
+
+        ball.dx = currentSpeed * Math.sin(reflectionAngle);
+        ball.dy = -currentSpeed * Math.cos(reflectionAngle);
+
+        ball.y = paddle.y - radius - 1;
+
+        for (let i = 0; i < 10; i++) {
+          createGalaxyParticle(ball.x, ball.y, true);
+        }
+      }
+
+      if (ball.y - radius > canvas.height) {
+        lives--;
+        updateLivesDisplay();
+
+        if (lives <= 0) {
+          showGameOver();
+        } else {
+          resetPositions();
+        }
+      }
+
+      collisionDetection();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawTargets();
+      drawPaddle();
+      updateAndDrawParticles();
+      drawBall();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function startGame() {
+      score = 0;
+      lives = 5;
+      currentSpeed = INITIAL_SPEED;
+      isGameOver = false;
+      gameStarted = true;
+
+      document.getElementById('score').innerText = '0';
+      updateLivesDisplay();
+
+      initTargets();
+      resetPositions();
+
+      const overlay = document.getElementById('overlay');
+      overlay.classList.add('hidden');
+      overlay.classList.remove('game-over', 'victory');
+    }
+
+    function showGameOver() {
+      isGameOver = true;
+      const overlay = document.getElementById('overlay');
+      const title = document.getElementById('overlay-title');
+      const sub = document.getElementById('overlay-sub');
+      const btn = document.getElementById('start-btn');
+
+      overlay.classList.add('game-over');
+      title.innerText = 'GAME OVER';
+      sub.innerText = `최종 점수: ${score}점`;
+      btn.innerText = '다시하기';
+      overlay.classList.remove('hidden');
+    }
+
+    function showVictory() {
+      isGameOver = true;
+      const overlay = document.getElementById('overlay');
+      const title = document.getElementById('overlay-title');
+      const sub = document.getElementById('overlay-sub');
+      const btn = document.getElementById('start-btn');
+
+      overlay.classList.add('victory');
+      title.innerText = 'VICTORY!';
+      sub.innerText = `축하합니다! 모든 코스믹 젤리를 격파했습니다! (최종 점수: ${score}점)`;
+      btn.innerText = '다시하기';
+      overlay.classList.remove('hidden');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'ArrowLeft') paddle.isMovingLeft = true;
+      if (e.code === 'ArrowRight') paddle.isMovingRight = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!gameStarted || isGameOver) {
+          startGame();
+        } else {
+          launchBall();
+        }
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.code === 'ArrowLeft') paddle.isMovingLeft = false;
+      if (e.code === 'ArrowRight') paddle.isMovingRight = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      paddle.x = Math.max(0, Math.min(canvas.width - paddle.width, mouseX - paddle.width / 2));
+    });
+
+    canvas.addEventListener('click', () => {
+      if (gameStarted && !ballLaunched) {
+        launchBall();
+      }
+    });
+
+    initTargets();
+    resetPositions();
+    updateLivesDisplay();
+    loop();
+  </script>
+</body>
+</html>

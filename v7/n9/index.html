@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>피파온라인4 강화 시뮬레이터 Pro</title>
+    <style>
+        :root {
+            --bg-color: #0b0e14;
+            --panel-bg: rgba(18, 24, 38, 0.85);
+            --accent-gold: #f39c12;
+            --accent-blue: #00d2ff;
+            --accent-red: #e74c3c;
+            --accent-green: #2ecc71;
+            --text-main: #ffffff;
+            --text-sub: #a0aabe;
+            --card-width: 280px;
+            --card-height: 420px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .stadium-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 50% 30%, rgba(0, 150, 255, 0.15), transparent 70%),
+                radial-gradient(circle at 50% 100%, rgba(10, 30, 60, 0.8), #05070a);
+            z-index: 1;
+        }
+
+        .stadium-lights {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #particleCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .app-container {
+            position: relative;
+            z-index: 4;
+            width: 100%;
+            max-width: 1280px;
+            height: 90vh;
+            display: grid;
+            grid-template-columns: 320px 1fr 320px;
+            grid-template-rows: 60px 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            background: var(--panel-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 25px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 900;
+            font-style: italic;
+            background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-sub);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-blue);
+            color: #000;
+            font-weight: bold;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+        }
+
+        .sidebar {
+            background: var(--panel-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            backdrop-filter: blur(10px);
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+            letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+
+        .stat-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .stat-label { color: var(--text-sub); }
+        .stat-value { font-weight: bold; font-family: monospace; font-size: 0.95rem; }
+
+        .bp-value { color: var(--accent-gold); }
+        .success-value { color: var(--accent-green); }
+        .fail-value { color: var(--accent-gold); }
+        .break-value { color: var(--accent-red); }
+
+        .stage-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .stars-container {
+            font-size: 1.5rem;
+            color: var(--accent-gold);
+            letter-spacing: 5px;
+            height: 30px;
+            text-shadow: 0 0 10px rgba(243, 156, 18, 0.7);
+        }
+
+        .card-stage {
+            perspective: 1000px;
+            width: var(--card-width);
+            height: var(--card-height);
+            position: relative;
+            margin: auto 0;
+        }
+
+        .fifa-card {
+            width: 100%;
+            height: 100%;
+            border-radius: 16px;
+            position: relative;
+            background: linear-gradient(135deg, #2c3e50, #000000);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            border: 2px solid #444;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.1s ease, box-shadow 0.3s;
+            overflow: hidden;
+        }
+
+        .fifa-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+            transform: rotate(45deg);
+            transition: all 0.5s;
+        }
+
+        .fifa-card.glow { animation: cardGlow 2s infinite alternate; }
+
+        @keyframes cardGlow {
+            0% { box-shadow: 0 0 15px rgba(255, 255, 255, 0.2); }
+            100% { box-shadow: 0 0 35px var(--glow-color, rgba(243, 156, 18, 0.6)); }
+        }
+
+        /* Tier Order: Rare -> Epic -> Ultimate -> Legend -> Racoon */
+        .card-rare { --glow-color: #3498db; border-color: #3498db; background: linear-gradient(135deg, #1e3c72, #2a5298); }
+        .card-epic { --glow-color: #9b59b6; border-color: #9b59b6; background: linear-gradient(135deg, #2c3e50, #4a00e0); }
+        .card-ultimate { --glow-color: #00d2ff; border-color: #00d2ff; background: linear-gradient(135deg, #000428, #004e92); }
+        .card-legend { --glow-color: #f1c40f; border-color: #f1c40f; background: linear-gradient(135deg, #41292c, #8e6d00); }
+        .card-racoon { --glow-color: #00ffcc; border-color: #00ffcc; background: linear-gradient(135deg, #0d321d, #005c53, #9fc131); }
+
+        .card-top { display: flex; justify-content: space-between; align-items: flex-start; z-index: 2; }
+        .card-rating-group { display: flex; flex-direction: column; align-items: center; }
+        .card-ovr { font-size: 2.2rem; font-weight: 900; line-height: 1; }
+        .card-pos { font-size: 1rem; font-weight: 700; color: var(--text-sub); }
+        
+        .card-level-badge {
+            background: linear-gradient(45deg, #d4af37, #fff6cc);
+            color: #000;
+            font-weight: 900;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .card-image-placeholder {
+            width: 140px;
+            height: 140px;
+            margin: 0 auto;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.6) 80%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .card-image-placeholder img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top center;
+        }
+
+        .card-info { text-align: center; z-index: 2; }
+        .card-name { font-size: 1.3rem; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        
+        .card-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            font-size: 0.75rem;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-item span:first-child { color: var(--text-sub); font-size: 0.65rem; }
+        .stat-item span:last-child { font-weight: bold; }
+
+        .action-container { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+
+        .gauge-bar-outer {
+            width: 100%; max-width: 450px; height: 14px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 7px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.2);
+            position: relative;
+        }
+
+        .gauge-bar-inner {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-gold));
+            transition: width 0.05s linear;
+        }
+
+        .btn-group { display: flex; gap: 10px; width: 100%; max-width: 450px; }
+
+        .btn {
+            flex: 1; padding: 12px 5px; border: none; border-radius: 8px;
+            font-size: 1rem; font-weight: 800; cursor: pointer;
+            transition: all 0.2s; text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            white-space: nowrap;
+        }
+
+        .btn-draw { background: linear-gradient(45deg, #9b59b6, #8e44ad); color: #fff; }
+        .btn-draw:hover { background: linear-gradient(45deg, #af7ac5, #9b59b6); transform: translateY(-2px); }
+
+        .btn-enhance { background: linear-gradient(45deg, #f39c12, #e67e22); color: #fff; }
+        .btn-enhance:hover { background: linear-gradient(45deg, #f1c40f, #f39c12); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4); }
+
+        .btn-sell { background: linear-gradient(45deg, #e74c3c, #c0392b); color: #fff; }
+        .btn-sell:hover { background: linear-gradient(45deg, #ff7675, #e74c3c); transform: translateY(-2px); }
+
+        .btn:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .select-input {
+            width: 100%; padding: 10px; background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+            color: #fff; font-size: 0.9rem; outline: none;
+        }
+        .select-input option { background: #121826; color: #fff; }
+        .btn-auto { background: linear-gradient(45deg, #2ecc71, #27ae60); color: #fff; padding: 10px; }
+
+        /* Animations */
+        @keyframes failShrink {
+            0% { transform: scale(1); filter: brightness(1); }
+            40% { transform: scale(1.3); filter: brightness(1.5) sepia(0.5) hue-rotate(-50deg); }
+            60% { transform: scale(1.3); filter: brightness(1.5) sepia(0.5) hue-rotate(-50deg); }
+            100% { transform: scale(0.85); filter: brightness(0.7) grayscale(0.5); }
+        }
+        .fail-shrink { animation: failShrink 0.8s forwards ease-in-out; }
+        .fail-shrink-reset { transform: scale(1); filter: none; transition: all 0.3s; }
+
+        @keyframes explodeBreak {
+            0% { transform: scale(1); opacity: 1; filter: grayscale(0); }
+            50% { transform: scale(1.1) rotate(5deg); filter: grayscale(1) brightness(0.5); }
+            100% { transform: scale(0); opacity: 0; filter: grayscale(1); }
+        }
+        .break-anim { animation: explodeBreak 0.7s forwards ease-in; }
+
+        @keyframes successZoom {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.2); filter: brightness(1.5) drop-shadow(0 0 20px #f1c40f); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+        .success-anim { animation: successZoom 0.8s ease-out; }
+
+        .result-overlay {
+            position: absolute; top: 40%; left: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            font-size: 2.8rem; font-weight: 900; font-style: italic;
+            opacity: 0; pointer-events: none; z-index: 10;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            text-align: center; width: 150%; line-height: 1.2;
+        }
+        .result-overlay.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        
+        .res-success { color: #f1c40f; text-shadow: 0 0 30px #f1c40f, 0 4px 10px rgba(0,0,0,1); }
+        .res-fail { color: #bdc3c7; text-shadow: 0 0 30px #7f8c8d, 0 4px 10px rgba(0,0,0,1); }
+        .res-break { color: #e74c3c; text-shadow: 0 0 30px #c0392b, 0 4px 10px rgba(0,0,0,1); }
+
+        /* Pack Opening Modal */
+        #packModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a2e, #000);
+            z-index: 1000; display: none; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; perspective: 1000px;
+        }
+
+        .pack-content {
+            display: flex; flex-direction: column; align-items: center; gap: 30px;
+        }
+
+        .pack-text {
+            font-size: 5rem; font-weight: 900; opacity: 0; transform: scale(0.5);
+            text-shadow: 0 0 30px rgba(255,255,255,0.5);
+        }
+        
+        .pack-text.show {
+            animation: packReveal 1s forwards cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .pack-label {
+            font-size: 1.5rem; color: var(--text-sub); opacity: 0; text-transform: uppercase;
+        }
+        .pack-label.show { animation: fadeIn 0.5s forwards; }
+
+        @keyframes packReveal {
+            0% { opacity: 0; transform: scale(0.1) translateY(50px) rotateX(-45deg); }
+            50% { opacity: 1; transform: scale(1.2) translateY(-10px) rotateX(0deg); }
+            100% { opacity: 1; transform: scale(1) translateY(0) rotateX(0deg); }
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+        
+        .pack-flare {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 10vw; height: 10vw; border-radius: 50%;
+            background: #fff; opacity: 0; pointer-events: none;
+            box-shadow: 0 0 100px 50px #fff;
+        }
+        .pack-flare.flash { animation: screenFlash 1s forwards ease-out; }
+
+        @keyframes screenFlash {
+            0% { width: 0; height: 0; opacity: 1; }
+            50% { width: 200vw; height: 200vw; opacity: 1; }
+            100% { width: 200vw; height: 200vw; opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="stadium-bg"></div>
+    <div class="stadium-lights"></div>
+    <canvas id="particleCanvas"></canvas>
+
+    <div class="app-container">
+        <header>
+            <div class="logo">FO4 ENHANCE PRO</div>
+            <div class="header-controls">
+                <button class="toggle-btn active" id="btnAnimToggle">애니메이션 ON</button>
+                <button class="toggle-btn active" id="btnSoundToggle">사운드 ON</button>
+                <button class="toggle-btn" id="btnFastToggle">빠른 강화 OFF</button>
+            </div>
+        </header>
+
+        <div class="sidebar">
+            <div class="section-title">구단 자산 & 재무</div>
+            <div class="stat-group">
+                <div class="stat-row">
+                    <span class="stat-label">보유 BP</span>
+                    <span class="stat-value bp-value" id="valBp">10,000,000,000</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">현재 카드 가치</span>
+                    <span class="stat-value" id="valCardValue">0 BP</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">강화 비용</span>
+                    <span class="stat-value" id="valCost">0 BP</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">누적 손실</span>
+                    <span class="stat-value break-value" id="valLoss">0 BP</span>
+                </div>
+            </div>
+
+            <div class="section-title">강화 통계</div>
+            <div class="stat-group">
+                <div class="stat-row">
+                    <span class="stat-label">총 강화 횟수</span>
+                    <span class="stat-value" id="valTotalCount">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">성공</span>
+                    <span class="stat-value success-value" id="valSuccessCount">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">실패 (유지/하락)</span>
+                    <span class="stat-value fail-value" id="valFailCount">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">파괴</span>
+                    <span class="stat-value break-value" id="valBreakCount">0</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">성공률</span>
+                    <span class="stat-value" id="valRate">0.0%</span>
+                </div>
+            </div>
+
+            <div class="section-title">기록 (Records)</div>
+            <div class="stat-group">
+                <div class="stat-row">
+                    <span class="stat-label">최고 강화</span>
+                    <span class="stat-value" id="valMaxLevel">0 강</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">최고 BP</span>
+                    <span class="stat-value bp-value" id="valMaxBp">10,000,000,000</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">최대 연속 성공</span>
+                    <span class="stat-value success-value" id="valMaxStreak">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stage-container">
+            <div class="stars-container" id="starsDisplay">★</div>
+
+            <div class="card-stage">
+                <div class="result-overlay" id="resultOverlay"></div>
+                <div class="fifa-card card-legend glow" id="cardElement">
+                    <div class="card-top">
+                        <div class="card-rating-group">
+                            <span class="card-ovr" id="cardOvr">114</span>
+                            <span class="card-pos" id="cardPos">LW</span>
+                        </div>
+                        <div class="card-level-badge" id="cardLevel">1강</div>
+                    </div>
+                    <div class="card-image-placeholder">
+                        <img id="cardAvatar" src="" alt="Player Face" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=300&q=80';">
+                    </div>
+                    <div class="card-info">
+                        <div class="card-name" id="cardName">손흥민</div>
+                        <div class="card-stats">
+                            <div class="stat-item"><span>PAC</span><span id="stPac">118</span></div>
+                            <div class="stat-item"><span>SHO</span><span id="stSho">116</span></div>
+                            <div class="stat-item"><span>PAS</span><span id="stPas">108</span></div>
+                            <div class="stat-item"><span>DRI</span><span id="stDri">112</span></div>
+                            <div class="stat-item"><span>DEF</span><span id="stDef">55</span></div>
+                            <div class="stat-item"><span>PHY</span><span id="stPhy">98</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-container">
+                <div class="gauge-bar-outer">
+                    <div class="gauge-bar-inner" id="gaugeBar"></div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-draw" id="btnDraw">선수 뽑기</button>
+                    <button class="btn btn-enhance" id="btnEnhance">강화 시도</button>
+                    <button class="btn btn-sell" id="btnSell">판매</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="section-title">강화 정보</div>
+            <div class="stat-group">
+                <div class="stat-row">
+                    <span class="stat-label">현재 단계</span>
+                    <span class="stat-value" id="valCurStage">1 → 2</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">성공 확률</span>
+                    <span class="stat-value success-value" id="valProbSuccess">100%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">실패(유지/하락) 확률</span>
+                    <span class="stat-value fail-value" id="valProbFail">0%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">파괴 확률</span>
+                    <span class="stat-value break-value" id="valProbBreak">0%</span>
+                </div>
+            </div>
+
+            <div class="section-title">자동 강화 시스템</div>
+            <div class="control-group">
+                <label class="stat-label">목표 강화 단계</label>
+                <select class="select-input" id="selectTarget">
+                    <option value="2">2강</option>
+                    <option value="3">3강</option>
+                    <option value="4">4강</option>
+                    <option value="5" selected>5강</option>
+                    <option value="6">6강</option>
+                    <option value="7">7강</option>
+                    <option value="8">8강</option>
+                    <option value="9">9강</option>
+                    <option value="10">10강</option>
+                </select>
+                
+                <button class="btn btn-auto" id="btnAuto">자동 강화 시작</button>
+            </div>
+
+            <div class="section-title" style="margin-top: 15px;">선수 정보</div>
+            <div class="stat-group">
+                <div class="stat-row">
+                    <span class="stat-label">국적</span>
+                    <span class="stat-value" id="valNation">대한민국</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">희귀도</span>
+                    <span class="stat-value" id="valRarity">Ultimate</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">기본 OVR</span>
+                    <span class="stat-value" id="valBaseOvr">114</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">기본 가치</span>
+                    <span class="stat-value" id="valBaseValue">12억 BP</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="packModal">
+        <div class="pack-flare" id="packFlare"></div>
+        <div class="pack-content">
+            <div class="pack-label" id="packLabel"></div>
+            <div class="pack-text" id="packText"></div>
+        </div>
+    </div>
+
+    <script>
+        // 고화질 사진 및 정교해진 이미지 패치 완료
+        const PLAYER_POOL = [
+            // 대한민국 🇰🇷
+            { name: "손흥민", pos: "LW", ovr: 114, rarity: "Ultimate", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?auto=format&fit=crop&w=300&q=80", baseVal: 1200000000, pac:118, sho:116, pas:108, dri:112, def:55, phy:98 },
+            { name: "홍명보", pos: "CB", ovr: 113, rarity: "Legend", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=300&q=80", baseVal: 1800000000, pac:105, sho:75, pas:102, dri:98, def:118, phy:112 },
+            { name: "박지성", pos: "LM", ovr: 111, rarity: "Epic", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&w=300&q=80", baseVal: 700000000, pac:112, sho:102, pas:105, dri:108, def:95, phy:115 },
+            { name: "이강인", pos: "CAM", ovr: 110, rarity: "Rare", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=300&q=80", baseVal: 450000000, pac:102, sho:104, pas:114, dri:115, def:50, phy:82 },
+            { name: "황희찬", pos: "ST", ovr: 109, rarity: "Rare", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=300&q=80", baseVal: 350000000, pac:115, sho:105, pas:88, dri:106, def:45, phy:108 },
+            { name: "김민재", pos: "CB", ovr: 110, rarity: "Rare", flag: "🇰🇷", nation: "Korea Republic", photo: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=300&q=80", baseVal: 400000000, pac:108, sho:55, pas:85, dri:88, def:115, phy:118 },
+
+            // 잉글랜드 🏴󠁧󠁢󠁥󠁮󠁧󠁿
+            { name: "H. 케인", pos: "ST", ovr: 115, rarity: "Ultimate", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nation: "England", photo: "https://images.unsplash.com/photo-1560272564-c83b66b1ad12?auto=format&fit=crop&w=300&q=80", baseVal: 2200000000, pac:104, sho:122, pas:110, dri:108, def:52, phy:110 },
+            { name: "W. 루니", pos: "ST", ovr: 114, rarity: "Legend", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nation: "England", photo: "https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=300&q=80", baseVal: 2000000000, pac:110, sho:118, pas:105, dri:110, def:65, phy:116 },
+            { name: "S. 제라드", pos: "CM", ovr: 114, rarity: "Legend", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nation: "England", photo: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=300&q=80", baseVal: 1900000000, pac:106, sho:116, pas:118, dri:107, def:102, phy:112 },
+            { name: "J. 벨링엄", pos: "CM", ovr: 113, rarity: "Epic", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", nation: "England", photo: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=300&q=80", baseVal: 900000000, pac:108, sho:105, pas:110, dri:112, def:102, phy:108 },
+
+            // 프랑스 🇫🇷
+            { name: "Z. 지단", pos: "CAM", ovr: 116, rarity: "Legend", flag: "🇫🇷", nation: "France", photo: "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=300&q=80", baseVal: 3000000000, pac:105, sho:114, pas:122, dri:120, def:75, phy:102 },
+            { name: "T. 앙리", pos: "ST", ovr: 115, rarity: "Legend", flag: "🇫🇷", nation: "France", photo: "https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?auto=format&fit=crop&w=300&q=80", baseVal: 2600000000, pac:122, sho:118, pas:106, dri:116, def:48, phy:100 },
+            { name: "K. 음바페", pos: "ST", ovr: 116, rarity: "Ultimate", flag: "🇫🇷", nation: "France", photo: "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&w=300&q=80", baseVal: 2800000000, pac:125, sho:118, pas:102, dri:118, def:48, phy:100 },
+            { name: "N. 캉테", pos: "CDM", ovr: 111, rarity: "Rare", flag: "🇫🇷", nation: "France", photo: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=300&q=80", baseVal: 500000000, pac:105, sho:72, pas:98, dri:102, def:118, phy:112 },
+
+            // 카보베르데 🇨🇻
+            { name: "보지냐", pos: "GK", ovr: 105, rarity: "Rare", flag: "🇨🇻", nation: "Cape Verde", photo: "https://images.unsplash.com/photo-1577223625816-7546f13df25d?auto=format&fit=crop&w=300&q=80", baseVal: 200000000, pac:102, sho:105, pas:100, dri:104, def:50, phy:102 },
+
+            // 기타 전설급 선수들 🌍
+            { name: "L. 메시", pos: "RW", ovr: 116, rarity: "Legend", flag: "🇦🇷", nation: "Argentina", photo: "https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=300&q=80", baseVal: 2500000000, pac:112, sho:120, pas:119, dri:122, def:45, phy:85 },
+            { name: "E. 홀란드", pos: "ST", ovr: 115, rarity: "Ultimate", flag: "🇳🇴", nation: "Norway", photo: "https://images.unsplash.com/photo-1560272564-c83b66b1ad12?auto=format&fit=crop&w=300&q=80", baseVal: 1800000000, pac:119, sho:121, pas:88, dri:105, def:50, phy:115 },
+
+            // 🦝 이스터에그: 너구리
+            { name: "너구리", pos: "racoon", ovr: 125, rarity: "racoon", flag: "🦝", nation: "racoon", photo: "https://images.unsplash.com/photo-1540573133985-778788177267?auto=format&fit=crop&w=300&q=80", baseVal: 10000000000, pac:130, sho:130, pas:130, dri:130, def:130, phy:130 }
+        ];
+
+        const ENHANCE_CONFIG = {
+            1:  { success: 1.00, fail: 0.00, break: 0.00, costMult: 0.05, valMult: 1.5,   downgrade: 0 },
+            2:  { success: 0.90, fail: 0.10, break: 0.00, costMult: 0.10, valMult: 2.5,   downgrade: 0 },
+            3:  { success: 0.80, fail: 0.20, break: 0.00, costMult: 0.20, valMult: 4.5,   downgrade: 1 },
+            4:  { success: 0.65, fail: 0.30, break: 0.05, costMult: 0.40, valMult: 8.0,   downgrade: 1 },
+            5:  { success: 0.45, fail: 0.45, break: 0.10, costMult: 0.80, valMult: 16.0,  downgrade: 1 },
+            6:  { success: 0.30, fail: 0.55, break: 0.15, costMult: 1.50, valMult: 35.0,  downgrade: 2 },
+            7:  { success: 0.20, fail: 0.60, break: 0.20, costMult: 3.00, valMult: 80.0,  downgrade: 2 },
+            8:  { success: 0.10, fail: 0.65, break: 0.25, costMult: 6.00, valMult: 200.0, downgrade: 3 },
+            9:  { success: 0.05, fail: 0.65, break: 0.30, costMult: 12.00,valMult: 500.0, downgrade: 4 }
+        };
+
+        class SoundEngine {
+            constructor() { this.ctx = null; this.enabled = true; }
+            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+            
+            playTone(freq, type, duration, startVol = 0.3, endVol = 0) {
+                if (!this.enabled || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(startVol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(Math.max(endVol, 0.0001), this.ctx.currentTime + duration);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + duration);
+            }
+            playEnhancing() {
+                if (!this.enabled || !this.ctx) return;
+                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 1.2);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.3, this.ctx.currentTime + 1.2);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 1.2);
+            }
+            playSuccess() {
+                if (!this.enabled || !this.ctx) return;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.4, 0.4, 0.01), idx * 100);
+                });
+            }
+            playFail() {
+                if (!this.enabled || !this.ctx) return;
+                [300, 260, 220].forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'sawtooth', 0.4, 0.4, 0.01), idx * 150);
+                });
+            }
+            playBreak() {
+                if (!this.enabled || !this.ctx) return;
+                this.playTone(100, 'square', 0.6, 0.5, 0.01);
+                const bufferSize = this.ctx.sampleRate * 0.5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+                noise.connect(gain); gain.connect(this.ctx.destination);
+                noise.start();
+            }
+            playRevealStep() {
+                if (!this.enabled || !this.ctx) return;
+                this.playTone(880, 'sine', 0.2, 0.2, 0.01);
+            }
+            playRevealFinal() {
+                if (!this.enabled || !this.ctx) return;
+                this.playTone(1046.50, 'square', 0.8, 0.3, 0.01);
+            }
+        }
+
+        class ParticleEngine {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.loop();
+            }
+            resize() { this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight; }
+            spawnExplosion(x, y, colorTheme, count = 350) {
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 12 + 2;
+                    let color = '#fff';
+                    if (colorTheme === 'gold') color = ['#f1c40f', '#f39c12', '#ffffff', '#ffeaa7'][Math.floor(Math.random() * 4)];
+                    else if (colorTheme === 'red') color = ['#e74c3c', '#c0392b', '#d63031', '#2d3436'][Math.floor(Math.random() * 4)];
+                    else if (colorTheme === 'gray') color = ['#7f8c8d', '#95a5a6', '#bdc3c7', '#333'][Math.floor(Math.random() * 4)];
+                    else if (colorTheme === 'racoon') color = ['#00ffcc', '#9fc131', '#005c53', '#ffffff'][Math.floor(Math.random() * 4)];
+
+                    this.particles.push({
+                        x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                        size: Math.random() * 6 + 2, color: color, alpha: 1, decay: Math.random() * 0.02 + 0.01, gravity: 0.15
+                    });
+                }
+            }
+            loop() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx; p.y += p.vy; p.vy += p.gravity; p.alpha -= p.decay;
+                    if (p.alpha <= 0) { this.particles.splice(i, 1); continue; }
+                    this.ctx.save(); this.ctx.globalAlpha = p.alpha; this.ctx.fillStyle = p.color;
+                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); this.ctx.fill(); this.ctx.restore();
+                }
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        class Game {
+            constructor() {
+                this.sound = new SoundEngine();
+                this.particles = new ParticleEngine('particleCanvas');
+                this.bp = 10000000000; this.cumLoss = 0; this.card = null; this.level = 1;
+                this.stats = { total: 0, success: 0, fail: 0, break: 0, maxLevel: 1, maxBp: 10000000000, curStreak: 0, maxStreak: 0 };
+                this.opts = { anim: true, sound: true, fast: false, auto: false, targetLevel: 5 };
+                this.isProcessing = false;
+                
+                this.loadData(); this.bindEvents(); this.spawnRandomCard(true); this.updateUI();
+            }
+
+            bindEvents() {
+                document.getElementById('btnEnhance').addEventListener('click', () => { this.sound.init(); this.enhance(); });
+                document.getElementById('btnDraw').addEventListener('click', () => { this.sound.init(); this.openPackFlow(); });
+                document.getElementById('btnSell').addEventListener('click', () => { this.sound.init(); this.sellCard(); });
+                document.getElementById('btnAuto').addEventListener('click', () => { this.sound.init(); this.toggleAuto(); });
+
+                const btnAnim = document.getElementById('btnAnimToggle');
+                btnAnim.addEventListener('click', () => {
+                    this.opts.anim = !this.opts.anim; btnAnim.classList.toggle('active', this.opts.anim);
+                    btnAnim.innerText = `애니메이션 ${this.opts.anim ? 'ON' : 'OFF'}`;
+                });
+                const btnSound = document.getElementById('btnSoundToggle');
+                btnSound.addEventListener('click', () => {
+                    this.opts.sound = !this.opts.sound; this.sound.enabled = this.opts.sound;
+                    btnSound.classList.toggle('active', this.opts.sound); btnSound.innerText = `사운드 ${this.opts.sound ? 'ON' : 'OFF'}`;
+                });
+                const btnFast = document.getElementById('btnFastToggle');
+                btnFast.addEventListener('click', () => {
+                    this.opts.fast = !this.opts.fast; btnFast.classList.toggle('active', this.opts.fast);
+                    btnFast.innerText = `빠른 강화 ${this.opts.fast ? 'ON' : 'OFF'}`;
+                });
+                document.getElementById('selectTarget').addEventListener('change', (e) => { this.opts.targetLevel = parseInt(e.target.value); });
+            }
+
+            openPackFlow() {
+                if (this.isProcessing) return;
+                this.isProcessing = true;
+                const template = PLAYER_POOL[Math.floor(Math.random() * PLAYER_POOL.length)];
+                
+                if (!this.opts.anim || this.opts.fast) {
+                    this.card = JSON.parse(JSON.stringify(template));
+                    this.level = 1; this.isProcessing = false; this.updateUI();
+                    return;
+                }
+
+                const modal = document.getElementById('packModal');
+                const label = document.getElementById('packLabel');
+                const text = document.getElementById('packText');
+                const flare = document.getElementById('packFlare');
+                
+                modal.style.display = 'flex';
+                label.className = 'pack-label'; text.className = 'pack-text'; flare.className = 'pack-flare';
+                
+                const stepDelay = 1200;
+                
+                // Step 1: Flag
+                setTimeout(() => {
+                    label.innerText = "NATIONALITY"; label.classList.add('show');
+                    text.innerText = template.flag; text.classList.add('show');
+                    this.sound.playRevealStep();
+                }, 100);
+
+                // Step 2: Position
+                setTimeout(() => {
+                    text.classList.remove('show');
+                    void text.offsetWidth;
+                    label.innerText = "POSITION"; text.innerText = template.pos; text.classList.add('show');
+                    this.sound.playRevealStep();
+                }, stepDelay * 1);
+
+                // Step 3: Rarity
+                setTimeout(() => {
+                    text.classList.remove('show');
+                    void text.offsetWidth;
+                    label.innerText = "CLASS"; text.innerText = template.rarity; text.classList.add('show');
+                    
+                    const r = template.rarity.toLowerCase();
+                    if(r === 'racoon') text.style.color = '#00ffcc';
+                    else if(r === 'legend') text.style.color = '#f1c40f';
+                    else if(r === 'ultimate') text.style.color = '#00d2ff';
+                    else if(r === 'epic') text.style.color = '#9b59b6';
+                    else text.style.color = '#3498db';
+
+                    this.sound.playRevealStep();
+                }, stepDelay * 2);
+
+                // Step 4: Flash & Reveal Player
+                setTimeout(() => {
+                    flare.classList.add('flash');
+                    this.sound.playRevealFinal();
+                    setTimeout(() => {
+                        modal.style.display = 'none'; text.style.color = '#fff';
+                        this.card = JSON.parse(JSON.stringify(template));
+                        this.level = 1; this.isProcessing = false; this.updateUI();
+                        
+                        const cardEl = document.getElementById('cardElement');
+                        const rect = cardEl.getBoundingClientRect();
+                        const theme = template.rarity.toLowerCase() === 'racoon' ? 'racoon' : 'gold';
+                        this.particles.spawnExplosion(rect.left + rect.width/2, rect.top + rect.height/2, theme, 200);
+                    }, 500);
+                }, stepDelay * 3);
+            }
+
+            spawnRandomCard(instant = false) {
+                if (this.isProcessing) return;
+                const template = PLAYER_POOL[Math.floor(Math.random() * PLAYER_POOL.length)];
+                this.card = JSON.parse(JSON.stringify(template));
+                this.level = 1; this.updateUI();
+            }
+
+            getCardValue() {
+                if (!this.card) return 0;
+                if (this.level === 1) return this.card.baseVal;
+                return Math.floor(this.card.baseVal * ENHANCE_CONFIG[this.level - 1].valMult);
+            }
+
+            getEnhanceCost() {
+                if (!this.card || this.level >= 10) return 0;
+                return Math.floor(this.card.baseVal * ENHANCE_CONFIG[this.level].costMult);
+            }
+
+            sellCard() {
+                if (this.isProcessing || !this.card) return;
+                this.bp += this.getCardValue();
+                if (this.bp > this.stats.maxBp) this.stats.maxBp = this.bp;
+                this.spawnRandomCard(true); this.saveData(); this.updateUI();
+            }
+
+            enhance() {
+                if (this.isProcessing || !this.card || this.level >= 10) return;
+                const cost = this.getEnhanceCost();
+                if (this.bp < cost) { alert("BP가 부족합니다!"); this.stopAuto(); return; }
+
+                const cardEl = document.getElementById('cardElement');
+                cardEl.classList.remove('fail-shrink');
+                cardEl.classList.add('fail-shrink-reset');
+
+                this.bp -= cost; this.isProcessing = true; this.updateUI();
+
+                const duration = (this.opts.anim && !this.opts.fast) ? 1200 : 100;
+                const gauge = document.getElementById('gaugeBar');
+                gauge.style.transition = `width ${duration}ms linear`; gauge.style.width = '100%';
+
+                if (this.opts.anim && !this.opts.fast) this.sound.playEnhancing();
+
+                setTimeout(() => {
+                    gauge.style.transition = 'none'; gauge.style.width = '0%';
+                    cardEl.classList.remove('fail-shrink-reset');
+                    this.resolveEnhance(ENHANCE_CONFIG[this.level]);
+                }, duration);
+            }
+
+            resolveEnhance(cfg) {
+                const rand = Math.random();
+                const cardEl = document.getElementById('cardElement');
+                this.stats.total++;
+                const rect = cardEl.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2; const centerY = rect.top + rect.height / 2;
+
+                if (rand < cfg.success) {
+                    this.level++; this.stats.success++; this.stats.curStreak++;
+                    if (this.stats.curStreak > this.stats.maxStreak) this.stats.maxStreak = this.stats.curStreak;
+                    if (this.level > this.stats.maxLevel) this.stats.maxLevel = this.level;
+
+                    this.sound.playSuccess();
+                    if (this.opts.anim) {
+                        cardEl.classList.add('success-anim');
+                        const theme = this.card.rarity.toLowerCase() === 'racoon' ? 'racoon' : 'gold';
+                        this.particles.spawnExplosion(centerX, centerY, theme, 300);
+                        setTimeout(() => cardEl.classList.remove('success-anim'), 800);
+                    }
+                    this.showOverlay(`강화 성공! 🎉\n[${this.level}강]`, "res-success");
+
+                } else if (rand < cfg.success + cfg.fail) {
+                    const prevLevel = this.level;
+                    this.level = Math.max(1, this.level - cfg.downgrade);
+                    this.stats.fail++; this.stats.curStreak = 0;
+                    const lostVal = ENHANCE_CONFIG[prevLevel - 1] ? Math.floor(this.card.baseVal * ENHANCE_CONFIG[prevLevel - 1].valMult) : this.card.baseVal;
+                    this.cumLoss += Math.floor(lostVal * 0.3);
+
+                    this.sound.playFail();
+                    if (this.opts.anim) {
+                        cardEl.classList.add('fail-shrink');
+                    }
+                    this.showOverlay("강화 실패...", "res-fail");
+
+                } else {
+                    this.stats.break++; this.stats.curStreak = 0;
+                    this.cumLoss += this.getCardValue();
+
+                    this.sound.playBreak();
+                    if (this.opts.anim) {
+                        cardEl.classList.add('break-anim');
+                        this.particles.spawnExplosion(centerX, centerY, 'red', 400);
+                    }
+                    this.showOverlay("카드 파괴됨!", "res-break");
+
+                    setTimeout(() => {
+                        cardEl.classList.remove('break-anim');
+                        this.spawnRandomCard(true);
+                    }, this.opts.anim ? 700 : 100);
+                }
+
+                if (this.bp > this.stats.maxBp) this.stats.maxBp = this.bp;
+                this.saveData();
+
+                setTimeout(() => {
+                    this.isProcessing = false; this.updateUI();
+                    if (this.opts.auto) {
+                        if (this.level >= this.opts.targetLevel) { this.stopAuto(); alert(`목표 달성! [${this.level}강]`); }
+                        else { this.enhance(); }
+                    }
+                }, (this.opts.anim && !this.opts.fast) ? 800 : 50);
+            }
+
+            showOverlay(text, cssClass) {
+                const overlay = document.getElementById('resultOverlay');
+                overlay.innerText = text; overlay.className = `result-overlay ${cssClass} show`;
+                setTimeout(() => { overlay.classList.remove('show'); }, 1200);
+            }
+
+            toggleAuto() {
+                if (this.opts.auto) this.stopAuto();
+                else {
+                    this.opts.auto = true;
+                    document.getElementById('btnAuto').innerText = "자동 강화 중지";
+                    document.getElementById('btnAuto').style.background = "linear-gradient(45deg, #e74c3c, #c0392b)";
+                    if (!this.isProcessing) this.enhance();
+                }
+            }
+
+            stopAuto() {
+                this.opts.auto = false;
+                document.getElementById('btnAuto').innerText = "자동 강화 시작";
+                document.getElementById('btnAuto').style.background = "linear-gradient(45deg, #2ecc71, #27ae60)";
+            }
+
+            updateUI() {
+                if (!this.card) return;
+                const ovrBoost = (this.level - 1) * 2;
+                const curOvr = this.card.ovr + ovrBoost;
+
+                document.getElementById('cardName').innerText = this.card.name;
+                document.getElementById('cardPos').innerText = this.card.pos;
+                document.getElementById('cardOvr').innerText = curOvr;
+                document.getElementById('cardLevel').innerText = `${this.level}강`;
+                document.getElementById('cardAvatar').src = this.card.photo;
+
+                const cardEl = document.getElementById('cardElement');
+                const isFailed = cardEl.classList.contains('fail-shrink');
+                cardEl.className = `fifa-card card-${this.card.rarity.toLowerCase()} glow ${isFailed ? 'fail-shrink' : ''}`;
+
+                document.getElementById('stPac').innerText = this.card.pac + ovrBoost;
+                document.getElementById('stSho').innerText = this.card.sho + ovrBoost;
+                document.getElementById('stPas').innerText = this.card.pas + ovrBoost;
+                document.getElementById('stDri').innerText = this.card.dri + ovrBoost;
+                document.getElementById('stDef').innerText = this.card.def + ovrBoost;
+                document.getElementById('stPhy').innerText = this.card.phy + ovrBoost;
+
+                document.getElementById('starsDisplay').innerText = '★'.repeat(this.level);
+                document.getElementById('valBp').innerText = this.formatBP(this.bp);
+                document.getElementById('valCardValue').innerText = this.formatBP(this.getCardValue());
+                document.getElementById('valCost').innerText = this.level < 10 ? this.formatBP(this.getEnhanceCost()) : "MAX";
+                document.getElementById('valLoss').innerText = this.formatBP(this.cumLoss);
+
+                if (this.level < 10) {
+                    const cfg = ENHANCE_CONFIG[this.level];
+                    document.getElementById('valCurStage').innerText = `${this.level} → ${this.level + 1}`;
+                    document.getElementById('valProbSuccess').innerText = `${(cfg.success * 100).toFixed(0)}%`;
+                    document.getElementById('valProbFail').innerText = `${(cfg.fail * 100).toFixed(0)}%`;
+                    document.getElementById('valProbBreak').innerText = `${(cfg.break * 100).toFixed(0)}%`;
+                } else {
+                    document.getElementById('valCurStage').innerText = "최대 강화 달성";
+                    document.getElementById('valProbSuccess').innerText = "-";
+                    document.getElementById('valProbFail').innerText = "-";
+                    document.getElementById('valProbBreak').innerText = "-";
+                }
+
+                document.getElementById('valTotalCount').innerText = this.stats.total;
+                document.getElementById('valSuccessCount').innerText = this.stats.success;
+                document.getElementById('valFailCount').innerText = this.stats.fail;
+                document.getElementById('valBreakCount').innerText = this.stats.break;
+                document.getElementById('valRate').innerText = `${this.stats.total > 0 ? ((this.stats.success / this.stats.total) * 100).toFixed(1) : "0.0"}%`;
+                document.getElementById('valMaxLevel').innerText = `${this.stats.maxLevel} 강`;
+                document.getElementById('valMaxBp').innerText = this.formatBP(this.stats.maxBp);
+                document.getElementById('valMaxStreak').innerText = `${this.stats.maxStreak} 회`;
+
+                document.getElementById('valNation').innerText = `${this.card.flag} ${this.card.nation}`;
+                document.getElementById('valRarity').innerText = this.card.rarity;
+                document.getElementById('valBaseOvr').innerText = this.card.ovr;
+                document.getElementById('valBaseValue').innerText = this.formatBP(this.card.baseVal);
+
+                document.getElementById('btnEnhance').disabled = this.isProcessing || this.level >= 10;
+                document.getElementById('btnDraw').disabled = this.isProcessing;
+                document.getElementById('btnSell').disabled = this.isProcessing;
+            }
+
+            formatBP(value) {
+                if (value >= 100000000) {
+                    const eok = Math.floor(value / 100000000);
+                    const rest = Math.floor((value % 100000000) / 10000);
+                    return rest > 0 ? `${eok.toLocaleString()}억 ${rest.toLocaleString()}만 BP` : `${eok.toLocaleString()}억 BP`;
+                } else if (value >= 10000) {
+                    return `${Math.floor(value / 10000).toLocaleString()}만 BP`;
+                }
+                return `${value.toLocaleString()} BP`;
+            }
+
+            saveData() {
+                localStorage.setItem('fo4_simulator_save_v3', JSON.stringify({ bp: this.bp, cumLoss: this.cumLoss, stats: this.stats }));
+            }
+            loadData() {
+                try {
+                    const data = JSON.parse(localStorage.getItem('fo4_simulator_save_v3'));
+                    if (data) { this.bp = data.bp || 10000000000; this.cumLoss = data.cumLoss || 0; this.stats = Object.assign(this.stats, data.stats || {}); }
+                } catch (e) {}
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { window.gameApp = new Game(); });
+    </script>
+</body>
+</html>

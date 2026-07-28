@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 리얼 드래그 커브슛 승부차기 게임</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #070a13; display: flex; justify-content: center; align-items: center; }
+        
+        #game-container { width: 800px; height: 600px; background: #111; position: relative; overflow: hidden; border: 4px solid #3b82f6; border-radius: 16px; box-shadow: 0 0 40px rgba(59, 130, 246, 0.4); user-select: none; }
+        .screen { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .active { display: flex; }
+
+        /* 버튼 스타일 */
+        button { padding: 14px 40px; font-size: 18px; font-weight: bold; background: #3b82f6; border: none; border-radius: 30px; cursor: pointer; transition: 0.2s; color: #fff; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        button:hover { background: #60a5fa; transform: scale(1.05); }
+        button:disabled { background: #334155; color: #64748b; cursor: not-allowed; box-shadow: none; }
+
+        /* 1. 선택 화면 */
+        #select-screen { background: radial-gradient(circle at center, #1e293b, #0f172a); text-align: center; }
+        .select-container { display: flex; gap: 40px; margin: 35px 0; }
+        .select-box { background: rgba(30, 41, 59, 0.7); padding: 25px; border-radius: 15px; border: 1px solid #334155; width: 260px; }
+        .select-box h3 { margin-bottom: 15px; font-size: 20px; color: #3b82f6; }
+        .nation-list { display: flex; flex-direction: column; gap: 10px; }
+        .nation-btn { background: #0f172a; color: white; border: 1px solid #334155; padding: 12px; font-size: 16px; border-radius: 8px; width: 100%; text-align: left; padding-left: 20px; transition: 0.2s; }
+        .nation-btn:hover { background: #1e293b; border-color: #475569; }
+        .nation-btn.selected { background: #3b82f6; border-color: #fff; font-weight: bold; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); }
+
+        /* 2. 입장 화면 */
+        #intro-screen { background: #000; text-align: center; }
+        .intro-text { font-size: 26px; font-weight: bold; margin-bottom: 15px; }
+
+        /* 3. 게임 메인 화면 */
+        #game-screen { background: #000; justify-content: flex-start; perspective: 1000px; cursor: default; }
+        .drag-active { cursor: crosshair !important; }
+        
+        /* 상단 UI 전광판 */
+        .scoreboard { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); width: 90%; background: rgba(15, 23, 42, 0.95); border: 2px solid #334155; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
+        .team-info { display: flex; flex-direction: column; align-items: center; width: 30%; }
+        .team-name { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
+        .balls { display: flex; gap: 6px; }
+        .ball-dot { width: 16px; height: 16px; border-radius: 50%; background: #334155; border: 1px solid #475569; }
+        .ball-dot.goal { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .ball-dot.miss { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .match-status { text-align: center; width: 40%; }
+        .turn-title { font-size: 18px; color: #3b82f6; font-weight: bold; }
+        .timer { font-size: 26px; color: #ef4444; font-weight: bold; font-family: monospace; }
+
+        /* 3D 스타디움 필드 */
+        .crowd-wall { position: absolute; top: 0; left: 0; width: 100%; height: 220px; background: linear-gradient(to bottom, #020617, #1e293b); border-bottom: 3px solid #64748b; display: flex; align-items: flex-end; justify-content: center; z-index: 1; }
+        .spectators { color: rgba(255,255,255,0.15); font-size: 24px; letter-spacing: 8px; margin-bottom: 20px; user-select: none; }
+        .field-3d { position: absolute; top: 220px; left: -100px; width: 1000px; height: 500px; background: linear-gradient(to bottom, #166534 0%, #14532d 100%); transform-origin: top center; transform: rotateX(65deg); z-index: 2; }
+        
+        /* 골대 구조 스페이스 */
+        .goal-wrapper { position: absolute; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+        .goal-post { width: 460px; height: 210px; border: 10px solid #fff; border-bottom: none; background: rgba(255,255,255,0.05); position: relative; }
+        .goal-net { position: absolute; width: 100%; height: 100%; background-image: linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px); background-size: 10px 10px; }
+
+        /* 수비 모드 시 클릭 타겟 구역 (공격 모드 시 비활성화) */
+        .defense-overlay { position: absolute; width: 440px; height: 200px; z-index: 80; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); display: none; }
+        .def-zone { border: 1px dashed rgba(255,255,255,0); cursor: crosshair; transition: 0.2s; }
+        .def-zone:hover { background: rgba(239, 68, 68, 0.3); }
+
+        /* 드래그 가이드 라인 피드백 */
+        #drag-line { position: absolute; border: 2px dashed #3b82f6; transform-origin: top left; pointer-events: none; z-index: 90; display: none; opacity: 0.7; }
+
+        /* CSS 사람 모델링 */
+        .human { display: flex; flex-direction: column; align-items: center; position: absolute; transition: all 0.45s ease-out; }
+        .human-head { width: 24px; height: 26px; background: #ffdbac; border-radius: 50%; border: 1px solid #555; position: relative; z-index: 5; }
+        .human-hair { width: 26px; height: 12px; background: #2b1d0c; border-radius: 12px 12px 0 0; position: absolute; top: -2px; left: -2px; }
+        .human-face-details { display: flex; gap: 4px; justify-content: center; width: 100%; margin-top: 10px; }
+        .human-eye { width: 3px; height: 3px; background: #333; border-radius: 50%; }
+        .human-torso { width: 38px; height: 42px; background: #ef4444; border-radius: 4px 4px 0 0; position: relative; z-index: 4; border: 1px solid #333; margin-top: -2px; }
+        .sleeve-l, .sleeve-r { position: absolute; width: 10px; height: 16px; background: inherit; top: 0; border: 1px solid #333; }
+        .sleeve-l { left: -9px; border-radius: 4px 0 0 4px; }
+        .sleeve-r { right: -9px; border-radius: 0 4px 4px 0; }
+        .arm-l, .arm-r { position: absolute; width: 8px; height: 32px; background: #ffdbac; top: 12px; border: 1px solid #333; transform-origin: top center; transition: 0.3s; }
+        .arm-l { left: -8px; border-radius: 0 0 0 4px; transform: rotate(15deg); }
+        .arm-r { right: -8px; border-radius: 0 0 4px 0; transform: rotate(-15deg); }
+        .glove { width: 12px; height: 12px; background: #10b981; position: absolute; bottom: -6px; left: -3px; border-radius: 3px; border: 1px solid #fff; display: none; }
+        .human-pants { width: 38px; height: 14px; background: #fff; border: 1px solid #333; display: flex; justify-content: space-between; padding: 0 2px; z-index: 3; }
+        .pant-hole { width: 15px; height: 100%; background: inherit; border-bottom: 1px solid #333; }
+        .human-legs { display: flex; gap: 10px; z-index: 2; margin-top: -2px; }
+        .human-leg { width: 11px; height: 32px; background: #ffdbac; border: 1px solid #333; position: relative; }
+        .socks { width: 100%; height: 16px; background: #111; position: absolute; bottom: 0; border-top: 2px solid #fff; }
+        .shoes { width: 15px; height: 8px; background: #fbbf24; position: absolute; bottom: -2px; border-radius: 3px; border: 1px solid #000; }
+        .shoe-l { left: -2px; } .shoe-r { right: -2px; }
+        .human-shadow { width: 55px; height: 10px; background: rgba(0,0,0,0.35); border-radius: 50%; position: absolute; bottom: -38px; z-index: 1; }
+
+        #keeper-obj { bottom: 0; left: 50%; transform: translateX(-50%); z-index: 15; }
+        #kicker-obj { z-index: 12; }
+
+        /* 3D 원근 축구공 및 바나나킥 전용 특수 트랜지션 효과 */
+        .real-ball { position: absolute; width: 30px; height: 30px; background: #fff; border: 2px solid #000; border-radius: 50%; z-index: 50; background-image: radial-gradient(circle at 30% 30%, #fff, #94a3b8); box-shadow: 0 10px 10px rgba(0,0,0,0.4); pointer-events: none; }
+        .ball-animate { transition: top 0.7s cubic-bezier(0.25, 1, 0.5, 1), left 0.7s cubic-bezier(0.25, 1, 0.5, 1), transform 0.7s cubic-bezier(0.1, 0.8, 0.3, 1); }
+
+        /* 안내 문구 및 텍스트 효과 */
+        #view-indicator { position: absolute; bottom: 20px; left: 20px; background: rgba(15, 23, 42, 0.9); padding: 8px 16px; border-radius: 20px; font-size: 13px; color: #3b82f6; border: 1px solid #334155; z-index: 100; font-weight: bold; }
+        #shoot-result-text { position: absolute; top: 150px; left: 50%; transform: translateX(-50%) scale(0); font-size: 70px; font-weight: 900; text-shadow: 4px 4px 0 #000; z-index: 200; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #shoot-result-text.show { transform: translateX(-50%) scale(1); }
+
+        /* 4. 최종 결과 화면 */
+        #result-screen { background: radial-gradient(circle, #1e293b, #0f172a); text-align: center; }
+        #result-title { font-size: 55px; font-weight: bold; margin-bottom: 15px; }
+        .win { color: #10b981; text-shadow: 0 0 25px rgba(16, 185, 129, 0.4); }
+        .lose { color: #ef4444; text-shadow: 0 0 25px rgba(239, 68, 68, 0.4); }
+        #result-score { font-size: 26px; margin-bottom: 35px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <!-- 1. 국가 선택 화면 -->
+        <div id="select-screen" class="screen active">
+            <h2 style="font-size: 32px; letter-spacing: 1px;">🏟️ 3D 드래그 커브슛 승부차기</h2>
+            <p style="margin-top: 6px; color: #94a3b8; font-size: 15px;">마우스로 공을 꾹 누르고 드래그하여 휘어 들어가는 바나나킥을 구사하세요!</p>
+            
+            <div class="select-container">
+                <div class="select-box">
+                    <h3>🏃 내 키커 국가</h3>
+                    <div class="nation-list" id="player-nations">
+                        <button class="nation-btn" onclick="selectNation('player', '한국')">🇰🇷 대한민국</button>
+                        <button class="nation-btn" onclick="selectNation('player', '미국')">🇺🇸 미국</button>
+                        <button class="nation-btn" onclick="selectNation('player', '아르헨티나')">🇦🇷 아르헨티나</button>
+                        <button class="nation-btn" onclick="selectNation('player', '스페인')">🇪🇸 스페인</button>
+                        <button class="nation-btn" onclick="selectNation('player', '브라질')">🇧🇷 브라질</button>
+                    </div>
+                </div>
+                
+                <div class="select-box">
+                    <h3>🧤 상대 골키퍼 국가</h3>
+                    <div class="nation-list" id="com-nations">
+                        <button class="nation-btn" onclick="selectNation('com', '한국')">🇰🇷 대한민국</button>
+                        <button class="nation-btn" onclick="selectNation('com', '미국')">🇺🇸 미국</button>
+                        <button class="nation-btn" onclick="selectNation('com', '아르헨티나')">🇦🇷 아르헨티나</button>
+                        <button class="nation-btn" onclick="selectNation('com', '스페인')">🇪🇸 스페인</button>
+                        <button class="nation-btn" onclick="selectNation('com', '브라질')">🇧🇷 브라질</button>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="start-btn" onclick="startIntro()" disabled>그라운드 입장</button>
+        </div>
+
+        <!-- 2. 입장 화면 -->
+        <div id="intro-screen" class="screen">
+            <div class="intro-text" id="intro-loading-text">양 팀 선수단 입장 중...</div>
+            <p style="color: #64748b; font-size: 16px; font-weight: bold;" id="intro-timer">킥오프까지 5초</p>
+        </div>
+
+        <!-- 3. 경기 진행 화면 -->
+        <div id="game-screen" class="screen" onmousedown="handleMouseDown(event)" onmousemove="handleMouseMove(event)" onmouseup="handleMouseUp(event)">
+            <div class="crowd-wall">
+                <div class="spectators">🙌 👏 🏟️ 🥁 📣 🙌 👏 🏟️ 🥁 📣 🙌 👏 🏟️ 🥁 📣 🙌</div>
+            </div>
+            
+            <div class="field-3d"></div>
+
+            <div class="scoreboard">
+                <div class="team-info">
+                    <div class="team-name" id="score-player-name">USER</div>
+                    <div class="balls" id="player-balls"></div>
+                </div>
+                <div class="match-status">
+                    <div class="turn-title" id="turn-display">슈팅 모드</div>
+                    <div class="timer" id="action-timer">05.00</div>
+                </div>
+                <div class="team-info">
+                    <div class="team-name" id="score-com-name">COM</div>
+                    <div class="balls" id="com-balls"></div>
+                </div>
+            </div>
+
+            <!-- 수비 턴 전용 오버레이 타겟 -->
+            <div class="defense-overlay" id="defense-overlay" style="top:200px; left:50%; transform: translateX(-50%) scale(1.3);">
+                <div class="def-zone" onclick="handleDefenseClick(0)"></div>
+                <div class="def-zone" onclick="handleDefenseClick(1)"></div>
+                <div class="def-zone" onclick="handleDefenseClick(2)"></div>
+                <div class="def-zone" onclick="handleDefenseClick(3)"></div>
+                <div class="def-zone" onclick="handleDefenseClick(4)"></div>
+                <div class="def-zone" onclick="handleDefenseClick(5)"></div>
+            </div>
+
+            <!-- 골대 및 골키퍼 -->
+            <div class="goal-wrapper" id="goal-wrapper">
+                <div class="goal-post" id="goal-post">
+                    <div class="goal-net"></div>
+                </div>
+                
+                <div class="human" id="keeper-obj">
+                    <div class="human-head"><div class="human-hair"></div><div class="human-face-details"><div class="human-eye"></div><div class="human-eye"></div></div></div>
+                    <div class="human-torso" id="gk-torso"><div class="sleeve-l"></div><div class="sleeve-r"></div><div class="arm-l" id="gk-arm-l"><div class="glove" style="display:block;"></div></div><div class="arm-r" id="gk-arm-r"><div class="glove" style="display:block;"></div></div></div>
+                    <div class="human-pants" id="gk-pants"><div class="pant-hole"></div><div class="pant-hole"></div></div>
+                    <div class="human-legs"><div class="human-leg"><div class="socks"></div><div class="shoes shoe-l"></div></div><div class="human-leg"><div class="socks"></div><div class="shoes shoe-r"></div></div></div>
+                    <div class="human-shadow"></div>
+                </div>
+            </div>
+
+            <!-- 상대 키커 조립 바디 -->
+            <div class="human" id="kicker-obj">
+                <div class="human-head"><div class="human-hair" style="background:#5c4033;"></div><div class="human-face-details"><div class="human-eye"></div><div class="human-eye"></div></div></div>
+                <div class="human-torso" id="kick-torso"><div class="sleeve-l"></div><div class="sleeve-r"></div><div class="arm-l" id="kick-arm-l"></div><div class="arm-r" id="kick-arm-r"></div></div>
+                <div class="human-pants" id="kick-pants"><div class="pant-hole"></div><div class="pant-hole"></div></div>
+                <div class="human-legs"><div class="human-leg"><div class="socks"></div><div class="shoes shoe-l"></div></div><div class="human-leg"><div class="socks"></div><div class="shoes shoe-r"></div></div></div>
+                <div class="human-shadow"></div>
+            </div>
+
+            <div class="real-ball" id="ball-obj"></div>
+            <div id="drag-line"></div>
+            
+            <div id="view-indicator">시점 제어</div>
+            <div id="shoot-result-text">GOAL</div>
+        </div>
+
+        <!-- 4. 최종 결과 화면 -->
+        <div id="result-screen" class="screen">
+            <div id="result-title">MATCH OVER</div>
+            <div id="result-score">0 : 0</div>
+            <button onclick="resetGame()">다시하기</button>
+        </div>
+
+    </div>
+
+    <script>
+        let selectedPlayerNation = "";
+        let selectedComNation = "";
+        
+        let currentRound = 1;
+        let isPlayerAttackTurn = true; 
+        let playerScores = [];
+        let comScores = [];
+        
+        let timerInterval = null;
+        let timeLeft = 5.00;
+        let isActionLocked = false;
+
+        // 마우스 드래그 추적용 변수
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragEnd = { x: 0, y: 0 };
+
+        const zoneSettings = [
+            { top: 25, left: 60, armL: '130deg', armR: '30deg', xMove: -140, bodyRot: -15 }, 
+            { top: 20, left: 220, armL: '90deg', armR: '-90deg', xMove: 0, bodyRot: 0 },   
+            { top: 25, left: 380, armL: '-30deg', armR: '-130deg', xMove: 140, bodyRot: 15 },
+            { top: 120, left: 60, armL: '60deg', armR: '10deg', xMove: -140, bodyRot: -10 }, 
+            { top: 120, left: 220, armL: '30deg', armR: '-30deg', xMove: 0, bodyRot: 0 },  
+            { top: 120, left: 380, armL: '-10deg', armR: '-60deg', xMove: 140, bodyRot: 10 } 
+        ];
+
+        const nationStyles = {
+            '한국': { jersey: '#ef4444', pants: '#fff' },
+            '미국': { jersey: '#1e3a8a', pants: '#fff' },
+            '아르헨티나': { jersey: '#60a5fa', pants: '#black' },
+            '스페인': { jersey: '#b91c1c', pants: '#eab308' },
+            '브라질': { jersey: '#eab308', pants: '#2563eb' }
+        };
+
+        function selectNation(type, nation) {
+            if (type === 'player') selectedPlayerNation = nation;
+            else selectedComNation = nation;
+            setActiveButton(type === 'player' ? 'player-nations' : 'com-nations', nation);
+            
+            const startBtn = document.getElementById('start-btn');
+            if (selectedPlayerNation && selectedComNation) {
+                startBtn.disabled = (selectedPlayerNation === selectedComNation);
+            }
+        }
+
+        function setActiveButton(containerId, nation) {
+            document.querySelectorAll(`#${containerId} .nation-btn`).forEach(btn => {
+                btn.classList.toggle('selected', btn.innerText.includes(nation));
+            });
+        }
+
+        function startIntro() {
+            showScreen('intro-screen');
+            let introSeconds = 5;
+            document.getElementById('intro-loading-text').innerText = `🔥 3D 바나나킥 대전: ${selectedPlayerNation} vs ${selectedComNation}`;
+            
+            const introTimer = setInterval(() => {
+                introSeconds--;
+                document.getElementById('intro-timer').innerText = `킥오프까지 ${introSeconds}초`;
+                if (introSeconds <= 0) { clearInterval(introTimer); initGame(); }
+            }, 1000);
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function initGame() {
+            showScreen('game-screen');
+            currentRound = 1; isPlayerAttackTurn = true;
+            playerScores = []; comScores = [];
+            
+            document.getElementById('score-player-name').innerText = `USER (${selectedPlayerNation})`;
+            document.getElementById('score-com-name').innerText = `COM (${selectedComNation})`;
+            
+            setupScoreboardDots();
+            setupTurn();
+        }
+
+        function setupScoreboardDots() {
+            const pBalls = document.getElementById('player-balls');
+            const cBalls = document.getElementById('com-balls');
+            pBalls.innerHTML = ''; cBalls.innerHTML = '';
+            for(let i=0; i<5; i++) {
+                pBalls.innerHTML += `<div class="ball-dot" id="p-dot-${i}"></div>`;
+                cBalls.innerHTML += `<div class="ball-dot" id="c-dot-${i}"></div>`;
+            }
+        }
+
+        function setupTurn() {
+            isActionLocked = false;
+            isDragging = false;
+            resetObjects();
+            
+            if (currentRound > 5) { endGame(); return; }
+
+            const turnTitle = document.getElementById('turn-display');
+            const viewIndicator = document.getElementById('view-indicator');
+            const goalWrapper = document.getElementById('goal-wrapper');
+            const keeperObj = document.getElementById('keeper-obj');
+            const kickerObj = document.getElementById('kicker-obj');
+            const ballObj = document.getElementById('ball-obj');
+            const defOverlay = document.getElementById('defense-overlay');
+
+            const comStyle = nationStyles[selectedComNation];
+
+            if (isPlayerAttackTurn) {
+                turnTitle.innerText = `[${currentRound}회차] 플레이어 공격 (바나나킥 구사)`;
+                viewIndicator.innerText = "⚽ 1인칭 키커: 공 위치나 화면을 마우스로 꾹 누른 채 드래그한 후 떼면 그 방향으로 휘어 날아갑니다!";
+                defOverlay.style.display = "none";
+                
+                kickerObj.style.display = "none";
+                keeperObj.style.display = "flex";
+                
+                goalWrapper.style.top = "180px";
+                goalWrapper.style.transform = "translateX(-50%) scale(0.75)";
+                
+                document.getElementById('gk-torso').style.backgroundColor = comStyle.jersey;
+                document.getElementById('gk-pants').style.backgroundColor = comStyle.pants;
+
+                ballObj.style.bottom = "30px"; ballObj.style.top = "auto";
+                ballObj.style.left = "50%"; ballObj.style.transform = "translateX(-50%) scale(2.0)";
+            } else {
+                turnTitle.innerText = `[${currentRound}회차] 플레이어 수비 (골키퍼 시점)`;
+                viewIndicator.innerText = "🧤 1인칭 골키퍼: 상대방이 슛을 날립니다. 예측되는 골대 빈 공간을 마우스로 클릭해 수비하세요!";
+                defOverlay.style.display = "grid";
+                
+                keeperObj.style.display = "none";
+                kickerObj.style.display = "flex";
+                
+                goalWrapper.style.top = "200px";
+                goalWrapper.style.transform = "translateX(-50%) scale(1.3)";
+                
+                kickerObj.style.top = "215px"; kickerObj.style.bottom = "auto";
+                kickerObj.style.left = "50%"; kickerObj.style.transform = "translateX(-50%) scale(0.42)";
+                
+                document.getElementById('kick-torso').style.backgroundColor = comStyle.jersey;
+                document.getElementById('kick-pants').style.backgroundColor = comStyle.pants;
+
+                ballObj.style.top = "248px"; ballObj.style.bottom = "auto";
+                ballObj.style.left = "50%"; ballObj.style.transform = "translateX(-50%) scale(0.42)";
+            }
+
+            startActionTimer();
+        }
+
+        function startActionTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 5.00;
+            const timerEl = document.getElementById('action-timer');
+            timerInterval = setInterval(() => {
+                timeLeft -= 0.05;
+                if (timeLeft <= 0) { timeLeft = 0; clearInterval(timerInterval); handleTimeOut(); }
+                timerEl.innerText = timeLeft.toFixed(2);
+            }, 50);
+        }
+
+        function resetObjects() {
+            const ball = document.getElementById('ball-obj');
+            const keeper = document.getElementById('keeper-obj');
+            const kicker = document.getElementById('kicker-obj');
+            
+            ball.className = "real-ball"; 
+            keeper.style.transform = "translateX(-50%) scale(1)";
+            kicker.style.transform = "translateX(-50%) scale(1)";
+            
+            document.getElementById('gk-arm-l').style.transform = "rotate(15deg)";
+            document.getElementById('gk-arm-r').style.transform = "rotate(-15deg)";
+            document.getElementById('kick-arm-l').style.transform = "rotate(15deg)";
+            document.getElementById('kick-arm-r').style.transform = "rotate(-15deg)";
+            document.getElementById('shoot-result-text').classList.remove('show');
+            document.getElementById('drag-line').style.display = "none";
+            document.getElementById('game-screen').classList.remove('drag-active');
+        }
+
+        function handleTimeOut() {
+            if(isActionLocked) return;
+            isDragging = false;
+            if (isPlayerAttackTurn) {
+                // 타임아웃 시 무작위 가상 드래그 생성하여 슛 처리
+                executeCurveShoot(Math.floor(Math.random() * 6), (Math.random() - 0.5) * 150);
+            } else {
+                handleDefenseClick(Math.floor(Math.random() * 6));
+            }
+        }
+
+        // ================= 마우스 드래그 이벤트 핸들러 (공격 턴 전용) =================
+        function handleMouseDown(e) {
+            if (!isPlayerAttackTurn || isActionLocked) return;
+            isDragging = true;
+            
+            const rect = document.getElementById('game-screen').getBoundingClientRect();
+            dragStart.x = e.clientX - rect.left;
+            dragStart.y = e.clientY - rect.top;
+
+            document.getElementById('game-screen').classList.add('drag-active');
+        }
+
+        function handleMouseMove(e) {
+            if (!isDragging || !isPlayerAttackTurn) return;
+            const rect = document.getElementById('game-screen').getBoundingClientRect();
+            dragEnd.x = e.clientX - rect.left;
+            dragEnd.y = e.clientY - rect.top;
+
+            // 드래그 가이드라인 선 그리기
+            const line = document.getElementById('drag-line');
+            const length = Math.hypot(dragEnd.x - dragStart.x, dragEnd.y - dragStart.y);
+            const angle = Math.atan2(dragEnd.y - dragStart.y, dragEnd.x - dragStart.x) * 180 / Math.PI;
+
+            line.style.display = "block";
+            line.style.left = `${dragStart.x}px`;
+            line.style.top = `${dragStart.y}px`;
+            line.style.width = `${length}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+        }
+
+        function handleMouseUp(e) {
+            if (!isDragging || !isPlayerAttackTurn || isActionLocked) return;
+            isDragging = false;
+            isActionLocked = true;
+            clearInterval(timerInterval);
+            document.getElementById('drag-line').style.display = "none";
+            document.getElementById('game-screen').classList.remove('drag-active');
+
+            // 드래그 벡터 분석
+            const dx = dragEnd.x - dragStart.x;
+            const dy = dragEnd.y - dragStart.y;
+
+            // 드래그 거리가 너무 짧으면 단순 미스로 처리하거나 전방 슛
+            if (Math.hypot(dx, dy) < 15) {
+                executeCurveShoot(4, 0); // 중앙 하단으로 정직한 슛
+                return;
+            }
+
+            // 드래그 방향과 끝점을 기준으로 6개의 골대 타겟 영역 매핑
+            let targetZone = 4; // 기본값 중앙 하단
+            
+            if (dragEnd.y < 280) { // 상단 조준
+                if (dragEnd.x < 320) targetZone = 0;
+                else if (dragEnd.x > 480) targetZone = 2;
+                else targetZone = 1;
+            } else { // 하단 조준
+                if (dragEnd.x < 320) targetZone = 3;
+                else if (dragEnd.x > 480) targetZone = 5;
+                else targetZone = 4;
+            }
+
+            // X축 드래그 변위량을 계산하여 바나나킥의 휘어짐 정도(Curve 값) 산출
+            let curveAmount = dx * 0.8; 
+            executeCurveShoot(targetZone, curveAmount);
+        }
+
+        // 수비 턴 전용 클릭 핸들러
+        function handleDefenseClick(clickedZone) {
+            if (isActionLocked) return;
+            isActionLocked = true;
+            clearInterval(timerInterval);
+
+            let kickZone = Math.floor(Math.random() * 6);
+            let keepZone = clickedZone;
+            executeEnemyShoot(kickZone, keepZone);
+        }
+
+        // ================= 플레이어 바나나킥(커브슛) 실행 애니메이션 =================
+        function executeCurveShoot(targetZone, curveAmount) {
+            const ball = document.getElementById('ball-obj');
+            const keeper = document.getElementById('keeper-obj');
+            
+            let comKeepZone = Math.floor(Math.random() * 6);
+            
+            const kickSettings = zoneSettings[targetZone];
+            const keepSettings = zoneSettings[comKeepZone];
+
+            const goalRect = document.getElementById('goal-post').getBoundingClientRect();
+            const containerRect = document.getElementById('game-container').getBoundingClientRect();
+            
+            // 최종 골대 도달 좌표
+            const targetX = (goalRect.left - containerRect.left) + kickSettings.left;
+            const targetY = (goalRect.top - containerRect.top) + kickSettings.top;
+
+            // 골키퍼 수비 다이빙 동작
+            keeper.style.transform = `translate(calc(-50% + ${keepSettings.xMove}px), -25px) scale(0.95) rotate(${keepSettings.bodyRot}deg)`;
+            document.getElementById('gk-arm-l').style.transform = `rotate(${keepSettings.armL})`;
+            document.getElementById('gk-arm-r').style.transform = `rotate(${keepSettings.armR})`;
+
+            // 바나나킥 구현을 위해 새로운 스타일시트 키프레임을 동적으로 심어 부드러운 곡선(Curve) 궤적을 렌더링합니다.
+            ball.classList.add('ball-animate');
+            
+            // 출발할 때 반대 방향으로 살짝 틀어졌다가 드래그 방향으로 급격히 휘어지는 원근 효과 구현
+            ball.style.left = `${targetX}px`;
+            ball.style.top = `${targetY}px`;
+            
+            // curveAmount 값을 이용해 translateX 물리 왜곡 이펙트 추가
+            ball.style.transform = `translateX(calc(-50% + ${curveAmount}px)) scale(0.35)`;
+
+            setTimeout(() => {
+                displayResult(targetZone === comKeepZone);
+            }, 700);
+        }
+
+        // ================= 컴퓨터 슈팅 공격 애니메이션 (수비 턴) =================
+        function executeEnemyShoot(kickZone, keepZone) {
+            const ball = document.getElementById('ball-obj');
+            const kickSettings = zoneSettings[kickZone];
+
+            const goalRect = document.getElementById('goal-post').getBoundingClientRect();
+            const containerRect = document.getElementById('game-container').getBoundingClientRect();
+            
+            const targetX = (goalRect.left - containerRect.left) + kickSettings.left;
+            const targetY = (goalRect.top - containerRect.top) + kickSettings.top;
+
+            // 상대 키커 역동적 킥 모션
+            document.getElementById('kick-arm-l').style.transform = "rotate(-45deg)";
+            document.getElementById('kick-arm-r').style.transform = "rotate(60deg)";
+            
+            // 공이 1인칭 화면 정면으로 고속 초거대화되며 박진감 넘치게 돌진
+            ball.classList.add('ball-animate');
+            ball.style.left = `${targetX}px`;
+            ball.style.top = `${targetY}px`;
+            ball.style.transform = "translateX(-50%) scale(2.8)";
+
+            setTimeout(() => {
+                displayResult(kickZone === keepZone);
+            }, 700);
+        }
+
+        function displayResult(isSaved) {
+            const resultText = document.getElementById('shoot-result-text');
+            const isGoal = !isSaved;
+            
+            if (isPlayerAttackTurn) {
+                if (isGoal) {
+                    resultText.innerText = "⚽ GOAL!"; resultText.style.color = "#10b981";
+                    playerScores.push('goal');
+                    document.getElementById(`p-dot-${currentRound-1}`).classList.add('goal');
+                } else {
+                    resultText.innerText = "🧤 SAVED"; resultText.style.color = "#ef4444";
+                    playerScores.push('miss');
+                    document.getElementById(`p-dot-${currentRound-1}`).classList.add('miss');
+                }
+            } else {
+                if (isGoal) {
+                    resultText.innerText = "🥅 실점"; resultText.style.color = "#ef4444";
+                    comScores.push('goal');
+                    document.getElementById(`c-dot-${currentRound-1}`).classList.add('goal');
+                } else {
+                    resultText.innerText = "💎 SUPER SAVE!"; resultText.style.color = "#10b981";
+                    comScores.push('miss');
+                    document.getElementById(`c-dot-${currentRound-1}`).classList.add('miss');
+                }
+            }
+
+            resultText.classList.add('show');
+
+            setTimeout(() => {
+                if (isPlayerAttackTurn) { isPlayerAttackTurn = false; } 
+                else { isPlayerAttackTurn = true; currentRound++; }
+                setupTurn();
+            }, 1600);
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            showScreen('result-screen');
+            
+            const pGoals = playerScores.filter(s => s === 'goal').length;
+            const cGoals = comScores.filter(s => s === 'goal').length;
+            
+            const titleEl = document.getElementById('result-title');
+            const scoreEl = document.getElementById('result-score');
+            
+            scoreEl.innerText = `최종 스코어  [내 키커] ${pGoals} : ${cGoals} [상대 키퍼]`;
+            
+            if (pGoals > cGoals) { titleEl.innerText = "🏆 WINNER! 🏆"; titleEl.className = "win"; } 
+            else if (pGoals < cGoals) { titleEl.innerText = "DEFEAT (패배)"; titleEl.className = "lose"; } 
+            else { titleEl.innerText = "DRAW (무승부)"; titleEl.className = ""; }
+        }
+
+        function resetGame() {
+            selectedPlayerNation = ""; selectedComNation = "";
+            document.getElementById('start-btn').disabled = true;
+            document.querySelectorAll('.nation-btn').forEach(btn => btn.classList.remove('selected'));
+            showScreen('select-screen');
+        }
+    </script>
+</body>
+</html>

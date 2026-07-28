@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 턴제 대전 게임</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
+        body { background: #1a1a2e; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 10px; }
+        #game-container { width: 100%; max-width: 900px; background: #16213e; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 2px solid #0f3460; }
+        
+        .screen { display: none; padding: 20px; }
+        .screen.active { display: block; }
+
+        h1, h2 { text-align: center; color: #e94560; margin-bottom: 15px; }
+
+        /* 선택 화면 */
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 500px; overflow-y: auto; padding-right: 5px; }
+        .poke-card { background: #0f3460; border: 2px solid #e94560; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; transition: transform 0.2s, background 0.2s; }
+        .poke-card:hover { transform: translateY(-5px); background: #e94560; }
+        .poke-card img { width: 80px; height: 80px; object-fit: contain; }
+        .poke-card p { font-size: 14px; font-weight: bold; margin-top: 5px; }
+
+        /* 배틀 화면 */
+        #battle-field { position: relative; height: 320px; background: linear-gradient(180deg, #70a1ff 0%, #eccc68 100%); border-radius: 8px; overflow: hidden; margin-bottom: 15px; border: 2px solid #333; }
+        
+        .pokemon-stage { position: absolute; width: 230px; display: flex; flex-direction: column; align-items: center; }
+        #enemy-stage { top: 20px; right: 20px; }
+        #player-stage { bottom: 20px; left: 20px; }
+
+        .poke-img-container { position: relative; width: 130px; height: 130px; display: flex; justify-content: center; align-items: center; }
+        .poke-img-container img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3)); }
+        
+        .info-box { background: rgba(255,255,255,0.9); color: #333; padding: 8px 12px; border-radius: 8px; width: 100%; border: 2px solid #333; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .info-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+        .hp-bar-bg { width: 100%; height: 12px; background: #ddd; border-radius: 6px; overflow: hidden; border: 1px solid #aaa; }
+        .hp-bar-fill { height: 100%; width: 100%; background: #2ed573; transition: width 0.3s, background-color 0.3s; }
+        .hp-text { font-size: 11px; text-align: right; margin-top: 2px; color: #555; }
+
+        /* UI 영역 */
+        .dash-board { display: flex; justify-content: space-between; align-items: center; background: #0f3460; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; }
+        .money-text { font-size: 18px; font-weight: bold; color: #ffd700; }
+        .btn { background: #e94560; color: #fff; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn:hover { background: #ff6b81; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+
+        #log-box { height: 80px; background: #000; color: #00ffcc; border-radius: 8px; padding: 10px; font-size: 14px; overflow-y: auto; margin-bottom: 10px; border: 1px solid #e94560; white-space: pre-line; }
+
+        /* 스킬 콘솔 (30개 그리드) */
+        #skills-container { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-height: 180px; overflow-y: auto; padding: 5px; background: #0f3460; border-radius: 8px; }
+        .skill-btn { background: #16213e; color: #fff; border: 1px solid #70a1ff; border-radius: 4px; padding: 6px 2px; font-size: 11px; cursor: pointer; text-align: center; transition: 0.1s; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .skill-btn:hover:not(:disabled) { background: #70a1ff; color: #000; }
+        .skill-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .skill-type { font-size: 9px; opacity: 0.8; }
+
+        /* 애니메이션 */
+        .hit { animation: shake 0.3s; }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            40% { transform: translate(1px, -1px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            80% { transform: translate(1px, 1px) rotate(1deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
+
+        /* 모달 화면 */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 100; }
+        .modal-content { background: #16213e; padding: 30px; border-radius: 12px; text-align: center; border: 2px solid #e94560; max-width: 400px; width: 90%; }
+        .modal-content h2 { margin-bottom: 15px; }
+        .modal-content p { margin-bottom: 20px; font-size: 16px; }
+        .modal-btns { display: flex; gap: 10px; justify-content: center; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- 1. 시작 및 선택 화면 -->
+    <div id="select-screen" class="screen active">
+        <h1>포켓몬을 선택하세요 (18타입)</h1>
+        <div id="select-grid" class="grid-container"></div>
+    </div>
+
+    <!-- 2. 배틀 화면 -->
+    <div id="battle-screen" class="screen">
+        <div id="battle-field">
+            <!-- 상대 포켓몬 (우측 상단) -->
+            <div id="enemy-stage" class="pokemon-stage">
+                <div class="info-box">
+                    <div class="info-header">
+                        <span id="enemy-name">상대</span>
+                        <span id="enemy-level">Lv.1</span>
+                    </div>
+                    <div class="hp-bar-bg">
+                        <div id="enemy-hp-fill" class="hp-bar-fill"></div>
+                    </div>
+                    <div id="enemy-hp-text" class="hp-text">10000 / 10000</div>
+                </div>
+                <div class="poke-img-container">
+                    <img id="enemy-img" src="" alt="상대 포켓몬">
+                </div>
+            </div>
+
+            <!-- 플레이어 포켓몬 (좌측 하단) -->
+            <div id="player-stage" class="pokemon-stage">
+                <div class="poke-img-container">
+                    <img id="player-img" src="" alt="내 포켓몬">
+                </div>
+                <div class="info-box">
+                    <div class="info-header">
+                        <span id="player-name">내 포켓몬</span>
+                        <span id="player-level">Lv.1</span>
+                    </div>
+                    <div class="hp-bar-bg">
+                        <div id="player-hp-fill" class="hp-bar-fill"></div>
+                    </div>
+                    <div id="player-hp-text" class="hp-text">10000 / 10000</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메뉴 및 레벨업 / 돈 대시보드 -->
+        <div class="dash-board">
+            <div class="money-text">소지금: <span id="money-val">0</span>원</div>
+            <div>
+                <button id="btn-levelup" class="btn" onclick="levelUp()">레벨업 (200원)</button>
+                <button id="btn-change" class="btn" onclick="openChangeModal()" style="background: #2ed573;">포켓몬 교체</button>
+            </div>
+        </div>
+
+        <!-- 전투 로그 창 -->
+        <div id="log-box">전투가 시작되었습니다! 기술을 선택하세요.</div>
+
+        <!-- 기술 버튼 30개 -->
+        <div id="skills-container"></div>
+    </div>
+</div>
+
+<!-- 승리 모달 -->
+<div id="win-modal" class="modal">
+    <div class="modal-content">
+        <h2 style="color: #2ed573;">승리했습니다! 🎉</h2>
+        <p>상대를 물리치고 <strong style="color: #ffd700;">300원</strong>을 획득했습니다!</p>
+        <div class="modal-btns">
+            <button class="btn" onclick="nextBattle()">다음 전투</button>
+            <button class="btn" onclick="openChangeModalFromWin()" style="background: #2ed573;">포켓몬 교체</button>
+        </div>
+    </div>
+</div>
+
+<!-- 패배 모달 -->
+<div id="lose-modal" class="modal">
+    <div class="modal-content">
+        <h2>패배했습니다... 😭</h2>
+        <p>포켓몬이 쓰러졌습니다.</p>
+        <div class="modal-btns">
+            <button class="btn" onclick="restartGame()">다시하기</button>
+        </div>
+    </div>
+</div>
+
+<!-- 포켓몬 교체 모달 -->
+<div id="change-modal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <h2>교체할 포켓몬 선택</h2>
+        <div id="change-grid" class="grid-container" style="max-height: 300px;"></div>
+        <button class="btn" onclick="closeChangeModal()" style="margin-top: 15px; background: #555;">취소</button>
+    </div>
+</div>
+
+<script>
+// 18개 타입별 포켓몬 데이터 (물: 개굴닌자, 노말: 아르세우스, 페어리: 따라큐/인형)
+const POKEMON_DATA = [
+    { id: 25,  name: "피카츄", type: "전기 ⚡", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" },
+    { id: 6,   name: "리자몽", type: "불꽃 🔥", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png" },
+    { id: 658, name: "개굴닌자", type: "물 💧", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/658.png" },
+    { id: 3,   name: "이상해꽃", type: "풀 🌿", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/3.png" },
+    { id: 18,  name: "피죤투", type: "비행 🕊️", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/18.png" },
+    { id: 65,  name: "후딘", type: "에스퍼 🔮", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/65.png" },
+    { id: 68,  name: "괴력몬", type: "격투 🥊", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/68.png" },
+    { id: 94,  name: "팬텀", type: "고스트 👻", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/94.png" },
+    { id: 95,  name: "롱스톤", type: "바위 🪨", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/95.png" },
+    { id: 112, name: "코뿌리", type: "땅 🏜️", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/112.png" },
+    { id: 131, name: "라프라스", type: "얼음 ❄️", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/131.png" },
+    { id: 149, name: "망나뇽", type: "드래곤 🐉", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/149.png" },
+    { id: 197, name: "블래키", type: "악 🌙", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/197.png" },
+    { id: 212, name: "핫삼", type: "벌레 🐛", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/212.png" },
+    { id: 227, name: "무장조", type: "강철 ⚙️", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/227.png" },
+    { id: 778, name: "따라큐(인형)", type: "페어리 🧸", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/778.png" },
+    { id: 493, name: "아르세우스", type: "노말 ⚪", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/493.png" },
+    { id: 109, name: "또가스", type: "독 ☠️", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/109.png" }
+];
+
+let player = null;
+let enemy = null;
+let money = 0;
+let isMyTurn = true;
+
+class Pokemon {
+    constructor(data, level = 1) {
+        this.data = data;
+        this.name = data.name;
+        this.type = data.type;
+        this.img = data.img;
+        this.level = level;
+        this.maxHp = 10000 + (level - 1) * 2000;
+        this.hp = this.maxHp;
+        this.healCount = 2; // 회복 2회 제한
+        this.skills = this.generate30Skills();
+    }
+
+    generate30Skills() {
+        let list = [];
+        // 일반 기술 14개
+        for (let i = 1; i <= 14; i++) {
+            list.push({ name: `일반 공격 ${i}`, type: 'normal', power: 800 });
+        }
+        // 강한 타입 기술 7개
+        for (let i = 1; i <= 7; i++) {
+            list.push({ name: `필살 강타 ${i}`, type: 'strong', power: 1500 });
+        }
+        // 약한 타입 기술 7개
+        for (let i = 1; i <= 7; i++) {
+            list.push({ name: `견제 공격 ${i}`, type: 'weak', power: 500 });
+        }
+        // 회복 기술 2개
+        list.push({ name: `응급 처치 A`, type: 'heal', power: 3500 });
+        list.push({ name: `응급 처치 B`, type: 'heal', power: 3500 });
+        return list;
+    }
+}
+
+// 화면 초기화
+function initGame() {
+    const grid = document.getElementById('select-grid');
+    grid.innerHTML = '';
+    POKEMON_DATA.forEach((poke, index) => {
+        const card = document.createElement('div');
+        card.className = 'poke-card';
+        card.innerHTML = `
+            <img src="${poke.img}" alt="${poke.name}">
+            <p>${poke.name}</p>
+            <span style="font-size:11px; color:#aaa;">${poke.type}</span>
+        `;
+        card.onclick = () => selectPlayerPokemon(index);
+        grid.appendChild(card);
+    });
+}
+
+// 플레이어 포켓몬 선택
+function selectPlayerPokemon(index) {
+    const currentLevel = player ? player.level : 1;
+    player = new Pokemon(POKEMON_DATA[index], currentLevel);
+    
+    document.getElementById('select-screen').classList.remove('active');
+    document.getElementById('battle-screen').classList.add('active');
+    
+    if (!enemy) spawnEnemy();
+    updateUI();
+    renderSkills();
+    log(`가라! ${player.name}! 배틀 시작!`);
+}
+
+// 컴퓨터 상대 생성
+function spawnEnemy() {
+    const randIndex = Math.floor(Math.random() * POKEMON_DATA.length);
+    const enemyLevel = Math.max(1, player.level + Math.floor(Math.random() * 3) - 1);
+    enemy = new Pokemon(POKEMON_DATA[randIndex], enemyLevel);
+}
+
+// 스킬 30개 버튼 렌더링
+function renderSkills() {
+    const container = document.getElementById('skills-container');
+    container.innerHTML = '';
+    
+    player.skills.forEach((skill, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'skill-btn';
+        
+        let typeText = '일반';
+        if (skill.type === 'strong') typeText = '강한 타입';
+        if (skill.type === 'weak') typeText = '약한 타입';
+        if (skill.type === 'heal') typeText = '회복';
+
+        btn.innerHTML = `<span>${skill.name}</span><span class="skill-type">(${typeText})</span>`;
+        
+        if (skill.type === 'heal' && player.healCount <= 0) {
+            btn.disabled = true;
+        }
+
+        btn.onclick = () => useSkill(idx);
+        container.appendChild(btn);
+    });
+}
+
+// 플레이어 턴 사용
+function useSkill(skillIndex) {
+    if (!isMyTurn || player.hp <= 0 || enemy.hp <= 0) return;
+
+    const skill = player.skills[skillIndex];
+
+    if (skill.type === 'heal') {
+        if (player.healCount > 0) {
+            player.healCount--;
+            const healAmount = skill.power + (player.level * 200);
+            player.hp = Math.min(player.maxHp, player.hp + healAmount);
+            log(`🟢 ${player.name}의 ${skill.name}! 체력을 ${healAmount} 회복했습니다. (남은 회복: ${player.healCount}회)`);
+            renderSkills();
+            updateUI();
+            endTurn();
+        }
+        return;
+    }
+
+    let multiplier = 1.0;
+    let msg = "";
+
+    if (skill.type === 'strong') {
+        multiplier = 1.6;
+        msg = "🔥 효과가 굉장했다!";
+    } else if (skill.type === 'weak') {
+        multiplier = 0.6;
+        msg = "💧 효과가 별로인 듯하다...";
+    }
+
+    const damage = Math.floor((skill.power + (player.level * 150)) * multiplier * (0.9 + Math.random() * 0.2));
+    enemy.hp = Math.max(0, enemy.hp - damage);
+
+    document.getElementById('enemy-img').classList.add('hit');
+    setTimeout(() => document.getElementById('enemy-img').classList.remove('hit'), 300);
+
+    log(`⚔️ ${player.name}의 ${skill.name}! ${enemy.name}에게 ${damage}의 피해! ${msg}`);
+    updateUI();
+
+    if (enemy.hp <= 0) {
+        winBattle();
+    } else {
+        endTurn();
+    }
+}
+
+// 상대 턴 자동 실행
+function endTurn() {
+    isMyTurn = false;
+    toggleSkillButtons(false);
+
+    setTimeout(() => {
+        if (enemy.hp <= 0) return;
+
+        let availableSkills = enemy.skills.filter(s => s.type !== 'heal' || enemy.healCount > 0);
+        
+        if (enemy.hp < enemy.maxHp * 0.3 && enemy.healCount > 0 && Math.random() < 0.6) {
+            availableSkills = enemy.skills.filter(s => s.type === 'heal');
+        }
+
+        const skill = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+
+        if (skill.type === 'heal') {
+            enemy.healCount--;
+            const healAmount = skill.power + (enemy.level * 200);
+            enemy.hp = Math.min(enemy.maxHp, enemy.hp + healAmount);
+            log(`🔴 상대 ${enemy.name}의 ${skill.name}! 체력을 ${healAmount} 회복했습니다.`);
+        } else {
+            let multiplier = 1.0;
+            let msg = "";
+            if (skill.type === 'strong') { multiplier = 1.5; msg = "🔥 효과가 굉장했다!"; }
+            if (skill.type === 'weak') { multiplier = 0.7; msg = "💧 효과가 별로인 듯하다..."; }
+
+            const damage = Math.floor((skill.power + (enemy.level * 120)) * multiplier * (0.9 + Math.random() * 0.2));
+            player.hp = Math.max(0, player.hp - damage);
+
+            document.getElementById('player-img').classList.add('hit');
+            setTimeout(() => document.getElementById('player-img').classList.remove('hit'), 300);
+
+            log(`💥 상대 ${enemy.name}의 ${skill.name}! ${player.name}에게 ${damage}의 피해! ${msg}`);
+        }
+
+        updateUI();
+
+        if (player.hp <= 0) {
+            loseBattle();
+        } else {
+            isMyTurn = true;
+            toggleSkillButtons(true);
+        }
+    }, 1000);
+}
+
+function toggleSkillButtons(enable) {
+    const btns = document.querySelectorAll('.skill-btn');
+    btns.forEach(btn => btn.disabled = !enable);
+}
+
+function log(message) {
+    const logBox = document.getElementById('log-box');
+    logBox.innerHTML += `<div>${message}</div>`;
+    logBox.scrollTop = logBox.scrollHeight;
+}
+
+// UI 및 HP 바 처리 (초록 -> 노랑 -> 빨강)
+function updateUI() {
+    document.getElementById('player-name').innerText = player.name;
+    document.getElementById('player-level').innerText = `Lv.${player.level}`;
+    document.getElementById('player-img').src = player.img;
+    document.getElementById('player-hp-text').innerText = `${player.hp} / ${player.maxHp}`;
+    updateHpBar('player-hp-fill', player.hp, player.maxHp);
+
+    document.getElementById('enemy-name').innerText = enemy.name;
+    document.getElementById('enemy-level').innerText = `Lv.${enemy.level}`;
+    document.getElementById('enemy-img').src = enemy.img;
+    document.getElementById('enemy-hp-text').innerText = `${enemy.hp} / ${enemy.maxHp}`;
+    updateHpBar('enemy-hp-fill', enemy.hp, enemy.maxHp);
+
+    document.getElementById('money-val').innerText = money;
+    document.getElementById('btn-levelup').disabled = money < 200;
+}
+
+function updateHpBar(elementId, current, max) {
+    const fill = document.getElementById(elementId);
+    const pct = Math.max(0, (current / max) * 100);
+    fill.style.width = `${pct}%`;
+
+    if (pct > 50) fill.style.backgroundColor = '#2ed573';      // 초록
+    else if (pct > 20) fill.style.backgroundColor = '#ffa502'; // 노랑
+    else fill.style.backgroundColor = '#ff4757';               // 빨강
+}
+
+// 레벨업 기능 (200원 필요)
+function levelUp() {
+    if (money >= 200) {
+        money -= 200;
+        player.level++;
+        player.maxHp += 2000;
+        player.hp = player.maxHp;
+        player.healCount = 2; // 회복 횟수 초기화
+        log(`✨ ${player.name}의 레벨이 Lv.${player.level}로 올랐습니다! HP가 전액 회복됩니다.`);
+        updateUI();
+        renderSkills();
+    }
+}
+
+// 승리 보상 (300원 지급)
+function winBattle() {
+    money += 300;
+    updateUI();
+    document.getElementById('win-modal').style.display = 'flex';
+}
+
+function loseBattle() {
+    document.getElementById('lose-modal').style.display = 'flex';
+}
+
+function nextBattle() {
+    document.getElementById('win-modal').style.display = 'none';
+    spawnEnemy();
+    isMyTurn = true;
+    toggleSkillButtons(true);
+    log(`--- 새로운 상대 ${enemy.name}이(가) 나타났습니다! ---`);
+    updateUI();
+}
+
+function openChangeModalFromWin() {
+    document.getElementById('win-modal').style.display = 'none';
+    openChangeModal();
+}
+
+function openChangeModal() {
+    const grid = document.getElementById('change-grid');
+    grid.innerHTML = '';
+    POKEMON_DATA.forEach((poke, index) => {
+        const card = document.createElement('div');
+        card.className = 'poke-card';
+        card.innerHTML = `
+            <img src="${poke.img}" alt="${poke.name}">
+            <p>${poke.name}</p>
+            <span style="font-size:11px; color:#aaa;">${poke.type}</span>
+        `;
+        card.onclick = () => {
+            selectPlayerPokemon(index);
+            closeChangeModal();
+            spawnEnemy();
+            isMyTurn = true;
+            toggleSkillButtons(true);
+            log(`✨ 포켓몬을 ${player.name}(으)로 교체했습니다!`);
+        };
+        grid.appendChild(card);
+    });
+    document.getElementById('change-modal').style.display = 'flex';
+}
+
+function closeChangeModal() {
+    document.getElementById('change-modal').style.display = 'none';
+}
+
+function restartGame() {
+    money = 0;
+    player = null;
+    enemy = null;
+    isMyTurn = true;
+    document.getElementById('lose-modal').style.display = 'none';
+    document.getElementById('battle-screen').classList.remove('active');
+    document.getElementById('select-screen').classList.add('active');
+    initGame();
+}
+
+initGame();
+</script>
+</body>
+</html>

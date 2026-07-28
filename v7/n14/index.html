@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>픽셀 풀스크린 테트리스</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            background: #0d0d11;
+            color: #fff;
+            font-family: 'Press Start 2P', monospace, cursive;
+            overflow: hidden;
+            transition: background-color 0.15s ease;
+        }
+
+        body.flash-bg {
+            background-color: #2a2a40;
+        }
+
+        #tetris {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            background-color: #111116;
+            transition: box-shadow 0.15s ease;
+        }
+
+        #tetris.flash-border {
+            box-shadow: inset 0 0 100px #00ffff;
+        }
+
+        /* 픽셀 점수판 */
+        .hud {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 3px 3px 0px #000, 0 0 10px #00ffff;
+            z-index: 10;
+            pointer-events: none;
+            letter-spacing: 2px;
+        }
+
+        /* 우측 상단 인게임 컨트롤 버튼 영역 */
+        .controls-hud {
+            position: absolute;
+            top: 20px;
+            right: 25px;
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .hud-btn {
+            font-family: 'Press Start 2P', monospace;
+            padding: 12px 18px;
+            font-size: 12px;
+            color: #fff;
+            background: #111;
+            border: 3px solid #00ffff;
+            cursor: pointer;
+            box-shadow: 4px 4px 0px #000;
+            transition: all 0.1s ease;
+        }
+
+        .hud-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px #000;
+        }
+
+        .hud-btn:hover {
+            background: #00ffff;
+            color: #000;
+            box-shadow: 4px 4px 0px #008f8f;
+        }
+
+        /* 픽셀 시작 화면 오버레이 */
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(10, 10, 15, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        #start-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        #start-overlay h1 {
+            font-size: 48px;
+            margin-bottom: 50px;
+            color: #ff007f;
+            text-shadow: 5px 5px 0px #00ffff, -3px -3px 0px #000;
+            letter-spacing: 4px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            align-items: center;
+        }
+
+        .difficulty-btn {
+            font-family: 'Press Start 2P', monospace;
+            padding: 20px 30px;
+            font-size: 16px;
+            color: #fff;
+            background: #111;
+            border: 4px solid #fff;
+            cursor: pointer;
+            box-shadow: 6px 6px 0px #000;
+            transition: all 0.1s ease;
+            text-transform: uppercase;
+            line-height: 1.5;
+        }
+
+        .difficulty-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: 2px 2px 0px #000;
+        }
+
+        .easy { border-color: #0DFF72; color: #0DFF72; }
+        .easy:hover { background: #0DFF72; color: #000; box-shadow: 6px 6px 0px #008f39; }
+
+        .medium { border-color: #FFE138; color: #FFE138; }
+        .medium:hover { background: #FFE138; color: #000; box-shadow: 6px 6px 0px #b39b00; }
+
+        .hard { border-color: #FF0D72; color: #FF0D72; }
+        .hard:hover { background: #FF0D72; color: #fff; box-shadow: 6px 6px 0px #990040; }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        SCORE: <span id="score">0</span>
+    </div>
+
+    <div class="controls-hud">
+        <button class="hud-btn" onclick="restartGame(this)">RESTART</button>
+        <button class="hud-btn" onclick="openMenu(this)">MENU</button>
+    </div>
+
+    <div id="start-overlay">
+        <h1>TETRIS</h1>
+        <div class="btn-group">
+            <button class="difficulty-btn easy" onclick="startGame('easy')">EASY (SLOW / NO OBSTACLE)</button>
+            <button class="difficulty-btn medium" onclick="startGame('medium')">NORMAL (MEDIUM / 10 OBSTACLES)</button>
+            <button class="difficulty-btn hard" onclick="startGame('hard')">HARD (FAST / 25 OBSTACLES)</button>
+        </div>
+    </div>
+
+    <canvas id="tetris"></canvas>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+
+        const COLS = 32;
+        const ROWS = 18;
+
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let gameRunning = false;
+        let currentDifficulty = 'easy';
+
+        let obstacleTimer = 0;
+        const OBSTACLE_INTERVAL = 15000;
+
+        let particles = [];
+
+        const arena = createMatrix(COLS, ROWS);
+
+        const player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            context.scale(canvas.width / COLS, canvas.height / ROWS);
+        }
+
+        function triggerFlash() {
+            document.body.classList.add('flash-bg');
+            canvas.classList.add('flash-border');
+            setTimeout(() => {
+                document.body.classList.remove('flash-bg');
+                canvas.classList.remove('flash-border');
+            }, 180);
+        }
+
+        function createParticles(yRow) {
+            for (let x = 0; x < COLS; x += 0.5) {
+                particles.push({
+                    x: x,
+                    y: yRow + 0.5,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: (Math.random() - 0.8) * 0.8,
+                    color: '#00ffff',
+                    alpha: 1,
+                    size: Math.random() * 0.2 + 0.1
+                });
+            }
+        }
+
+        function updateParticles() {
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.03;
+
+                if (p.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    context.fillStyle = p.color;
+                    context.globalAlpha = p.alpha;
+                    context.fillRect(p.x, p.y, p.size, p.size);
+                    context.globalAlpha = 1.0;
+                }
+            });
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            let cleared = false;
+            
+            outer: for (let y = arena.length - 1; y > 0; --y) {
+                for (let x = 0; x < arena[y].length; ++x) {
+                    if (arena[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = arena.splice(y, 1)[0].fill(0);
+                arena.unshift(row);
+                
+                createParticles(y);
+                
+                ++y;
+                player.score += rowCount * 10;
+                rowCount *= 2;
+                cleared = true;
+            }
+
+            if (cleared) {
+                triggerFlash();
+            }
+        }
+
+        function dropRandomObstacle() {
+            const rx = Math.floor(Math.random() * COLS);
+            let ry = 0;
+            while (ry < ROWS && arena[ry][rx] === 0) {
+                ry++;
+            }
+            if (ry > 0) {
+                arena[ry - 1][rx] = 8;
+            }
+        }
+
+        function collide(arena, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                       (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        function generateObstacles(count) {
+            let placed = 0;
+            while (placed < count) {
+                const rx = Math.floor(Math.random() * COLS);
+                const ry = ROWS - 1 - Math.floor(Math.random() * 7);
+                if (arena[ry][rx] === 0) {
+                    arena[ry][rx] = 8;
+                    placed++;
+                }
+            }
+        }
+
+        function createPiece(type) {
+            if (type === 'T') return [[0,0,0],[1,1,1],[0,1,0]];
+            if (type === 'O') return [[2,2],[2,2]];
+            if (type === 'L') return [[0,3,0],[0,3,0],[0,3,3]];
+            if (type === 'J') return [[0,4,0],[0,4,0],[4,4,0]];
+            if (type === 'I') return [[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]];
+            if (type === 'S') return [[0,6,6],[6,6,0],[0,0,0]];
+            if (type === 'Z') return [[7,7,0],[0,7,7],[0,0,0]];
+        }
+
+        function draw() {
+            context.fillStyle = '#111116';
+            context.fillRect(0, 0, COLS, ROWS);
+
+            drawGrid();
+            drawMatrix(arena, {x: 0, y: 0});
+            if (player.matrix) {
+                drawMatrix(player.matrix, player.pos);
+            }
+            
+            updateParticles();
+        }
+
+        function drawGrid() {
+            context.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            context.lineWidth = 0.03;
+
+            for (let x = 0; x <= COLS; x++) {
+                context.beginPath();
+                context.moveTo(x, 0);
+                context.lineTo(x, ROWS);
+                context.stroke();
+            }
+            for (let y = 0; y <= ROWS; y++) {
+                context.beginPath();
+                context.moveTo(0, y);
+                context.lineTo(COLS, y);
+                context.stroke();
+            }
+        }
+
+        function drawMatrix(matrix, offset) {
+            const colors = [
+                null,
+                '#FF0D72',
+                '#0DC2FF',
+                '#0DFF72',
+                '#F538FF',
+                '#FF8E0D',
+                '#FFE138',
+                '#3877FF',
+                '#777777',
+            ];
+
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        const px = x + offset.x;
+                        const py = y + offset.y;
+
+                        context.fillStyle = colors[value];
+                        context.fillRect(px, py, 1, 1);
+
+                        context.strokeStyle = '#000000';
+                        context.lineWidth = 0.06;
+                        context.strokeRect(px, py, 1, 1);
+
+                        context.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                        context.fillRect(px + 0.1, py + 0.1, 0.8, 0.15);
+                    }
+                });
+            });
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(arena, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerReset() {
+            const pieces = 'ILJOTSZ';
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+            
+            if (collide(arena, player)) {
+                alert('GAME OVER! SCORE: ' + player.score);
+                document.getElementById('start-overlay').classList.remove('hidden');
+                gameRunning = false;
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) matrix.forEach(row => row.reverse());
+            else matrix.reverse();
+        }
+
+        function update(time = 0) {
+            if (!gameRunning) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            obstacleTimer += deltaTime;
+            if (obstacleTimer > OBSTACLE_INTERVAL) {
+                dropRandomObstacle();
+                obstacleTimer = 0;
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = player.score;
+        }
+
+        function startGame(difficulty) {
+            currentDifficulty = difficulty;
+            arena.forEach(row => row.fill(0));
+            player.score = 0;
+            obstacleTimer = 0;
+            particles = [];
+            updateScore();
+
+            if (difficulty === 'easy') {
+                dropInterval = 900;
+                generateObstacles(0);
+            } else if (difficulty === 'medium') {
+                dropInterval = 450;
+                generateObstacles(10);
+            } else if (difficulty === 'hard') {
+                dropInterval = 200;
+                generateObstacles(25);
+            }
+
+            document.getElementById('start-overlay').classList.add('hidden');
+            
+            window.focus();
+            gameRunning = true;
+            lastTime = performance.now();
+            resizeCanvas();
+            playerReset();
+            update();
+        }
+
+        // 현재 난이도로 게임 즉시 재시작
+        function restartGame(btn) {
+            if (btn) btn.blur(); // 버튼 포커스 해제 (키보드 조작 보장)
+            startGame(currentDifficulty);
+        }
+
+        // 메뉴(난이도 선택) 화면으로 돌아가기
+        function openMenu(btn) {
+            if (btn) btn.blur();
+            gameRunning = false;
+            document.getElementById('start-overlay').classList.remove('hidden');
+        }
+
+        document.addEventListener('keydown', event => {
+            if (!gameRunning) return;
+            if (event.keyCode === 37) playerMove(-1);
+            else if (event.keyCode === 39) playerMove(1);
+            else if (event.keyCode === 40) playerDrop();
+            else if (event.keyCode === 38) playerRotate(1);
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        resizeCanvas();
+        draw();
+    </script>
+</body>
+</html>

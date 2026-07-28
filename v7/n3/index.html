@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬 스테이지 점프맵 (보스 배틀 에디션)</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background: #111;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; font-family: 'Arial', sans-serif; color: white; overflow: hidden;
+        }
+
+        #game-layout { display: flex; gap: 15px; }
+
+        /* 게임 화면 */
+        #game-container {
+            position: relative; width: 450px; height: 650px;
+            background: linear-gradient(to bottom, #030a16, #0c1a30);
+            border: 4px solid #fff; border-radius: 12px; overflow: hidden;
+            box-shadow: 0 0 25px rgba(0,150,255,0.3);
+            transition: background 0.5s ease;
+        }
+
+        /* 플레이어 */
+        #pokemon {
+            position: absolute; width: 50px; height: 50px;
+            background-repeat: no-repeat; background-position: center; background-size: contain;
+            z-index: 10;
+        }
+        .flip { transform: scaleX(-1); }
+
+        /* 보스 */
+        #boss {
+            position: absolute; width: 90px; height: 90px;
+            background-repeat: no-repeat; background-position: center; background-size: contain;
+            z-index: 14; display: none; transition: left 0.2s linear;
+            filter: drop-shadow(0 0 10px #ff4d4d);
+        }
+        
+        /* 보스 체력 바 container */
+        #boss-hp-container {
+            position: absolute; top: 75px; left: 50%; transform: translateX(-50%);
+            width: 250px; height: 16px; background: #333; border: 2px solid #fff;
+            border-radius: 8px; display: none; z-index: 20; overflow: hidden;
+        }
+        #boss-hp-bar { width: 100%; height: 100%; background: #ff4d4d; transition: width 0.2s ease; }
+        #boss-name { position: absolute; top: -18px; left: 5px; font-size: 11px; color: #ffeb3b; font-weight: bold; }
+
+        /* 오브젝트들 */
+        .platform { position: absolute; height: 12px; background: linear-gradient(90deg, #a8ff78, #78ffd6); border-radius: 6px; }
+        .fake-platform { position: absolute; height: 12px; background: linear-gradient(90deg, #ff758c, #ff7eb3); border-radius: 6px; border: 1px dashed #fff; opacity: 0.7; }
+        .coin { position: absolute; width: 22px; height: 22px; background: url('https://img.pokemondb.net/sprites/items/amulet-coin.png') no-repeat center; background-size: contain; }
+        .item { position: absolute; width: 24px; height: 24px; background-size: contain; background-repeat: no-repeat; background-position: center; animation: itemFloat 0.4s infinite alternate; }
+        
+        /* 위험 장애물 */
+        .hazard {
+            position: absolute; width: 25px; height: 25px;
+            background: linear-gradient(to bottom, #ff4d4d 50%, #fff 50%);
+            border: 2px solid #000; border-radius: 50%; z-index: 12;
+        }
+        
+        /* 보스 유도 공격 번개 효과 */
+        .boss-attack {
+            position: absolute; width: 30px; height: 60px;
+            background: linear-gradient(to bottom, transparent, #ffeb3b, #ff5722);
+            clip-path: polygon(50% 0%, 0% 50%, 40% 50%, 20% 100%, 100% 40%, 60% 40%);
+            z-index: 13; animation: lightningSpawn 0.5s ease-out forwards;
+        }
+        @keyframes lightningSpawn { 0% { opacity: 0; transform: scaleY(0.1); } 100% { opacity: 1; transform: scaleY(1); } }
+
+        @keyframes itemFloat { 0% { transform: translateY(0); } 100% { transform: translateY(-6px); } }
+
+        /* 스킬 이펙트 */
+        .effect {
+            position: absolute; pointer-events: none; z-index: 15;
+            border-radius: 50%; animation: fadeOut 0.4s ease-out forwards;
+        }
+        @keyframes fadeOut { 0% { transform: scale(0.4); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+
+        /* UI */
+        #ui { position: absolute; top: 15px; left: 15px; font-size: 14px; font-weight: bold; text-shadow: 2px 2px 4px #000; z-index: 20; line-height: 1.4; }
+        #stage-title { color: #ffeb3b; font-size: 18px; font-weight: text-transform; margin-bottom: 3px; display: block;}
+        #active-item-ui { color: #00ffcc; font-size: 12px; }
+        
+        /* 더블 스킬 UI 패널 */
+        #skill-panel {
+            position: absolute; bottom: 15px; right: 15px;
+            background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px;
+            font-size: 12px; z-index: 20; border: 1px solid #ffcc00; width: 160px;
+        }
+        .skill-row { margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .ready { color: #00ffcc; font-weight: bold; }
+        .cooldown { color: #ff4d4d; }
+
+        /* 상점 패널 */
+        #shop-container { width: 380px; height: 650px; background: #1a1a1a; border: 4px solid #fff; border-radius: 12px; padding: 15px; box-sizing: border-box; display: flex; flex-direction: column; }
+        #shop-container h2 { margin-top: 0; color: #ffd700; text-align: center; margin-bottom: 5px; }
+        #shop-list { flex: 1; overflow-y: auto; padding-right: 3px; }
+        #shop-list::-webkit-scrollbar { width: 6px; }
+        #shop-list::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+        .shop-item { background: #262626; border: 2px solid #444; border-radius: 8px; padding: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+        .shop-item.selected { border-color: #ffd700; background: #38341c; }
+        .shop-img { width: 45px; height: 45px; background-size: contain; background-repeat: no-repeat; background-position: center; }
+        .shop-info { flex: 1; font-size: 11px; color: #ddd; }
+        .shop-info div { font-weight: bold; font-size: 13px; color: #fff; margin-bottom: 2px; }
+        .shop-btn { padding: 6px 10px; background: #ffd700; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; }
+        .shop-btn.owned { background: #555; color: #fff; }
+
+        /* 알림 및 엔드 스크린 */
+        .screen { display: none; position: absolute; width: 100%; height: 100%; top: 0; left: 0; background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center; z-index: 30; }
+        .screen h1 { color: #ff4d4d; margin-bottom: 5px; }
+        .screen button { padding: 10px 25px; font-size: 16px; background: #ffd700; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #cheat-toast { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); background: #ffd700; color: black; padding: 5px 15px; border-radius: 20px; font-weight: bold; z-index: 40; display: none; }
+        
+        /* 스테이지 클리어 연출 팝업 */
+        #clear-popup {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 255, 200, 0.95); color: black; padding: 15px 30px;
+            font-size: 24px; font-weight: bold; border-radius: 10px; text-align: center;
+            box-shadow: 0 0 20px #00ffcc; z-index: 35; display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-layout">
+    <div id="game-container">
+        <div id="ui">
+            <span id="stage-text">STAGE 1</span>
+            <span id="stage-title">상록숲 서행로</span>
+            목표: <span id="progress-val">0</span> / 100m <span id="boss-alert" style="color:#ff4d4d; display:none;">[BOSS 등장!]</span><br>
+            보유 골드: <span id="gold-val">0</span> G
+            <div id="active-item-ui">적용 아이템: 없음</div>
+        </div>
+        <div id="cheat-toast">치트 활성화! +1000G</div>
+        <div id="clear-popup">STAGE CLEAR! 🎉<br><span style="font-size:14px; font-weight:normal;">다음 지역으로 이동합니다...</span></div>
+        
+        <!-- 보스 체력 UI -->
+        <div id="boss-hp-container">
+            <div id="boss-name">BOSS</div>
+            <div id="boss-hp-bar"></div>
+        </div>
+
+        <div id="skill-panel">
+            <div style="text-align:center; font-weight:bold; color:#ffd700; margin-bottom:5px;">보유 스킬</div>
+            <div class="skill-row"><span>[Z] <span id="s1-name">-</span></span>: <span id="s1-status" class="ready">준비됨</span></div>
+            <div class="skill-row"><span>[X] <span id="s2-name">-</span></span>: <span id="s2-status" class="ready">준비됨</span></div>
+            <div style="text-align:center; color:#ffcc00; font-size:9px; margin-top:3px;">※ 스킬 사용 시 보스에게 피해!</div>
+        </div>
+
+        <div id="pokemon"></div>
+        <div id="boss"></div>
+        <div id="stage"></div>
+
+        <div id="over-screen" class="screen">
+            <h1>GAME OVER</h1>
+            <p>이번 판 획득 골드: <span id="earned-gold">0</span> G</p>
+            <button onclick="initGame()">다시 도전</button>
+        </div>
+    </div>
+
+    <div id="shop-container">
+        <h2>포켓몬 센터 상점</h2>
+        <div style="margin-bottom: 8px; text-align: center; font-weight: bold; font-size: 14px;">현재 자산: <span id="shop-gold">0</span> G</div>
+        <div style="color: #aaa; font-size: 11px; text-align: center; margin-bottom: 8px;">(숫자 '7'을 누르면 1000G 복사!)</div>
+        <div id="shop-list"></div>
+    </div>
+</div>
+
+<script>
+    const pokemonEl = document.getElementById('pokemon');
+    const bossEl = document.getElementById('boss');
+    const bossHpContainer = document.getElementById('boss-hp-container');
+    const bossHpBar = document.getElementById('boss-hp-bar');
+    const bossNameEl = document.getElementById('boss-name');
+    const bossAlert = document.getElementById('boss-alert');
+    const stage = document.getElementById('stage');
+    const progressVal = document.getElementById('progress-val');
+    const goldVal = document.getElementById('gold-val');
+    const shopGold = document.getElementById('shop-gold');
+    const earnedGoldText = document.getElementById('earned-gold');
+    const overScreen = document.getElementById('over-screen');
+    const gameContainer = document.getElementById('game-container');
+    const cheatToast = document.getElementById('cheat-toast');
+    const activeItemUi = document.getElementById('active-item-ui');
+    const clearPopup = document.getElementById('clear-popup');
+
+    // 🌟 스테이지 데이터 구성 및 보스 설정 추가
+    const STAGE_CONFIGS = {
+        1: { name: "상록숲 서행로", target: 100, bg: "linear-gradient(to bottom, #052410, #134d27)", platColor: "linear-gradient(90deg, #a8ff78, #78ffd6)", hazardChance: 0, fakeChance: 0, bossName: "거대 버터플", bossMaxHp: 3, bossImg: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/12.png" },
+        2: { name: "달맞이산 동굴", target: 150, bg: "linear-gradient(to bottom, #1f1c2c, #928dab)", platColor: "linear-gradient(90deg, #eecda3, #ef629f)", hazardChance: 0.15, fakeChance: 0.10, bossName: "롱스톤", bossMaxHp: 5, bossImg: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png" },
+        3: { name: "돌산터널 미로", target: 200, bg: "linear-gradient(to bottom, #2c3e50, #000000)", platColor: "linear-gradient(90deg, #ff9966, #ff5e62)", hazardChance: 0.25, fakeChance: 0.20, bossName: "거대 팬텀", bossMaxHp: 7, bossImg: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/94.png" },
+        4: { name: "홍련섬 화산지대", target: 250, bg: "linear-gradient(to bottom, #870000, #190000)", platColor: "linear-gradient(90deg, #f12711, #f5af19)", hazardChance: 0.35, fakeChance: 0.30, bossName: "마그마번", bossMaxHp: 10, bossImg: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/467.png" },
+        5: { name: "포켓몬 리그 천공", target: 9999, bg: "linear-gradient(to bottom, #111827, #312e81)", platColor: "linear-gradient(90deg, #e0e7ff, #818cf8)", hazardChance: 0.45, fakeChance: 0.35, bossName: "각성 뮤츠", bossMaxHp: 999, bossImg: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/150.png" }
+    };
+
+    // 🌟 20종 포켓몬 데이터베이스
+    const POKEMON_DATA = {
+        pikachu: { name: "피카츄", cost: 0, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png", gravity: 0.35, jumpForce: -10, speed: 4.5, trait: "기본형 번개 쥐", s1Name: "전광석화", s1Cool: 3000, useS1: () => { velocityY = -13; spawnEffect('rgba(255,255,0,0.6)', 80); damageBoss(); }, s2Name: "백만볼트", s2Cool: 6000, useS2: () => { autoScrollSpeed = Math.max(0.3, autoScrollSpeed - 0.4); spawnEffect('rgba(0,255,255,0.8)', 160); damageBoss(); } },
+        charmander: { name: "파이리", cost: 100, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png", gravity: 0.36, jumpForce: -9.5, speed: 5.5, trait: "이동이 빠른 불꽃", s1Name: "불꽃세례", s1Cool: 4000, useS1: () => { velocityY = -9; velocityX = pokemonEl.classList.contains('flip') ? -10 : 10; spawnEffect('rgba(255,68,0,0.7)', 90); damageBoss(); }, s2Name: "용의춤", s2Cool: 7000, useS2: () => { const orig = currentPoke.speed; currentPoke.speed *= 2; setTimeout(() => currentPoke.speed = orig, 2000); spawnEffect('rgba(255,150,0,0.5)', 60); damageBoss(); } },
+        squirtle: { name: "꼬부기", cost: 200, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png", gravity: 0.24, jumpForce: -8.5, speed: 3.5, trait: "저중력 물 타입", s1Name: "물대포", s1Cool: 4000, useS1: () => { velocityY = -11; spawnEffect('rgba(0,100,255,0.6)', 80); damageBoss(); }, s2Name: "껍질숨기", s2Cool: 6000, useS2: () => { velocityY = 0; const origG = currentPoke.gravity; currentPoke.gravity = 0; setTimeout(() => currentPoke.gravity = origG, 1200); spawnEffect('rgba(200,200,200,0.8)', 70); damageBoss(); } },
+        bulbasaur: { name: "이상해씨", cost: 350, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png", gravity: 0.38, jumpForce: -10.5, speed: 4.0, trait: "높은 도약의 씨앗", s1Name: "덩굴채찍", s1Cool: 5000, useS1: () => { cameraY -= 80; pY -= 80; spawnEffect('rgba(0,200,0,0.6)', 100); damageBoss(); }, s2Name: "수면가루", s2Cool: 8000, useS2: () => { const origSpeed = autoScrollSpeed; autoScrollSpeed = 0; setTimeout(() => autoScrollSpeed = origSpeed, 2000); spawnEffect('rgba(200,0,200,0.4)', 150); damageBoss(); } },
+        chikorita: { name: "치코리타", cost: 500, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/152.png", gravity: 0.32, jumpForce: -9.8, speed: 4.2, trait: "잎날 골드 부스트", s1Name: "잎날가르기", s1Cool: 4500, useS1: () => { velocityY = -11; currentRunGold += 30; totalGold += 30; updateGoldUI(); spawnEffect('rgba(144,238,144,0.7)', 90); damageBoss(); }, s2Name: "누르기", s2Cool: 7000, useS2: () => { velocityY = 4; spawnEffect('rgba(255,255,255,0.6)', 110); damageBoss(); } },
+        gengar: { name: "팬텀", cost: 700, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/94.png", gravity: 0.30, jumpForce: -9.0, speed: 4.8, trait: "유령의 생존력", s1Name: "섀도볼", s1Cool: 4000, useS1: () => { velocityY = -12; spawnEffect('rgba(100,0,150,0.7)', 90); damageBoss(); }, s2Name: "길동무", s2Cool: 9000, useS2: () => { pY = cameraY + 100; velocityY = 0; spawnEffect('rgba(50,50,50,0.9)', 200); damageBoss(); } },
+        eevee: { name: "이브이", cost: 900, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png", gravity: 0.33, jumpForce: -9.8, speed: 4.6, trait: "자석 장착 귀요미", s1Name: "도주", s1Cool: 4000, useS1: () => { velocityY = -10; velocityX = pokemonEl.classList.contains('flip') ? -7 : 7; spawnEffect('rgba(240,240,240,0.6)', 70); damageBoss(); }, s2Name: "희망사항", s2Cool: 10000, useS2: () => { totalGold += 250; updateGoldUI(); spawnEffect('rgba(255,215,0,0.8)', 120); damageBoss(); } },
+        jigglypuff: { name: "푸린", cost: 1100, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/39.png", gravity: 0.18, jumpForce: -7.5, speed: 3.8, trait: "풍선처럼 둥둥 부유", s1Name: "노래하기", s1Cool: 6000, useS1: () => { const os = autoScrollSpeed; autoScrollSpeed = -0.3; setTimeout(() => autoScrollSpeed = os, 1500); spawnEffect('rgba(255,192,203,0.6)', 130); damageBoss(); }, s2Name: "막치기", s2Cool: 4000, useS2: () => { velocityY = -10; spawnEffect('rgba(255,100,150,0.5)', 80); damageBoss(); } },
+        lucario: { name: "루카리오", cost: 1400, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/448.png", gravity: 0.40, jumpForce: -11.5, speed: 5.2, trait: "강철 격투 파동전사", s1Name: "파동탄", s1Cool: 3500, useS1: () => { velocityY = -14; spawnEffect('rgba(0,191,255,0.7)', 90); damageBoss(); }, s2Name: "신속", s2Cool: 6000, useS2: () => { velocityX = pokemonEl.classList.contains('flip') ? -22 : 22; spawnEffect('rgba(255,255,255,0.8)', 100); damageBoss(); } },
+        charizard: { name: "리자몽", cost: 1800, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/6.png", gravity: 0.32, jumpForce: -11.0, speed: 5.0, trait: "대형 화염 활공형", s1Name: "화염방사", s1Cool: 5000, useS1: () => { velocityY = -15; spawnEffect('rgba(255,69,0,0.8)', 130); damageBoss(); }, s2Name: "공중날기", s2Cool: 8000, useS2: () => { velocityY = -4; const og=currentPoke.gravity; currentPoke.gravity=0.03; setTimeout(()=>currentPoke.gravity=og, 2000); spawnEffect('rgba(255,140,0,0.6)', 150); damageBoss(); } },
+        greninja: { name: "개굴닌자", cost: 2000, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/658.png", gravity: 0.34, jumpForce: -10.2, speed: 5.8, trait: "민첩한 물의 닌자", s1Name: "그림분신", s1Cool: 4000, useS1: () => { velocityY = -9; velocityX = pokemonEl.classList.contains('flip') ? -14 : 14; spawnEffect('rgba(30,144,255,0.6)', 90); damageBoss(); }, s2Name: "물수리검", s2Cool: 6500, useS2: () => { autoScrollSpeed = Math.max(0.2, autoScrollSpeed - 0.5); hazards.forEach(h => h.speed *= 0.5); spawnEffect('rgba(0,191,255,0.8)', 140); damageBoss(); } },
+        mimikyu: { name: "따라큐", cost: 2400, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/778.png", gravity: 0.31, jumpForce: -9.6, speed: 4.5, trait: "치명적 기믹 탈피", s1Name: "치근거리기", s1Cool: 5000, useS1: () => { velocityY = -12; platforms.forEach(p => { if(p.isFake) { p.isFake = false; p.element.className = 'platform'; p.element.style.background = STAGE_CONFIGS[currentStage].platColor; } }); spawnEffect('rgba(255,20,147,0.6)', 110); damageBoss(); }, s2Name: "탈", s2Cool: 12000, useS2: () => { isInvincible = true; setTimeout(() => isInvincible = false, 3000); spawnEffect('rgba(75,0,130,0.5)', 80); damageBoss(); } },
+        snorlax: { name: "잠만보", cost: 2800, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/143.png", gravity: 0.52, jumpForce: -13.0, speed: 3.2, trait: "강력 점프 지진 유발", s1Name: "지진", s1Cool: 7000, useS1: () => { platforms.forEach(p => { p.width += 70; if(p.element) p.element.style.width = p.width + 'px'; }); spawnEffect('rgba(139,69,19,0.6)', 180); damageBoss(); }, s2Name: "기가임팩트", s2Cool: 9000, useS2: () => { velocityY = -17; spawnEffect('rgba(255,255,255,0.4)', 200); damageBoss(); } },
+        gardevoir: { name: "가디안", cost: 3200, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/282.png", gravity: 0.26, jumpForce: -9.2, speed: 4.4, trait: "사이코 스페이스 제어", s1Name: "사이코키네시스", s1Cool: 6000, useS1: () => { coins.forEach(c => { if(!c.collected && Math.abs(c.y - pY) < 300) { c.collected = true; c.element.style.display = 'none'; currentRunGold += 15; totalGold += 15; } }); updateGoldUI(); spawnEffect('rgba(186,85,211,0.7)', 150); damageBoss(); }, s2Name: "순간이동", s2Cool: 5000, useS2: () => { cameraY -= 100; pY -= 100; velocityY = -4; spawnEffect('rgba(255,192,203,0.8)', 100); damageBoss(); } },
+        garchomp: { name: "한카리아스", cost: 3800, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/445.png", gravity: 0.44, jumpForce: -12.2, speed: 5.5, trait: "모래바람 역전 레이더", s1Name: "드래곤다이브", s1Cool: 5000, useS1: () => { velocityY = -15; spawnEffect('rgba(70,130,180,0.8)', 120); damageBoss(); }, s2Name: "모래지옥", s2Cool: 8000, useS2: () => { const os = autoScrollSpeed; autoScrollSpeed = 0.1; setTimeout(() => autoScrollSpeed = os, 2500); platforms.forEach(p => { p.width += 40; if(p.element) p.element.style.width = p.width + 'px'; }); spawnEffect('rgba(218,165,32,0.6)', 160); damageBoss(); } },
+        dragonite: { name: "망나뇽", cost: 4500, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/149.png", gravity: 0.28, jumpForce: -10.5, speed: 4.8, trait: "용의 강력 도약 비행", s1Name: "용의파동", s1Cool: 5000, useS1: () => { velocityY = -14; cameraY -= 40; pY -= 40; spawnEffect('rgba(75,0,130,0.7)', 120); damageBoss(); }, s2Name: "신속비행", s2Cool: 7000, useS2: () => { velocityY = -8; autoScrollSpeed = Math.max(0.1, autoScrollSpeed - 0.6); spawnEffect('rgba(173,216,230,0.6)', 140); damageBoss(); } },
+        mew: { name: "뮤", cost: 5200, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/151.png", gravity: 0.20, jumpForce: -10.0, speed: 5.0, trait: "환상의 포켓몬 스펙", s1Name: "텔레포트", s1Cool: 4000, useS1: () => { let targetPlat = null; for(let p of platforms) { if(p.y < pY && (targetPlat === null || p.y > targetPlat.y)) targetPlat = p; } if(targetPlat) { pX = targetPlat.x + targetPlat.width/2 - 25; pY = targetPlat.y - 55; velocityY = -3; } spawnEffect('rgba(255,105,180,0.7)', 100); damageBoss(); }, s2Name: "메트로놈", s2Cool: 5000, useS2: () => { velocityY = -16; spawnEffect('rgba(255,255,255,0.9)', 200); damageBoss(); } },
+        mewtwo: { name: "뮤츠", cost: 6500, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/150.png", gravity: 0.22, jumpForce: -11.0, speed: 5.4, trait: "최강의 초능력 전사", s1Name: "사이코브레이크", s1Cool: 5000, useS1: () => { velocityY = -16; autoScrollSpeed = 0.2; spawnEffect('rgba(148,0,211,0.8)', 150); damageBoss(); }, s2Name: "배리어", s2Cool: 8000, useS2: () => { isInvincible = true; setTimeout(() => isInvincible = false, 2500); spawnEffect('rgba(0,0,255,0.5)', 100); damageBoss(); } },
+        rayquaza: { name: "레쿠쟈", cost: 8000, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/384.png", gravity: 0.15, jumpForce: -12.0, speed: 6.0, trait: "천공의 이로치 지배자", s1Name: "화룡점정", s1Cool: 5000, useS1: () => { velocityY = -20; cameraY -= 120; pY -= 120; spawnEffect('rgba(0,255,127,0.8)', 220); damageBoss(); }, s2Name: "에어록", s2Cool: 8000, useS2: () => { autoScrollSpeed = 0; setTimeout(() => autoScrollSpeed = 0.5, 3000); spawnEffect('rgba(255,255,255,0.3)', 250); damageBoss(); } },
+        arceus: { name: "아르세우스", cost: 12000, img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/493.png", gravity: 0.12, jumpForce: -12.5, speed: 6.5, trait: "창조신의 권능 (골드 증식)", s1Name: "심판의뭉치", s1Cool: 6000, useS1: () => { cameraY -= 180; pY -= 180; velocityY = -6; spawnEffect('rgba(255,255,240,0.9)', 300); damageBoss(); }, s2Name: "시간의포효", s2Cool: 9000, useS2: () => { const os = autoScrollSpeed; autoScrollSpeed = 0; setTimeout(() => autoScrollSpeed = os, 4000); spawnEffect('rgba(230,230,250,0.5)', 280); damageBoss(); } }
+    };
+
+    const ITEM_TYPES = [
+        { name: "초록슈즈", img: "https://img.pokemondb.net/sprites/items/exp-share.png", color: "rgba(0,255,0,0.8)", action: () => { currentPoke.speed += 3; setTimeout(() => currentPoke.speed -= 3, 5000); } },
+        { name: "날개비행", img: "https://img.pokemondb.net/sprites/items/pretty-feather.png", color: "rgba(255,255,255,0.8)", action: () => { velocityY = -22; } },
+        { name: "번개감속", img: "https://img.pokemondb.net/sprites/items/thunder-stone.png", color: "rgba(255,235,59,0.8)", action: () => { autoScrollSpeed = 0.2; } }
+    ];
+
+    let totalGold = 0, ownedPokemon = ['pikachu'], selectedPokemon = 'pikachu', currentPoke = {};
+    let pX, pY, velocityY = 0, velocityX = 0, score = 0, currentRunGold = 0, isGameOver = false, isInvincible = false;
+    let keys = {}, platforms = [], coins = [], items = [], hazards = [], cameraY = 0, autoScrollSpeed = 0.7, nextPlatformY = 120;
+    let lastS1Time = 0, lastS2Time = 0;
+    
+    let currentStage = 1;
+    let isTransitioning = false;
+
+    // 보스 관련 추가 상태 변수
+    let bossActive = false;
+    let bossHp = 0;
+    let bossMaxHp = 0;
+    let bossX = 180;
+    let bossY = 100;
+    let bossDirection = 1;
+    let lastBossAttackTime = 0;
+    let bossAttacks = [];
+
+    selectPokemon('pikachu');
+    renderShop();
+
+    function spawnEffect(color, size) {
+        const eff = document.createElement('div'); eff.className = 'effect'; eff.style.backgroundColor = color;
+        eff.style.width = size + 'px'; eff.style.height = size + 'px';
+        eff.style.left = (pX + 25 - size/2) + 'px'; eff.style.top = (pY - cameraY + 25 - size/2) + 'px';
+        gameContainer.appendChild(eff); setTimeout(() => eff.remove(), 400);
+    }
+
+    function selectPokemon(id) {
+        if (!ownedPokemon.includes(id)) return;
+        selectedPokemon = id; currentPoke = { ...POKEMON_DATA[id] };
+        pokemonEl.style.backgroundImage = `url('${currentPoke.img}')`;
+        document.getElementById('s1-name').textContent = currentPoke.s1Name;
+        document.getElementById('s2-name').textContent = currentPoke.s2Name;
+        lastS1Time = 0; lastS2Time = 0; renderShop();
+    }
+
+    function buyPokemon(id) {
+        const cost = POKEMON_DATA[id].cost;
+        if (totalGold >= cost && !ownedPokemon.includes(id)) {
+            totalGold -= cost; ownedPokemon.push(id); selectPokemon(id); updateGoldUI();
+        }
+    }
+
+    function updateGoldUI() { goldVal.textContent = totalGold; shopGold.textContent = totalGold; }
+
+    function renderShop() {
+        const shopList = document.getElementById('shop-list'); shopList.innerHTML = '';
+        for (let id in POKEMON_DATA) {
+            const poke = POKEMON_DATA[id]; const isOwned = ownedPokemon.includes(id); const isSelected = selectedPokemon === id;
+            const item = document.createElement('div'); item.className = `shop-item ${isSelected ? 'selected' : ''}`;
+            let btnText = isOwned ? "장착" : `${poke.cost}G`; let btnClass = isOwned ? "shop-btn owned" : "shop-btn";
+            if (isSelected) btnText = "사용중";
+            item.innerHTML = `
+                <div class="shop-img" style="background-image:url('${poke.img}')"></div>
+                <div class="shop-info">
+                    <div>${poke.name}</div>
+                    <span style="color:#1ae851;">[특성]</span> ${poke.trait}<br>
+                    <span style="color:#00ffcc;">[Z]</span> ${poke.s1Name} | <span style="color:#ffcc00;">[X]</span> ${poke.s2Name}
+                </div>
+                <button class="${btnClass}" onclick="${isOwned ? `selectPokemon('${id}')` : `buyPokemon('${id}')`}" ${isSelected?'disabled':''}>${btnText}</button>
+            `;
+            shopList.appendChild(item);
+        }
+    }
+
+    function initGame() {
+        overScreen.style.display = 'none'; isGameOver = false; isInvincible = false; isTransitioning = false;
+        currentStage = 1;
+        applyStageTheme();
+        removeBoss();
+
+        pX = 200; pY = 540; velocityY = 0; velocityX = 0; score = 0; currentRunGold = 0;
+        cameraY = 0; autoScrollSpeed = 0.6; nextPlatformY = 120; lastS1Time = 0; lastS2Time = 0;
+        stage.innerHTML = ''; platforms = []; coins = []; items = []; hazards = []; activeItemUi.textContent = "적용 아이템: 없음";
+
+        createPlatform(0, 600, 450, false);
+        for (let i = 0; i < 10; i++) generateNextPlatform();
+        updateGoldUI(); loop();
+    }
+
+    function applyStageTheme() {
+        const cfg = STAGE_CONFIGS[currentStage];
+        document.getElementById('stage-text').textContent = "STAGE " + currentStage;
+        document.getElementById('stage-title').textContent = cfg.name;
+        gameContainer.style.background = cfg.bg;
+    }
+
+    // 보스 등장 활성화 함수
+    function spawnBoss() {
+        if(bossActive) return;
+        bossActive = true;
+        const cfg = STAGE_CONFIGS[currentStage];
+        bossMaxHp = cfg.bossMaxHp;
+        bossHp = bossMaxHp;
+        
+        bossNameEl.textContent = `BOSS: ${cfg.bossName}`;
+        bossEl.style.backgroundImage = `url('${cfg.bossImg}')`;
+        bossEl.style.display = 'block';
+        bossHpContainer.style.display = 'block';
+        bossAlert.style.display = 'inline';
+        bossHpBar.style.width = '100%';
+        bossX = 180;
+        lastBossAttackTime = Date.now();
+    }
+
+    // 보스 제거 및 UI 초기화
+    function removeBoss() {
+        bossActive = false;
+        bossEl.style.display = 'none';
+        bossHpContainer.style.display = 'none';
+        bossAlert.style.display = 'none';
+        // 남아있는 보스 공격 제거
+        bossAttacks.forEach(att => att.element.remove());
+        bossAttacks = [];
+    }
+
+    // 플레이어가 스킬을 사용해 보스를 타격했을 때 실행되는 함수
+    function damageBoss() {
+        if (!bossActive || isTransitioning) return;
+        bossHp--;
+        
+        // 보스 피격 반짝임 효과
+        bossEl.style.filter = 'brightness(3) drop-shadow(0 0 15px #fff)';
+        setTimeout(() => { bossEl.style.filter = 'drop-shadow(0 0 10px #ff4d4d)'; }, 150);
+        
+        bossHpBar.style.width = Math.max(0, (bossHp / bossMaxHp) * 100) + '%';
+
+        if (bossHp <= 0) {
+            advanceStage();
+        }
+    }
+
+    function createPlatform(x, y, width, isFake = false) {
+        const plat = document.createElement('div'); 
+        plat.className = isFake ? 'fake-platform' : 'platform'; 
+        plat.style.left = x + 'px'; plat.style.width = width + 'px';
+        
+        if(!isFake) plat.style.background = STAGE_CONFIGS[currentStage].platColor;
+
+        stage.appendChild(plat);
+        platforms.push({ x, y, width, isFake, element: plat, stepped: false });
+        
+        const cfg = STAGE_CONFIGS[currentStage];
+
+        if (y < 600) {
+            let rand = Math.random();
+            if (rand < cfg.hazardChance) {
+                createHazard(x + Math.random()*(width-25), y - 30);
+            } else if (rand > 0.85) {
+                createCoin(x + width/2 - 11, y - 30);
+            } else if (rand > 0.80 && rand <= 0.85) {
+                createItem(x + width/2 - 12, y - 35);
+            }
+        }
+    }
+
+    function createCoin(x, y) {
+        const coin = document.createElement('div'); coin.className = 'coin'; coin.style.left = x + 'px';
+        stage.appendChild(coin); coins.push({ x, y, element: coin, collected: false });
+    }
+
+    function createItem(x, y) {
+        let typeIdx = Math.floor(Math.random() * ITEM_TYPES.length); let type = ITEM_TYPES[typeIdx];
+        const itemEl = document.createElement('div'); itemEl.className = 'item'; itemEl.style.left = x + 'px'; itemEl.style.backgroundImage = `url('${type.img}')`;
+        stage.appendChild(itemEl); items.push({ x, y, element: itemEl, type: type, collected: false });
+    }
+
+    function createHazard(x, y) {
+        const haz = document.createElement('div'); haz.className = 'hazard'; haz.style.left = x + 'px';
+        stage.appendChild(haz);
+        hazards.push({ x, y, element: haz, speed: (Math.random() > 0.5 ? 1.5 : -1.5) });
+    }
+
+    function generateNextPlatform() {
+        const cfg = STAGE_CONFIGS[currentStage];
+        const isFake = Math.random() < cfg.fakeChance;
+
+        const width = Math.random() * 30 + 75; const x = Math.random() * (450 - width); const y = 600 - nextPlatformY;
+        nextPlatformY += Math.random() * 35 + 75; createPlatform(x, y, width, isFake);
+    }
+
+    document.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        if (e.code === 'Digit7' || e.code === 'Numpad7') {
+            totalGold += 1000; updateGoldUI(); renderShop();
+            cheatToast.style.display = 'block'; setTimeout(() => cheatToast.style.display = 'none', 800);
+        }
+        if (e.code === 'KeyZ' && !isTransitioning) {
+            const now = Date.now(); if (now - lastS1Time >= currentPoke.s1Cool) { currentPoke.useS1(); lastS1Time = now; }
+        }
+        if (e.code === 'KeyX' && !isTransitioning) {
+            const now = Date.now(); if (now - lastS2Time >= currentPoke.s2Cool) { currentPoke.useS2(); lastS2Time = now; }
+        }
+    });
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    function advanceStage() {
+        isTransitioning = true;
+        clearPopup.style.display = 'block';
+        removeBoss();
+        
+        setTimeout(() => {
+            currentStage++;
+            applyStageTheme();
+            clearPopup.style.display = 'none';
+            
+            score = 0;
+            cameraY = pY - 450;
+            autoScrollSpeed = 0.5 + (currentStage * 0.15);
+            isTransitioning = false;
+        }, 2000);
+    }
+
+    function loop() {
+        if (isGameOver) return;
+
+        // 보스가 안 떴을 때만 스크롤 점수 및 거리 누적 증가
+        if (!isTransitioning && !bossActive) {
+            autoScrollSpeed += 0.0002; cameraY -= autoScrollSpeed; score += 1;
+            if (selectedPokemon === 'arceus' && score % 120 === 0) {
+                currentRunGold += 5; totalGold += 5; updateGoldUI();
+            }
+        }
+
+        let currentProgress = Math.floor(score / 10);
+        const cfg = STAGE_CONFIGS[currentStage];
+        
+        // 목표 점수 도달 시 보스 소환 (보스가 아직 없을 때만)
+        if (currentProgress >= cfg.target && !isTransitioning && !bossActive) {
+            spawnBoss();
+        }
+
+        progressVal.textContent = bossActive ? cfg.target : currentProgress;
+
+        // 플레이어 좌우 이동 처리
+        if (keys['ArrowLeft'] || keys['KeyA']) { velocityX = -currentPoke.speed; pokemonEl.classList.add('flip'); }
+        else if (keys['ArrowRight'] || keys['KeyD']) { velocityX = currentPoke.speed; pokemonEl.classList.remove('flip'); }
+        else { if(Math.abs(velocityX) <= currentPoke.speed) velocityX = 0; else velocityX *= 0.85; }
+
+        if (!isTransitioning) {
+            velocityY += currentPoke.gravity; pX += velocityX; pY += velocityY;
+        }
+
+        if (pX < -30) pX = 420; if (pX > 430) pX = -20;
+
+        // 발판 충돌 체크
+        if (velocityY > 0) {
+            for (let plat of platforms) {
+                if (pX + 40 >= plat.x && pX + 10 <= plat.x + plat.width && pY + 50 >= plat.y && pY + 40 <= plat.y + 10) {
+                    pY = plat.y - 50; velocityY = currentPoke.jumpForce;
+                    
+                    if(plat.isFake && !plat.stepped) {
+                        plat.stepped = true;
+                        setTimeout(() => {
+                            plat.element.style.display = 'none';
+                            plat.x = -999;
+                        }, 150);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 장애물 이동 및 충돌
+        hazards.forEach(haz => {
+            haz.x += haz.speed;
+            if(haz.x < 0 || haz.x > 425) haz.speed *= -1;
+            haz.element.style.left = haz.x + 'px';
+            haz.element.style.top = (haz.y - cameraY) + 'px';
+
+            if (!isInvincible && !isTransitioning && pX + 40 >= haz.x && pX <= haz.x + 25 && pY + 45 >= haz.y && pY <= haz.y + 25) {
+                velocityY = 5;
+                spawnEffect('rgba(255,0,0,0.8)', 100);
+            }
+        });
+
+        // 🌟 보스 실시간 로직 (이동 및 인공지능 공격)
+        if (bossActive && !isTransitioning) {
+            // 보스 좌우 왕복 이동 연출
+            bossX += bossDirection * 2;
+            if(bossX < 20 || bossX > 340) bossDirection *= -1;
+            bossEl.style.left = bossX + 'px';
+            bossEl.style.top = (cameraY + bossY - cameraY) + 'px'; // 화면 상단 고정 효과
+
+            // 2.5초마다 플레이어 위치로 유도 번개 장판 공격 생성
+            const nowTime = Date.now();
+            if(nowTime - lastBossAttackTime > 2500) {
+                lastBossAttackTime = nowTime;
+                const attEl = document.createElement('div');
+                attEl.className = 'boss-attack';
+                attEl.style.left = pX + 10 + 'px';
+                attEl.style.top = (pY - cameraY - 40) + 'px';
+                gameContainer.appendChild(attEl);
+                
+                // 생성된 공격 배열 저장 및 후처리
+                bossAttacks.push({
+                    x: pX + 10,
+                    y: pY - 40,
+                    element: attEl,
+                    spawnTime: nowTime
+                });
+            }
+        }
+
+        // 보스 공격 충돌 체크 및 소멸 관리
+        for(let i = bossAttacks.length - 1; i >= 0; i--) {
+            let att = bossAttacks[i];
+            // 플레이어와 충돌 시 넉백 추락 유도
+            if(!isInvincible && !isTransitioning && pX + 40 >= att.x && pX <= att.x + 30 && pY + 50 >= att.y && pY <= att.y + 60) {
+                velocityY = 6;
+                spawnEffect('#ffeb3b', 120);
+            }
+            // 0.8초 지나면 번개 이펙트 제거
+            if(Date.now() - att.spawnTime > 800) {
+                att.element.remove();
+                bossAttacks.splice(i, 1);
+            }
+        }
+
+        // 동전 및 아이템 수집
+        const magnetRange = (selectedPokemon === 'eevee') ? 42 : 15;
+        for (let coin of coins) {
+            if (!coin.collected && pX + 50 >= coin.x - magnetRange && pX <= coin.x + 20 + magnetRange && pY + 50 >= coin.y - magnetRange && pY <= coin.y + 20 + magnetRange) {
+                coin.collected = true; coin.element.style.display = 'none'; currentRunGold += 15; totalGold += 15; updateGoldUI();
+            }
+        }
+        for (let item of items) {
+            if (!item.collected && pX + 45 >= item.x && pX <= item.x + 24 && pY + 50 >= item.y && pY <= item.y + 24) {
+                item.collected = true; item.element.style.display = 'none'; item.type.action();
+                activeItemUi.textContent = "적용 아이템: " + item.type.name; spawnEffect(item.type.color, 140);
+                setTimeout(() => { if(activeItemUi.textContent.includes(item.type.name)) activeItemUi.textContent = "적용 아이템: 없음"; }, 4000);
+            }
+        }
+
+        if (pY < cameraY + 200) { let diff = (cameraY + 200) - pY; cameraY -= diff; }
+        while (600 - nextPlatformY > cameraY - 100) generateNextPlatform();
+
+        // 추락 사망 검사
+        if (pY > cameraY + 650) {
+            if (isInvincible) { velocityY = -14; spawnEffect('rgba(0,0,255,0.8)', 180); } 
+            else if (!isTransitioning) {
+                isGameOver = true; earnedGoldText.textContent = currentRunGold; overScreen.style.display = 'flex'; removeBoss(); return;
+            }
+        }
+
+        // 스킬 쿨타임 UI
+        const now = Date.now();
+        const s1Status = document.getElementById('s1-status');
+        if (now - lastS1Time < currentPoke.s1Cool) { s1Status.textContent = Math.ceil((currentPoke.s1Cool - (now - lastS1Time)) / 1000) + "초"; s1Status.className = "cooldown"; }
+        else { s1Status.textContent = "준비됨"; s1Status.className = "ready"; }
+        const s2Status = document.getElementById('s2-status');
+        if (now - lastS2Time < currentPoke.s2Cool) { s2Status.textContent = Math.ceil((currentPoke.s2Cool - (now - lastS2Time)) / 1000) + "초"; s2Status.className = "cooldown"; }
+        else { s2Status.textContent = "준비됨"; s2Status.className = "ready"; }
+
+        // 렌더링 동기화
+        pokemonEl.style.left = pX + 'px'; pokemonEl.style.top = (pY - cameraY) + 'px';
+
+        platforms.forEach(plat => {
+            if(plat.element) plat.element.style.top = (plat.y - cameraY) + 'px';
+        });
+        coins.forEach(c => {
+            if(c.element) c.element.style.top = (c.y - cameraY) + 'px';
+        });
+        items.forEach(it => {
+            if(it.element) it.element.style.top = (it.y - cameraY) + 'px';
+        });
+
+        requestAnimationFrame(loop);
+    }
+
+    // 초기 실행
+    initGame();
+</script>
+</body>
+</html>

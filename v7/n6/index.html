@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>아가몬 훔치기 대작전</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#1a2e22;
+    --bg-panel:#213a29;
+    --meadow-a:#7fc26b;
+    --meadow-b:#5da84f;
+    --accent:#ffce54;
+    --accent-2:#ff6b6b;
+    --danger:#e64545;
+    --text-light:#f4f8ec;
+    --text-dim:#b7c9ad;
+    --pixel:'Press Start 2P', monospace;
+    --body:'Noto Sans KR', sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-deep);color:var(--text-light);font-family:var(--body);overflow:hidden;user-select:none;}
+  #app{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;}
+  .screen{
+    width:100%;max-width:820px;height:100%;max-height:660px;position:relative;
+    background:var(--bg-panel);border:4px solid #0c1a10;
+    box-shadow:0 0 0 3px #345a3b,0 20px 60px rgba(0,0,0,.6);
+    overflow:hidden;display:flex;flex-direction:column;
+  }
+  .pixel-btn{
+    font-family:var(--pixel);font-size:11px;color:#241205;background:var(--accent);
+    border:none;padding:14px 22px;cursor:pointer;letter-spacing:1px;
+    box-shadow:0 4px 0 #b3841c,0 6px 12px rgba(0,0,0,.4);transition:transform .06s;
+  }
+  .pixel-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #b3841c;}
+  .pixel-btn.secondary{background:#4a6b52;color:var(--text-light);box-shadow:0 4px 0 #2c4530;}
+
+  /* ---------- TITLE ---------- */
+  #titleScreen{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;text-align:center;padding:24px;
+    background:radial-gradient(circle at 25% 15%,#2a4a32 0%,transparent 55%),radial-gradient(circle at 80% 85%,#1e3826 0%,transparent 50%),linear-gradient(180deg,#254a2f 0%,#1a2e22 100%);
+  }
+  .title-logo{font-family:var(--pixel);font-size:clamp(16px,4.4vw,26px);color:var(--accent);text-shadow:3px 3px 0 #7a4a1e,0 0 24px rgba(255,206,84,.3);line-height:1.7;}
+  .title-desc{font-size:13px;color:var(--text-dim);max-width:460px;line-height:1.7;}
+  .title-desc b{color:var(--accent-2);}
+  .emoji-row{display:flex;gap:18px;font-size:30px;}
+  .emoji-row span{animation:bob 2.2s ease-in-out infinite;}
+  .emoji-row span:nth-child(2){animation-delay:.25s;}
+  .emoji-row span:nth-child(3){animation-delay:.5s;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+  /* ---------- GAME ---------- */
+  #gameScreen{display:none;flex-direction:column;height:100%;}
+  #hud{
+    display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+    background:#12211a;border-bottom:3px solid #0c1a10;font-family:var(--pixel);font-size:9px;
+  }
+  #hud .hud-group{display:flex;align-items:center;gap:14px;}
+  #hud .label{color:var(--text-dim);}
+  #hud #timeVal{color:var(--accent);}
+  #hud #scoreVal{color:#8fe08a;}
+  #hud #carryVal{color:var(--accent-2);}
+  #canvasWrap{position:relative;flex:1;background:linear-gradient(180deg,var(--meadow-a),var(--meadow-b));overflow:hidden;}
+  canvas{display:block;position:absolute;top:0;left:0;}
+  #msgToast{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(12,23,16,.9);border:2px solid var(--accent);padding:7px 14px;border-radius:4px;
+    font-family:var(--pixel);font-size:9px;z-index:10;display:none;text-align:center;max-width:85%;
+  }
+  #padWrap{position:absolute;bottom:14px;right:14px;display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px;gap:4px;z-index:9;opacity:.9;}
+  #padWrap button{background:rgba(18,33,26,.85);color:var(--text-light);border:2px solid #3b5a3f;border-radius:6px;font-size:16px;cursor:pointer;}
+  #padWrap button:active{background:var(--accent);color:#241205;}
+  @keyframes popIn{ from{ opacity:0; transform: scale(0.8) translateY(6px);} to{ opacity:1; transform: scale(1) translateY(0);} }
+  #padUp{grid-column:2;grid-row:1;} #padLeft{grid-column:1;grid-row:2;} #padRight{grid-column:3;grid-row:2;} #padDown{grid-column:2;grid-row:3;}
+
+  /* ---------- END ---------- */
+  #endScreen{
+    display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;text-align:center;padding:24px;
+    background:linear-gradient(180deg,#254a2f 0%,#1a2e22 100%);
+  }
+  #endTitle{font-family:var(--pixel);font-size:16px;color:var(--accent);}
+  #endStats{font-family:var(--pixel);font-size:11px;color:var(--text-light);line-height:2;}
+  #endStats span{color:#8fe08a;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="screen">
+
+    <!-- TITLE -->
+    <div id="titleScreen">
+      <div class="title-logo">아가몬<br>훔치기 대작전</div>
+      <div class="emoji-row"><span>🐣</span><span>🫧</span><span>🍼</span></div>
+      <div class="title-desc">
+        들판 곳곳에 <b>귀여운 아가몬</b>들이 흩어져 있어요.<br>
+        다가가면 자동으로 안아 올릴 수 있지만, 아기를 안는 순간<br>
+        <b>거대하고 무서운 수호몬</b>이 당신을 쫓아오기 시작해요!<br>
+        수호몬에게 닿으면 안고 있던 아기를 그 자리에 떨어뜨려요.<br>
+        둥지까지 무사히 데려가야 진짜 내 몬스터가 됩니다.
+      </div>
+      <div class="title-desc" style="font-size:11px;">방향키 / WASD 또는 화면의 방향 버튼으로 이동하세요.</div>
+      <button class="pixel-btn" id="startBtn">시작하기</button>
+    </div>
+
+    <!-- GAME -->
+    <div id="gameScreen">
+      <div id="hud">
+        <div class="hud-group">
+          <span class="label">경과시간</span><span id="timeVal">0</span>초
+        </div>
+        <div class="hud-group">
+          <span class="label">구출</span><span id="scoreVal">0</span> <span class="label">(들판에 <span id="totalVal">0</span>)</span>
+        </div>
+        <div class="hud-group">
+          <span class="label">안고있음</span><span id="carryVal">없음</span>
+        </div>
+        <button class="pixel-btn secondary" id="openNestBtn" style="font-size:8px; padding:8px 10px;">둥지 보관함</button>
+        <button class="pixel-btn danger" id="quitBtn" style="font-size:8px; padding:8px 10px;">그만하기</button>
+      </div>
+      <div id="canvasWrap">
+        <canvas id="gameCanvas"></canvas>
+        <div id="msgToast"></div>
+        <div id="nestHint" style="position:absolute; display:none; z-index:8; font-family:var(--pixel); font-size:9px; background:rgba(12,23,16,.85); border:2px solid var(--accent); border-radius:4px; padding:6px 10px; color:var(--text-light);">둥지 근처예요! '둥지 보관함' 버튼으로 모은 아가몬을 볼 수 있어요</div>
+        <div id="padWrap">
+          <button id="padUp">▲</button>
+          <button id="padLeft">◀</button>
+          <button id="padRight">▶</button>
+          <button id="padDown">▼</button>
+        </div>
+      </div>
+      <div id="nestModal" style="display:none; position:absolute; inset:0; z-index:20; background:rgba(6,14,9,0.92); align-items:center; justify-content:center;">
+        <div style="background:var(--bg-panel); border:3px solid var(--accent); width:90%; max-width:480px; max-height:82%; overflow-y:auto; padding:16px; border-radius:6px;">
+          <h2 style="font-family:var(--pixel); font-size:13px; color:var(--accent); margin:0 0 6px;">둥지 보관함</h2>
+          <p style="font-size:12px; color:var(--text-dim); margin:0 0 4px;">지금까지 구해온 아가몬들이에요.</p>
+          <p id="nestSummary" style="font-family:var(--pixel); font-size:9px; color:#8fe08a; margin:0 0 12px;"></p>
+          <div id="nestGrid"></div>
+          <button class="pixel-btn secondary" id="closeNest" style="margin-top:14px; width:100%;">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- END -->
+    <div id="endScreen">
+      <div id="endTitle">-</div>
+      <div id="endStats"></div>
+      <button class="pixel-btn" id="retryBtn">다시하기</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const $ = id => document.getElementById(id);
+const titleScreen = $('titleScreen');
+const gameScreen = $('gameScreen');
+const endScreen = $('endScreen');
+const canvas = $('gameCanvas');
+let ctx = canvas.getContext('2d');
+const wrap = $('canvasWrap');
+
+const W = 760, H = 480; // logical field size
+let scale = 1;
+
+function resizeCanvas(){
+  const cw = wrap.clientWidth, ch = wrap.clientHeight;
+  scale = Math.min(cw / W, ch / H);
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
+}
+window.addEventListener('resize', ()=>{ if(gameScreen.style.display==='flex') resizeCanvas(); });
+
+/* ============ COLORS & SPECIES for cute babies ============ */
+const BABY_COLORS = ['#ffb6c1','#ffe08a','#a7e3a0','#a7d8f0','#d6b3f0','#ffd1a3'];
+const BABY_SPECIES = ['round','bunny','kitten','chick','dino','pup','chubby'];
+
+/* ============ GAME STATE ============ */
+let game = null;
+
+function rand(min,max){ return Math.random()*(max-min)+min; }
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+function makeObstacles(){
+  const obs = [];
+  const spots = [[380,120],[560,300],[180,340],[620,120],[300,400],[500,60]];
+  spots.forEach(([x,y])=>{ obs.push({x,y,r:26,type: Math.random()<0.5?'tree':'rock'}); });
+  return obs;
+}
+
+function circleBlocked(x,y,r,obstacles){
+  for(const o of obstacles){
+    if(Math.hypot(x-o.x,y-o.y) < r+o.r) return o;
+  }
+  return null;
+}
+
+function spawnBaby(obstacles, home){
+  let x,y,tries=0;
+  do{
+    x = rand(40, W-40);
+    y = rand(90, H-30);
+    tries++;
+  } while((circleBlocked(x,y,20,obstacles) || dist({x,y},home) < 90) && tries < 40);
+  return {
+    x, y, r:13, taken:false, delivered:false, bob:Math.random()*Math.PI*2,
+    color: BABY_COLORS[Math.floor(Math.random()*BABY_COLORS.length)],
+    species: BABY_SPECIES[Math.floor(Math.random()*BABY_SPECIES.length)]
+  };
+}
+
+function newGame(){
+  const home = { x:56, y:56, r:46 };
+  const obstacles = makeObstacles();
+  const totalBabies = 9;
+  const babies = [];
+  for(let i=0;i<totalBabies;i++) babies.push(spawnBaby(obstacles, home));
+
+  const guardians = [
+    { x:600, y:400, r:40, state:'patrol', target:{x:600,y:400}, speed:1.5, chaseSpeed:2.55, cooldown:0, hue:0 },
+    { x:200, y:200, r:40, state:'patrol', target:{x:200,y:200}, speed:1.5, chaseSpeed:2.5, cooldown:0, hue:14 },
+  ];
+  guardians.forEach(g=>pickNewPatrolTarget(g));
+
+  return {
+    home, obstacles, babies, totalBabies, guardians,
+    player: { x:56, y:400, r:14, speed:3.4, carrySpeed:2.55, carrying:null, invuln:0 },
+    keys:{ up:false,down:false,left:false,right:false },
+    score:0, running:true, elapsedSinceTick:0,
+    msgTimer:0, spawnTimer:0, maxField:16,
+  };
+}
+
+function pickNewPatrolTarget(g){
+  g.target = { x: rand(60, W-60), y: rand(80, H-40) };
+}
+
+/* ============ INPUT ============ */
+const keyMap = {
+  ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+  w:'up', s:'down', a:'left', d:'right', W:'up', S:'down', A:'left', D:'right'
+};
+document.addEventListener('keydown', e=>{
+  const k = keyMap[e.key];
+  if(k && game){ game.keys[k] = true; }
+});
+document.addEventListener('keyup', e=>{
+  const k = keyMap[e.key];
+  if(k && game){ game.keys[k] = false; }
+});
+function bindPad(id, key){
+  const el = $(id);
+  const on = (e)=>{ e.preventDefault(); if(game) game.keys[key]=true; };
+  const off = (e)=>{ e.preventDefault(); if(game) game.keys[key]=false; };
+  el.addEventListener('mousedown', on); el.addEventListener('mouseup', off); el.addEventListener('mouseleave', off);
+  el.addEventListener('touchstart', on, {passive:false}); el.addEventListener('touchend', off); el.addEventListener('touchcancel', off);
+}
+bindPad('padUp','up'); bindPad('padDown','down'); bindPad('padLeft','left'); bindPad('padRight','right');
+
+/* ============ NEST COLLECTION MODAL ============ */
+function renderThumb(canvasEl, species, color){
+  const prevCtx = ctx;
+  const tctx = canvasEl.getContext('2d');
+  ctx = tctx;
+  tctx.clearRect(0,0,canvasEl.width,canvasEl.height);
+  drawCreature(canvasEl.width/2, canvasEl.height*0.6, canvasEl.width*0.34, color, { species });
+  ctx = prevCtx;
+}
+
+const SPECIES_LABEL = { round:'동글이', bunny:'토끼형', kitten:'고양이형', chick:'병아리형', dino:'공룡형', pup:'강아지형', chubby:'토실이' };
+const SPECIES_ORDER = BABY_SPECIES;
+
+function renderNestGrid(){
+  const grid = $('nestGrid');
+  grid.innerHTML = '';
+  grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:12px; justify-items:center;';
+  if(!game){ return; }
+  const collected = game.babies.filter(b=>b.delivered);
+  const summary = $('nestSummary');
+
+  if(collected.length === 0){
+    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-dim); font-size:12px; padding:20px 0;">아직 데려온 아가몬이 없어요.<br>수호몬을 피해 둥지까지 데려와보세요!</div>';
+    if(summary) summary.textContent = '';
+    return;
+  }
+
+  // group identical species+color together and count them
+  const groups = {};
+  collected.forEach(b=>{
+    const key = b.species + '|' + b.color;
+    if(!groups[key]) groups[key] = { species:b.species, color:b.color, count:0 };
+    groups[key].count++;
+  });
+  const groupList = Object.values(groups).sort((a,b)=>{
+    const ai = SPECIES_ORDER.indexOf(a.species), bi = SPECIES_ORDER.indexOf(b.species);
+    if(ai !== bi) return ai - bi;
+    return a.color.localeCompare(b.color);
+  });
+
+  if(summary){
+    const speciesCount = new Set(collected.map(b=>b.species)).size;
+    summary.textContent = `총 ${collected.length}마리 · ${speciesCount}종 수집`;
+  }
+
+  groupList.forEach((grp, idx)=>{
+    const cell = document.createElement('div');
+    cell.style.cssText = `
+      position:relative; width:100%; max-width:104px;
+      background: linear-gradient(160deg, ${shadeColor(grp.color,10)}22, var(--bg-deep) 70%);
+      border:2px solid ${shadeColor(grp.color,-10)};
+      border-radius:10px; padding:8px 4px 6px; text-align:center;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.25);
+      transition: transform .12s ease;
+      animation: popIn .25s ease both;
+      animation-delay: ${Math.min(idx*0.02, 0.3)}s;
+    `;
+    cell.addEventListener('mouseenter', ()=>{ cell.style.transform = 'translateY(-3px)'; });
+    cell.addEventListener('mouseleave', ()=>{ cell.style.transform = 'translateY(0)'; });
+
+    const c = document.createElement('canvas');
+    c.width = 72; c.height = 72;
+    c.style.cssText = 'width:64px; height:64px; display:block; margin:0 auto;';
+    cell.appendChild(c);
+
+    const label = document.createElement('div');
+    label.style.cssText = 'font-family:var(--pixel); font-size:8px; color:var(--text-light); margin-top:4px; letter-spacing:0.5px;';
+    label.textContent = SPECIES_LABEL[grp.species] || grp.species;
+    cell.appendChild(label);
+
+    if(grp.count > 1){
+      const badge = document.createElement('div');
+      badge.style.cssText = `
+        position:absolute; top:-6px; right:-6px;
+        background: var(--accent); color:#241205;
+        font-family:var(--pixel); font-size:8px;
+        min-width:20px; height:20px; border-radius:10px;
+        display:flex; align-items:center; justify-content:center;
+        border:2px solid var(--bg-panel); box-shadow:0 2px 0 rgba(0,0,0,0.3);
+      `;
+      badge.textContent = 'x' + grp.count;
+      cell.appendChild(badge);
+    }
+
+    grid.appendChild(cell);
+    renderThumb(c, grp.species, grp.color);
+  });
+}
+
+
+$('openNestBtn').addEventListener('click', ()=>{
+  renderNestGrid();
+  $('nestModal').style.display = 'flex';
+});
+$('closeNest').addEventListener('click', ()=>{
+  $('nestModal').style.display = 'none';
+});
+
+/* ============ MESSAGE TOAST ============ */
+function showMsg(text, ms){
+  const el = $('msgToast');
+  el.textContent = text;
+  el.style.display = 'block';
+  clearTimeout(showMsg._t);
+  showMsg._t = setTimeout(()=>{ el.style.display='none'; }, ms||1400);
+}
+
+/* ============ UPDATE LOOP ============ */
+let lastTs = 0;
+function loop(ts){
+  if(!game || !game.running){ return; }
+  const dt = Math.min(33, ts - lastTs) / 16.6667; // normalize ~1 at 60fps
+  lastTs = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  const g = game;
+
+  // elapsed time (unlimited — counts up, never ends the game)
+  g.elapsedSinceTick += dt/60;
+  $('timeVal').textContent = Math.floor(g.elapsedSinceTick);
+
+  // ambient multiplication — the babies keep multiplying on their own over time
+  g.spawnTimer += dt/60;
+  if(g.spawnTimer > 10){
+    g.spawnTimer = 0;
+    const onField = g.babies.filter(b=>!b.delivered && !b.taken).length;
+    if(onField < g.maxField){
+      g.babies.push(spawnBaby(g.obstacles, g.home));
+    }
+  }
+  $('totalVal').textContent = g.babies.filter(b=>!b.delivered && !b.taken).length;
+
+  // player movement
+  const p = g.player;
+  let dx=0, dy=0;
+  if(g.keys.up) dy -= 1;
+  if(g.keys.down) dy += 1;
+  if(g.keys.left) dx -= 1;
+  if(g.keys.right) dx += 1;
+  if(dx!==0 && dy!==0){ dx*=0.7071; dy*=0.7071; }
+  const spd = (p.carrying ? p.carrySpeed : p.speed) * dt;
+  let nx = p.x + dx*spd;
+  let ny = p.y + dy*spd;
+  nx = Math.max(p.r, Math.min(W-p.r, nx));
+  ny = Math.max(p.r, Math.min(H-p.r, ny));
+  const block = circleBlocked(nx, ny, p.r, g.obstacles);
+  if(!block){ p.x = nx; p.y = ny; }
+  if(p.invuln > 0) p.invuln -= dt;
+
+  // baby pickup
+  if(!p.carrying){
+    for(const b of g.babies){
+      if(b.delivered || b.taken) continue;
+      if(dist(p,b) < p.r + b.r){
+        b.taken = true;
+        p.carrying = b;
+        showMsg('아기를 안았다! 둥지로 도망쳐요!', 1500);
+        for(const gd of g.guardians){ gd.state='chase'; }
+        break;
+      }
+    }
+  }
+
+  // nest proximity hint
+  const nearNest = dist(p, g.home) < g.home.r + 70;
+  const hintEl = $('nestHint');
+  if(nearNest){
+    hintEl.style.display = 'block';
+    hintEl.style.left = '50%';
+    hintEl.style.top = '8px';
+    hintEl.style.transform = 'translateX(-50%)';
+  } else {
+    hintEl.style.display = 'none';
+  }
+
+  // deliver to home
+  if(p.carrying && dist(p, g.home) < g.home.r){
+    p.carrying.delivered = true;
+    p.carrying = null;
+    g.score += 1;
+    $('scoreVal').textContent = g.score;
+    showMsg('무사히 구출 성공! +1', 1300);
+    // delivering also nudges the population to multiply a bit
+    if(Math.random() < 0.5 && g.babies.filter(b=>!b.delivered && !b.taken).length < g.maxField){
+      g.babies.push(spawnBaby(g.obstacles, g.home));
+    }
+  }
+
+  // guardians
+  for(const gd of g.guardians){
+    if(gd.cooldown > 0) gd.cooldown -= dt;
+    if(gd.state === 'chase'){
+      const ang = Math.atan2(p.y-gd.y, p.x-gd.x);
+      let mx = Math.cos(ang)*gd.chaseSpeed*dt;
+      let my = Math.sin(ang)*gd.chaseSpeed*dt;
+      let gx = gd.x+mx, gy = gd.y+my;
+      gx = Math.max(gd.r, Math.min(W-gd.r, gx));
+      gy = Math.max(gd.r, Math.min(H-gd.r, gy));
+      if(!circleBlocked(gx,gy,gd.r,g.obstacles)){ gd.x=gx; gd.y=gy; }
+      else {
+        // simple sidestep
+        const perp = ang + Math.PI/2;
+        gx = gd.x + Math.cos(perp)*gd.chaseSpeed*dt;
+        gy = gd.y + Math.sin(perp)*gd.chaseSpeed*dt;
+        if(!circleBlocked(gx,gy,gd.r,g.obstacles)){ gd.x=gx; gd.y=gy; }
+      }
+    } else {
+      const dd = dist(gd, gd.target);
+      if(dd < 8){ pickNewPatrolTarget(gd); }
+      const ang = Math.atan2(gd.target.y-gd.y, gd.target.x-gd.x);
+      let gx = gd.x + Math.cos(ang)*gd.speed*dt;
+      let gy = gd.y + Math.sin(ang)*gd.speed*dt;
+      gx = Math.max(gd.r, Math.min(W-gd.r, gx));
+      gy = Math.max(gd.r, Math.min(H-gd.r, gy));
+      if(!circleBlocked(gx,gy,gd.r,g.obstacles)){ gd.x=gx; gd.y=gy; }
+    }
+
+    // collision with player
+    if(p.invuln<=0 && dist(p,gd) < p.r+gd.r*0.75){
+      if(p.carrying){
+        p.carrying.taken = false;
+        p.carrying.x = p.x; p.carrying.y = p.y;
+        p.carrying = null;
+        showMsg('앗! 아기를 놓쳐버렸다!', 1500);
+      } else {
+        showMsg('위험해요! 수호몬을 피하세요!', 1100);
+      }
+      // knockback
+      const ang = Math.atan2(p.y-gd.y, p.x-gd.x);
+      p.x = Math.max(p.r, Math.min(W-p.r, p.x + Math.cos(ang)*46));
+      p.y = Math.max(p.r, Math.min(H-p.r, p.y + Math.sin(ang)*46));
+      p.invuln = 55;
+      // guardians give up after a catch, return to patrol shortly
+      for(const gg of g.guardians){
+        if(gg.state==='chase'){ gg.state='patrol'; pickNewPatrolTarget(gg); gg.cooldown = 90; }
+      }
+    }
+  }
+
+  // if all guardians chasing too long without catching and player not carrying anymore is handled by deliver/catch already.
+}
+
+/* ============ RENDER ============ */
+function shadeColor(hex, percent){
+  const num = parseInt(hex.slice(1),16);
+  let r = (num>>16)+Math.round(2.55*percent);
+  let g = ((num>>8)&0xff)+Math.round(2.55*percent);
+  let b = (num&0xff)+Math.round(2.55*percent);
+  r = Math.max(0,Math.min(255,r)); g = Math.max(0,Math.min(255,g)); b = Math.max(0,Math.min(255,b));
+  return '#' + (r.toString(16).padStart(2,'0')) + (g.toString(16).padStart(2,'0')) + (b.toString(16).padStart(2,'0'));
+}
+function drawCreature(x,y,r,color,opts){
+  opts = opts || {};
+  ctx.save();
+  ctx.translate(x,y);
+  // shadow
+  ctx.beginPath();
+  ctx.ellipse(0, r*0.85, r*0.9, r*0.28, 0, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fill();
+  const species = opts.species || 'round';
+  const shade = shadeColor(color, -18);
+
+  // --- behind-body appendages: tail / wings ---
+  if(species === 'kitten' || species === 'dino' || species === 'pup'){
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.moveTo(r*0.55, r*0.45);
+    if(species === 'dino'){
+      ctx.quadraticCurveTo(r*1.55, r*0.15, r*1.75, -r*0.55);
+      ctx.quadraticCurveTo(r*1.35, r*0.05, r*0.95, r*0.65);
+    } else if(species === 'kitten'){
+      ctx.quadraticCurveTo(r*1.7, r*0.35, r*1.55, -r*0.65);
+      ctx.quadraticCurveTo(r*1.3, r*0.05, r*0.95, r*0.6);
+    } else {
+      ctx.quadraticCurveTo(r*1.45, r*0.65, r*1.15, r*0.05);
+      ctx.quadraticCurveTo(r*1.1, r*0.45, r*0.9, r*0.6);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  if(species === 'chick'){
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.ellipse(-r*0.95, r*0.05, r*0.42, r*0.24, -0.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(r*0.95, r*0.05, r*0.42, r*0.24, 0.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if(species === 'dino'){
+    // back ridge spikes
+    ctx.fillStyle = shade;
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath();
+      ctx.moveTo(i*r*0.32 - r*0.12, -r*0.78);
+      ctx.lineTo(i*r*0.32, -r*1.25);
+      ctx.lineTo(i*r*0.32 + r*0.12, -r*0.78);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // body
+  ctx.beginPath();
+  ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  if(opts.spiky){
+    ctx.fillStyle = color;
+    for(let i=0;i<7;i++){
+      const a = (i/7)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*r*0.85, Math.sin(a)*r*0.85);
+      ctx.lineTo(Math.cos(a-0.15)*r*1.35, Math.sin(a-0.15)*r*1.35);
+      ctx.lineTo(Math.cos(a+0.15)*r*0.85, Math.sin(a+0.15)*r*0.85);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+  }
+
+  // --- ears / head features by species ---
+  ctx.fillStyle = color;
+  if(species === 'bunny'){
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.ellipse(-r*0.38,-r*1.35, r*0.2, r*0.62, -0.12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r*0.38,-r*1.35, r*0.2, r*0.62, 0.12, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffdce6';
+    ctx.beginPath(); ctx.ellipse(-r*0.38,-r*1.35, r*0.1, r*0.42, -0.12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r*0.38,-r*1.35, r*0.1, r*0.42, 0.12, 0, Math.PI*2); ctx.fill();
+  } else if(species === 'kitten'){
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.moveTo(-r*0.75,-r*0.6); ctx.lineTo(-r*0.5,-r*1.35); ctx.lineTo(-r*0.2,-r*0.68); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(r*0.75,-r*0.6); ctx.lineTo(r*0.5,-r*1.35); ctx.lineTo(r*0.2,-r*0.68); ctx.closePath(); ctx.fill();
+    // whiskers
+    ctx.strokeStyle = 'rgba(60,40,40,0.4)'; ctx.lineWidth = r*0.03;
+    ctx.beginPath(); ctx.moveTo(-r*0.1, r*0.1); ctx.lineTo(-r*0.7, r*0.02); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r*0.1, r*0.1); ctx.lineTo(r*0.7, r*0.02); ctx.stroke();
+  } else if(species === 'chick'){
+    ctx.fillStyle = '#ffb84d';
+    ctx.beginPath();
+    ctx.moveTo(-r*0.14, r*0.02); ctx.lineTo(r*0.14, r*0.02); ctx.lineTo(0, r*0.28); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.moveTo(-r*0.15,-r*1.05); ctx.lineTo(r*0.05,-r*1.5); ctx.lineTo(r*0.22,-r*0.95); ctx.closePath(); ctx.fill();
+  } else if(species === 'dino'){
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.moveTo(-r*0.3,-r*0.95); ctx.lineTo(-r*0.15,-r*1.4); ctx.lineTo(0,-r*0.95); ctx.closePath(); ctx.fill();
+  } else if(species === 'pup'){
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.ellipse(-r*0.68,-r*0.55, r*0.24, r*0.5, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r*0.68,-r*0.55, r*0.24, r*0.5, 0.5, 0, Math.PI*2); ctx.fill();
+  } else if(species === 'chubby'){
+    // tiny short stubby ears tucked close to the round head
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.arc(-r*0.58,-r*0.95, r*0.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.58,-r*0.95, r*0.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffe6ea';
+    ctx.beginPath(); ctx.arc(-r*0.58,-r*0.95, r*0.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.58,-r*0.95, r*0.1, 0, Math.PI*2); ctx.fill();
+    // extra-plump rosy cheeks
+    ctx.fillStyle = 'rgba(255,160,175,0.6)';
+    ctx.beginPath(); ctx.ellipse(-r*0.8, r*0.12, r*0.3, r*0.24, 0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r*0.8, r*0.12, r*0.3, r*0.24, 0,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(-r*0.65,-r*0.85, r*0.32, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.65,-r*0.85, r*0.32, 0, Math.PI*2); ctx.fill();
+  }
+  // eyes
+  const eyeR = opts.angry ? r*0.16 : r*0.2;
+  const eyeY = -r*0.05;
+  ctx.beginPath(); ctx.ellipse(-r*0.32, eyeY, eyeR, eyeR*1.15, 0,0,Math.PI*2);
+  ctx.fillStyle = opts.angry ? '#ff5c4d' : '#2a2a2a'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r*0.32, eyeY, eyeR, eyeR*1.15, 0,0,Math.PI*2); ctx.fill();
+  if(!opts.angry){
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-r*0.32-eyeR*0.3, eyeY-eyeR*0.3, eyeR*0.35,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.32-eyeR*0.3, eyeY-eyeR*0.3, eyeR*0.35,0,Math.PI*2); ctx.fill();
+    // blush
+    ctx.fillStyle = 'rgba(255,120,140,0.5)';
+    ctx.beginPath(); ctx.ellipse(-r*0.62, r*0.25, r*0.18, r*0.1, 0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r*0.62, r*0.25, r*0.18, r*0.1, 0,0,Math.PI*2); ctx.fill();
+    // smile
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = Math.max(1,r*0.06);
+    ctx.beginPath(); ctx.arc(0, r*0.15, r*0.28, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+  } else {
+    // angry eyebrows
+    ctx.strokeStyle = '#3a1010'; ctx.lineWidth = r*0.09;
+    ctx.beginPath(); ctx.moveTo(-r*0.55,-r*0.32); ctx.lineTo(-r*0.15,-r*0.18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r*0.55,-r*0.32); ctx.lineTo(r*0.15,-r*0.18); ctx.stroke();
+    // jagged mouth
+    ctx.fillStyle = '#3a1010';
+    ctx.beginPath();
+    ctx.moveTo(-r*0.35, r*0.25);
+    for(let i=0;i<5;i++){
+      const xx = -r*0.35 + (r*0.7)*(i/4);
+      const yy = r*0.25 + (i%2===0? r*0.18: r*0.05);
+      ctx.lineTo(xx,yy);
+    }
+    ctx.lineTo(r*0.35, r*0.25);
+    ctx.closePath(); ctx.fill();
+    // glow aura
+    ctx.beginPath(); ctx.arc(0,0,r*1.18,0,Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,70,70,0.5)'; ctx.lineWidth=4; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPlayer(x,y,r,facing){
+  ctx.save();
+  ctx.translate(x,y);
+  // shadow
+  ctx.beginPath();
+  ctx.ellipse(0, r*1.15, r*1.05, r*0.32, 0, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fill();
+
+  const legSwing = Math.sin(performance.now()/110) * 4;
+
+  // legs
+  ctx.strokeStyle = '#2f4f6b'; ctx.lineWidth = r*0.32; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-r*0.28, r*0.55); ctx.lineTo(-r*0.28 - legSwing*0.3, r*1.25); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r*0.28, r*0.55); ctx.lineTo(r*0.28 + legSwing*0.3, r*1.25); ctx.stroke();
+
+  // backpack sack (little adventurer satchel)
+  ctx.fillStyle = '#a35d1e';
+  ctx.beginPath();
+  ctx.ellipse(-r*0.92, r*0.15, r*0.42, r*0.55, -0.15, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#7a4416'; ctx.lineWidth = r*0.08;
+  ctx.beginPath(); ctx.moveTo(-r*0.75,-r*0.35); ctx.lineTo(-r*0.55, r*0.35); ctx.stroke();
+
+  // body (tunic)
+  ctx.fillStyle = '#3b8a5e';
+  ctx.beginPath();
+  ctx.moveTo(-r*0.62, r*0.15);
+  ctx.quadraticCurveTo(0, r*0.85, r*0.62, r*0.15);
+  ctx.lineTo(r*0.5, -r*0.35);
+  ctx.quadraticCurveTo(0, -r*0.1, -r*0.5, -r*0.35);
+  ctx.closePath();
+  ctx.fill();
+
+  // arms
+  ctx.strokeStyle = '#e8c39e'; ctx.lineWidth = r*0.26; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-r*0.55,-r*0.1); ctx.lineTo(-r*0.95, r*0.25 - legSwing*0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r*0.55,-r*0.1); ctx.lineTo(r*0.9, r*0.3 + legSwing*0.2); ctx.stroke();
+
+  // head
+  ctx.beginPath();
+  ctx.arc(0, -r*0.65, r*0.62, 0, Math.PI*2);
+  ctx.fillStyle = '#f5cfa0';
+  ctx.fill();
+
+  // cap
+  ctx.fillStyle = '#e0553f';
+  ctx.beginPath();
+  ctx.arc(0, -r*0.78, r*0.66, Math.PI, 0);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(r*0.25, -r*0.55, r*0.42, r*0.16, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#b53a28';
+  ctx.beginPath(); ctx.arc(0,-r*1.15, r*0.13, 0, Math.PI*2); ctx.fill();
+
+  // face
+  ctx.fillStyle = '#2a2a2a';
+  ctx.beginPath(); ctx.arc(-r*0.2, -r*0.6, r*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r*0.2, -r*0.6, r*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#a35d3a'; ctx.lineWidth = r*0.05;
+  ctx.beginPath(); ctx.arc(0, -r*0.45, r*0.16, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+  // blush
+  ctx.fillStyle = 'rgba(255,140,140,0.45)';
+  ctx.beginPath(); ctx.ellipse(-r*0.4, -r*0.42, r*0.13, r*0.08, 0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r*0.4, -r*0.42, r*0.13, r*0.08, 0,0,Math.PI*2); ctx.fill();
+
+  ctx.restore();
+}
+
+function render(){
+  const g = game;
+  ctx.save();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.scale(scale, scale);
+
+  // background meadow texture
+  ctx.fillStyle = '#69b85c';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  for(let i=0;i<40;i++){
+    const x = (i*97) % W, y = (i*53) % H;
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fill();
+  }
+  // small flower dots
+  const flowerColors = ['#fff6b0','#ffdce6','#ffffff'];
+  for(let i=0;i<26;i++){
+    const x = (i*61+30)%W, y = (i*89+50)%H;
+    ctx.fillStyle = flowerColors[i%flowerColors.length];
+    ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
+  }
+
+  // home nest
+  ctx.save();
+  ctx.translate(g.home.x, g.home.y);
+  ctx.beginPath(); ctx.ellipse(0, g.home.r*0.5, g.home.r, g.home.r*0.55, 0,0,Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(0,0,g.home.r,0,Math.PI*2);
+  ctx.fillStyle = '#c99a5b'; ctx.fill();
+  ctx.beginPath(); ctx.arc(0,0,g.home.r*0.72,0,Math.PI*2);
+  ctx.fillStyle = '#e0b878'; ctx.fill();
+  ctx.font = `${g.home.r*0.7}px serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('🪹', 0, 2);
+  ctx.restore();
+
+  // obstacles
+  for(const o of g.obstacles){
+    ctx.save();
+    ctx.translate(o.x,o.y);
+    ctx.beginPath(); ctx.ellipse(0, o.r*0.7, o.r*0.9, o.r*0.3, 0,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill();
+    ctx.font = `${o.r*2.1}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(o.type==='tree' ? '🌳' : '🪨', 0, 0);
+    ctx.restore();
+  }
+
+  // babies
+  for(const b of g.babies){
+    if(b.delivered || b.taken) continue;
+    b.bob += 0.06;
+    const yOff = Math.sin(b.bob)*3;
+    drawCreature(b.x, b.y+yOff, b.r, b.color, { species: b.species });
+  }
+
+  // guardians
+  for(const gd of g.guardians){
+    const hueShift = gd.state==='chase' ? 'hsl(355,70%,45%)' : 'hsl('+ (gd.hue+8) +',35%,42%)';
+    drawCreature(gd.x, gd.y, gd.r, gd.state==='chase' ? '#c0392b' : '#6b4a6e', { spiky:true, angry:true });
+  }
+
+  // player
+  const p = g.player;
+  ctx.save();
+  if(p.invuln>0 && Math.floor(p.invuln/6)%2===0){ ctx.globalAlpha = 0.4; }
+  drawPlayer(p.x, p.y, p.r, p.facing || 'down');
+  if(p.carrying){
+    // draw carried baby peeking out of the sack on player's back
+    drawCreature(p.x - p.r*0.15, p.y - p.r*1.9, p.r*0.62, p.carrying.color, { species: p.carrying.species });
+  }
+  ctx.restore();
+
+  ctx.restore();
+}
+
+/* ============ GAME FLOW ============ */
+$('startBtn').addEventListener('click', ()=>{
+  titleScreen.style.display = 'none';
+  gameScreen.style.display = 'flex';
+  resizeCanvas();
+  game = newGame();
+  $('totalVal').textContent = game.babies.length;
+  $('scoreVal').textContent = 0;
+  $('carryVal').textContent = '없음';
+  lastTs = performance.now();
+  requestAnimationFrame((ts)=>{ lastTs = ts; requestAnimationFrame(loop); });
+});
+
+function carryIndicatorTick(){
+  if(!game || !gameScreen.style.display==='flex') return;
+}
+setInterval(()=>{
+  if(game && gameScreen.style.display==='flex'){
+    $('carryVal').textContent = game.player.carrying ? '아가몬' : '없음';
+  }
+}, 200);
+
+function endGame(result){
+  if(!game) return;
+  game.running = false;
+  gameScreen.style.display = 'none';
+  endScreen.style.display = 'flex';
+  if(result === 'quit'){
+    $('endTitle').textContent = '오늘의 대작전 완료!';
+  } else {
+    $('endTitle').textContent = '대작전 종료!';
+  }
+  const mins = Math.floor(game.elapsedSinceTick/60);
+  const secs = Math.floor(game.elapsedSinceTick%60);
+  $('endStats').innerHTML = `구출한 아가몬: <span>${game.score}</span>마리<br>플레이 시간: <span>${mins}분 ${secs}초</span>`;
+}
+
+$('quitBtn').addEventListener('click', ()=>{
+  endGame('quit');
+});
+
+$('retryBtn').addEventListener('click', ()=>{
+  endScreen.style.display = 'none';
+  gameScreen.style.display = 'flex';
+  resizeCanvas();
+  game = newGame();
+  $('totalVal').textContent = game.babies.length;
+  $('scoreVal').textContent = 0;
+  $('carryVal').textContent = '없음';
+  requestAnimationFrame((ts)=>{ lastTs = ts; requestAnimationFrame(loop); });
+});
+
+})();
+</script>
+</body>
+</html>

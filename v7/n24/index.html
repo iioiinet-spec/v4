@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON BEAT 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Press Start 2P', system-ui; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 10px; left: 10px; color: #0ff; text-shadow: 0 0 10px #0ff;
+            font-size: 20px; pointer-events: none; z-index: 100;
+        }
+        #startScreen {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #0ff; text-align: center; text-shadow: 0 0 20px #0ff, 0 0 40px #f0f;
+            font-size: 48px; cursor: pointer; z-index: 200;
+        }
+        #gameOver {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #f0f; text-align: center; display: none;
+            text-shadow: 0 0 20px #f0f; font-size: 36px; z-index: 200;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="ui">SCORE: <span id="score">0</span> | COMBO: <span id="combo">0</span></div>
+    <div id="startScreen">NEON BEAT<br><span style="font-size:24px">CLICK TO START</span></div>
+    <div id="gameOver">
+        GAME OVER<br>
+        SCORE: <span id="finalScore">0</span><br>
+        <span style="font-size:24px">PRESS R TO RESTART</span>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Retro neon beat game
+        let scene, camera, renderer;
+        let lanes = [];
+        let notes = [];
+        let particles = [];
+        let score = 0;
+        let combo = 0;
+        let gameRunning = false;
+        let keys = {};
+        const lanePositions = [-4, -1.5, 1.5, 4];
+        let beatInterval;
+        let lastBeat = 0;
+        let speed = 0.25;
+        let shakeTime = 0;
+        let shakeIntensity = 0;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x000033, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 15);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Stronger neon atmosphere
+            const ambient = new THREE.AmbientLight(0x4040ff, 0.4);
+            scene.add(ambient);
+
+            // Extra neon point lights
+            const neonLight1 = new THREE.PointLight(0x00ffff, 1.5, 100);
+            neonLight1.position.set(-8, 8, -5);
+            scene.add(neonLight1);
+            const neonLight2 = new THREE.PointLight(0xff00ff, 1.5, 100);
+            neonLight2.position.set(8, 8, -5);
+            scene.add(neonLight2);
+
+            // Lanes
+            const laneMat = new THREE.MeshPhongMaterial({ 
+                color: 0x00ffff, 
+                emissive: 0x00ffff, 
+                shininess: 100,
+                transparent: true,
+                opacity: 0.6
+            });
+            for (let i = 0; i < 4; i++) {
+                const lane = new THREE.Mesh(
+                    new THREE.BoxGeometry(2, 0.2, 30),
+                    laneMat
+                );
+                lane.position.x = lanePositions[i];
+                lane.position.z = -5;
+                scene.add(lane);
+                lanes.push(lane);
+            }
+
+            // Floor + Judgment Line (receptors like the image)
+            const floorGeo = new THREE.PlaneGeometry(20, 60);
+            const floorMat = new THREE.MeshPhongMaterial({ 
+                color: 0x220033, 
+                emissive: 0x330044,
+                shininess: 30,
+                emissiveIntensity: 0.8
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.z = -10;
+            scene.add(floor);
+
+            // Glowing neon judgment LINE (long bar like rhythm games)
+            const receptorMat = new THREE.MeshPhongMaterial({ 
+                color: 0x00ffff, 
+                emissive: 0x00ffff,
+                emissiveIntensity: 2,
+                transparent: true, 
+                opacity: 0.85,
+                shininess: 100
+            });
+            window.receptors = [];
+            for (let i = 0; i < 4; i++) {
+                const receptor = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.2, 0.15, 0.4),  // Long neon bar
+                    receptorMat
+                );
+                receptor.rotation.x = -Math.PI / 2;
+                receptor.position.x = lanePositions[i];
+                receptor.position.z = -6.5;   // Much lower as requested
+                receptor.position.y = 0.12;
+                scene.add(receptor);
+                window.receptors.push(receptor);
+            }
+
+            // Retro text helper
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+            document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+            const startScreen = document.getElementById('startScreen');
+            startScreen.addEventListener('click', startGame);
+        }
+
+        function createNote(laneIdx) {
+            const noteGeo = new THREE.BoxGeometry(1.8, 0.8, 0.8);
+            const noteMat = new THREE.MeshPhongMaterial({
+                color: 0xff00ff,
+                emissive: 0xff00ff,
+                shininess: 120,
+                emissiveIntensity: 2.5,
+                transparent: true,
+                opacity: 0.95
+            });
+            const note = new THREE.Mesh(noteGeo, noteMat);
+            note.position.x = lanePositions[laneIdx];
+            note.position.z = -25;
+            note.userData = { lane: laneIdx, hit: false };
+            scene.add(note);
+            notes.push(note);
+
+            // Glow particles
+            for (let i = 0; i < 8; i++) {
+                const p = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.1, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xff00ff })
+                );
+                p.position.copy(note.position);
+                p.userData = { life: 30 };
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            gameRunning = true;
+            score = 0;
+            combo = 0;
+            updateUI();
+            notes.forEach(n => scene.remove(n));
+            notes = [];
+            lastBeat = Date.now();
+
+            beatInterval = setInterval(() => {
+                if (!gameRunning) return;
+                const lane = Math.floor(Math.random() * 4);
+                createNote(lane);
+            }, 350); // Beat timing
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('combo').textContent = combo;
+        }
+
+        function checkHit(laneIdx) {
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                if (note.userData.lane === laneIdx && !note.userData.hit) {
+                    // Hit ONLY when note reaches the exact judgment line at the bottom
+                    const dist = note.position.z;
+                    if (dist > -4 && dist < 6) {   // Much wider & forgiving for better playability
+                        note.userData.hit = true;
+                        score += 100 + combo * 10;
+                        combo++;
+                        explodeNote(note);
+                        updateUI();
+                        return true;
+                    }
+                }
+            }
+            combo = 0;
+            updateUI();
+            return false;
+        }
+
+        function explodeNote(note) {
+            note.visible = false;
+            
+            // Flash the receptor
+            if (window.receptors && window.receptors[note.userData.lane]) {
+                const rec = window.receptors[note.userData.lane];
+                rec.scale.set(1.6, 1.6, 1.6);
+                rec.material.color.setHex(0xffffff);
+                setTimeout(() => {
+                    if (rec) {
+                        rec.scale.set(1, 1, 1);
+                        rec.material.color.setHex(0x00ffff);
+                    }
+                }, 120);
+            }
+
+            // Super flashy explosion like rhythm games
+            const colors = [0x00ffff, 0xff00ff, 0xffff00, 0xffffff];
+            for (let i = 0; i < 60; i++) {
+                const size = Math.random() * 0.3 + 0.1;
+                const p = new THREE.Mesh(
+                    new THREE.SphereGeometry(size, 8, 8),
+                    new THREE.MeshBasicMaterial({ 
+                        color: colors[Math.floor(Math.random()*colors.length)] 
+                    })
+                );
+                p.position.copy(note.position);
+                const vel = 0.7 + Math.random() * 1.0;
+                p.userData = { 
+                    vx: (Math.random()-0.5)*vel, 
+                    vy: Math.random() * 0.8, 
+                    vz: (Math.random()-0.6)*vel, 
+                    life: 45 + Math.random()*35,
+                    rotSpeed: Math.random() * 0.25
+                };
+                scene.add(p);
+                particles.push(p);
+            }
+            
+            // Bright flash
+            const flashLight = new THREE.PointLight(0xffffff, 8, 40);
+            flashLight.position.set(note.position.x, 3, 2);
+            scene.add(flashLight);
+            setTimeout(() => scene.remove(flashLight), 150);
+
+            // Screen shake on hit
+            shakeTime = 8;
+            shakeIntensity = 0.15;
+        }
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            if (!gameRunning) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // Move notes
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                note.position.z += speed;
+                if (note.position.z > 8) {
+                    if (!note.userData.hit) {
+                        combo = 0;
+                        updateUI();
+                    }
+                    scene.remove(note);
+                    notes.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.userData.life--;
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                    continue;
+                }
+                if (p.userData.vx !== undefined) {
+                    p.position.x += p.userData.vx;
+                    p.position.y += (p.userData.vy || 0);
+                    p.position.z += p.userData.vz || 0;
+                    p.scale.multiplyScalar(0.96);
+                    if (p.userData.rotSpeed) p.rotation.y += p.userData.rotSpeed;
+                }
+            }
+
+            // Keyboard input (1-4 keys or QWER)
+            if (keys['1'] || keys['q']) { checkHit(0); keys['1'] = keys['q'] = false; }
+            if (keys['2'] || keys['w']) { checkHit(1); keys['2'] = keys['w'] = false; }
+            if (keys['3'] || keys['e']) { checkHit(2); keys['3'] = keys['e'] = false; }
+            if (keys['4'] || keys['r']) { checkHit(3); keys['4'] = keys['r'] = false; }
+
+            // Screen shake
+            if (shakeTime > 0) {
+                const shakeX = (Math.random() - 0.5) * shakeIntensity * shakeTime;
+                const shakeY = (Math.random() - 0.5) * shakeIntensity * shakeTime * 0.6;
+                camera.position.x = shakeX;
+                camera.position.y = 5 + shakeY;
+                shakeTime--;
+            } else {
+                camera.position.x = 0;
+                camera.position.y = 5;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // No reset / game over for continuous play
+
+        init();
+        gameLoop();
+    </script>
+</body>
+</html>

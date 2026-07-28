@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Neon Tic Tac Toe</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Segoe UI,sans-serif;
+}
+
+body{
+    background:#081325;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    color:white;
+}
+
+.container{
+    text-align:center;
+}
+
+h1{
+    color:#55f8ff;
+    text-shadow:0 0 20px cyan;
+    margin-bottom:15px;
+}
+
+.controls{
+    margin-bottom:15px;
+}
+
+button{
+    background:#0f2748;
+    color:white;
+    border:2px solid #55f8ff;
+    padding:10px 18px;
+    margin:5px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+button:hover{
+    background:#163c70;
+    box-shadow:0 0 15px cyan;
+}
+
+.info{
+    display:flex;
+    justify-content:space-between;
+    width:420px;
+    margin:auto;
+    margin-bottom:15px;
+    font-size:22px;
+}
+
+.boardWrap{
+    position:relative;
+}
+
+.board{
+    width:420px;
+    height:420px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    grid-template-rows:repeat(3,1fr);
+    border:5px solid #57ffff;
+    box-shadow:0 0 30px cyan;
+}
+
+.cell{
+    border:3px solid #57ffff;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:85px;
+    cursor:pointer;
+    user-select:none;
+}
+
+.cell:hover{
+    background:#11203b;
+}
+
+.x{
+    color:#ff4da6;
+    text-shadow:0 0 18px hotpink;
+}
+
+.o{
+    color:#58ff84;
+    text-shadow:0 0 18px #58ff84;
+}
+
+#line{
+    position:absolute;
+    height:6px;
+    background:#ffff66;
+    box-shadow:0 0 20px yellow;
+    transform-origin:left center;
+    display:none;
+}
+
+.overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.82);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    z-index:99;
+}
+
+.overlay h2{
+    font-size:45px;
+    margin-bottom:25px;
+    color:#55ffff;
+}
+
+#timer{
+    color:#ffcc44;
+}
+
+.mode{
+    color:#8ff;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>NEON TIC TAC TOE</h1>
+
+<div class="controls">
+<button onclick="setMode('ai')">AI 대전</button>
+<button onclick="setMode('pvp')">2인 플레이</button>
+</div>
+
+<div class="info">
+<div class="mode" id="modeText">AI 대전</div>
+<div id="turn">X 차례</div>
+<div id="timer">20</div>
+</div>
+
+<div class="boardWrap">
+
+<div id="line"></div>
+
+<div class="board" id="board"></div>
+
+</div>
+
+</div>
+
+<div class="overlay" id="gameOver">
+
+<h2 id="result"></h2>
+
+<button onclick="restart()">다시하기</button>
+
+</div>
+
+<script>
+
+const board=document.getElementById("board");
+const timerText=document.getElementById("timer");
+
+let cells=[];
+let state=Array(9).fill("");
+let current="X";
+let game=true;
+let mode="ai";
+let timer=20;
+let interval;
+
+const wins=[
+[0,1,2],
+[3,4,5],
+[6,7,8],
+[0,3,6],
+[1,4,7],
+[2,5,8],
+[0,4,8],
+[2,4,6]
+];
+
+function createBoard(){
+
+board.innerHTML="";
+cells=[];
+
+for(let i=0;i<9;i++){
+
+let c=document.createElement("div");
+c.className="cell";
+c.onclick=()=>move(i);
+board.appendChild(c);
+cells.push(c);
+
+}
+
+}
+
+createBoard();
+
+function startTimer(){
+
+clearInterval(interval);
+
+timer=20;
+timerText.innerText=timer;
+
+interval=setInterval(()=>{
+
+timer--;
+timerText.innerText=timer;
+
+if(timer<=0){
+
+clearInterval(interval);
+
+current=current=="X"?"O":"X";
+document.getElementById("turn").innerText=current+" 차례";
+
+startTimer();
+
+if(mode=="ai" && current=="O" && game){
+
+setTimeout(aiMove,300);
+
+}
+
+}
+
+},1000);
+
+}
+
+startTimer();
+
+function setMode(m){
+
+mode=m;
+
+document.getElementById("modeText").innerText=
+mode=="ai"?"AI 대전":"2인 플레이";
+
+restart();
+
+}
+
+function move(i){
+
+if(!game)return;
+if(state[i]!="")return;
+
+if(mode=="ai" && current=="O")return;
+
+place(i,current);
+
+if(check())return;
+
+current=current=="X"?"O":"X";
+
+document.getElementById("turn").innerText=current+" 차례";
+
+startTimer();
+
+if(mode=="ai" && current=="O"){
+
+setTimeout(aiMove,250);
+
+}
+
+}
+
+function place(i,p){
+
+state[i]=p;
+cells[i].innerText=p;
+cells[i].classList.add(p.toLowerCase());
+
+}
+
+function aiMove(){
+
+if(!game)return;
+
+let best=-Infinity;
+let moveIndex;
+
+for(let i=0;i<9;i++){
+
+if(state[i]==""){
+
+state[i]="O";
+
+let score=minimax(state,false);
+
+state[i]="";
+
+if(score>best){
+
+best=score;
+moveIndex=i;
+
+}
+
+}
+
+}
+
+place(moveIndex,"O");
+
+if(check())return;
+
+current="X";
+document.getElementById("turn").innerText="X 차례";
+startTimer();
+
+}
+
+function minimax(boardState,isMax){
+
+let res=evaluate(boardState);
+
+if(res!==null)return res;
+
+if(isMax){
+
+let best=-Infinity;
+
+for(let i=0;i<9;i++){
+
+if(boardState[i]==""){
+
+boardState[i]="O";
+
+best=Math.max(best,minimax(boardState,false));
+
+boardState[i]="";
+
+}
+
+}
+
+return best;
+
+}else{
+
+let best=Infinity;
+
+for(let i=0;i<9;i++){
+
+if(boardState[i]==""){
+
+boardState[i]="X";
+
+best=Math.min(best,minimax(boardState,true));
+
+boardState[i]="";
+
+}
+
+}
+
+return best;
+
+}
+
+}
+
+function evaluate(b){
+
+for(let w of wins){
+
+let[a,b1,c]=w;
+
+if(b[a] && b[a]==b[b1] && b[a]==b[c]){
+
+return b[a]=="O"?1:-1;
+
+}
+
+}
+
+if(!b.includes("")) return 0;
+
+return null;
+
+}
+
+function check(){
+
+for(let w of wins){
+
+let[a,b,c]=w;
+
+if(state[a] && state[a]==state[b] && state[a]==state[c]){
+
+drawLine(w);
+
+finish(state[a]+" 승리!");
+
+return true;
+
+}
+
+}
+
+if(!state.includes("")){
+
+finish("무승부");
+
+return true;
+
+}
+
+return false;
+
+}
+
+function finish(text){
+
+game=false;
+
+clearInterval(interval);
+
+setTimeout(()=>{
+
+document.getElementById("result").innerText=text;
+document.getElementById("gameOver").style.display="flex";
+
+},500);
+
+}
+
+function restart(){
+
+state=Array(9).fill("");
+
+cells.forEach(c=>{
+
+c.innerHTML="";
+c.className="cell";
+
+});
+
+current="X";
+
+game=true;
+
+document.getElementById("gameOver").style.display="none";
+document.getElementById("turn").innerText="X 차례";
+
+document.getElementById("line").style.display="none";
+
+startTimer();
+
+}
+
+function drawLine(win){
+
+const line=document.getElementById("line");
+
+const map={
+0:[210,70,0],
+1:[210,210,0],
+2:[210,350,0],
+3:[70,210,90],
+4:[210,210,90],
+5:[350,210,90],
+6:[210,210,45],
+7:[210,210,-45]
+};
+
+let idx;
+
+if(JSON.stringify(win)==JSON.stringify([0,1,2]))idx=0;
+if(JSON.stringify(win)==JSON.stringify([3,4,5]))idx=1;
+if(JSON.stringify(win)==JSON.stringify([6,7,8]))idx=2;
+if(JSON.stringify(win)==JSON.stringify([0,3,6]))idx=3;
+if(JSON.stringify(win)==JSON.stringify([1,4,7]))idx=4;
+if(JSON.stringify(win)==JSON.stringify([2,5,8]))idx=5;
+if(JSON.stringify(win)==JSON.stringify([0,4,8]))idx=6;
+if(JSON.stringify(win)==JSON.stringify([2,4,6]))idx=7;
+
+let[x,y,r]=map[idx];
+
+line.style.display="block";
+line.style.width=(r==45||r==-45?560:420)+"px";
+line.style.left=(x-(r==45||r==-45?280:210))+"px";
+line.style.top=(y-3)+"px";
+line.style.transform="rotate("+r+"deg)";
+
+}
+
+</script>
+
+</body>
+</html>
