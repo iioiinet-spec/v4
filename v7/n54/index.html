@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>반톡방의 마피아를 찾아라</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: {
+                kakao: { bg: '#ABC1D1', bubble: '#FFFFFF', myBubble: '#FEEF00' },
+                insta: { bg: '#000000', text: '#F5F5F5', bubble: '#262626', border: '#363636' }
+            }}}
+        }
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        .typing-dot { animation: blink 1s infinite; display:inline-block; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes scorePop { 0%{transform:scale(0.5);opacity:0} 60%{transform:scale(1.2)} 100%{transform:scale(1);opacity:1} }
+        .score-pop { animation: scorePop 0.4s ease forwards; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex items-center justify-center min-h-screen m-0 p-0 overflow-x-hidden">
+<div id="main-frame" class="w-full max-w-[430px] h-[100vh] sm:h-[880px] sm:rounded-3xl sm:shadow-2xl flex flex-col relative overflow-hidden bg-[#ABC1D1] text-slate-900 transition-colors duration-300">
+
+    <!-- 시작 모달 -->
+    <div id="setup-modal" class="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl flex flex-col space-y-4 border border-slate-200">
+            <div class="text-center space-y-1">
+                <span class="text-3xl">🎯</span>
+                <h2 class="text-xl font-bold tracking-tight text-slate-900">반톡방 마피아</h2>
+                <p class="text-xs text-slate-500">5개의 사건을 해결하고 최고 점수를 노려라!</p>
+            </div>
+            <div class="bg-amber-50 rounded-xl p-3 text-xs text-amber-800 space-y-1">
+                <p>🏅 스테이지 클리어: <b>100점</b></p>
+                <p>⚡ 남은 시간 보너스: <b>초당 +1점</b></p>
+                <p>💡 힌트 사용 시: <b>-30점</b></p>
+                <p>❌ 오답 지목 시: <b>-20점</b></p>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">내 닉네임</label>
+                    <input type="text" id="input-nickname" value="명탐정" maxlength="10"
+                        class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">채팅 테마</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setThemeMode('kakao')" id="theme-btn-kakao"
+                            class="flex-1 py-2 text-xs font-bold rounded-xl border-2 border-yellow-500 bg-yellow-50 text-slate-900 transition">💛 카카오톡</button>
+                        <button type="button" onclick="setThemeMode('insta')" id="theme-btn-insta"
+                            class="flex-1 py-2 text-xs font-bold rounded-xl border-2 border-transparent bg-slate-100 text-slate-700 transition">📸 인스타 DM</button>
+                    </div>
+                </div>
+            </div>
+            <button onclick="startGame()"
+                class="w-full py-3 bg-[#FEEF00] text-slate-900 font-bold rounded-xl shadow-lg transition active:scale-95">
+                추리 시작하기 🚀
+            </button>
+        </div>
+    </div>
+
+    <!-- 헤더 -->
+    <header id="app-header" class="flex items-center justify-between px-4 py-3 bg-white/95 backdrop-blur-md border-b border-slate-200/50 z-10 transition-colors duration-300">
+        <div class="flex items-center space-x-3 overflow-hidden">
+            <span class="text-2xl">🏫</span>
+            <div class="truncate">
+                <h1 class="text-sm font-bold truncate text-slate-900">2학년 3반 비밀 단톡방</h1>
+                <div class="flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="header-stage-info" class="text-[11px] text-slate-500 font-medium">Stage 1 / 5</span>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <!-- 점수 뱃지 -->
+            <div class="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-yellow-100 text-xs font-bold text-yellow-700">
+                <span>🏆</span>
+                <span id="score-display">0</span>
+            </div>
+            <div id="timer-badge" class="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                <span>⏳</span>
+                <span id="timer-text">01:30</span>
+            </div>
+            <button onclick="switchThemeToggle()" id="theme-toggle-icon" class="p-2 rounded-full bg-slate-200 text-xs transition">📸</button>
+        </div>
+    </header>
+
+    <!-- 시나리오 바 -->
+    <div id="scenario-bar" class="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs z-10 transition-colors duration-300">
+        <div class="flex items-center justify-between">
+            <span id="scenario-summary" class="font-semibold text-amber-900 truncate pr-2">📋 로딩 중...</span>
+            <button onclick="useHint()" id="hint-btn" class="text-blue-600 font-bold whitespace-nowrap underline">💡 힌트</button>
+        </div>
+        <div id="hint-box" class="hidden mt-2 pt-2 border-t border-amber-200/60 text-amber-800 leading-relaxed">
+            <p id="hint-content"></p>
+        </div>
+    </div>
+
+    <!-- 채팅 영역 -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 hide-scrollbar flex flex-col"></div>
+
+    <!-- 입력 영역 -->
+    <div id="app-footer" class="p-3 bg-white/95 backdrop-blur-md border-t border-slate-200/50 z-10 space-y-2 transition-colors duration-300">
+        <button id="accuse-trigger-btn" disabled onclick="openAccusationModal()"
+            class="w-full py-2.5 px-4 bg-slate-300 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition cursor-not-allowed">
+            <span>🔒</span>
+            <span id="accuse-btn-text">심리전 진행 중 (지목 잠김)</span>
+        </button>
+        <form id="chat-form" onsubmit="handleUserSubmit(event)" class="flex items-center space-x-2">
+            <input type="text" id="user-input" autocomplete="off"
+                placeholder="예: 반장 너 복도에서 뭐 했어? 말 돌리지 마"
+                class="flex-1 px-4 py-2.5 text-xs rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+            <button type="submit" class="bg-[#FEEF00] text-slate-900 font-bold px-4 py-2.5 rounded-xl text-xs transition shadow">전송</button>
+        </form>
+    </div>
+
+    <!-- 지목 모달 -->
+    <div id="accusation-modal" class="hidden absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl flex flex-col space-y-4 border border-slate-200">
+            <div class="text-center">
+                <h3 class="text-lg font-bold text-slate-900">범인 지목 타임 🚨</h3>
+                <p class="text-xs text-slate-500 mt-1">누가 진짜 범인일까? 신중하게 선택해!</p>
+            </div>
+            <div id="suspect-list" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1"></div>
+            <button id="close-accusation-btn" onclick="closeAccusationModal()"
+                class="w-full py-2 text-xs text-slate-500 font-semibold rounded-xl border border-slate-200 hover:bg-slate-50 transition">
+                닫기 (계속 추리하기)
+            </button>
+        </div>
+    </div>
+
+    <!-- 결과 모달 -->
+    <div id="result-modal" class="hidden absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl text-center space-y-4 border border-slate-200">
+            <div id="result-icon" class="text-5xl">🎉</div>
+            <h3 id="result-title" class="text-xl font-bold text-slate-900"></h3>
+            <p id="result-desc" class="text-xs text-slate-600 leading-relaxed"></p>
+            <!-- 점수 상세 -->
+            <div id="score-breakdown" class="hidden bg-slate-50 rounded-xl p-3 text-xs text-left space-y-1"></div>
+            <div id="result-buttons" class="flex flex-col gap-2"></div>
+        </div>
+    </div>
+
+    <!-- 점수 팝업 (일시적) -->
+    <div id="score-popup" class="hidden absolute top-20 right-4 z-40 px-3 py-2 rounded-xl text-xs font-bold shadow-lg score-pop"></div>
+</div>
+
+<script>
+// ── 유틸 ──────────────────────────────────────────────────────────
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function showScorePopup(text, isPositive) {
+    const el = document.getElementById('score-popup');
+    el.textContent = text;
+    el.className = `absolute top-20 right-4 z-40 px-3 py-2 rounded-xl text-xs font-bold shadow-lg score-pop ${isPositive ? 'bg-green-400 text-white' : 'bg-red-400 text-white'}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 1800);
+}
+
+// ── 스테이지 데이터 (5개) ─────────────────────────────────────────
+const STAGES = [
+    {
+        title: "중간고사 수학 시험지 유출 사건",
+        scenario: "교무실에서 수학 시험지가 유출됐습니다. 범인을 찾아내세요!",
+        target: "반장",
+        hint: "반장은 학생회실에 있었다고 했지만, 교무실 복도에서 뛰어가는 모습이 포착됐습니다.",
+        personas: [
+            { name: "반장", avatar: "⭐", role: "모범생" },
+            { name: "체육부장", avatar: "🔥", role: "활동가" },
+            { name: "밈중독자", avatar: "😎", role: "유행어 사용자" },
+            { name: "팩폭러", avatar: "🐱", role: "팩트체커" }
+        ],
+        introLines: [
+            { name: "체육부장", avatar: "🔥", text: "야 다들 들었냐? 수학 시험지 유출됐다는데 누구냐" },
+            { name: "밈중독자", avatar: "😎", text: "와 스케일 폼 미쳤다 ㅋㅋㅋ 범인 빨리 나와라" }
+        ],
+        dynamicEngine: {
+            default: ["아니 그게 무슨 소리야 난 진짜 아니라니까","갑자기 나를 왜 몰아가는데? 근거를 대봐","진짜 억울해서 미치겠네 다들 왜 이러냐","나한테 왜 그래 무고야 무고","증거도 없이 의심하는 거야? 말이 돼?","아무 관련 없다고 몇 번을 말해","그거 나랑 완전 상관없는 얘기거든?"],
+            culprit: ["어... 복도? 아, 자료 가지러 가다 잠깐 지나간 거지 유출이랑은 상관없어!","내가 왜 시험지를 훔쳐? 성적 원래 잘 나왔거든?","하... 증거도 없으면서 사람 몰아가는 거 선 넘네 진짜","학생회실 간 거 맞는데 그게 왜 의심이 돼?","야 나는 그냥 지나간 거라고! 뭘 그렇게 몰아붙여","복도에서 뛴 게 왜 범죄야? 늦어서 뛴 거지","진짜 억울하다 나는 범인 아니라고","시험지 유출이랑 나랑 무슨 관계야 논리적으로 설명해봐"],
+            suspectOther: ["맞아 나도 수상하다고 생각했음 어제부터 좀 이상하더라니","오 팩트인데? 진짜 개소름이네","설마 네가 진짜 범인이냐? 똑바로 말해라","그거 나도 들었어 뭔가 수상하긴 했음","증거 더 있어? 있으면 지금 다 털어","와 생각해보니까 그날 행동이 좀 이상했긴 했어","찐으로 범인이면 자수하는 게 낫지 않냐"]
+        }
+    },
+    {
+        title: "급식실 영양사 특급 소스 도난 사건",
+        scenario: "비법 돈가스 소스 통이 통째로 사라졌습니다!",
+        target: "체육부장",
+        hint: "체육부장은 아침부터 오늘 메뉴가 돈가스라는 걸 알고 있었고 급식실 뒤편을 서성였습니다.",
+        personas: [
+            { name: "반장", avatar: "⭐", role: "모범생" },
+            { name: "체육부장", avatar: "🔥", role: "활동가" },
+            { name: "밈중독자", avatar: "😎", role: "유행어 사용자" },
+            { name: "팩폭러", avatar: "🐱", role: "팩트체커" }
+        ],
+        introLines: [
+            { name: "밈중독자", avatar: "😎", text: "돈가스 소스 통 사라진 거 레전드 ㅋㅋㅋ 영양사쌤 극대노하심" },
+            { name: "팩폭러", avatar: "🐱", text: "체육부장 너 아침에 급식실 뒤에 있었지?" }
+        ],
+        dynamicEngine: {
+            default: ["아니 배고파서 잠깐 서성인 건데 소스를 왜 훔쳐!","소스 통 내 주머니에 들어있냐? 너무하네 진짜","아니 억울해 죽겠네 내가 왜 소스를 가져가","나는 아무것도 안 했다고 진짜","왜 항상 나만 의심받냐 억울해","소스 도난이랑 나랑 관련 없다니까","매번 나만 몰아붙이는 거 심하다"],
+            culprit: ["아침에 급식실 간 건 맞는데... 그냥 냄새 맡으러 간 거라고!","소스가 눈앞에 아른거려서 그런 거지 범인으로 몰지 마라","하... 증거 가져와 봐 소스 통 어디 있는지 아냐고","뒤편은 잠깐 지름길로 간 거야 오해하지 마","돈가스 메뉴 아는 거야 다들 알잖아 나만 아는 게 아니라고","급식실 서성인 게 왜 범죄냐 배고프면 그럴 수 있지","소스 진짜 어디 있는지 나도 모른다고!","억울하게 왜 나한테만 그래 진짜"],
+            suspectOther: ["체육부장 평소에 소스 엄청 좋아하긴 함 ㅋㅋ","와 정황상 너가 제일 유력한데?","진짜 너가 가져간 거 아니냐 자수해라","소스 취향 확실한 건 나도 알고 있음","아침부터 급식실 근처 서성인 거 나도 봤어","해명이 좀 구린데? 제대로 말해봐","상황이 딱 들어맞는데 아니라고 하긴 어렵겠다"]
+        }
+    },
+    {
+        title: "선생님 교무실 지갑 도난 사건",
+        scenario: "담임 선생님 책상 서랍에 있던 비상금 지갑이 사라졌습니다!",
+        target: "밈중독자",
+        hint: "밈중독자는 최근 갑자기 피씨방에서 전액 결제를 하며 플렉스했습니다.",
+        personas: [
+            { name: "반장", avatar: "⭐", role: "모범생" },
+            { name: "체육부장", avatar: "🔥", role: "활동가" },
+            { name: "밈중독자", avatar: "😎", role: "유행어 사용자" },
+            { name: "팩폭러", avatar: "🐱", role: "팩트체커" }
+        ],
+        introLines: [
+            { name: "팩폭러", avatar: "🐱", text: "선생님 지갑 사건 피씨방 플렉스한 밈중독자 너 아니냐" },
+            { name: "반장", avatar: "⭐", text: "지갑 도난은 진짜 선 넘었지 엄벌 받아야 됨" }
+        ],
+        dynamicEngine: {
+            default: ["와 뇌절 에반데? 용돈 모은 거라고 엌ㅋㅋ","피씨방 플렉스랑 지갑이랑 뭔 상관임 에바쎄바지","증거 없으면 유죄추정 원칙 위반인 거 알지?","아니 왜 나를 범인 취급함 선 넘는다 진짜","나는 떳떳하다고 뭐든 확인해봐","억울해서 기가 막히네 내가 왜 그래","자꾸 몰아붙이지 마라 나 진짜 아니라고"],
+            culprit: ["아 부모님이 용돈 미리 주신 거라고! 지갑 안 훔쳤어!","내역 인증해 줘? 왜 사람을 도둑으로 몰아 억울하네","진짜 억울하다 폼 미치겠네 내 말 좀 믿어봐","그날 교무실 근처 간 건 볼펜 빌리러 간 거야!","플렉스는 그냥 아르바이트비 받은 거거든? 오해하지 마","지갑이 어디 있는지 내가 왜 알아 황당하네","아니 진짜 아니라고 하면 믿어줄 생각이 없는 거임?","제발 좀 논리적으로 따져봐라 나랑 무슨 관련이야"],
+            suspectOther: ["피씨방 전액 결제는 좀 구리긴 하네 ㅋㅋ","용돈 치고는 너무 통 큰데?","제대로 해명해 봐라 털려서 나쁠 거 없잖아","갑자기 돈 생긴 거 나도 이상하다고 생각했음","해명이 좀 석연치 않은데 더 말해봐","그날 행동 처음부터 다시 말해봐","타이밍이 너무 딱 맞아서 의심 안 할 수가 없네"]
+        }
+    },
+    {
+        title: "체육복 실종 & 남몰래 쪽지 작전 사건",
+        scenario: "팩폭러의 체육복이 사라지고 협박 쪽지까지 발견됐습니다. 누가 쪽지를 쓴 건지 찾아내세요!",
+        target: "반장",
+        hint: "반장은 팩폭러에게 최근 공개적으로 망신을 당한 적이 있고, 당일 체육시간 직전 창고 근처에 있었습니다.",
+        personas: [
+            { name: "반장", avatar: "⭐", role: "모범생" },
+            { name: "체육부장", avatar: "🔥", role: "활동가" },
+            { name: "밈중독자", avatar: "😎", role: "유행어 사용자" },
+            { name: "팩폭러", avatar: "🐱", role: "팩트체커" },
+            { name: "전학생", avatar: "🌸", role: "신입" }
+        ],
+        introLines: [
+            { name: "팩폭러", avatar: "🐱", text: "야 내 체육복 어디 간 거야 창고에 없음 진짜 누군데" },
+            { name: "전학생", avatar: "🌸", text: "창고에서 쪽지 발견했어요... 좀 무서운 내용이던데" }
+        ],
+        dynamicEngine: {
+            default: ["나 창고 근처도 안 갔거든? 억울하네","갑자기 왜 나야 이거 모함이잖아","증거도 없이 의심하는 거 진짜 별로다","나는 그 시간에 교실에 있었어 누구한테 물어봐도 돼","체육복이랑 나랑 무슨 관계야 진짜","자꾸 이러면 선생님한테 말한다","억울해서 진짜 말이 안 나온다"],
+            culprit: ["창고? 거기 지나간 건 맞는데 그냥 지름길이라서...","쪽지는 나 아니야 글씨체 봐봐 내 거랑 다르잖아","팩폭러가 날 공개망신 줬다고 내가 그럴 사람이야?","그날 창고 근처에 나 말고도 사람 많았어 왜 나만 몰아","쪽지 내용이 뭔데 나는 그런 거 쓸 이유 없다고","오해야 진짜 오해 제발 좀 믿어줘","내가 그랬다는 증거 가져와봐 없잖아","억울해 죽겠네 진짜 이게 무슨 상황이야"],
+            suspectOther: ["그날 창고 쪽 갔다고 들었는데 맞아?","쪽지 필체 분석하면 금방 나오지 않나","동기가 있는 사람이 범인이지 잘 생각해봐","나도 그 사람 좀 이상하다고 생각했어","공개망신 당하면 누구나 화 나잖아 그거 생각해봐","숨기는 게 있는 것 같은데 다 털어놔라","정황상 너 아니라고 하기 어려운데 해명해봐"]
+        }
+    },
+    {
+        title: "졸업앨범 단체사진 몰래 편집 사건 🎓",
+        scenario: "졸업앨범 단체사진에서 선생님 얼굴이 웃긴 이미지로 바뀐 채 인쇄됐습니다! 최악의 사고 범인을 잡아라!",
+        target: "밈중독자",
+        hint: "밈중독자는 포토샵 실력이 출중하고, 앨범 제작 파일이 저장된 USB를 마지막으로 만진 사람입니다.",
+        personas: [
+            { name: "반장", avatar: "⭐", role: "모범생" },
+            { name: "체육부장", avatar: "🔥", role: "활동가" },
+            { name: "밈중독자", avatar: "😎", role: "유행어 사용자" },
+            { name: "팩폭러", avatar: "🐱", role: "팩트체커" },
+            { name: "전학생", avatar: "🌸", role: "신입" }
+        ],
+        introLines: [
+            { name: "팩폭러", avatar: "🐱", text: "야 졸업앨범 나왔는데 선생님 사진 왜 이렇게 됐냐 ㅋㅋㅋㅋ 아니 이거 진짜 학교 발칵 뒤집힘" },
+            { name: "전학생", avatar: "🌸", text: "USB 마지막으로 가져간 사람이 누구였는지 기억나는 사람 있어요?" }
+        ],
+        dynamicEngine: {
+            default: ["포토샵 할 줄 안다고 다 범인임? 논리 없다","USB 나 말고 다른 사람도 만졌잖아 왜 나만","그거 나 아니라고 몇 번을 말해야 돼","억울해서 졸업앨범 다시 만들고 싶다","진짜 아니라고 증거 가져와봐","내가 그걸 왜 해 선생님한테 찍혀서 좋을 게 없잖아","자꾸 이러면 나 변호사 부른다 ㅋㅋ 진짜"],
+            culprit: ["USB 잠깐 만진 건 맞는데 파일 수정한 적 없어!","포토샵 실력 있다고 다 내가 한 거야? 억울해","그 파일 내가 건드렸을 때 이미 저장된 거였다고!","장난으로 한 거라도... 아니 아니야 나 안 했어!","USB 어디 있는지 알아? 지문 감식하면 나 아닌 거 나온다고","편집한 적 진짜 없어 믿어줘 제발 ㅠㅠ","와 진짜 이게 말이 되냐 나는 아니라고","억울하다 억울해 진짜 이건 모함이야"],
+            suspectOther: ["USB 만진 사람이 범인 가능성 제일 높지 않음?","포토샵 실력 있는 사람 반에 많지 않잖아","그날 파일 열어본 사람 목록 뽑으면 되는 거 아냐","동기가 뭔지는 모르겠는데 정황이 너무 맞아","해명이 좀 구리다 더 말해봐","선생님 얼굴 바꾼 거 꽤 공 들인 작업인데 그냥 되겠어?","진짜 범인이면 지금 제일 긴장하고 있겠다"]
+        }
+    }
+];
+
+// ── 상태 ─────────────────────────────────────────────────────────
+let currentStageIdx = 0;
+let userProfile = { nickname: "명탐정" };
+let currentTheme = 'kakao';
+let timerSeconds = 90;
+let timerInterval = null;
+let idleTimer = null;
+let isTimerEnded = false;
+let usedLineTracker = {};
+
+// 점수 관련
+let totalScore = 0;
+let stageHintUsed = false;
+let stageWrongCount = 0;
+
+const BASE_SCORE = 100;
+const HINT_PENALTY = 30;
+const WRONG_PENALTY = 20;
+
+const IDLE_LINES = [
+    "다들 너무 조용한 거 아님? 범인 긴장했나 보네 ㅋㅋ",
+    "내 생각엔 단서가 더 필요할 듯 다들 어케 생각함?","진짜 누구냐 빨리 말해","그냥 빨리 자백해라 편해질 거야",
+    "아, 그냥 빨리 끝내면 안되냐? 배고픈데","쉬는시간 이렇게 날리는 거 에반데","제발 빨리 끝내자 다음 수업 있거든",
+    "범인이면 이럴 때 제일 식은땀 흘리겠다","아무 말 없는 것도 의심스럽긴 하다","다들 뭐 아는 거 있으면 말해봐라",
+    "이거 생각보다 오래 걸리네","누군가는 진실을 알고 있을 텐데..."
+];
+
+// ── 테마 ─────────────────────────────────────────────────────────
+function setThemeMode(mode) {
+    currentTheme = mode;
+    document.getElementById('theme-btn-kakao').className = mode === 'kakao'
+        ? "flex-1 py-2 text-xs font-bold rounded-xl border-2 border-yellow-500 bg-yellow-50 text-slate-900 transition"
+        : "flex-1 py-2 text-xs font-bold rounded-xl border-2 border-transparent bg-slate-100 text-slate-700 transition";
+    document.getElementById('theme-btn-insta').className = mode === 'insta'
+        ? "flex-1 py-2 text-xs font-bold rounded-xl border-2 border-pink-500 bg-pink-50 text-slate-900 transition"
+        : "flex-1 py-2 text-xs font-bold rounded-xl border-2 border-transparent bg-slate-100 text-slate-700 transition";
+}
+
+function switchThemeToggle() {
+    currentTheme = currentTheme === 'kakao' ? 'insta' : 'kakao';
+    applyThemeUI();
+}
+
+function applyThemeUI() {
+    const frame = document.getElementById('main-frame');
+    const header = document.getElementById('app-header');
+    const footer = document.getElementById('app-footer');
+    const scenarioBar = document.getElementById('scenario-bar');
+    const toggleIcon = document.getElementById('theme-toggle-icon');
+    if (currentTheme === 'kakao') {
+        frame.className = "w-full max-w-[430px] h-[100vh] sm:h-[880px] sm:rounded-3xl sm:shadow-2xl flex flex-col relative overflow-hidden bg-[#ABC1D1] text-slate-900 transition-colors duration-300";
+        header.className = "flex items-center justify-between px-4 py-3 bg-white/95 backdrop-blur-md border-b border-slate-200/50 z-10 transition-colors duration-300";
+        footer.className = "p-3 bg-white/95 backdrop-blur-md border-t border-slate-200/50 z-10 space-y-2 transition-colors duration-300";
+        scenarioBar.className = "bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs z-10 transition-colors duration-300";
+        toggleIcon.textContent = "📸";
+    } else {
+        frame.className = "w-full max-w-[430px] h-[100vh] sm:h-[880px] sm:rounded-3xl sm:shadow-2xl flex flex-col relative overflow-hidden bg-black text-[#F5F5F5] transition-colors duration-300";
+        header.className = "flex items-center justify-between px-4 py-3 bg-black/95 backdrop-blur-md border-b border-[#363636] z-10 transition-colors duration-300";
+        footer.className = "p-3 bg-black/95 backdrop-blur-md border-t border-[#363636] z-10 space-y-2 transition-colors duration-300";
+        scenarioBar.className = "bg-zinc-900 border-b border-zinc-800 px-4 py-2 text-xs z-10 text-zinc-300 transition-colors duration-300";
+        toggleIcon.textContent = "💛";
+    }
+    refreshChatBubblesTheme();
+}
+
+// ── 게임 시작 ─────────────────────────────────────────────────────
+function startGame() {
+    const nick = document.getElementById('input-nickname').value.trim();
+    if (nick) userProfile.nickname = nick;
+    document.getElementById('setup-modal').classList.add('hidden');
+    applyThemeUI();
+    loadStage(0);
+}
+
+function loadStage(idx) {
+    if (idx >= STAGES.length) { showFinalResult(); return; }
+    const stage = STAGES[idx];
+    currentStageIdx = idx;
+    usedLineTracker = {};
+    stageHintUsed = false;
+    stageWrongCount = 0;
+
+    document.getElementById('header-stage-info').textContent = `Stage ${idx + 1} / ${STAGES.length}`;
+    document.getElementById('scenario-summary').textContent = `📋 ${stage.title}`;
+    document.getElementById('hint-content').textContent = stage.hint;
+    document.getElementById('hint-box').classList.add('hidden');
+    document.getElementById('hint-btn').textContent = "💡 힌트";
+    document.getElementById('hint-btn').className = "text-blue-600 font-bold whitespace-nowrap underline";
+
+    const c = document.getElementById('chat-messages');
+    c.innerHTML = '';
+    appendSystemMsg(`🚨 [Stage ${idx + 1}] ${stage.title} — ${stage.scenario}`);
+
+    let delay = 300;
+    stage.introLines.forEach(line => {
+        setTimeout(() => appendNpcMsg(line.name, line.avatar, line.text), delay);
+        delay += 1000;
+    });
+    setTimeout(() => resetIdleTimer(), delay);
+
+    // 타이머 초기화
+    clearInterval(timerInterval);
+    timerSeconds = 90;
+    isTimerEnded = false;
+    updateTimerDisplay();
+
+    const btn = document.getElementById('accuse-trigger-btn');
+    btn.disabled = true;
+    btn.className = "w-full py-2.5 px-4 bg-slate-300 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition cursor-not-allowed";
+    document.getElementById('accuse-btn-text').textContent = "심리전 진행 중 (지목 잠김)";
+    document.getElementById('chat-form').style.display = 'flex';
+
+    timerInterval = setInterval(() => {
+        timerSeconds--;
+        updateTimerDisplay();
+        if (timerSeconds <= 0) {
+            clearInterval(timerInterval);
+            clearTimeout(idleTimer);
+            isTimerEnded = true;
+            unlockAccusation();
+            openAccusationModal();
+        }
+    }, 1000);
+}
+
+// ── 타이머 ────────────────────────────────────────────────────────
+function updateTimerDisplay() {
+    const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+    const s = String(timerSeconds % 60).padStart(2, '0');
+    document.getElementById('timer-text').textContent = `${m}:${s}`;
+    const badge = document.getElementById('timer-badge');
+    badge.className = timerSeconds <= 10
+        ? "flex items-center space-x-1 px-2.5 py-1 rounded-full bg-red-100 text-xs font-bold text-red-600 animate-pulse"
+        : "flex items-center space-x-1 px-2.5 py-1 rounded-full bg-slate-200 text-xs font-bold text-slate-700";
+}
+
+function unlockAccusation() {
+    const btn = document.getElementById('accuse-trigger-btn');
+    btn.disabled = false;
+    btn.className = "w-full py-2.5 px-4 bg-red-500 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition animate-bounce cursor-pointer";
+    document.getElementById('accuse-btn-text').textContent = "🚨 범인 지목하기";
+    document.getElementById('chat-form').style.display = 'none';
+}
+
+// ── 힌트 (패널티 적용) ───────────────────────────────────────────
+function useHint() {
+    const hintBox = document.getElementById('hint-box');
+    const isHidden = hintBox.classList.contains('hidden');
+    hintBox.classList.toggle('hidden');
+
+    if (isHidden && !stageHintUsed) {
+        stageHintUsed = true;
+        // 힌트 버튼 시각적으로 페널티 표시
+        document.getElementById('hint-btn').textContent = "💡 힌트 (-30점 적용됨)";
+        document.getElementById('hint-btn').className = "text-red-500 font-bold whitespace-nowrap text-xs";
+        appendSystemMsg(`💡 힌트를 확인했습니다. 이번 스테이지 점수에서 ${HINT_PENALTY}점이 차감됩니다.`);
+        showScorePopup(`힌트 사용 -${HINT_PENALTY}점`, false);
+    }
+}
+
+// ── 유휴 타이머 ───────────────────────────────────────────────────
+function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    if (isTimerEnded) return;
+    idleTimer = setTimeout(() => {
+        if (isTimerEnded) return;
+        const stage = STAGES[currentStageIdx];
+        const npc = stage.personas[Math.floor(Math.random() * stage.personas.length)];
+        appendNpcMsg(npc.name, npc.avatar, getUniqueLine('__idle__', IDLE_LINES));
+        resetIdleTimer();
+    }, 7000);
+}
+
+function getUniqueLine(key, pool) {
+    if (!usedLineTracker[key]) usedLineTracker[key] = [];
+    let avail = pool.filter(i => !usedLineTracker[key].includes(i));
+    if (!avail.length) { usedLineTracker[key] = []; avail = [...pool]; }
+    const chosen = avail[Math.floor(Math.random() * avail.length)];
+    usedLineTracker[key].push(chosen);
+    return chosen;
+}
+
+// ── 메시지 출력 ───────────────────────────────────────────────────
+function appendSystemMsg(text) {
+    const c = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = "flex justify-center my-2";
+    const inner = document.createElement('div');
+    inner.className = "bg-slate-900/10 text-slate-700 px-3 py-1.5 rounded-xl text-[11px] text-center max-w-[90%]";
+    inner.textContent = text;
+    div.appendChild(inner);
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
+}
+
+function appendUserMsg(text) {
+    const c = document.getElementById('chat-messages');
+    const bubbleColor = currentTheme === 'kakao' ? 'bg-[#FEEF00] text-slate-900' : 'bg-blue-600 text-white';
+    const row = document.createElement('div');
+    row.className = "flex items-end justify-end space-x-2 my-2";
+    const col = document.createElement('div');
+    col.className = "flex flex-col items-end max-w-[75%]";
+    const nick = document.createElement('span');
+    nick.className = "text-[10px] text-slate-500 mb-0.5";
+    nick.textContent = userProfile.nickname;
+    const bubble = document.createElement('div');
+    bubble.className = `${bubbleColor} rounded-2xl rounded-tr-none px-3.5 py-2 text-xs shadow-sm`;
+    bubble.dataset.bubble = "user";
+    bubble.textContent = text;
+    col.append(nick, bubble);
+    row.appendChild(col);
+    c.appendChild(row);
+    c.scrollTop = c.scrollHeight;
+}
+
+function appendNpcMsg(name, avatar, text) {
+    const c = document.getElementById('chat-messages');
+    const bubbleColor = currentTheme === 'kakao'
+        ? 'bg-white text-slate-900 border border-slate-200/60'
+        : 'bg-[#262626] text-white border border-[#363636]';
+
+    // 타이핑 인디케이터
+    const typingId = `typing-${Date.now()}-${Math.random()}`;
+    const typingRow = document.createElement('div');
+    typingRow.id = typingId;
+    typingRow.className = "flex items-start space-x-2 my-2";
+    typingRow.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm shadow flex-shrink-0">${escapeHtml(avatar)}</div>
+        <div class="flex flex-col max-w-[75%]">
+            <span class="text-[10px] font-bold text-slate-600 mb-0.5">${escapeHtml(name)}</span>
+            <div class="${bubbleColor} rounded-2xl rounded-tl-none px-4 py-2.5 text-xs shadow-sm flex space-x-1 items-center">
+                <span class="typing-dot text-slate-400">●</span>
+                <span class="typing-dot text-slate-400">●</span>
+                <span class="typing-dot text-slate-400">●</span>
+            </div>
+        </div>`;
+    c.appendChild(typingRow);
+    c.scrollTop = c.scrollHeight;
+
+    setTimeout(() => {
+        document.getElementById(typingId)?.remove();
+        const row = document.createElement('div');
+        row.className = "flex items-start space-x-2 my-2";
+        const avatarEl = document.createElement('div');
+        avatarEl.className = "w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm shadow flex-shrink-0";
+        avatarEl.textContent = avatar;
+        const col = document.createElement('div');
+        col.className = "flex flex-col max-w-[75%]";
+        const nameEl = document.createElement('span');
+        nameEl.className = "text-[10px] font-bold text-slate-600 mb-0.5";
+        nameEl.textContent = name;
+        const bubble = document.createElement('div');
+        bubble.className = `${bubbleColor} rounded-2xl rounded-tl-none px-3.5 py-2 text-xs shadow-sm`;
+        bubble.dataset.bubble = "npc";
+        bubble.textContent = text;
+        col.append(nameEl, bubble);
+        row.append(avatarEl, col);
+        c.appendChild(row);
+        c.scrollTop = c.scrollHeight;
+    }, 800);
+}
+
+function refreshChatBubblesTheme() {
+    const c = document.getElementById('chat-messages');
+    const uCls = currentTheme === 'kakao'
+        ? "bg-[#FEEF00] text-slate-900 rounded-2xl rounded-tr-none px-3.5 py-2 text-xs shadow-sm"
+        : "bg-blue-600 text-white rounded-2xl rounded-tr-none px-3.5 py-2 text-xs shadow-sm";
+    const nCls = currentTheme === 'kakao'
+        ? "bg-white text-slate-900 border border-slate-200/60 rounded-2xl rounded-tl-none px-3.5 py-2 text-xs shadow-sm"
+        : "bg-[#262626] text-white border border-[#363636] rounded-2xl rounded-tl-none px-3.5 py-2 text-xs shadow-sm";
+    c.querySelectorAll('[data-bubble="user"]').forEach(b => b.className = uCls);
+    c.querySelectorAll('[data-bubble="npc"]').forEach(b => b.className = nCls);
+}
+
+// ── 채팅 입력 ─────────────────────────────────────────────────────
+function handleUserSubmit(e) {
+    e.preventDefault();
+    if (isTimerEnded) return;
+    const input = document.getElementById('user-input');
+    const text = input.value.trim();
+    if (!text) return;
+    appendUserMsg(text);
+    input.value = '';
+    resetIdleTimer();
+
+    setTimeout(() => {
+        const stage = STAGES[currentStageIdx];
+        let targetNpc = stage.personas.find(p => text.includes(p.name));
+        if (!targetNpc) {
+            targetNpc = Math.random() < 0.7
+                ? stage.personas.find(p => p.name === stage.target)
+                : stage.personas[Math.floor(Math.random() * stage.personas.length)];
+        }
+        let pool;
+        if (targetNpc.name === stage.target) {
+            pool = stage.dynamicEngine.culprit;
+        } else if (text.includes('범인') || text.includes('너') || text.includes('수상')) {
+            pool = stage.dynamicEngine.suspectOther;
+        } else {
+            pool = stage.dynamicEngine.default;
+        }
+        appendNpcMsg(targetNpc.name, targetNpc.avatar, getUniqueLine(targetNpc.name, pool));
+        resetIdleTimer();
+    }, 600);
+}
+
+// ── 지목 모달 ─────────────────────────────────────────────────────
+function openAccusationModal() {
+    clearTimeout(idleTimer);
+    const stage = STAGES[currentStageIdx];
+    const list = document.getElementById('suspect-list');
+    list.innerHTML = '';
+    stage.personas.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = "w-full flex items-center justify-between p-3 rounded-xl border bg-slate-50 hover:bg-yellow-50 transition text-left";
+        btn.onclick = () => submitAccusation(p.name);
+        btn.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">${escapeHtml(p.avatar)}</span>
+                <div>
+                    <p class="text-xs font-bold text-slate-900">${escapeHtml(p.name)}</p>
+                    <p class="text-[10px] text-slate-500">${escapeHtml(p.role)}</p>
+                </div>
+            </div>
+            <span class="text-xs font-bold text-yellow-700 bg-yellow-100 px-2.5 py-1 rounded-lg">지목 🎯</span>`;
+        list.appendChild(btn);
+    });
+    document.getElementById('close-accusation-btn').style.display = isTimerEnded ? 'none' : 'block';
+    document.getElementById('accusation-modal').classList.remove('hidden');
+}
+
+function closeAccusationModal() {
+    document.getElementById('accusation-modal').classList.add('hidden');
+    resetIdleTimer();
+}
+
+// ── 지목 제출 + 점수 계산 ─────────────────────────────────────────
+function submitAccusation(name) {
+    document.getElementById('accusation-modal').classList.add('hidden');
+    const stage = STAGES[currentStageIdx];
+    const isCorrect = (name === stage.target);
+
+    if (!isCorrect) {
+        stageWrongCount++;
+        const penalty = WRONG_PENALTY;
+        // 오답 패널티는 결과에서 누적 반영 (음수 방지용 최종 계산 시 처리)
+        appendSystemMsg(`❌ ${name}은(는) 범인이 아닙니다! -${penalty}점`);
+        showScorePopup(`오답 -${penalty}점`, false);
+
+        // 재도전 모달
+        const modal = document.getElementById('result-modal');
+        document.getElementById('result-icon').textContent = "❌";
+        document.getElementById('result-title').textContent = "오답입니다!";
+        document.getElementById('result-desc').textContent = `${name}은(는) 억울해하며 화를 내고 있어요!`;
+        document.getElementById('score-breakdown').classList.add('hidden');
+        const btnArea = document.getElementById('result-buttons');
+        btnArea.innerHTML = '';
+        const retryBtn = document.createElement('button');
+        retryBtn.className = "w-full py-3 bg-yellow-400 text-slate-900 font-bold rounded-xl text-sm";
+        retryBtn.textContent = "🔄 다시 지목하기";
+        retryBtn.onclick = () => { modal.classList.add('hidden'); openAccusationModal(); };
+        const skipBtn = document.createElement('button');
+        skipBtn.className = "w-full py-2 text-xs text-slate-500 font-semibold rounded-xl border border-slate-200";
+        skipBtn.textContent = "포기하고 다음 스테이지로 (0점)";
+        skipBtn.onclick = () => { modal.classList.add('hidden'); proceedNextStage(false); };
+        btnArea.append(retryBtn, skipBtn);
+        modal.classList.remove('hidden');
+        return;
+    }
+
+    // ── 정답: 점수 계산 ──────────────────────────────────────────
+    const timeBonus = Math.max(0, timerSeconds); // 남은 초
+    const hintDeduct = stageHintUsed ? HINT_PENALTY : 0;
+    const wrongDeduct = stageWrongCount * WRONG_PENALTY;
+    const stageScore = Math.max(0, BASE_SCORE + timeBonus - hintDeduct - wrongDeduct);
+    totalScore += stageScore;
+
+    // 점수 표시 업데이트
+    document.getElementById('score-display').textContent = totalScore;
+    showScorePopup(`+${stageScore}점 획득!`, true);
+
+    // 결과 모달
+    const modal = document.getElementById('result-modal');
+    document.getElementById('result-icon').textContent = "🎉";
+    document.getElementById('result-title').textContent = "범인 검거 성공!";
+    document.getElementById('result-desc').textContent = `${name}이(가) 진범이 맞습니다! 완벽한 추리!`;
+
+    // 점수 상세 내역
+    const breakdown = document.getElementById('score-breakdown');
+    breakdown.classList.remove('hidden');
+    breakdown.innerHTML = `
+        <p class="font-bold text-slate-700 mb-1">📊 이번 스테이지 점수</p>
+        <div class="flex justify-between"><span>기본 클리어</span><span class="font-bold text-green-600">+${BASE_SCORE}점</span></div>
+        <div class="flex justify-between"><span>⚡ 남은 시간 보너스</span><span class="font-bold text-green-600">+${timeBonus}점</span></div>
+        ${hintDeduct > 0 ? `<div class="flex justify-between"><span>💡 힌트 사용</span><span class="font-bold text-red-500">-${hintDeduct}점</span></div>` : ''}
+        ${wrongDeduct > 0 ? `<div class="flex justify-between"><span>❌ 오답 ${stageWrongCount}회</span><span class="font-bold text-red-500">-${wrongDeduct}점</span></div>` : ''}
+        <div class="flex justify-between border-t border-slate-200 mt-1 pt-1">
+            <span class="font-bold">스테이지 합계</span>
+            <span class="font-bold text-blue-600">${stageScore}점</span>
+        </div>
+        <div class="flex justify-between mt-0.5">
+            <span class="font-bold">누적 총점</span>
+            <span class="font-bold text-yellow-600 text-sm">${totalScore}점 🏆</span>
+        </div>`;
+
+    const btnArea = document.getElementById('result-buttons');
+    btnArea.innerHTML = '';
+    const nextBtn = document.createElement('button');
+    nextBtn.className = "w-full py-3 bg-blue-600 text-white font-bold rounded-xl text-sm";
+    nextBtn.textContent = currentStageIdx + 1 >= STAGES.length ? "🏆 최종 결과 보기" : `다음 스테이지 ➡ (Stage ${currentStageIdx + 2})`;
+    nextBtn.onclick = () => { modal.classList.add('hidden'); proceedNextStage(true); };
+    btnArea.appendChild(nextBtn);
+    modal.classList.remove('hidden');
+    if (typeof confetti === 'function') confetti({ particleCount: 120, spread: 70 });
+}
+
+function proceedNextStage(wasCorrect) {
+    if (!wasCorrect) totalScore = Math.max(0, totalScore); // 포기 시 추가 감점 없음
+    loadStage(currentStageIdx + 1);
+}
+
+// ── 최종 결과 ─────────────────────────────────────────────────────
+function showFinalResult() {
+    clearInterval(timerInterval);
+    clearTimeout(idleTimer);
+
+    let grade, gradeColor;
+    const maxScore = STAGES.length * (BASE_SCORE + 90); // 이론상 최대
+    const pct = totalScore / maxScore;
+    if (pct >= 0.85) { grade = "S급 명탐정 🥇"; gradeColor = "text-yellow-500"; }
+    else if (pct >= 0.65) { grade = "A급 명탐정 🥈"; gradeColor = "text-slate-500"; }
+    else if (pct >= 0.45) { grade = "B급 추리꾼 🥉"; gradeColor = "text-amber-600"; }
+    else { grade = "C급 초보탐정 🔍"; gradeColor = "text-blue-500"; }
+
+    const modal = document.getElementById('result-modal');
+    document.getElementById('result-icon').textContent = "🏆";
+    document.getElementById('result-title').textContent = "모든 사건 해결!";
+    document.getElementById('result-desc').textContent = `${userProfile.nickname} 명탐정, 5개 사건을 모두 완료했습니다!`;
+
+    const breakdown = document.getElementById('score-breakdown');
+    breakdown.classList.remove('hidden');
+    breakdown.innerHTML = `
+        <p class="font-bold text-slate-700 mb-2 text-center">🎓 최종 결과</p>
+        <div class="text-center mb-2">
+            <span class="text-2xl font-black text-yellow-500">${totalScore}점</span>
+        </div>
+        <div class="text-center">
+            <span class="text-sm font-bold ${gradeColor}">${grade}</span>
+        </div>`;
+
+    const btnArea = document.getElementById('result-buttons');
+    btnArea.innerHTML = '';
+    const restartBtn = document.createElement('button');
+    restartBtn.className = "w-full py-3 bg-[#FEEF00] text-slate-900 font-bold rounded-xl text-sm";
+    restartBtn.textContent = "🔄 처음부터 다시하기";
+    restartBtn.onclick = () => location.reload();
+    btnArea.appendChild(restartBtn);
+    modal.classList.remove('hidden');
+    if (typeof confetti === 'function') confetti({ particleCount: 250, spread: 90 });
+}
+
+// ── 토글 힌트 ─────────────────────────────────────────────────────
+function toggleHintBox() { document.getElementById('hint-box').classList.toggle('hidden'); }
+</script>
+</body>
+</html>
