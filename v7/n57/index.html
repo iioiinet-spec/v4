@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 포켓몬 얼티밋 배틀 사냥 & 자동 사냥 & 반격 시스템</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle at center, #0f0c29, #302b63, #24243e);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', 'Arial', sans-serif;
+            overflow: hidden;
+            perspective: 1200px;
+        }
+
+        #game-wrapper {
+            display: flex;
+            gap: 20px;
+            transform-style: preserve-3d;
+        }
+
+        /* 3D 글래스모피즘 게임 보드 */
+        #game-container {
+            text-align: center;
+            position: relative;
+            width: 520px;
+            height: 660px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.8), inset 0 0 30px rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            transform: rotateY(4deg) translateZ(20px);
+        }
+
+        /* 3D 상점 보드 */
+        #shop-container {
+            width: 320px;
+            height: 660px;
+            background: rgba(10, 10, 20, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            border-radius: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+            padding: 12px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transform: rotateY(-4deg) translateZ(20px);
+            overflow-y: auto;
+        }
+
+        #ui-panel {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        .health-bar-container {
+            width: 170px;
+            height: 14px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        #health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0055, #ffcc00);
+            box-shadow: 0 0 10px #ff0055;
+            transition: width 0.15s;
+        }
+
+        /* 플레이어 체력 바 */
+        .player-hp-wrapper {
+            width: 100%;
+            background: rgba(0,0,0,0.5);
+            padding: 6px 10px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .player-bar-container {
+            width: 250px;
+            height: 10px;
+            background: #222;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid #555;
+        }
+        #player-health-bar {
+            width: 100%;
+            height: 100%;
+            background: #00ffcc;
+            transition: width 0.2s;
+        }
+
+        #pokemon-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transform-style: preserve-3d;
+            transition: transform 0.08s;
+        }
+
+        #pokemon-container:active {
+            transform: scale(0.92);
+        }
+
+        #pokemon-img {
+            width: 190px;
+            height: 190px;
+            object-fit: contain;
+            image-rendering: pixelated;
+            filter: drop-shadow(0 20px 15px rgba(0,0,0,0.7));
+            animation: floatAni 1.2s ease-in-out infinite alternate;
+        }
+
+        @keyframes floatAni {
+            0% { transform: translateY(0) rotate(0deg); }
+            100% { transform: translateY(-12px) rotate(3deg); }
+        }
+
+        /* 피격 애니메이션 */
+        .hit-effect {
+            animation: shake 0.25s ease, flash 0.25s ease !important;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-15px, 10px); }
+            40% { transform: translate(15px, -10px); }
+            60% { transform: translate(-8px, -8px); }
+            80% { transform: translate(8px, 8px); }
+        }
+
+        @keyframes flash {
+            0% { filter: brightness(1) drop-shadow(0 20px 15px rgba(0,0,0,0.7)); }
+            50% { filter: brightness(4) sepia(1) hue-rotate(-50deg) saturate(8) drop-shadow(0 0 25px rgba(255,255,255,0.9)); }
+            100% { filter: brightness(1) drop-shadow(0 20px 15px rgba(0,0,0,0.7)); }
+        }
+
+        #weapon-effect {
+            position: absolute;
+            font-size: 60px;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+            animation: slash 0.18s forwards;
+        }
+
+        @keyframes slash {
+            0% { transform: scale(0.4) rotate(-40deg); opacity: 1; }
+            100% { transform: scale(2) rotate(40deg); opacity: 0; }
+        }
+
+        /* 포켓몬 공격 스킬 이름 팝업 이펙트 */
+        #skill-popup {
+            position: absolute;
+            top: 5px;
+            font-size: 14px;
+            font-weight: 900;
+            color: #ff3333;
+            text-shadow: 0 0 8px #ffcc00;
+            pointer-events: none;
+            z-index: 60;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        /* 크리티컬 팝업 */
+        .crit-popup {
+            position: absolute;
+            font-size: 22px;
+            font-weight: 900;
+            color: #ff0055;
+            text-shadow: 0 0 10px #ffcc00;
+            pointer-events: none;
+            z-index: 50;
+            animation: floatUp 0.5s forwards;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-45px) scale(1.3); opacity: 0; }
+        }
+
+        /* 폭발 파티클 */
+        .explosion-particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: radial-gradient(circle, #fff, #ffcc00, #ff0055);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 0 10px #ff0055;
+            animation: explode 0.6s forwards cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        @keyframes explode {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+        }
+
+        /* 상점 스타일 */
+        .shop-title {
+            font-size: 14px;
+            font-weight: 900;
+            text-align: center;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0,255,204,0.4);
+        }
+
+        .shop-section {
+            font-size: 11px;
+            color: #ccc;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 6px 8px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .shop-item button {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            border: none;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 10px;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 3px 10px rgba(0,114,255,0.4);
+        }
+
+        .shop-item button:hover {
+            opacity: 0.95;
+            transform: translateY(-2px);
+        }
+
+        #instructions {
+            font-size: 10px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <!-- 게임 화면 -->
+        <div id="game-container">
+            <div id="skill-popup">기술 이름!</div>
+
+            <div id="ui-panel">
+                <div>
+                    <span id="pokemon-name" style="font-size: 16px; color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.5);">피카츄</span>
+                    <div style="font-size: 10px; color: #aaa; margin-top: 1px;">HP: <span id="hp-text">150</span>/<span id="max-hp-text">150</span></div>
+                    <div class="health-bar-container"><div id="health-bar"></div></div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="color: #00ffcc; font-size: 14px;">P: <span id="money">0</span></div>
+                    <div style="font-size: 11px; color: #ff00ff;">인챈트석: <span id="enchant-stones">0</span>개</div>
+                    <div style="font-size: 10px; color: #bbb;">처치: <span id="score">0</span>마리</div>
+                </div>
+            </div>
+
+            <div class="player-hp-wrapper">
+                <span>🛡️ 내 HP</span>
+                <div class="player-bar-container"><div id="player-health-bar"></div></div>
+                <span id="player-hp-text">100/100</span>
+            </div>
+
+            <div id="pokemon-container" onclick="manualAttack(event)">
+                <img id="pokemon-img" src="https://play.pokemonshowdown.com/sprites/ani/pikachu.gif" alt="포켓몬">
+                <div id="weapon-effect">⚔️</div>
+            </div>
+
+            <div id="instructions">클릭하여 공격 / 가만히 있으면 포켓몬도 반격합니다!</div>
+        </div>
+
+        <!-- 상점 -->
+        <div id="shop-container">
+            <div class="shop-title">⚡ SHOP & MACHINE ⚡</div>
+            
+            <!-- 무기 상점 -->
+            <div class="shop-section shop-item">
+                <div style="font-size: 11px; font-weight: bold; color: #fff;">무기: <span id="weapon-name" style="color: #00ffcc;">플라즈마 단검</span></div>
+                <div style="font-size: 10px; color: #aaa;">데미지: <span id="weapon-damage" style="color: #ffcc00;">25</span></div>
+                <div style="font-size: 10px; color: #fff;" id="upgrade-title">레이저 소드 (+45)</div>
+                <button onclick="buyWeaponUpgrade()">무기 강화 (<span id="upgrade-cost">80</span> P)</button>
+            </div>
+
+            <!-- 이로치 확률 업그레이드 (원래 설정인 상한 50% 복구) -->
+            <div class="shop-section shop-item">
+                <div style="font-size: 11px; font-weight: bold; color: #ff00ff;">✨ 이로치 부스터</div>
+                <div style="font-size: 10px; color: #aaa;">현재 확률: <span id="shiny-chance-text">5.0%</span></div>
+                <button onclick="buyShinyUpgrade()">확률 증가 (<span id="shiny-cost">150</span> P)</button>
+            </div>
+
+            <!-- 크리티컬 확률 업그레이드 -->
+            <div class="shop-section shop-item">
+                <div style="font-size: 11px; font-weight: bold; color: #ffcc00;">💥 크리티컬 확률</div>
+                <div style="font-size: 10px; color: #aaa;">현재 확률: <span id="crit-chance-text">10%</span></div>
+                <button onclick="buyCritUpgrade()">크리티컬 강화 (<span id="crit-cost">100</span> P)</button>
+            </div>
+
+            <!-- 무기 인챈트 시스템 -->
+            <div class="shop-section shop-item">
+                <div style="font-size: 11px; font-weight: bold; color: #00ffff;">🔮 인챈트 (Lv.<span id="enchant-level">0</span>)</div>
+                <div style="font-size: 10px; color: #aaa;" id="enchant-desc">데미지 +20% & 보상 +10%</div>
+                <button onclick="buyEnchant()" style="background: linear-gradient(135deg, #7b2cbf, #9d4edd);">인챈트 부여 (인챈트석 <span id="enchant-cost">1</span>개)</button>
+            </div>
+
+            <!-- 🔮 인챈트석 확률 증가 상점 (요청하신 기능 추가) -->
+            <div class="shop-section shop-item" style="border-color: #ff00ff;">
+                <div style="font-size: 11px; font-weight: bold; color: #ff00ff;">💎 인챈트석 드랍 확률 부스터</div>
+                <div style="font-size: 10px; color: #aaa;">현재 확률: <span id="stone-chance-text">25%</span></div>
+                <button onclick="buyStoneChanceUpgrade()" style="background: linear-gradient(135deg, #ff007f, #ff758c);">확률 증가 (<span id="stone-chance-cost">150</span> P)</button>
+            </div>
+
+            <!-- 🤖 자동 공격 기계 상점 -->
+            <div class="shop-section shop-item" style="border-color: #00ffcc;">
+                <div style="font-size: 11px; font-weight: bold; color: #00ffcc;">🤖 자동 공격 기계</div>
+                <div style="font-size: 10px; color: #aaa;">보유: <span id="auto-bot-count">0</span>대 (초당 <span id="auto-bot-dps">0</span>회)</div>
+                <button onclick="buyAutoBot()" style="background: linear-gradient(135deg, #00b09b, #96c93d);">오토봇 고용 (<span id="auto-bot-cost">200</span> P)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 포켓몬 목록 (제크로무 오탈자 교정 완료)
+        const pokemons = [
+            { name: "피카츄", hp: 150, reward: 25, img: "https://play.pokemonshowdown.com/sprites/ani/pikachu.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/pikachu.gif", skills: ["10만볼트", "볼트태클", "전광석화"] },
+            { name: "파이리", hp: 180, reward: 35, img: "https://play.pokemonshowdown.com/sprites/ani/charmander.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/charmander.gif", skills: ["불꽃세례", "화염방사", "할로윈"] },
+            { name: "꼬부기", hp: 190, reward: 40, img: "https://play.pokemonshowdown.com/sprites/ani/squirtle.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/squirtle.gif", skills: ["물대포", "고속스핀", "하이드로펌프"] },
+            { name: "이상해씨", hp: 210, reward: 45, img: "https://play.pokemonshowdown.com/sprites/ani/bulbasaur.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/bulbasaur.gif", skills: ["덩굴채찍", "솔라빔", "수면가루"] },
+            { name: "이브이", hp: 230, reward: 50, img: "https://play.pokemonshowdown.com/sprites/ani/eevee.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/eevee.gif", skills: ["몸통박치기", "스위트키스", "메트로놈"] },
+            { name: "잠만보", hp: 600, reward: 120, img: "https://play.pokemonshowdown.com/sprites/ani/snorlax.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/snorlax.gif", skills: ["누르기", "하품", "파괴광선"] },
+            { name: "리자몽", hp: 750, reward: 180, img: "https://play.pokemonshowdown.com/sprites/ani/charizard.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/charizard.gif", skills: ["화염방사", "회오리플레어", "지구던지기"] },
+            { name: "거북왕", hp: 720, reward: 170, img: "https://play.pokemonshowdown.com/sprites/ani/blastoise.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/blastoise.gif", skills: ["하이드로캐논", "냉동빔", "로켓헤드버트"] },
+            { name: "팬텀", hp: 650, reward: 150, img: "https://play.pokemonshowdown.com/sprites/ani/gengar.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/gengar.gif", skills: ["섀도볼", "최면술", "꿈먹기"] },
+            { name: "망나뇽", hp: 900, reward: 250, img: "https://play.pokemonshowdown.com/sprites/ani/dragonite.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/dragonite.gif", skills: ["역린", "파괴광선", "용의파동"] },
+            { name: "루카리오", hp: 850, reward: 230, img: "https://play.pokemonshowdown.com/sprites/ani/lucario.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/lucario.gif", skills: ["파동탄", "인파이트", "신속"] },
+            { name: "개굴닌자", hp: 880, reward: 240, img: "https://play.pokemonshowdown.com/sprites/ani/greninja.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/greninja.gif", skills: ["물수리검", "그림자분신", "풀베기"] },
+            { name: "뮤츠", hp: 1400, reward: 450, img: "https://play.pokemonshowdown.com/sprites/ani/mewtwo.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/mewtwo.gif", skills: ["사이코키네시스", "섀도볼", "파괴광선"] },
+            { name: "제크로무", hp: 2200, reward: 900, img: "https://play.pokemonshowdown.com/sprites/ani/zekrom.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/zekrom.gif", skills: ["번개볼트", "크로스썬더", "역린"] },
+            { name: "레쿠쟈", hp: 2000, reward: 750, img: "https://play.pokemonshowdown.com/sprites/ani/rayquaza.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/rayquaza.gif", skills: ["화룡점정", "역린", "파괴광선"] },
+            { name: "아르세우스", hp: 3500, reward: 1800, img: "https://play.pokemonshowdown.com/sprites/ani/arceus.gif", shinyImg: "https://play.pokemonshowdown.com/sprites/ani-shiny/arceus.gif", skills: ["심판의광탄", "기가임팩트", "신성한기도"] }
+        ];
+
+        // 무기 트리
+        const weapons = [
+            { name: "플라즈마 단검", damage: 25, cost: 0 },
+            { name: "레이저 소드", damage: 70, cost: 80 },
+            { name: "포자 에너지 블레이드", damage: 160, cost: 300 },
+            { name: "하이퍼 볼텍스 런처", damage: 380, cost: 900 },
+            { name: "마스터 엑스칼리버", damage: 850, cost: 2500 },
+            { name: "디바인 코스믹 소드", damage: 2000, cost: 7000 },
+            { name: "아르세우스 파괴자의 창", damage: 5000, cost: 20000 }
+        ];
+
+        let currentPokemonIndex = 0;
+        let isShiny = false;
+        let currentHp = 0;
+        let maxHp = 0;
+        let score = 0;
+        let money = 0;
+        let weaponLevel = 0;
+
+        let playerMaxHp = 100;
+        let playerHp = 100;
+
+        // 이로치 확률 상한 50% 복구
+        let shinyChance = 0.05; 
+        let shinyCost = 150;
+        let critChance = 0.10;
+        let critCost = 100;
+
+        let enchantLevel = 0;
+        let enchantStones = 0;
+        
+        // 인챈트석 드랍 확률 변수 추가 (기본 25%)
+        let stoneDropChance = 0.25;
+        let stoneChanceCost = 150;
+
+        let autoBotCount = 0;
+        let autoBotCost = 200;
+
+        const pokemonImg = document.getElementById("pokemon-img");
+        const pokemonContainer = document.getElementById("pokemon-container");
+        const pokemonName = document.getElementById("pokemon-name");
+        const hpText = document.getElementById("hp-text");
+        const maxHpText = document.getElementById("max-hp-text");
+        const healthBar = document.getElementById("health-bar");
+        const scoreElement = document.getElementById("score");
+        const moneyElement = document.getElementById("money");
+        const enchantStonesElement = document.getElementById("enchant-stones");
+        const weaponEffect = document.getElementById("weapon-effect");
+        const skillPopup = document.getElementById("skill-popup");
+
+        const playerHealthBar = document.getElementById("player-health-bar");
+        const playerHpText = document.getElementById("player-hp-text");
+
+        const weaponNameText = document.getElementById("weapon-name");
+        const weaponDamageText = document.getElementById("weapon-damage");
+        const upgradeTitle = document.getElementById("upgrade-title");
+        const upgradeCostText = document.getElementById("upgrade-cost");
+
+        const shinyChanceText = document.getElementById("shiny-chance-text");
+        const shinyCostText = document.getElementById("shiny-cost");
+        const critChanceText = document.getElementById("crit-chance-text");
+        const critCostText = document.getElementById("crit-cost");
+
+        const enchantLevelText = document.getElementById("enchant-level");
+        const enchantDescText = document.getElementById("enchant-desc");
+        const enchantCostText = document.getElementById("enchant-cost");
+
+        const stoneChanceText = document.getElementById("stone-chance-text");
+        const stoneChanceCostText = document.getElementById("stone-chance-cost");
+
+        const autoBotCountText = document.getElementById("auto-bot-count");
+        const autoBotDpsText = document.getElementById("auto-bot-dps");
+        const autoBotCostText = document.getElementById("auto-bot-cost");
+
+        function updateUI() {
+            let baseName = pokemons[currentPokemonIndex].name;
+            pokemonName.innerText = isShiny ? `✨이로치 ${baseName}✨` : baseName;
+            pokemonName.style.color = isShiny ? "#ff00ff" : "#ffcc00";
+            
+            hpText.innerText = currentHp;
+            maxHpText.innerText = maxHp;
+            let hpPercent = (currentHp / maxHp) * 100;
+            healthBar.style.width = Math.max(0, hpPercent) + "%";
+            scoreElement.innerText = score;
+            moneyElement.innerText = money;
+            enchantStonesElement.innerText = enchantStones;
+            
+            pokemonImg.src = isShiny ? pokemons[currentPokemonIndex].shinyImg : pokemons[currentPokemonIndex].img;
+
+            playerHpText.innerText = `${playerHp}/${playerMaxHp}`;
+            playerHealthBar.style.width = Math.max(0, (playerHp / playerMaxHp) * 100) + "%";
+
+            let totalDamage = Math.floor(weapons[weaponLevel].damage * (1 + enchantLevel * 0.2));
+            weaponNameText.innerText = enchantLevel > 0 ? `${weapons[weaponLevel].name} +${enchantLevel}` : weapons[weaponLevel].name;
+            weaponDamageText.innerText = totalDamage;
+
+            if (weaponLevel < weapons.length - 1) {
+                let nextWeapon = weapons[weaponLevel + 1];
+                upgradeTitle.innerText = `${nextWeapon.name} (+${nextWeapon.damage - weapons[weaponLevel].damage})`;
+                upgradeCostText.innerText = nextWeapon.cost;
+            } else {
+                upgradeTitle.innerText = "최종 진화 완료";
+                document.querySelector(".shop-item button").style.display = "none";
+            }
+
+            shinyChanceText.innerText = (shinyChance * 100).toFixed(1) + "%";
+            shinyCostText.innerText = shinyCost;
+            critChanceText.innerText = (critChance * 100).toFixed(0) + "%";
+            critCostText.innerText = critCost;
+
+            enchantLevelText.innerText = enchantLevel;
+            enchantDescText.innerText = `데미지 +${enchantLevel * 20}% & 보상 +${enchantLevel * 10}%`;
+            enchantCostText.innerText = enchantLevel + 1;
+
+            stoneChanceText.innerText = (stoneDropChance * 100).toFixed(0) + "%";
+            stoneChanceCostText.innerText = stoneChanceCost;
+
+            autoBotCountText.innerText = autoBotCount;
+            autoBotDpsText.innerText = autoBotCount * 2;
+            autoBotCostText.innerText = autoBotCost;
+        }
+
+        function createExplosion(x, y) {
+            for (let i = 0; i < 35; i++) {
+                let particle = document.createElement("div");
+                particle.className = "explosion-particle";
+                let angle = Math.random() * Math.PI * 2;
+                let speed = Math.random() * 120 + 40;
+                particle.style.left = x + "px";
+                particle.style.top = y + "px";
+                particle.style.setProperty("--dx", Math.cos(angle) * speed + "px");
+                particle.style.setProperty("--dy", Math.sin(angle) * speed + "px");
+                pokemonContainer.appendChild(particle);
+                setTimeout(() => particle.remove(), 600);
+            }
+        }
+
+        function showCritPopup(x, y) {
+            let popup = document.createElement("div");
+            popup.className = "crit-popup";
+            popup.innerText = "CRITICAL!";
+            popup.style.left = x + "px";
+            popup.style.top = y + "px";
+            pokemonContainer.appendChild(popup);
+            setTimeout(() => popup.remove(), 500);
+        }
+
+        function pokemonAttackPlayer() {
+            let pkm = pokemons[currentPokemonIndex];
+            let randomSkill = pkm.skills[Math.floor(Math.random() * pkm.skills.length)];
+            let damage = Math.floor(pkm.hp * 0.05) + 5;
+
+            playerHp -= damage;
+            if (playerHp < 0) playerHp = 0;
+
+            skillPopup.innerText = `🔥 ${pkm.name}의 '${randomSkill}'! (-${damage} HP)`;
+            skillPopup.style.opacity = "1";
+            setTimeout(() => { skillPopup.style.opacity = "0"; }, 1000);
+
+            if (playerHp <= 0) {
+                alert(`포켓몬의 공격에 쓰러졌습니다! 체력을 회복합니다.`);
+                playerHp = playerMaxHp;
+            }
+
+            updateUI();
+        }
+
+        function spawnNewPokemon() {
+            let nextIdx;
+            do {
+                nextIdx = Math.floor(Math.random() * pokemons.length);
+            } while (nextIdx === currentPokemonIndex && pokemons.length > 1);
+            
+            currentPokemonIndex = nextIdx;
+            isShiny = Math.random() < shinyChance;
+            
+            let multiplier = isShiny ? 3 : 1;
+            maxHp = pokemons[currentPokemonIndex].hp * multiplier;
+            currentHp = maxHp;
+        }
+
+        function performAttack(clientX, clientY) {
+            let baseWeaponDamage = weapons[weaponLevel].damage;
+            let enchantedDamage = baseWeaponDamage * (1 + enchantLevel * 0.2);
+            let isCrit = Math.random() < critChance;
+            let finalDamage = Math.floor(isCrit ? enchantedDamage * 2 : enchantedDamage);
+
+            currentHp -= finalDamage;
+
+            let rect = pokemonContainer.getBoundingClientRect();
+            let x = clientX ? clientX - rect.left - 30 : rect.width / 2;
+            let y = clientY ? clientY - rect.top - 30 : rect.height / 2;
+            
+            weaponEffect.style.display = "block";
+            weaponEffect.style.left = x + "px";
+            weaponEffect.style.top = y + "px";
+            setTimeout(() => { weaponEffect.style.display = "none"; }, 180);
+
+            if (isCrit) {
+                showCritPopup(x, y);
+            }
+
+            pokemonImg.classList.add("hit-effect");
+            setTimeout(() => { pokemonImg.classList.remove("hit-effect"); }, 250);
+
+            if (currentHp <= 0) {
+                score++;
+                let rewardMultiplier = isShiny ? 3 : 1;
+                let finalReward = Math.floor(pokemons[currentPokemonIndex].reward * rewardMultiplier * (1 + enchantLevel * 0.1));
+                money += finalReward;
+                
+                // 인챈트석 드랍 확률 적용
+                if (Math.random() < stoneDropChance) {
+                    enchantStones++;
+                }
+
+                createExplosion(rect.width / 2, rect.height / 2);
+                spawnNewPokemon();
+            }
+
+            updateUI();
+        }
+
+        function manualAttack(event) {
+            performAttack(event.clientX, event.clientY);
+        }
+
+        setInterval(() => {
+            if (autoBotCount > 0) {
+                for (let i = 0; i < autoBotCount; i++) {
+                    performAttack(null, null);
+                }
+            }
+        }, 500);
+
+        setInterval(() => {
+            if (currentHp > 0) {
+                pokemonAttackPlayer();
+            }
+        }, 3000);
+
+        function buyWeaponUpgrade() {
+            if (weaponLevel >= weapons.length - 1) return;
+            let nextWeapon = weapons[weaponLevel + 1];
+            if (money >= nextWeapon.cost) {
+                money -= nextWeapon.cost;
+                weaponLevel++;
+                updateUI();
+            } else {
+                alert("포인트(P)가 부족합니다!");
+            }
+        }
+
+        function buyShinyUpgrade() {
+            if (shinyChance >= 0.50) {
+                alert("이로치 확률이 최대치(50%)에 도달했습니다!");
+                return;
+            }
+            if (money >= shinyCost) {
+                money -= shinyCost;
+                shinyChance += 0.05;
+                shinyCost = Math.floor(shinyCost * 1.6);
+                updateUI();
+            } else {
+                alert("포인트(P)가 부족합니다!");
+            }
+        }
+
+        function buyCritUpgrade() {
+            if (critChance >= 0.95) {
+                alert("크리티컬 확률이 최대치에 도달했습니다!");
+                return;
+            }
+            if (money >= critCost) {
+                money -= critCost;
+                critChance += 0.05; 
+                critCost = Math.floor(critCost * 1.5);
+                updateUI();
+            } else {
+                alert("포인트(P)가 부족합니다!");
+            }
+        }
+
+        function buyEnchant() {
+            let requiredStones = enchantLevel + 1;
+            if (enchantStones >= requiredStones) {
+                enchantStones -= requiredStones;
+                enchantLevel++;
+                updateUI();
+            } else {
+                alert(`인챈트석이 부족합니다! (필요: ${requiredStones}개, 보유: ${enchantStones}개)`);
+            }
+        }
+
+        // 인챈트석 드랍 확률 증가 구매 함수
+        function buyStoneChanceUpgrade() {
+            if (stoneDropChance >= 0.95) {
+                alert("인챈트석 드랍 확률이 최대치(95%)에 도달했습니다!");
+                return;
+            }
+            if (money >= stoneChanceCost) {
+                money -= stoneChanceCost;
+                stoneDropChance += 0.05; // 5%씩 증가
+                stoneChanceCost = Math.floor(stoneChanceCost * 1.5);
+                updateUI();
+            } else {
+                alert("포인트(P)가 부족합니다!");
+            }
+        }
+
+        function buyAutoBot() {
+            if (money >= autoBotCost) {
+                money -= autoBotCost;
+                autoBotCount++;
+                autoBotCost = Math.floor(autoBotCost * 1.7);
+                updateUI();
+            } else {
+                alert("포인트(P)가 부족합니다!");
+            }
+        }
+
+        spawnNewPokemon();
+        updateUI();
+    </script>
+</body>
+</html>

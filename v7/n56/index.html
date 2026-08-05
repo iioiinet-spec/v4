@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>네온 테트리스</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  }
+  .container {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .board-wrap {
+    position: relative;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.03);
+  }
+  canvas#board {
+    display: block;
+    border-radius: 8px;
+    background: #fbfcfe;
+  }
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 180px;
+  }
+  .panel-box {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.03);
+  }
+  .panel-box h3 {
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: #8a93a3;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .panel-box .value {
+    font-size: 26px;
+    font-weight: 800;
+    color: #2b2f3a;
+  }
+  #next-canvas {
+    display: block;
+    margin: 0 auto;
+    background: #fbfcfe;
+    border-radius: 8px;
+  }
+  .controls-box p {
+    font-size: 12px;
+    color: #5a6270;
+    line-height: 1.8;
+  }
+  .controls-box b {
+    color: #2b2f3a;
+  }
+  .overlay {
+    position: absolute;
+    inset: 14px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(3px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+    z-index: 10;
+  }
+  .overlay.show { display: flex; }
+  .gameover-text {
+    font-size: 44px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #ff2d78;
+    text-shadow:
+      0 0 6px #ff2d78,
+      0 0 14px #ff2d78,
+      0 0 28px #ff2d78;
+    animation: pulse 1s infinite alternate;
+  }
+  @keyframes pulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.06); }
+  }
+  .final-score {
+    font-size: 16px;
+    color: #444a55;
+    font-weight: 600;
+  }
+  #restart-btn {
+    padding: 10px 26px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #00e5ff, #7c4dff);
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(124,77,255,0.4);
+    transition: transform 0.15s ease;
+  }
+  #restart-btn:hover { transform: translateY(-2px) scale(1.03); }
+  #restart-btn:active { transform: translateY(0) scale(0.98); }
+
+  .levelup-banner {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.6);
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #ffd600;
+    text-shadow:
+      0 0 6px #ffd600,
+      0 0 16px #ffb300,
+      0 0 32px #ff9100;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 20;
+  }
+  .levelup-banner.play {
+    animation: levelupAnim 1.2s ease forwards;
+  }
+  @keyframes levelupAnim {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-6deg); }
+    20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(2deg); }
+    35%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0) rotate(0deg); }
+    80%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0) rotate(0deg); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9) rotate(0deg); }
+  }
+
+  h1.title {
+    text-align: center;
+    font-size: 15px;
+    letter-spacing: 3px;
+    color: #7c4dff;
+    margin-bottom: 10px;
+    font-weight: 800;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="board-wrap">
+    <h1 class="title">NEON TETRIS</h1>
+    <canvas id="board" width="300" height="600"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="gameover-text">GAME OVER</div>
+      <div class="final-score" id="final-score">최종 점수: 0</div>
+      <button id="restart-btn">다시하기</button>
+    </div>
+    <div class="levelup-banner" id="levelup-banner">LEVEL UP!</div>
+  </div>
+
+  <div class="side-panel">
+    <div class="panel-box">
+      <h3>다음 블록</h3>
+      <canvas id="next-canvas" width="120" height="120"></canvas>
+    </div>
+    <div class="panel-box">
+      <h3>점수</h3>
+      <div class="value" id="score-val">0</div>
+    </div>
+    <div class="panel-box">
+      <h3>제거한 줄 수</h3>
+      <div class="value" id="lines-val">0</div>
+    </div>
+    <div class="panel-box">
+      <h3>레벨</h3>
+      <div class="value" id="level-val">1</div>
+    </div>
+    <div class="panel-box controls-box">
+      <h3>조작법</h3>
+      <p>
+        <b>← →</b> 좌우 이동<br>
+        <b>↑</b> 회전<br>
+        <b>↓</b> 빠르게 내리기<br>
+        <b>Space</b> 즉시 낙하
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const COLS = 10, ROWS = 20;
+  const CELL = 30; // px
+
+  const boardCanvas = document.getElementById('board');
+  const ctx = boardCanvas.getContext('2d');
+  const nextCanvas = document.getElementById('next-canvas');
+  const nctx = nextCanvas.getContext('2d');
+
+  const scoreEl = document.getElementById('score-val');
+  const linesEl = document.getElementById('lines-val');
+  const levelEl = document.getElementById('level-val');
+  const overlayEl = document.getElementById('overlay');
+  const finalScoreEl = document.getElementById('final-score');
+  const restartBtn = document.getElementById('restart-btn');
+  const levelupBanner = document.getElementById('levelup-banner');
+
+  // Neon colors per piece type
+  const NEON = {
+    I: '#00f6ff',
+    O: '#ffe600',
+    T: '#c400ff',
+    S: '#00ff85',
+    Z: '#ff2d55',
+    J: '#3d7bff',
+    L: '#ff9500'
+  };
+
+  const SHAPES = {
+    I: [
+      [0,0,0,0],
+      [1,1,1,1],
+      [0,0,0,0],
+      [0,0,0,0]
+    ],
+    O: [
+      [1,1],
+      [1,1]
+    ],
+    T: [
+      [0,1,0],
+      [1,1,1],
+      [0,0,0]
+    ],
+    S: [
+      [0,1,1],
+      [1,1,0],
+      [0,0,0]
+    ],
+    Z: [
+      [1,1,0],
+      [0,1,1],
+      [0,0,0]
+    ],
+    J: [
+      [1,0,0],
+      [1,1,1],
+      [0,0,0]
+    ],
+    L: [
+      [0,0,1],
+      [1,1,1],
+      [0,0,0]
+    ]
+  };
+  const TYPES = Object.keys(SHAPES);
+
+  // Level thresholds (score-based level ups) as requested: 50, 100, 150, 200 ...
+  // After 200, continue leveling up every +50 score.
+  const LEVEL_THRESHOLDS = [50, 100, 150, 200];
+
+  let grid, current, next, score, lines, level, dropCounter, dropInterval, lastTime, gameOver, running;
+  let usedThresholdIndex = 0; // how many fixed thresholds already used
+
+  function createGrid() {
+    return Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  }
+
+  function randomType() {
+    return TYPES[Math.floor(Math.random() * TYPES.length)];
+  }
+
+  function newPiece(type) {
+    const shape = SHAPES[type].map(row => row.slice());
+    return {
+      type,
+      shape,
+      color: NEON[type],
+      row: 0,
+      col: Math.floor((COLS - shape[0].length) / 2)
+    };
+  }
+
+  function rotateMatrix(matrix) {
+    const n = matrix.length;
+    const m = matrix[0].length;
+    const result = Array.from({length: m}, () => Array(n).fill(0));
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < m; c++) {
+        result[c][n - 1 - r] = matrix[r][c];
+      }
+    }
+    return result;
+  }
+
+  function collide(piece, row, col, shape) {
+    const s = shape || piece.shape;
+    for (let r = 0; r < s.length; r++) {
+      for (let c = 0; c < s[r].length; c++) {
+        if (!s[r][c]) continue;
+        const gr = row + r;
+        const gc = col + c;
+        if (gc < 0 || gc >= COLS || gr >= ROWS) return true;
+        if (gr >= 0 && grid[gr][gc]) return true;
+      }
+    }
+    return false;
+  }
+
+  function merge(piece) {
+    for (let r = 0; r < piece.shape.length; r++) {
+      for (let c = 0; c < piece.shape[r].length; c++) {
+        if (piece.shape[r][c]) {
+          const gr = piece.row + r;
+          const gc = piece.col + c;
+          if (gr >= 0) grid[gr][gc] = piece.color;
+        }
+      }
+    }
+  }
+
+  function clearLines() {
+    let cleared = 0;
+    outer:
+    for (let r = ROWS - 1; r >= 0; r--) {
+      for (let c = 0; c < COLS; c++) {
+        if (!grid[r][c]) continue outer;
+      }
+      grid.splice(r, 1);
+      grid.unshift(Array(COLS).fill(null));
+      cleared++;
+      r++; // recheck same index after shift
+    }
+    if (cleared > 0) {
+      lines += cleared;
+      // 10줄 제거마다 10점씩 증가 -> scaled: each cleared line adds 10 points
+      score += cleared * 10;
+      updateLevel();
+      updateHUD();
+    }
+    return cleared;
+  }
+
+  function updateLevel() {
+    // Level up when score crosses fixed thresholds 150/200/250/300, then every +50 beyond
+    let leveledUp = false;
+    while (usedThresholdIndex < LEVEL_THRESHOLDS.length && score >= LEVEL_THRESHOLDS[usedThresholdIndex]) {
+      usedThresholdIndex++;
+      level++;
+      leveledUp = true;
+    }
+    // beyond fixed thresholds, continue leveling every +50
+    if (usedThresholdIndex >= LEVEL_THRESHOLDS.length) {
+      const lastThreshold = LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
+      const extra = score - lastThreshold;
+      const extraLevels = Math.floor(extra / 50);
+      const targetLevel = LEVEL_THRESHOLDS.length + 1 + extraLevels;
+      if (targetLevel > level) {
+        level = targetLevel;
+        leveledUp = true;
+      }
+    }
+    if (leveledUp) {
+      dropInterval = Math.max(80, 800 - (level - 1) * 70);
+      showLevelUp();
+    }
+  }
+
+  function showLevelUp() {
+    levelupBanner.classList.remove('play');
+    // force reflow to restart animation
+    void levelupBanner.offsetWidth;
+    levelupBanner.classList.add('play');
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    linesEl.textContent = lines;
+    levelEl.textContent = level;
+  }
+
+  function spawnPiece() {
+    current = next || newPiece(randomType());
+    next = newPiece(randomType());
+    current.row = 0;
+    current.col = Math.floor((COLS - current.shape[0].length) / 2);
+    if (collide(current, current.row, current.col)) {
+      triggerGameOver();
+    }
+  }
+
+  function triggerGameOver() {
+    gameOver = true;
+    running = false;
+    finalScoreEl.textContent = '최종 점수: ' + score;
+    overlayEl.classList.add('show');
+  }
+
+  function hardDrop() {
+    while (!collide(current, current.row + 1, current.col)) {
+      current.row++;
+    }
+    lockPiece();
+  }
+
+  function lockPiece() {
+    merge(current);
+    clearLines();
+    spawnPiece();
+    dropCounter = 0;
+  }
+
+  function playerMove(dir) {
+    if (!collide(current, current.row, current.col + dir)) {
+      current.col += dir;
+    }
+  }
+
+  function playerRotate() {
+    const rotated = rotateMatrix(current.shape);
+    let newCol = current.col;
+    // simple wall kick
+    if (collide(current, current.row, current.col, rotated)) {
+      if (!collide(current, current.row, current.col - 1, rotated)) {
+        newCol = current.col - 1;
+      } else if (!collide(current, current.row, current.col + 1, rotated)) {
+        newCol = current.col + 1;
+      } else if (!collide(current, current.row, current.col - 2, rotated)) {
+        newCol = current.col - 2;
+      } else if (!collide(current, current.row, current.col + 2, rotated)) {
+        newCol = current.col + 2;
+      } else {
+        return; // can't rotate
+      }
+    }
+    current.shape = rotated;
+    current.col = newCol;
+  }
+
+  function softDrop() {
+    if (!collide(current, current.row + 1, current.col)) {
+      current.row++;
+      dropCounter = 0;
+    } else {
+      lockPiece();
+    }
+  }
+
+  function drawCellShape(context, shape, offsetRow, offsetCol, color, cellSize) {
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        drawNeonCell(context, offsetCol + c, offsetRow + r, color, cellSize);
+      }
+    }
+  }
+
+  function drawNeonCell(context, col, row, color, cellSize) {
+    const x = col * cellSize;
+    const y = row * cellSize;
+    const pad = 2;
+    context.save();
+    context.shadowColor = color;
+    context.shadowBlur = 12;
+    context.fillStyle = color;
+    roundRect(context, x + pad, y + pad, cellSize - pad*2, cellSize - pad*2, 6);
+    context.fill();
+    context.restore();
+
+    // inner highlight
+    context.save();
+    context.globalAlpha = 0.35;
+    context.fillStyle = '#ffffff';
+    roundRect(context, x + pad + 3, y + pad + 3, cellSize - pad*2 - 10, (cellSize - pad*2 - 10) * 0.4, 4);
+    context.fill();
+    context.restore();
+  }
+
+  function roundRect(context, x, y, w, h, r) {
+    context.beginPath();
+    context.moveTo(x + r, y);
+    context.arcTo(x + w, y, x + w, y + h, r);
+    context.arcTo(x + w, y + h, x, y + h, r);
+    context.arcTo(x, y + h, x, y, r);
+    context.arcTo(x, y, x + w, y, r);
+    context.closePath();
+  }
+
+  function drawGrid() {
+    ctx.fillStyle = '#fbfcfe';
+    ctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+
+    ctx.strokeStyle = 'rgba(120,130,150,0.12)';
+    ctx.lineWidth = 1;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath();
+      ctx.moveTo(c * CELL, 0);
+      ctx.lineTo(c * CELL, ROWS * CELL);
+      ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath();
+      ctx.moveTo(0, r * CELL);
+      ctx.lineTo(COLS * CELL, r * CELL);
+      ctx.stroke();
+    }
+  }
+
+  function drawBoard() {
+    drawGrid();
+    // locked cells
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c]) {
+          drawNeonCell(ctx, c, r, grid[r][c], CELL);
+        }
+      }
+    }
+    // ghost piece
+    if (current) {
+      let ghostRow = current.row;
+      while (!collide(current, ghostRow + 1, current.col)) ghostRow++;
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      drawCellShape(ctx, current.shape, ghostRow, current.col, current.color, CELL);
+      ctx.restore();
+
+      drawCellShape(ctx, current.shape, current.row, current.col, current.color, CELL);
+    }
+  }
+
+  function drawNext() {
+    nctx.fillStyle = '#fbfcfe';
+    nctx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+    if (!next) return;
+    const shape = next.shape;
+    const size = 24;
+    const rows = shape.length;
+    const cols = shape[0].length;
+    const offX = (nextCanvas.width / size - cols) / 2;
+    const offY = (nextCanvas.height / size - rows) / 2;
+    drawCellShape(nctx, shape, offY, offX, next.color, size);
+  }
+
+  function update(time = 0) {
+    if (!running) return;
+    const delta = time - lastTime;
+    lastTime = time;
+    dropCounter += delta;
+    if (dropCounter > dropInterval) {
+      softDrop();
+    }
+    drawBoard();
+    drawNext();
+    requestAnimationFrame(update);
+  }
+
+  function resetGame() {
+    grid = createGrid();
+    score = 0;
+    lines = 0;
+    level = 1;
+    usedThresholdIndex = 0;
+    dropCounter = 0;
+    dropInterval = 800;
+    lastTime = 0;
+    gameOver = false;
+    running = true;
+    overlayEl.classList.remove('show');
+    next = newPiece(randomType());
+    spawnPiece();
+    updateHUD();
+    requestAnimationFrame(update);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!running || gameOver) return;
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+        playerMove(-1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        playerMove(1);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        softDrop();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        playerRotate();
+        break;
+      case ' ':
+        e.preventDefault();
+        hardDrop();
+        break;
+    }
+  });
+
+  restartBtn.addEventListener('click', resetGame);
+
+  resetGame();
+})();
+</script>
+
+</body>
+</html>
