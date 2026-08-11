@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spider-Man Web Swing - Expanded Skins & Enemy Walk</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 20px;
+            letter-spacing: 1px;
+        }
+        p {
+            margin: 0;
+            font-size: 14px;
+            color: #ddd;
+            line-height: 1.5;
+        }
+        #skin-selector {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            pointer-events: auto;
+            max-height: 85vh;
+            overflow-y: auto;
+            width: 260px;
+        }
+        .skin-btn {
+            background: #333;
+            color: white;
+            border: 1px solid #777;
+            padding: 8px 10px;
+            margin: 6px 0;
+            cursor: pointer;
+            border-radius: 5px;
+            display: block;
+            width: 100%;
+            text-align: left;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .skin-btn:hover:not(:disabled) {
+            background: #555;
+        }
+        .skin-btn.active {
+            background: #e74c3c;
+            border-color: #ff6b6b;
+        }
+        .skin-btn:disabled {
+            background: #222;
+            color: #777;
+            border-color: #444;
+            cursor: not-allowed;
+        }
+        #bars {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .bar-container {
+            width: 200px;
+            height: 12px;
+            background: #444;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #777;
+        }
+        #health-bar {
+            width: 100%;
+            height: 100%;
+            background: #e74c3c;
+            transition: width 0.1s;
+        }
+        #ultimate-bar {
+            width: 0%;
+            height: 100%;
+            background: #f1c40f;
+            transition: width 0.1s;
+        }
+        #xp-info {
+            margin-top: 6px;
+            font-size: 13px;
+            color: #f1c40f;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>Spider-Man Web Swing</h1>
+        <p>건물 클릭: 스윙 / 허공 클릭: 거미줄 발사<br>E키: 웹 샷(스킬) / Q키: 궁극기 (화면 폭발)<br>(A, D: 이동 / SPACE: 점프)</p>
+        <div id="bars">
+            <div class="bar-container"><div id="health-bar"></div></div>
+            <div class="bar-container"><div id="ultimate-bar"></div></div>
+        </div>
+        <div id="xp-info">경험치 (XP): 0</div>
+    </div>
+
+    <div id="skin-selector">
+        <h3>스킨 해제 및 선택</h3>
+        <div id="skin-buttons-container"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const player = {
+            x: canvas.width / 4,
+            y: canvas.height / 3,
+            vx: 5,
+            vy: 0,
+            radius: 16,
+            gravity: 0.4,
+            friction: 0.99,
+            health: 100,
+            maxHealth: 100,
+            ultimateCharge: 0,
+            xp: 0,
+            isDead: false,
+            skin: 'classic'
+        };
+
+        // 대폭 늘어난 스킨 목록 및 패시브
+        const skins = [
+            { id: 'classic', name: '1. 클래식 슈트', cost: 0, unlocked: true, desc: '기본 밸런스 슈트' },
+            { id: 'symbiote', name: '2. 심비오트 슈트', cost: 15, unlocked: false, desc: '공격력 2배 & 흡혈 패시브' },
+            { id: 'stark', name: '3. 아이언 스파이더', cost: 35, unlocked: false, desc: '궁극기 충전 속도 2배' },
+            { id: '2099', name: '4. 스파이더맨 2099', cost: 60, unlocked: false, desc: '이동 속도 증가 & 저중력' },
+            { id: 'scarlet', name: '5. 스칼렛 스파이더', cost: 90, unlocked: false, desc: '최대 체력 150 증가' },
+            { id: 'stealth', name: '6. 스텔스 슈트', cost: 130, unlocked: false, desc: '적들의 공격 명중률 감소' },
+            { id: 'punk', name: '7. 스파이더 펑크', cost: 180, unlocked: false, desc: '스킬 쿨타임 및 연사 강화' },
+            { id: 'future', name: '8. 파운데이션 슈트', cost: 240, unlocked: false, desc: '모든 능력치 극대화!' }
+        ];
+
+        function updateSkinUI() {
+            const container = document.getElementById('skin-buttons-container');
+            container.innerHTML = '';
+            skins.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'skin-btn' + (player.skin === s.id ? ' active' : '');
+                if (!s.unlocked) {
+                    btn.innerText = `${s.name}\n[해제 필요: XP ${s.cost}]\n${s.desc}`;
+                    if (player.xp < s.cost) {
+                        btn.disabled = true;
+                    } else {
+                        btn.disabled = false;
+                        btn.onclick = () => unlockAndSetSkin(s.id);
+                    }
+                } else {
+                    btn.disabled = false;
+                    btn.innerText = `${s.name} (보유)\n${s.desc}`;
+                    btn.onclick = () => setSkin(s.id);
+                }
+                container.appendChild(btn);
+            });
+            document.getElementById('xp-info').innerText = `경험치 (XP): ${player.xp}`;
+        }
+
+        function unlockAndSetSkin(skinId) {
+            const s = skins.find(item => item.id === skinId);
+            if (s && !s.unlocked && player.xp >= s.cost) {
+                s.unlocked = true;
+                setSkin(skinId);
+            }
+        }
+
+        function setSkin(skinId) {
+            const s = skins.find(item => item.id === skinId);
+            if (s && s.unlocked) {
+                player.skin = skinId;
+                if (skinId === 'scarlet' && player.maxHealth === 100) {
+                    player.maxHealth = 150;
+                    player.health = 150;
+                } else if (player.maxHealth > 100 && skinId !== 'scarlet') {
+                    player.maxHealth = 100;
+                    if (player.health > 100) player.health = 100;
+                }
+                updateSkinUI();
+            }
+        }
+
+        let isSwinging = false;
+        let webTarget = null;
+        let currentWebLength = 0;
+
+        let visualWebTarget = null;
+        let isShowingVisualWeb = false;
+
+        let timeOfDay = 0; 
+
+        const enemies = [];
+        const enemyProjectiles = [];
+        const playerProjectiles = [];
+        const citizens = [];
+        const explosions = [];
+        
+        // 추가된 적 종류들 (보스급 적 포함)
+        const enemyTypes = [
+            { name: 'Thug', type: 'thug', color: '#8e44ad', radius: 12, health: 3, maxHealth: 3, speed: 1.5, xpReward: 5 },
+            { name: 'Bruteshooter', type: 'shooter', color: '#d35400', radius: 16, health: 6, maxHealth: 6, speed: 0.8, xpReward: 10 }, 
+            { name: 'Drone/Flyer', type: 'flyer', color: '#27ae60', radius: 10, health: 2, maxHealth: 2, speed: 2.0, xpReward: 8 },
+            { name: 'Venom Minion', type: 'thug', color: '#2c3e50', radius: 14, health: 8, maxHealth: 8, speed: 1.2, xpReward: 15 },
+            { name: 'Goblin Glider', type: 'flyer', color: '#e74c3c', radius: 13, health: 5, maxHealth: 5, speed: 2.4, xpReward: 20 },
+            { name: 'Rino Brute', type: 'thug', color: '#7f8c8d', radius: 20, health: 15, maxHealth: 15, speed: 0.6, xpReward: 35 }
+        ];
+
+        const keys = { left: false, right: false };
+        window.addEventListener('keydown', (e) => {
+            if (player.isDead) {
+                if (e.code === 'Space') resetGame();
+                return;
+            }
+
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+            
+            if (e.code === 'Space') {
+                e.preventDefault();
+                player.vy = -12; 
+                isSwinging = false; 
+                webTarget = null;
+                isShowingVisualWeb = false;
+            }
+
+            if (e.key === 'e' || e.key === 'E') {
+                playerProjectiles.push({
+                    x: player.x,
+                    y: player.y,
+                    vx: keys.right ? 12 : (keys.left ? -12 : (player.vx >= 0 ? 12 : -12)),
+                    vy: 0,
+                    radius: 6
+                });
+            }
+
+            if (e.key === 'q' || e.key === 'Q') {
+                let ultimateReq = (player.skin === 'future' || player.skin === 'punk') ? 40 : 100;
+                if (player.ultimateCharge >= ultimateReq) {
+                    player.ultimateCharge = 0;
+                    explosions.push({ x: player.x, y: player.y, radius: 10, maxRadius: Math.max(canvas.width, canvas.height), alpha: 1 });
+                    enemies.forEach(en => {
+                        if (en.health > 0) {
+                            en.health = 0;
+                            player.xp += en.xpReward;
+                        }
+                    });
+                    updateSkinUI();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+        });
+
+        const buildings = [];
+        const buildingWidth = 90;
+        const gap = 50;
+        let currentX = 0;
+
+        function initMap() {
+            buildings.length = 0;
+            enemies.length = 0;
+            enemyProjectiles.length = 0;
+            playerProjectiles.length = 0;
+            citizens.length = 0;
+            explosions.length = 0;
+            currentX = 0;
+
+            while (currentX < canvas.width * 3) {
+                const h = 150 + Math.random() * 320;
+                const b = { x: currentX, y: canvas.height - h, width: buildingWidth, height: h + 500 };
+                buildings.push(b);
+                
+                if (Math.random() < 0.6) {
+                    const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+                    let spawnY = canvas.height - h - 20;
+                    if (Math.random() < 0.3) {
+                        spawnY = canvas.height - 70 + Math.random() * 150;
+                    }
+                    enemies.push({
+                        x: currentX + buildingWidth / 2,
+                        y: type.type === 'flyer' ? canvas.height - h - 120 : spawnY,
+                        vx: 0,
+                        vy: 0,
+                        radius: type.radius,
+                        health: type.health,
+                        maxHealth: type.maxHealth,
+                        color: type.color,
+                        speed: type.speed,
+                        gravity: type.type === 'flyer' ? 0 : 0.4,
+                        enemyType: type.type,
+                        attackCooldown: 0,
+                        flyTimer: Math.random() * 100,
+                        direction: 1,
+                        minX: currentX + 10,
+                        maxX: currentX + buildingWidth - 10,
+                        dodgeTimer: 0,
+                        xpReward: type.xpReward
+                    });
+                }
+
+                if (Math.random() < 0.6) {
+                    citizens.push({
+                        x: currentX + Math.random() * buildingWidth,
+                        y: canvas.height - 62,
+                        vx: 0,
+                        vy: 0,
+                        radius: 10,
+                        color: ['#3498db', '#e67e22', '#f1c40f', '#1abc9c'][Math.floor(Math.random() * 4)],
+                        speed: 1.2,
+                        gravity: 0.4,
+                        direction: Math.random() < 0.5 ? 1 : -1,
+                        walkTimer: 0
+                    });
+                }
+
+                currentX += buildingWidth + gap + Math.random() * 60;
+            }
+        }
+        initMap();
+        updateSkinUI();
+
+        function resetGame() {
+            player.x = canvas.width / 4;
+            player.y = canvas.height / 3;
+            player.vx = 5;
+            player.vy = 0;
+            player.health = player.maxHealth;
+            player.ultimateCharge = 0;
+            player.isDead = false;
+            isSwinging = false;
+            webTarget = null;
+            initMap();
+        }
+
+        let cameraX = 0;
+
+        function getEnemyAt(screenX, screenY) {
+            const worldX = screenX + cameraX;
+            const worldY = screenY;
+            for (let en of enemies) {
+                const dist = Math.hypot(en.x - worldX, en.y - worldY);
+                if (dist < en.radius + 15) {
+                    return en;
+                }
+            }
+            return null;
+        }
+
+        function getBuildingWebTarget(screenX, screenY) {
+            const worldX = screenX + cameraX;
+            const worldY = screenY;
+            
+            let closest = null;
+            let minDist = 120;
+
+            for (let b of buildings) {
+                if (worldX >= b.x && worldX <= b.x + b.width && worldY >= b.y && worldY <= b.y + b.height) {
+                    return { x: worldX, y: worldY };
+                }
+
+                let dLeft = Math.abs(worldX - b.x);
+                let dRight = Math.abs(worldX - (b.x + b.width));
+
+                if (worldY >= b.y && worldY <= b.y + b.height) {
+                    if (dLeft < minDist && worldX < b.x) {
+                        minDist = dLeft;
+                        closest = { x: b.x, y: Math.max(b.y, worldY) };
+                    }
+                    if (dRight < minDist && worldX > b.x + b.width) {
+                        minDist = dRight;
+                        closest = { x: b.x + b.width, y: Math.max(b.y, worldY) };
+                    }
+                }
+                if (worldX >= b.x && worldX <= b.x + b.width && worldY < b.y && Math.abs(worldY - b.y) < minDist) {
+                    closest = { x: worldX, y: b.y };
+                }
+            }
+            return closest;
+        }
+
+        window.addEventListener('mousedown', (e) => {
+            if (player.isDead) return;
+            if (e.target.closest('#skin-selector')) return;
+
+            const clickedEnemy = getEnemyAt(e.clientX, e.clientY);
+            if (clickedEnemy) {
+                let damage = (player.skin === 'symbiote' || player.skin === 'future') ? 2 : 1;
+                clickedEnemy.health -= damage;
+                if (clickedEnemy.health <= 0) player.xp += clickedEnemy.xpReward;
+
+                let chargeMult = (player.skin === 'stark' || player.skin === 'future') ? 20 : 10;
+                player.ultimateCharge = Math.min(100, player.ultimateCharge + chargeMult);
+                if (player.skin === 'symbiote' || player.skin === 'future') player.health = Math.min(player.maxHealth, player.health + 3);
+                updateSkinUI();
+            }
+
+            const hitPoint = getBuildingWebTarget(e.clientX, e.clientY);
+            if (hitPoint) {
+                isSwinging = true;
+                webTarget = hitPoint;
+                isShowingVisualWeb = false;
+                const dx = player.x - webTarget.x;
+                const dy = player.y - webTarget.y;
+                currentWebLength = Math.hypot(dx, dy);
+            } else {
+                isSwinging = false;
+                webTarget = null;
+                visualWebTarget = { x: e.clientX + cameraX, y: e.clientY };
+                isShowingVisualWeb = true;
+            }
+        });
+
+        window.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (player.isDead) return;
+            const clickedEnemy = getEnemyAt(e.clientX, e.clientY);
+            if (clickedEnemy) {
+                let damage = (player.skin === 'symbiote' || player.skin === 'future') ? 2 : 1;
+                clickedEnemy.health -= damage;
+                if (clickedEnemy.health <= 0) player.xp += clickedEnemy.xpReward;
+
+                let chargeMult = (player.skin === 'stark' || player.skin === 'future') ? 20 : 10;
+                player.ultimateCharge = Math.min(100, player.ultimateCharge + chargeMult);
+                if (player.skin === 'symbiote' || player.skin === 'future') player.health = Math.min(player.maxHealth, player.health + 3);
+                updateSkinUI();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isSwinging = false;
+            webTarget = null;
+            isShowingVisualWeb = false;
+        });
+
+        function update() {
+            if (player.isDead) return;
+
+            timeOfDay += 0.0003;
+            if (timeOfDay > 1) timeOfDay = 0;
+
+            const targetCameraX = player.x - canvas.width / 3;
+            cameraX += (targetCameraX - cameraX) * 0.1;
+
+            let currentGravity = player.gravity;
+            let moveSpeed = 0.3;
+            if (player.skin === '2099' || player.skin === 'future') {
+                currentGravity = 0.25;
+                moveSpeed = 0.45;
+            }
+
+            if (isSwinging && webTarget) {
+                const dx = player.x - webTarget.x;
+                const dy = player.y - webTarget.y;
+                const dist = Math.hypot(dx, dy);
+
+                const force = (currentWebLength - dist) * 0.05;
+                const nx = dx / dist;
+                const ny = dy / dist;
+
+                player.vx += nx * force;
+                player.vy += ny * force;
+
+                if (keys.left) player.vx -= moveSpeed + 0.1;
+                if (keys.right) player.vx += moveSpeed + 0.1;
+
+                player.vy += currentGravity;
+                player.vx *= player.friction;
+                player.vy *= player.friction;
+
+                player.x += player.vx;
+                player.y += player.vy;
+            } else {
+                if (keys.left) player.vx -= moveSpeed;
+                if (keys.right) player.vx += moveSpeed;
+
+                player.vy += currentGravity;
+                player.vx *= player.friction;
+
+                player.x += player.vx;
+                player.y += player.vy;
+
+                buildings.forEach(b => {
+                    if (player.x + player.radius > b.x && player.x - player.radius < b.x + b.width) {
+                        if (player.y + player.radius >= b.y && player.y + player.radius <= b.y + 20 && player.vy > 0) {
+                            player.y = b.y - player.radius;
+                            player.vy = 0;
+                            player.vx *= 0.8;
+                        }
+                    }
+                });
+
+                if (player.y > canvas.height - 50) {
+                    player.y = canvas.height - 50;
+                    player.vy = 0;
+                    player.vx *= 0.8;
+                }
+            }
+
+            for (let i = playerProjectiles.length - 1; i >= 0; i--) {
+                let pp = playerProjectiles[i];
+                pp.x += pp.vx;
+                pp.y += pp.vy;
+
+                let hit = false;
+                for (let en of enemies) {
+                    const distToEn = Math.hypot(en.x - pp.x, en.y - pp.y);
+                    if (distToEn < en.radius + pp.radius) {
+                        let skillDamage = (player.skin === 'symbiote' || player.skin === 'future') ? 4 : 2;
+                        en.health -= skillDamage;
+                        if (en.health <= 0) player.xp += en.xpReward;
+
+                        let chargeMult = (player.skin === 'stark' || player.skin === 'future') ? 30 : 15;
+                        player.ultimateCharge = Math.min(100, player.ultimateCharge + chargeMult);
+                        if (player.skin === 'symbiote' || player.skin === 'future') player.health = Math.min(player.maxHealth, player.health + 4);
+                        hit = true;
+                        updateSkinUI();
+                        break;
+                    }
+                }
+
+                if (hit || Math.abs(pp.x - player.x) > canvas.width) {
+                    playerProjectiles.splice(i, 1);
+                }
+            }
+
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                let exp = explosions[i];
+                exp.radius += 25;
+                exp.alpha -= 0.03;
+                if (exp.alpha <= 0) {
+                    explosions.splice(i, 1);
+                }
+            }
+
+            enemies.forEach(en => {
+                const distToPlayer = Math.hypot(player.x - en.x, player.y - en.y);
+                
+                if (en.enemyType === 'flyer') {
+                    en.flyTimer += 0.05;
+                    en.y += Math.sin(en.flyTimer) * 0.8;
+                    if (distToPlayer < 500) {
+                        en.vx = (player.x > en.x ? 1 : -1) * en.speed * 0.8;
+                        en.x += en.vx;
+                    }
+                } else {
+                    if (distToPlayer < 400) {
+                        en.vx = (player.x > en.x ? 1 : -1) * en.speed;
+                    } else {
+                        en.vx = 0;
+                    }
+
+                    en.vy += en.gravity;
+                    en.x += en.vx;
+                    en.y += en.vy;
+
+                    buildings.forEach(b => {
+                        if (en.x + en.radius > b.x && en.x - en.radius < b.x + b.width) {
+                            if (en.y + en.radius >= b.y && en.y + en.radius <= b.y + 20 && en.vy > 0) {
+                                en.y = b.y - en.radius;
+                                en.vy = 0;
+                            }
+                        }
+                    });
+
+                    // 바운스 없이, 적이 땅에 닿으면 튀어 오르는 대신 부드럽게 걸어 다니거나(좌우 이동) 지상에 멈춰 서서 이동하도록 수정
+                    if (en.y > canvas.height - 50 - en.radius) {
+                        en.y = canvas.height - 50 - en.radius;
+                        en.vy = 0;
+                    }
+                }
+
+                if (en.enemyType === 'shooter' && distToPlayer < 450) {
+                    en.attackCooldown++;
+                    if (en.attackCooldown > 90) {
+                        const angle = Math.atan2(player.y - en.y, player.x - en.x);
+                        enemyProjectiles.push({
+                            x: en.x,
+                            y: en.y,
+                            vx: Math.cos(angle) * 6,
+                            vy: Math.sin(angle) * 6,
+                            radius: 5
+                        });
+                        en.attackCooldown = 0;
+                    }
+                }
+
+                if (distToPlayer < player.radius + en.radius) {
+                    let hitDamage = player.skin === 'stealth' ? 0.3 : 0.6;
+                    player.health -= hitDamage;
+                    if (player.health <= 0) {
+                        player.health = 0;
+                        player.isDead = true;
+                    }
+                }
+            });
+
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                let p = enemyProjectiles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+
+                const distToP = Math.hypot(player.x - p.x, player.y - p.y);
+                if (distToP < player.radius + p.radius) {
+                    let projDamage = player.skin === 'stealth' ? 8 : 15;
+                    player.health -= projDamage;
+                    if (player.health <= 0) {
+                        player.health = 0;
+                        player.isDead = true;
+                    }
+                    enemyProjectiles.splice(i, 1);
+                    continue;
+                }
+
+                if (p.x < cameraX - 200 || p.x > cameraX + canvas.width + 200) {
+                    enemyProjectiles.splice(i, 1);
+                }
+            }
+
+            citizens.forEach(c => {
+                let runAway = false;
+                let nearestEnemyX = 0;
+
+                enemies.forEach(en => {
+                    const distToEn = Math.hypot(c.x - en.x, c.y - en.y);
+                    if (distToEn < 200) {
+                        runAway = true;
+                        nearestEnemyX = en.x;
+                    }
+                });
+
+                if (runAway) {
+                    c.vx = (c.x > nearestEnemyX ? 1 : -1) * c.speed * 1.8;
+                } else {
+                    c.walkTimer++;
+                    if (c.walkTimer > 150) {
+                        c.direction *= -1;
+                        c.walkTimer = 0;
+                    }
+                    c.vx = c.speed * 0.5 * c.direction;
+                }
+
+                c.vy += c.gravity;
+                c.x += c.vx;
+                c.y += c.vy;
+
+                if (c.y > canvas.height - 50 - c.radius) {
+                    c.y = canvas.height - 50 - c.radius;
+                    c.vy = 0;
+                }
+            });
+
+            document.getElementById('health-bar').style.width = (player.health / player.maxHealth * 100) + '%';
+            document.getElementById('ultimate-bar').style.width = player.ultimateCharge + '%';
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                if (enemies[i].health <= 0) {
+                    enemies.splice(i, 1);
+                    updateSkinUI();
+                }
+            }
+
+            if (buildings[buildings.length - 1].x < cameraX + canvas.width * 2) {
+                const lastB = buildings[buildings.length - 1];
+                const h = 150 + Math.random() * 320;
+                const newB = { 
+                    x: lastB.x + lastB.width + gap + Math.random() * 60, 
+                    y: canvas.height - h, 
+                    width: buildingWidth, 
+                    height: h + 500 
+                };
+                buildings.push(newB);
+
+                if (Math.random() < 0.6) {
+                    const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+                    let spawnY = canvas.height - h - 20;
+                    if (Math.random() < 0.3) {
+                        spawnY = canvas.height - 70 + Math.random() * 150;
+                    }
+                    enemies.push({
+                        x: newB.x + buildingWidth / 2,
+                        y: type.type === 'flyer' ? canvas.height - h - 120 : spawnY,
+                        vx: 0,
+                        vy: 0,
+                        radius: type.radius,
+                        health: type.health,
+                        maxHealth: type.maxHealth,
+                        color: type.color,
+                        speed: type.speed,
+                        gravity: type.type === 'flyer' ? 0 : 0.4,
+                        enemyType: type.type,
+                        attackCooldown: 0,
+                        flyTimer: Math.random() * 100,
+                        direction: 1,
+                        minX: newB.x + 10,
+                        maxX: newB.x + buildingWidth - 10,
+                        dodgeTimer: 0,
+                        xpReward: type.xpReward
+                    });
+                }
+
+                if (Math.random() < 0.7) {
+                    citizens.push({
+                        x: newB.x + Math.random() * buildingWidth,
+                        y: canvas.height - 62,
+                        vx: 0,
+                        vy: 0,
+                        radius: 10,
+                        color: ['#3498db', '#e67e22', '#f1c40f', '#1abc9c'][Math.floor(Math.random() * 4)],
+                        speed: 1.2,
+                        gravity: 0.4,
+                        direction: Math.random() < 0.5 ? 1 : -1,
+                        walkTimer: 0
+                    });
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            let isNight = false;
+            let isSunset = false;
+
+            if (timeOfDay < 0.35) {
+                skyGrad.addColorStop(0, '#2193b0');
+                skyGrad.addColorStop(1, '#6dd5ed');
+            } else if (timeOfDay >= 0.35 && timeOfDay < 0.6) {
+                isSunset = true;
+                skyGrad.addColorStop(0, '#f12711');
+                skyGrad.addColorStop(0.5, '#f5af19');
+                skyGrad.addColorStop(1, '#ff9966');
+            } else {
+                isNight = true;
+                skyGrad.addColorStop(0, '#09122c');
+                skyGrad.addColorStop(1, '#1b2a4a');
+            }
+
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(-cameraX, 0);
+
+            buildings.forEach(b => {
+                ctx.fillStyle = isNight ? '#0b0f19' : (isSunset ? '#36212d' : '#2c3e50');
+                ctx.fillRect(b.x, b.y, b.width, b.height);
+                
+                for (let wx = b.x + 10; wx < b.x + b.width - 15; wx += 20) {
+                    for (let wy = b.y + 15; wy < canvas.height - 20; wy += 35) {
+                        ctx.fillStyle = (isNight && Math.sin(wx + wy) > 0) ? '#ffe066' : (isNight ? '#162238' : (isSunset ? '#523444' : '#3d566e'));
+                        ctx.fillRect(wx, wy, 10, 20);
+                    }
+                }
+            });
+
+            citizens.forEach(c => {
+                ctx.fillStyle = c.color;
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(c.x - 2, c.y - 15, 4, 6);
+            });
+
+            enemies.forEach(en => {
+                ctx.fillStyle = en.color;
+                ctx.beginPath();
+                ctx.arc(en.x, en.y, en.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                const barWidth = 30;
+                const barHeight = 4;
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(en.x - barWidth / 2, en.y - en.radius - 12, barWidth, barHeight);
+
+                ctx.fillStyle = '#e74c3c';
+                const healthPercent = en.health / en.maxHealth;
+                ctx.fillRect(en.x - barWidth / 2, en.y - en.radius - 12, barWidth * healthPercent, barHeight);
+            });
+
+            enemyProjectiles.forEach(p => {
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            playerProjectiles.forEach(pp => {
+                let pColor = '#ffffff';
+                if (player.skin === 'symbiote') pColor = '#9b59b6';
+                if (player.skin === '2099') pColor = '#00ffff';
+                if (player.skin === 'stealth') pColor = '#34495e';
+                if (player.skin === 'punk') pColor = '#e67e22';
+                if (player.skin === 'future') pColor = '#3498db';
+                ctx.fillStyle = pColor;
+                ctx.beginPath();
+                ctx.arc(pp.x, pp.y, pp.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            explosions.forEach(exp => {
+                let expColor = 'rgba(241, 196, 15,';
+                if (player.skin === 'symbiote') expColor = 'rgba(155, 89, 182,';
+                if (player.skin === '2099') expColor = 'rgba(0, 255, 255,';
+                if (player.skin === 'stealth') expColor = 'rgba(52, 73, 94,';
+                if (player.skin === 'punk') expColor = 'rgba(230, 126, 34,';
+                if (player.skin === 'future') expColor = 'rgba(52, 152, 219,';
+                ctx.fillStyle = `${expColor} ${exp.alpha})`;
+                ctx.beginPath();
+                ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.fillStyle = isNight ? '#05070d' : (isSunset ? '#21131b' : '#1a252f');
+            ctx.fillRect(cameraX, canvas.height - 50, canvas.width, 50);
+
+            if (isSwinging && webTarget) {
+                let webColor = '#ffffff';
+                if (player.skin === 'symbiote') webColor = '#9b59b6';
+                if (player.skin === '2099') webColor = '#00ffff';
+                if (player.skin === 'stealth') webColor = '#7f8c8d';
+                if (player.skin === 'punk') webColor = '#e67e22';
+                if (player.skin === 'future') webColor = '#3498db';
+                ctx.strokeStyle = webColor;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(webTarget.x, webTarget.y);
+                ctx.lineTo(player.x, player.y);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ff3333';
+                ctx.beginPath();
+                ctx.arc(webTarget.x, webTarget.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (isShowingVisualWeb && visualWebTarget) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(visualWebTarget.x, visualWebTarget.y);
+                ctx.lineTo(player.x, player.y);
+                ctx.stroke();
+            }
+
+            if (!player.isDead) {
+                let mainColor = '#e74c3c';
+                let subColor = '#2980b9';
+                if (player.skin === 'symbiote') {
+                    mainColor = '#111111';
+                    subColor = '#ffffff';
+                } else if (player.skin === 'stark') {
+                    mainColor = '#c0392b';
+                    subColor = '#f1c40f';
+                } else if (player.skin === '2099') {
+                    mainColor = '#2980b9';
+                    subColor = '#00ffff';
+                } else if (player.skin === 'scarlet') {
+                    mainColor = '#c0392b';
+                    subColor = '#333333';
+                } else if (player.skin === 'stealth') {
+                    mainColor = '#2c3e50';
+                    subColor = '#95a5a6';
+                } else if (player.skin === 'punk') {
+                    mainColor = '#e67e22';
+                    subColor = '#8e44ad';
+                } else if (player.skin === 'future') {
+                    mainColor = '#ffffff';
+                    subColor = '#3498db';
+                }
+
+                ctx.fillStyle = mainColor; 
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = subColor;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(player.x - player.radius, player.y);
+                ctx.lineTo(player.x + player.radius, player.y);
+                ctx.moveTo(player.x, player.y - player.radius);
+                ctx.lineTo(player.x, player.y + player.radius);
+                ctx.stroke();
+
+                ctx.fillStyle = subColor;
+                ctx.beginPath();
+                ctx.arc(player.x - 5, player.y + 4, 6, 0, Math.PI * 2);
+                ctx.arc(player.x + 5, player.y + 4, 6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 1.5;
+                
+                ctx.beginPath();
+                ctx.ellipse(player.x - 5, player.y - 3, 5, 2.5, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.ellipse(player.x + 5, player.y - 3, 5, 2.5, 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            ctx.restore();
+
+            if (player.isDead) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 48px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = '#ddd';
+                ctx.fillText('스페이스바를 눌러 다시 시작하세요', canvas.width / 2, canvas.height / 2 + 30);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
