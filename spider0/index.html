@@ -24,13 +24,20 @@
     animation:tw 2.4s ease-in-out infinite; }
   @keyframes tw{ 0%,100%{ opacity:0.2; } 50%{ opacity:0.9; } }
 
-  .hud{ position:absolute; top:0; left:0; right:0; z-index:30; padding:18px 24px; }
+  .hud{ position:absolute; top:0; left:0; right:0; z-index:30; padding:18px 24px;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .hud h1{ margin:0; font-family:'Baloo 2',sans-serif; font-size:20px; color:#fff;
     text-shadow:0 2px 6px rgba(0,0,0,0.5); }
   .hud p{ margin:4px 0 0; font-size:13px; color:#ffe9d6; font-weight:700; }
+  #addBuildingBtn{ font-family:'Baloo 2',sans-serif; font-weight:700; font-size:14px;
+    background:#ffb347; color:#3a2200; border:none; border-radius:999px; padding:11px 20px; cursor:pointer;
+    box-shadow:0 5px 0 #cc8a2c, 0 8px 12px rgba(0,0,0,0.35); transition:transform 0.08s ease; }
+  #addBuildingBtn:active{ transform:translateY(4px); box-shadow:0 1px 0 #cc8a2c, 0 4px 8px rgba(0,0,0,0.3); }
 
-  .city{ position:absolute; left:0; right:0; bottom:0; height:78%;
-    display:flex; align-items:flex-end; justify-content:center; gap:18px; padding:0 3vw; z-index:5; }
+  .city-wrap{ position:absolute; left:0; right:0; bottom:0; height:78%; z-index:5; overflow-x:auto; overflow-y:hidden; }
+  .city-wrap::-webkit-scrollbar{ height:10px; }
+  .city-wrap::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.4); border-radius:10px; }
+  .city{ display:flex; align-items:flex-end; gap:18px; padding:0 3vw; height:100%; width:max-content; }
 
   .building{ position:relative; flex:0 0 auto; cursor:pointer;
     background:linear-gradient(180deg, #2b2440 0%, #1c1830 100%);
@@ -79,13 +86,18 @@
   <div id="starsLayer"></div>
 
   <div class="hud">
-    <h1>🕸️ 거미줄 히어로 시티</h1>
-    <p>화면 아무 곳이나 클릭하면 그곳으로 거미줄을 쏘아 웹스윙해요!</p>
+    <div>
+      <h1>🕸️ 거미줄 히어로 시티</h1>
+      <p>건물을 클릭하면 거미줄을 쏘아 웹스윙해요!</p>
+    </div>
+    <button id="addBuildingBtn">🏗️ 건물 추가</button>
   </div>
 
   <div id="toast"></div>
 
-  <div class="city" id="city"></div>
+  <div class="city-wrap" id="cityWrap">
+    <div class="city" id="city"></div>
+  </div>
   <div id="shotLayer"></div>
   <div class="rig" id="rig">
     <div class="thread"></div>
@@ -112,6 +124,7 @@
 <script>
   const sceneEl = document.getElementById('scene');
   const cityEl = document.getElementById('city');
+  const cityWrapEl = document.getElementById('cityWrap');
   const rigEl = document.getElementById('rig');
   const shotLayerEl = document.getElementById('shotLayer');
   const toastEl = document.getElementById('toast');
@@ -137,10 +150,12 @@
     { w: 140, h: 340, name: '문라이트빌딩' },
     { w: 100, h: 230, name: '스카이뷰' },
   ];
+  const NAME_PARTS_A = ['스타', '레인보우', '펄', '노바', '크리스탈', '메트로', '선셋', '블루', '골드', '네온'];
+  const NAME_PARTS_B = ['타워', '빌딩', '플라자', '센터', '스카이라인', '하우스', '오피스'];
 
   const buildings = [];
 
-  BUILDING_DEFS.forEach((def, i) => {
+  function createBuilding(def) {
     const el = document.createElement('div');
     el.className = 'building';
     el.style.width = def.w + 'px';
@@ -166,7 +181,23 @@
     el.appendChild(label);
 
     cityEl.appendChild(el);
-    buildings.push({ el, name: def.name, index: i });
+    const record = { el, name: def.name, index: buildings.length };
+    buildings.push(record);
+    return record;
+  }
+
+  BUILDING_DEFS.forEach((def) => createBuilding(def));
+
+  // 건물 추가 버튼: 누를 때마다 오른쪽 끝에 랜덤한 새 건물이 생김
+  document.getElementById('addBuildingBtn').addEventListener('click', () => {
+    const w = 90 + Math.floor(Math.random() * 100);
+    const h = 190 + Math.floor(Math.random() * 320);
+    const name = NAME_PARTS_A[Math.floor(Math.random() * NAME_PARTS_A.length)] +
+                 NAME_PARTS_B[Math.floor(Math.random() * NAME_PARTS_B.length)];
+    createBuilding({ w, h, name });
+
+    // 새로 생긴 건물이 보이도록 오른쪽 끝으로 스크롤
+    cityWrapEl.scrollTo({ left: cityWrapEl.scrollWidth, behavior: 'smooth' });
   });
 
   // ---------- 거미줄 히어로 물리 ----------
@@ -295,7 +326,9 @@
     } else {
       const elapsed = (now - idleStartTime) / 1000;
       currentTheta = Math.sin(elapsed * 1.1) * 0.09;
-      currentRadius = HANG_LEN;
+      // 주기적으로 아래로 살짝 처졌다가 원래 자리로 돌아오는 동작 (내려가는 절반만, 나머지 절반은 원위치에서 대기)
+      const dipWave = Math.max(0, Math.sin(elapsed * 0.8));
+      currentRadius = HANG_LEN + dipWave * 22;
     }
     updateRig();
     requestAnimationFrame(tick);
@@ -307,15 +340,13 @@
   sceneEl.addEventListener('click', (e) => {
     if (e.target.closest('.hud') || e.target.closest('#toast')) return;
 
-    const sceneRect = sceneEl.getBoundingClientRect();
-    const point = { x: e.clientX - sceneRect.left, y: e.clientY - sceneRect.top };
-
     const buildingEl = e.target.closest('.building');
-    const label = buildingEl
-      ? buildings.find((b) => b.el === buildingEl).name
-      : '그 지점으로';
+    if (!buildingEl) return; // 건물이 아닌 곳은 거미줄을 쏠 수 없음
 
-    swingToPoint(point, label);
+    const record = buildings.find((b) => b.el === buildingEl);
+    const point = getAnchorPoint(record.index);
+
+    swingToPoint(point, record.name);
   });
 
   requestAnimationFrame(() => {
