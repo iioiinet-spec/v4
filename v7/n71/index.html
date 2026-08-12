@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spider-Man Web Swing</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #070a12; overflow: hidden; font-family: system-ui, sans-serif; }
+  #wrap { width: 100vw; height: 100vh; position: relative; cursor: crosshair; }
+  canvas { display: block; }
+  .ui { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 18px 24px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .logo { color: #e23636; font-size: 24px; font-weight: 900; text-shadow: 0 0 18px rgba(226,54,54,0.5); letter-spacing: 1px; }
+  .pts { color: #fff; font-size: 17px; font-weight: 700; text-shadow: 0 0 6px rgba(255,255,255,0.3); }
+  .guide { color: rgba(255,255,255,0.5); font-size: 13px; text-align: center; padding-bottom: 6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div class="ui">
+    <div class="top">
+      <div class="logo">🕷️ SPIDER-SWING</div>
+      <div class="pts">Score: <span id="sc">0</span></div>
+    </div>
+    <div class="guide">빌딩을 클릭해서 거미줄을 쏘세요! | 빌딩 외 클릭 = 거미줄 해제 | 스페이스바 = 자동 타겟</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const scEl = document.getElementById('sc');
+  const wrap = document.getElementById('wrap');
+
+  let W, H;
+  function rs() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cv.width = W; cv.height = H;
+  }
+  rs();
+  window.addEventListener('resize', rs);
+
+  const buildings = [];
+  function mkBld(x, w, h) {
+    const y = H - h;
+    const wins = [];
+    const rows = Math.max(3, Math.floor(h / 30));
+    const cols = Math.max(2, Math.floor(w / 24));
+    for (let r = 1; r < rows - 1; r++) {
+      for (let c = 1; c < cols - 1; c++) {
+        wins.push({
+          x: x + c * 24 + 3,
+          y: y + r * 30 + 4,
+          w: 14, h: 18,
+          on: Math.random() > 0.3
+        });
+      }
+    }
+    return { x, y, w, h, wins };
+  }
+
+  let lastX = -100;
+  for (let i = 0; i < 15; i++) {
+    const w = 60 + Math.random() * 90;
+    const h = 150 + Math.random() * 400;
+    const gap = 40 + Math.random() * 100;
+    buildings.push(mkBld(lastX, w, h));
+    lastX += w + gap;
+  }
+
+  let pts = [];
+  function addPt(x, y, col, n, sp) {
+    for (let i = 0; i < n; i++) {
+      pts.push({
+        x, y,
+        vx: (Math.random() - 0.5) * sp,
+        vy: (Math.random() - 0.5) * sp,
+        life: 20 + Math.random() * 15,
+        max: 35,
+        col,
+        r: Math.random() * 2.5 + 0.5
+      });
+    }
+  }
+
+  const spidey = {
+    x: 200, y: 200,
+    vx: 5, vy: 0,
+    web: null,
+    ang: 0, aVel: 0,
+    score: 0,
+    trail: [],
+    swingTime: 0
+  };
+
+  function shoot(tx, ty) {
+    const dx = tx - spidey.x;
+    const dy = ty - spidey.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < 80 || d > 900) return false;
+    spidey.web = { ax: tx, ay: ty, len: d };
+    spidey.ang = Math.atan2(spidey.y - ty, spidey.x - tx);
+    const vTan = -spidey.vx * Math.sin(spidey.ang) + spidey.vy * Math.cos(spidey.ang);
+    spidey.aVel = vTan / d;
+    addPt(spidey.x, spidey.y, '#d0e8ff', 10, 5);
+    spidey.swingTime = 0;
+    return true;
+  }
+
+  function release() {
+    if (!spidey.web) return;
+    const v = spidey.aVel * spidey.web.len;
+    spidey.vx = v * Math.cos(spidey.ang + Math.PI / 2);
+    spidey.vy = v * Math.sin(spidey.ang + Math.PI / 2);
+    spidey.web = null;
+    addPt(spidey.x, spidey.y, '#d0e8ff', 8, 4);
+  }
+
+  let cam = 0, tCam = 0;
+
+  function getBld(mx, my) {
+    for (const b of buildings) {
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) return b;
+    }
+    return null;
+  }
+
+  wrap.addEventListener('pointerdown', e => {
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) + cam;
+    const my = (e.clientY - rect.top);
+    const b = getBld(mx, my);
+    if (b) {
+      const ax = Math.max(b.x + 10, Math.min(b.x + b.w - 10, mx));
+      const ay = b.y;
+      shoot(ax, ay);
+    } else {
+      release();
+    }
+  });
+
+  wrap.addEventListener('pointermove', e => {
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) + cam;
+    const my = (e.clientY - rect.top);
+    wrap.style.cursor = getBld(mx, my) ? 'pointer' : 'crosshair';
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (spidey.web) {
+        release();
+      } else {
+        let best = null, bd = Infinity;
+        for (const b of buildings) {
+          const dx = (b.x + b.w / 2) - spidey.x;
+          const dy = b.y - spidey.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < bd && d > 80 && d < 700) { bd = d; best = b; }
+        }
+        if (best) shoot(best.x + best.w / 2, best.y);
+      }
+    }
+  });
+
+  function drawBG() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#04060a');
+    g.addColorStop(0.5, '#0a0f1a');
+    g.addColorStop(1, '#111a2e');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i < 70; i++) {
+      const sx = ((i * 131 + cam * 0.03) % W + W) % W;
+      const sy = (i * 77) % (H * 0.5);
+      ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1, i % 4 === 0 ? 2 : 1);
+    }
+
+    ctx.fillStyle = 'rgba(240,230,200,0.07)';
+    ctx.beginPath(); ctx.arc(W * 0.8 - cam * 0.01, H * 0.12, 60, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(240,230,200,0.14)';
+    ctx.beginPath(); ctx.arc(W * 0.8 - cam * 0.01, H * 0.12, 35, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#070b14';
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 20) {
+      ctx.lineTo(x, H - (35 + Math.sin((x + cam * 0.06) * 0.015) * 30));
+    }
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#0a1020';
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 15) {
+      ctx.lineTo(x, H - (55 + Math.cos((x + cam * 0.12) * 0.01) * 40));
+    }
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  }
+
+  function drawBld(b) {
+    const dx = b.x - cam;
+    if (dx + b.w < -200 || dx > W + 200) return;
+
+    ctx.fillStyle = '#050810';
+    ctx.fillRect(dx + 5, b.y + 5, b.w, b.h);
+
+    ctx.fillStyle = b.w > 100 ? '#121828' : '#182035';
+    ctx.fillRect(dx, b.y, b.w, b.h);
+
+    ctx.fillStyle = '#1c2540';
+    ctx.fillRect(dx, b.y, b.w, 4);
+
+    for (const w of b.wins) {
+      ctx.fillStyle = w.on ? 'rgba(250,235,170,0.75)' : 'rgba(10,13,20,0.85)';
+      ctx.fillRect(w.x - cam, w.y, w.w, w.h);
+      if (w.on) {
+        ctx.fillStyle = 'rgba(250,235,170,0.15)';
+        ctx.fillRect(w.x - cam - 1, w.y - 1, w.w + 2, w.h + 2);
+      }
+    }
+
+    if (b.h > 300) {
+      ctx.strokeStyle = '#2a3350'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(dx + b.w / 2, b.y);
+      ctx.lineTo(dx + b.w / 2, b.y - 30);
+      ctx.stroke();
+      ctx.fillStyle = '#f44';
+      ctx.beginPath(); ctx.arc(dx + b.w / 2, b.y - 30, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawSpidey() {
+    const dx = spidey.x - cam;
+
+    if (spidey.web) {
+      ctx.strokeStyle = 'rgba(200,220,245,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(spidey.web.ax - cam, spidey.web.ay);
+      ctx.lineTo(dx, spidey.y);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(200,220,245,0.12)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(200,220,245,0.3)';
+      ctx.beginPath(); ctx.arc(spidey.web.ax - cam, spidey.web.ay, 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    for (const t of spidey.trail) {
+      const a = (t.life / 14) * 0.3;
+      ctx.fillStyle = `rgba(226,54,54,${a})`;
+      ctx.beginPath(); ctx.arc(t.x - cam, t.y, 5 * (t.life / 14), 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate(dx, spidey.y);
+
+    let rot = spidey.web ? spidey.ang + Math.PI / 2 : Math.atan2(spidey.vy, spidey.vx);
+    ctx.rotate(rot);
+
+    // Legs (blue)
+    ctx.strokeStyle = '#1a3a7a';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-5, 14); ctx.lineTo(-10, 28); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, 14); ctx.lineTo(10, 28); ctx.stroke();
+
+    // Boots (red)
+    ctx.fillStyle = '#e23636';
+    ctx.beginPath(); ctx.ellipse(-10, 30, 3.5, 5, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 30, 3.5, 5, 0.2, 0, Math.PI * 2); ctx.fill();
+
+    // Torso lower (blue)
+    ctx.fillStyle = '#1a3a7a';
+    ctx.beginPath(); ctx.ellipse(0, 8, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Torso upper (red)
+    ctx.fillStyle = '#e23636';
+    ctx.beginPath(); ctx.ellipse(0, -2, 10, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Spider emblem
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, 4); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-5, -2); ctx.lineTo(5, -2);
+    ctx.moveTo(-4, 0); ctx.lineTo(4, 0);
+    ctx.moveTo(-5, 2); ctx.lineTo(5, 2);
+    ctx.stroke();
+
+    // Arms (blue)
+    ctx.strokeStyle = '#1a3a7a';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath(); ctx.moveTo(-9, -6); ctx.lineTo(-18, -14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9, -6); ctx.lineTo(18, -14); ctx.stroke();
+
+    // Gloves (red)
+    ctx.fillStyle = '#e23636';
+    ctx.beginPath(); ctx.arc(-19, -15, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(19, -15, 3.5, 0, Math.PI * 2); ctx.fill();
+
+    // Web-shooter
+    ctx.fillStyle = '#c0d8f0';
+    ctx.beginPath(); ctx.arc(17, -13, 2, 0, Math.PI * 2); ctx.fill();
+
+    // Head (red)
+    ctx.fillStyle = '#e23636';
+    ctx.beginPath(); ctx.arc(0, -18, 9, 0, Math.PI * 2); ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(-3.5, -19, 3.5, 6.5, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(3.5, -19, 3.5, 6.5, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(-3.5, -19, 2.2, 4.8, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(3.5, -19, 2.2, 4.8, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.shadowColor = 'rgba(226,54,54,0.35)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(226,54,54,0.06)';
+    ctx.beginPath(); ctx.arc(dx, spidey.y, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function loop() {
+    tCam = spidey.x - W * 0.35;
+    cam += (tCam - cam) * 0.06;
+
+    if (lastX < cam + W + 400) {
+      const w = 60 + Math.random() * 90;
+      const h = 150 + Math.random() * 400;
+      const gap = 40 + Math.random() * 100;
+      buildings.push(mkBld(lastX, w, h));
+      lastX += w + gap;
+    }
+    while (buildings.length > 0 && buildings[0].x + buildings[0].w < cam - 400) {
+      buildings.shift();
+    }
+
+    spidey.trail.push({ x: spidey.x, y: spidey.y, life: 14 });
+    if (spidey.trail.length > 16) spidey.trail.shift();
+    for (const t of spidey.trail) t.life--;
+    spidey.trail = spidey.trail.filter(t => t.life > 0);
+
+    if (spidey.web) {
+      spidey.swingTime++;
+      const g = 0.2;
+      const damp = 0.999;
+      const acc = -(g / spidey.web.len) * Math.sin(spidey.ang);
+      spidey.aVel += acc;
+      spidey.aVel *= damp;
+      spidey.ang += spidey.aVel;
+
+      spidey.x = spidey.web.ax + spidey.web.len * Math.cos(spidey.ang);
+      spidey.y = spidey.web.ay + spidey.web.len * Math.sin(spidey.ang);
+
+      if (spidey.swingTime > 30 && Math.abs(spidey.aVel) < 0.003 && spidey.y > H - 100) {
+        release();
+      }
+      spidey.score += Math.abs(spidey.aVel) * 2;
+    } else {
+      spidey.vy += 0.3;
+      spidey.vx *= 0.9995;
+      spidey.x += spidey.vx;
+      spidey.y += spidey.vy;
+
+      if (spidey.y > H - 20) {
+        spidey.y = H - 20;
+        spidey.vy *= -0.45;
+        spidey.vx *= 0.85;
+        addPt(spidey.x, spidey.y, '#e23636', 5, 3);
+      }
+      if (spidey.x < 30) { spidey.x = 30; spidey.vx *= -0.6; }
+    }
+    scEl.textContent = Math.floor(spidey.score);
+
+    for (const p of pts) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.life--;
+    }
+    pts = pts.filter(p => p.life > 0);
+
+    ctx.clearRect(0, 0, W, H);
+    drawBG();
+    for (const b of buildings) drawBld(b);
+
+    for (const p of pts) {
+      const a = p.life / p.max;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.col;
+      ctx.beginPath(); ctx.arc(p.x - cam, p.y, p.r * a, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    drawSpidey();
+
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+})();
+</script>
+</body>
+</html>
