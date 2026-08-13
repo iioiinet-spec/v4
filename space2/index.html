@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ODYSSEY / STARSHIP EXPLORER</title>
+<style>
+  :root{ --acc:#5fd8ff; --warm:#ffb347; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden; background:#04060a; }
+  body{ font-family:'Consolas','Menlo','Courier New',monospace; user-select:none; -webkit-user-select:none; }
+  canvas{ display:block; position:fixed; top:0; left:0; width:100%; height:100%; }
+  #gl{ z-index:1; } #ui{ z-index:2; pointer-events:none; }
+
+  #help{
+    position:fixed; z-index:5; left:18px; top:18px; max-width:340px;
+    padding:13px 15px 14px; background:rgba(5,10,16,.82);
+    border:1px solid rgba(95,216,255,.32); border-left:3px solid var(--acc);
+    color:#d3e6f2; font-size:12px; line-height:1.62; backdrop-filter:blur(6px);
+    transition:opacity .5s ease;
+  }
+  #help h1{ margin:0 0 8px; font-size:12px; letter-spacing:2.4px; color:var(--acc); font-weight:700; }
+  #help dl{ margin:0; display:grid; grid-template-columns:98px 1fr; gap:3px 10px; }
+  #help dt{ color:var(--warm); font-weight:700; }
+  #help dd{ margin:0; color:#b3c6d4; }
+  #help .foot{ margin-top:9px; padding-top:8px; border-top:1px solid rgba(95,216,255,.18); color:#7d8f9c; font-size:11px; }
+  #help.dim{ opacity:0; }
+
+  #boot{
+    position:fixed; inset:0; z-index:9; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; background:#04060a; color:var(--acc); font-size:13px; letter-spacing:4px;
+  }
+  #boot span{ margin-top:14px; color:#3d5866; font-size:11px; letter-spacing:2px; }
+  #boot.done{ opacity:0; pointer-events:none; transition:opacity .8s ease; }
+
+  #lock{
+    position:fixed; z-index:6; left:50%; bottom:36px; transform:translateX(-50%);
+    padding:9px 18px; background:rgba(5,10,16,.8); border:1px solid rgba(95,216,255,.35);
+    border-radius:8px; color:#cfe6f2; font-size:12px; letter-spacing:1px; cursor:pointer;
+  }
+  #lock.hide{ display:none; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<canvas id="ui"></canvas>
+
+<div id="help">
+  <h1>ODYSSEY &middot; STARSHIP</h1>
+  <dl>
+    <dt>W A S D</dt><dd>선내 이동</dd>
+    <dt>마우스</dt><dd>시점 회전</dd>
+    <dt>E</dt><dd>조종석 착석 / 이탈</dd>
+    <dt>W / S</dt><dd>[항해] 추력 증감</dd>
+    <dt>Shift</dt><dd>[항해] 워프 점프</dd>
+    <dt>Space</dt><dd>[항해] 급제동</dd>
+    <dt>H / P</dt><dd>안내창 / 화질</dd>
+  </dl>
+  <p class="foot">선실에서 출발해 통로를 지나 조종실로 가세요. 조종석 앞에 서면 E로 앉아 우주 항해가 시작됩니다.</p>
+</div>
+
+<div id="lock">화면을 클릭하면 시점 조작이 시작됩니다</div>
+<div id="boot">SYSTEMS INITIALIZING<span>HULL / NAVIGATION</span></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DEG = Math.PI / 180;
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  if (typeof THREE === 'undefined') {
+    document.getElementById('boot').innerHTML =
+      'THREE.JS \uB85C\uB4DC \uC2E4\uD328<span>\uC778\uD130\uB137 \uC5F0\uACB0\uC744 \uD655\uC778\uD558\uC138\uC694</span>';
+    return;
+  }
+
+  // 검증된 구획 배치: 겹침 없음, 전부 연결
+  var ROOMS = [
+    { n: 'CREW QUARTERS', x: -25.0, z: 0.0, w: 11.0, d: 10.0, h: 3.6 },
+    { n: 'CORRIDOR A', x: -14.0, z: 0.0, w: 11.0, d: 4.4, h: 3.0 },
+    { n: 'CENTRAL HUB', x: 0.0, z: 0.0, w: 17.0, d: 13.0, h: 4.4 },
+    { n: 'CORRIDOR B', x: 13.0, z: 0.0, w: 9.0, d: 4.4, h: 3.0 },
+    { n: 'FLIGHT DECK', x: 23.5, z: 0.0, w: 12.0, d: 10.0, h: 3.8 },
+    { n: 'CARGO BAY', x: 0.0, z: -10.5, w: 9.0, d: 8.0, h: 3.6 },
+    { n: 'LINK', x: -7.0, z: -10.5, w: 5.0, d: 4.0, h: 2.8 },
+    { n: 'ENGINE ROOM', x: -14.0, z: -10.5, w: 9.0, d: 8.0, h: 3.6 }
+  ];
+  function roomAt(x, z) {
+    for (var i = 0; i < ROOMS.length; i++) {
+      var r = ROOMS[i];
+      if (Math.abs(x - r.x) < r.w / 2 && Math.abs(z - r.z) < r.d / 2) return r;
+    }
+    return null;
+  }
+
+  start();
+
+  function start() {
+    function sc(h) { return new THREE.Color(h).convertSRGBToLinear(); }
+
+    var glCanvas = document.getElementById('gl');
+    var renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.autoClear = false;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
+    var camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 90000);
+
+    // ================================================ 선내 씬
+    var interior = new THREE.Scene();
+    interior.fog = new THREE.FogExp2(sc(0x070c14).getHex(), 0.021);
+
+    var hullM = new THREE.MeshStandardMaterial({ color: sc(0x5c646e), roughness: 0.62, metalness: 0.55 });
+    var floorM = new THREE.MeshStandardMaterial({ color: sc(0x33393f), roughness: 0.78, metalness: 0.35 });
+    var ceilM = new THREE.MeshStandardMaterial({ color: sc(0x272c32), roughness: 0.85, metalness: 0.3 });
+    var trimM = new THREE.MeshStandardMaterial({ color: sc(0x1d2126), roughness: 0.5, metalness: 0.7 });
+    var glowC = new THREE.MeshBasicMaterial({ color: 0x67e2ff });
+    var glowW = new THREE.MeshBasicMaterial({ color: 0xffc178 });
+    var panelM = new THREE.MeshStandardMaterial({ color: sc(0x141b24), roughness: 0.3, metalness: 0.6 });
+    var screenM = new THREE.MeshBasicMaterial({ color: 0x1d5f7a });
+
+    interior.add(new THREE.AmbientLight(sc(0x5a7488), 0.55));
+
+    function panelTex() {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 256;
+      var g = cv.getContext('2d');
+      g.fillStyle = '#8f98a3'; g.fillRect(0, 0, 256, 256);
+      g.strokeStyle = 'rgba(30,36,44,.55)'; g.lineWidth = 2;
+      for (var i = 0; i <= 256; i += 64) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
+      }
+      g.fillStyle = 'rgba(40,48,58,.5)';
+      for (var k = 0; k < 90; k++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+      g.fillStyle = 'rgba(220,230,240,.16)';
+      for (var m = 0; m < 40; m++) g.fillRect(Math.random() * 256, Math.random() * 256, 12, 2);
+      var t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.encoding = THREE.sRGBEncoding;
+      return t;
+    }
+    var pTex = panelTex();
+    hullM.map = pTex.clone(); hullM.map.repeat.set(3, 1); hullM.map.needsUpdate = true;
+    floorM.map = pTex.clone(); floorM.map.repeat.set(4, 4); floorM.map.needsUpdate = true;
+
+    var walls = [];   // 충돌용 AABB
+    function addWall(x, z, w, d) { walls.push({ x: x, z: z, w: w, d: d }); }
+
+    function buildRoom(r) {
+      var g = new THREE.Group();
+      g.position.set(r.x, 0, r.z);
+
+      var fl = new THREE.Mesh(new THREE.BoxGeometry(r.w, 0.2, r.d), floorM);
+      fl.position.y = -0.1; g.add(fl);
+      var ce = new THREE.Mesh(new THREE.BoxGeometry(r.w, 0.2, r.d), ceilM);
+      ce.position.y = r.h; g.add(ce);
+
+      // 천장 조명 스트립
+      var strips = Math.max(1, Math.floor(r.d / 3.2));
+      for (var s = 0; s < strips; s++) {
+        var zz = -r.d / 2 + r.d * (s + 0.5) / strips;
+        var st = new THREE.Mesh(new THREE.BoxGeometry(r.w * 0.72, 0.08, 0.26), glowC);
+        st.position.set(0, r.h - 0.16, zz); g.add(st);
+        var pl = new THREE.PointLight(0x8fe4ff, 0.75, r.w * 1.5, 2);
+        pl.position.set(0, r.h - 0.5, zz); g.add(pl);
+      }
+
+      // 벽: 인접 방과 겹치는 구간은 문으로 뚫는다
+      var sides = [
+        { ax: 'x', s: -1, len: r.d, px: -r.w / 2, pz: 0 },
+        { ax: 'x', s: 1, len: r.d, px: r.w / 2, pz: 0 },
+        { ax: 'z', s: -1, len: r.w, px: 0, pz: -r.d / 2 },
+        { ax: 'z', s: 1, len: r.w, px: 0, pz: r.d / 2 }
+      ];
+      sides.forEach(function (sd) {
+        // 이 벽면에 열린 개구부(문) 범위를 구한다
+        var gaps = [];
+        for (var i = 0; i < ROOMS.length; i++) {
+          var o = ROOMS[i];
+          if (o === r) continue;
+          if (sd.ax === 'x') {
+            var wallX = r.x + sd.px;
+            if (Math.abs((o.x + (o.x < r.x ? o.w / 2 : -o.w / 2)) - wallX) > 0.1) continue;
+            if ((o.x < r.x) !== (sd.s < 0)) continue;
+            var a = Math.max(r.z - r.d / 2, o.z - o.d / 2);
+            var b = Math.min(r.z + r.d / 2, o.z + o.d / 2);
+            if (b - a > 1.6) gaps.push([a - r.z, b - r.z]);
+          } else {
+            var wallZ = r.z + sd.pz;
+            if (Math.abs((o.z + (o.z < r.z ? o.d / 2 : -o.d / 2)) - wallZ) > 0.1) continue;
+            if ((o.z < r.z) !== (sd.s < 0)) continue;
+            var c = Math.max(r.x - r.w / 2, o.x - o.w / 2);
+            var e = Math.min(r.x + r.w / 2, o.x + o.w / 2);
+            if (e - c > 1.6) gaps.push([c - r.x, e - r.x]);
+          }
+        }
+        // 개구부를 뺀 나머지 구간에 벽 세그먼트를 세운다
+        gaps.sort(function (p, q) { return p[0] - q[0]; });
+        var segs = [], cur = -sd.len / 2;
+        gaps.forEach(function (gp) {
+          var a = Math.max(gp[0] + 0.55, -sd.len / 2);
+          var b = Math.min(gp[1] - 0.55, sd.len / 2);
+          if (a > cur) segs.push([cur, a]);
+          cur = Math.max(cur, b);
+        });
+        if (cur < sd.len / 2) segs.push([cur, sd.len / 2]);
+
+        segs.forEach(function (sg) {
+          var L = sg[1] - sg[0];
+          if (L < 0.05) return;
+          var mid = (sg[0] + sg[1]) / 2;
+          var w, d, wx, wz;
+          if (sd.ax === 'x') { w = 0.3; d = L; wx = sd.px; wz = mid; }
+          else { w = L; d = 0.3; wx = mid; wz = sd.pz; }
+          var m = new THREE.Mesh(new THREE.BoxGeometry(w, r.h, d), hullM);
+          m.position.set(wx, r.h / 2, wz);
+          g.add(m);
+          addWall(r.x + wx, r.z + wz, w, d);
+        });
+
+        // 문틀 발광 테두리
+        gaps.forEach(function (gp) {
+          var mid = (gp[0] + gp[1]) / 2;
+          var span = Math.min(gp[1] - gp[0], sd.len) - 1.1;
+          if (span < 0.4) return;
+          var fr = new THREE.Mesh(
+            sd.ax === 'x' ? new THREE.BoxGeometry(0.12, 0.1, span) : new THREE.BoxGeometry(span, 0.1, 0.12),
+            glowC);
+          fr.position.set(sd.ax === 'x' ? sd.px : mid, 2.5, sd.ax === 'x' ? mid : sd.pz);
+          g.add(fr);
+        });
+      });
+
+      interior.add(g);
+      return g;
+    }
+    ROOMS.forEach(buildRoom);
+
+    // ---------------------------------------------- 구획별 집기
+    function prop(geo, mat, x, y, z, rx, ry) {
+      var m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      if (rx) m.rotation.x = rx;
+      if (ry) m.rotation.y = ry;
+      interior.add(m);
+      return m;
+    }
+    var boxG = function (w, h, d) { return new THREE.BoxGeometry(w, h, d); };
+
+    // 승무원 선실: 침상, 사물함, 창
+    (function () {
+      var r = ROOMS[0];
+      for (var b = 0; b < 2; b++) {
+        prop(boxG(2.2, 0.24, 1.0), trimM, r.x - 3.4, 0.55 + b * 1.25, r.z - 3.0);
+        prop(boxG(2.0, 0.16, 0.85), panelM, r.x - 3.4, 0.70 + b * 1.25, r.z - 3.0);
+        addWall(r.x - 3.4, r.z - 3.0, 2.2, 1.0);
+      }
+      for (var l = 0; l < 4; l++) prop(boxG(0.9, 1.9, 0.5), trimM, r.x - 4.0 + l * 1.0, 0.95, r.z + 4.3);
+      addWall(r.x - 2.0, r.z + 4.3, 4.0, 0.5);
+      var win = prop(boxG(0.12, 1.5, 3.0), screenM, r.x - r.w / 2 + 0.1, 1.8, r.z + 1.0);
+      win.material = new THREE.MeshBasicMaterial({ color: 0x0a1424 });
+      prop(new THREE.TorusGeometry(1.6, 0.09, 8, 24), trimM,
+        r.x - r.w / 2 + 0.16, 1.8, r.z + 1.0, 0, Math.PI / 2);
+      prop(boxG(1.6, 0.1, 1.6), trimM, r.x + 3.4, 0.75, r.z + 1.0);
+      prop(boxG(1.4, 0.06, 1.4), screenM, r.x + 3.4, 0.82, r.z + 1.0);
+      addWall(r.x + 3.4, r.z + 1.0, 1.6, 1.6);
+    })();
+
+    // 중앙 허브: 홀로 테이블, 기둥
+    (function () {
+      var r = ROOMS[2];
+      var base = prop(new THREE.CylinderGeometry(1.5, 1.8, 0.9, 16), trimM, r.x, 0.45, r.z);
+      addWall(r.x, r.z, 3.6, 3.6);
+      var holo = prop(new THREE.SphereGeometry(1.15, 20, 14),
+        new THREE.MeshBasicMaterial({ color: 0x4fd0ff, transparent: true, opacity: 0.30, wireframe: true }),
+        r.x, 2.1, r.z);
+      holo.userData.spin = true;
+      var ring = prop(new THREE.TorusGeometry(1.5, 0.03, 8, 40),
+        new THREE.MeshBasicMaterial({ color: 0x7fe6ff, transparent: true, opacity: 0.55 }),
+        r.x, 2.1, r.z, Math.PI / 2.2);
+      ring.userData.spin2 = true;
+      interior.userData = { holo: holo, ring: ring };
+      [[-6.5, -4.8], [6.5, -4.8], [-6.5, 4.8], [6.5, 4.8]].forEach(function (p) {
+        prop(new THREE.CylinderGeometry(0.42, 0.5, r.h, 10), hullM, r.x + p[0], r.h / 2, r.z + p[1]);
+        addWall(r.x + p[0], r.z + p[1], 1.0, 1.0);
+      });
+      for (var s = -1; s <= 1; s += 2) {
+        prop(boxG(0.3, 1.6, 2.6), panelM, r.x + s * (r.w / 2 - 0.3), 1.9, r.z - 2.0);
+        prop(boxG(0.06, 1.2, 2.2), screenM, r.x + s * (r.w / 2 - 0.48), 1.9, r.z - 2.0);
+      }
+    })();
+
+    // 화물칸: 컨테이너 스택
+    (function () {
+      var r = ROOMS[5];
+      var cols = [0x2f6f8a, 0x8a5a2f, 0x3f7a45, 0x6a3f7a];
+      var s2 = 41;
+      function rr() { s2 = (s2 * 1103515245 + 12345) % 2147483648; return s2 / 2147483648; }
+      for (var i = 0; i < 10; i++) {
+        var cw = 1.2 + rr() * 0.7, ch = 0.9 + rr() * 0.8;
+        var cx = r.x - 3 + Math.floor(i / 3) * 2.4 + rr() * 0.3;
+        var cz = r.z - 2.4 + (i % 3) * 2.0;
+        var stack = Math.floor(rr() * 2) + 1;
+        for (var k = 0; k < stack; k++) {
+          prop(boxG(cw, ch, cw), new THREE.MeshStandardMaterial({
+            color: sc(cols[Math.floor(rr() * 4)]), roughness: 0.7, metalness: 0.35
+          }), cx, ch / 2 + k * ch, cz);
+        }
+        addWall(cx, cz, cw, cw);
+      }
+    })();
+
+    // 기관실: 반응로 코어
+    (function () {
+      var r = ROOMS[7];
+      prop(new THREE.CylinderGeometry(1.3, 1.3, r.h - 0.4, 14), trimM, r.x, (r.h - 0.4) / 2, r.z);
+      var core = prop(new THREE.CylinderGeometry(0.85, 0.85, r.h - 1.2, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0.7 }),
+        r.x, (r.h - 0.4) / 2, r.z);
+      core.userData.pulse = true;
+      interior.userData.core = core;
+      var pl = new THREE.PointLight(0xffa040, 1.6, 14, 2);
+      pl.position.set(r.x, 1.8, r.z); interior.add(pl);
+      addWall(r.x, r.z, 2.8, 2.8);
+      for (var p2 = -1; p2 <= 1; p2 += 2) {
+        prop(boxG(2.4, 2.0, 0.4), panelM, r.x + p2 * 2.8, 1.3, r.z - 3.2);
+        prop(boxG(2.0, 1.4, 0.06), screenM, r.x + p2 * 2.8, 1.4, r.z - 3.44);
+      }
+    })();
+
+    // ---------------------------------------------- 조종실 + 조종석
+    var pilotSeat = new THREE.Vector3(ROOMS[4].x + 1.2, 0, ROOMS[4].z);
+    var canopyGroup = new THREE.Group();
+    (function () {
+      var r = ROOMS[4];
+      // 전방 관측창: 벽을 유리로 교체
+      var glassM = new THREE.MeshBasicMaterial({ color: 0x0a1220 });
+      prop(boxG(0.14, 2.4, r.d - 1.6), glassM, r.x + r.w / 2 - 0.08, 2.0, r.z);
+      // 창틀
+      prop(boxG(0.24, 0.16, r.d - 1.4), trimM, r.x + r.w / 2 - 0.12, 3.24, r.z);
+      prop(boxG(0.24, 0.16, r.d - 1.4), trimM, r.x + r.w / 2 - 0.12, 0.78, r.z);
+      for (var m = -1; m <= 1; m++) {
+        prop(boxG(0.26, 2.5, 0.16), trimM, r.x + r.w / 2 - 0.12, 2.0, r.z + m * 2.6);
+      }
+      // 계기 콘솔
+      var con = prop(boxG(1.4, 0.9, 4.2), panelM, r.x + 3.2, 0.55, r.z);
+      addWall(r.x + 3.2, r.z, 1.4, 4.2);
+      var slab = prop(boxG(1.3, 0.1, 4.0), trimM, r.x + 3.2, 1.02, r.z);
+      slab.rotation.z = -0.16;
+      for (var s = -1; s <= 1; s++) {
+        prop(boxG(0.9, 0.05, 1.1), screenM, r.x + 3.15, 1.12 + Math.abs(s) * 0.0, r.z + s * 1.3, 0, 0)
+          .rotation.z = -0.16;
+      }
+      var deckLight = new THREE.PointLight(0xa8d8ff, 1.5, 20, 2);
+      deckLight.position.set(r.x + 1.0, 3.0, r.z);
+      interior.add(deckLight);
+      // 조종석 의자
+      prop(boxG(1.0, 0.18, 1.0), trimM, pilotSeat.x, 0.5, pilotSeat.z);
+      prop(new THREE.CylinderGeometry(0.16, 0.4, 0.5, 10), trimM, pilotSeat.x, 0.25, pilotSeat.z);
+      var back = prop(boxG(0.2, 1.2, 1.0), trimM, pilotSeat.x - 0.5, 1.1, pilotSeat.z);
+      back.rotation.z = 0.12;
+      prop(boxG(0.9, 0.1, 0.28), trimM, pilotSeat.x - 0.05, 0.9, pilotSeat.z + 0.56);
+      prop(boxG(0.9, 0.1, 0.28), trimM, pilotSeat.x - 0.05, 0.9, pilotSeat.z - 0.56);
+      // 사이드 콘솔
+      for (var q = -1; q <= 1; q += 2) {
+        prop(boxG(1.6, 1.0, 0.7), panelM, r.x - 1.0, 0.5, r.z + q * 3.3);
+        prop(boxG(1.4, 0.06, 0.55), screenM, r.x - 1.0, 1.02, r.z + q * 3.3);
+        addWall(r.x - 1.0, r.z + q * 3.3, 1.6, 0.7);
+      }
+    })();
+
+    // ================================================ 우주 씬
+    var space = new THREE.Scene();
+
+    // 별: 3중 레이어
+    var STAR_TEX = (function () {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 32;
+      var g = cv.getContext('2d');
+      var gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      gr.addColorStop(0, 'rgba(255,255,255,1)');
+      gr.addColorStop(0.28, 'rgba(255,255,255,0.75)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+      return new THREE.CanvasTexture(cv);
+    })();
+
+    function starField(count, radius, size, color) {
+      var pos = new Float32Array(count * 3);
+      var col = new Float32Array(count * 3);
+      var c = new THREE.Color();
+      for (var i = 0; i < count; i++) {
+        var u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+        var rr2 = Math.sqrt(1 - u * u);
+        var rad = radius * (0.55 + Math.random() * 0.45);
+        pos[i * 3] = Math.cos(th) * rr2 * rad;
+        pos[i * 3 + 1] = u * rad;
+        pos[i * 3 + 2] = Math.sin(th) * rr2 * rad;
+        var t = Math.random();
+        // 실제 별색: 대부분 흰빛, 일부만 살짝 푸르거나 붉게
+        if (t > 0.88) c.setRGB(0.80, 0.86, 1.00);
+        else if (t > 0.76) c.setRGB(1.00, 0.90, 0.80);
+        else c.setRGB(0.97, 0.98, 1.00);
+        var b = 0.30 + Math.pow(Math.random(), 2.2) * 0.70;
+        col[i * 3] = c.r * b; col[i * 3 + 1] = c.g * b; col[i * 3 + 2] = c.b * b;
+      }
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      var m = new THREE.PointsMaterial({
+        size: size, vertexColors: true, sizeAttenuation: false,
+        map: STAR_TEX, transparent: true, opacity: 0.95,
+        depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      var p = new THREE.Points(g, m);
+      p.frustumCulled = false;
+      space.add(p);
+      return p;
+    }
+    var starLayers = [];
+    starLayers.push(starField(6000, 40000, 2.0));
+    starLayers.push(starField(1600, 30000, 3.4));
+    starLayers.push(starField(320, 22000, 5.5));
+
+    // 성운: 큰 스프라이트 몇 장
+    function nebulaTex(hue) {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 256;
+      var g = cv.getContext('2d');
+      for (var i = 0; i < 26; i++) {
+        var r = 24 + Math.random() * 62;
+        var x = 50 + Math.random() * 156, y = 50 + Math.random() * 156;
+        var gr = g.createRadialGradient(x, y, 0, x, y, r);
+        gr.addColorStop(0, 'hsla(' + (hue + Math.random() * 40) + ',85%,62%,0.20)');
+        gr.addColorStop(0.5, 'hsla(' + (hue + Math.random() * 40) + ',80%,50%,0.07)');
+        gr.addColorStop(1, 'hsla(' + hue + ',80%,45%,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+      }
+      return new THREE.CanvasTexture(cv);
+    }
+    [[210, 26000], [285, 30000], [22, 24000], [175, 28000]].forEach(function (nb) {
+      var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: nebulaTex(nb[0]), transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, opacity: 0.34
+      }));
+      var s = nb[1] * 0.62;
+      sp.scale.set(s, s * 0.62, 1);
+      var a = Math.random() * 6, b = (Math.random() - 0.5) * 1.1;
+      sp.position.set(Math.cos(a) * nb[1], b * nb[1] * 0.5, Math.sin(a) * nb[1]);
+      space.add(sp);
+    });
+
+    space.add(new THREE.AmbientLight(0x30455e, 1.0));
+    var starLight = new THREE.DirectionalLight(0xfff0d8, 2.6);
+    starLight.position.set(1, 0.35, 0.6).multiplyScalar(1000);
+    space.add(starLight);
+
+    // 행성 / 위성 / 항성
+    function planetTex(base, band, spots) {
+      var cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+      var g = cv.getContext('2d');
+      g.fillStyle = base; g.fillRect(0, 0, 512, 256);
+      for (var i = 0; i < 46; i++) {
+        g.fillStyle = band;
+        g.globalAlpha = 0.05 + Math.random() * 0.16;
+        var y = Math.random() * 256, h = 3 + Math.random() * 22;
+        g.fillRect(0, y, 512, h);
+      }
+      g.globalAlpha = 1;
+      for (var k = 0; k < spots; k++) {
+        g.beginPath();
+        g.fillStyle = 'rgba(255,255,255,' + (0.04 + Math.random() * 0.12) + ')';
+        g.ellipse(Math.random() * 512, Math.random() * 256, 8 + Math.random() * 40, 5 + Math.random() * 18, 0, 0, 7);
+        g.fill();
+      }
+      var t = new THREE.CanvasTexture(cv);
+      t.encoding = THREE.sRGBEncoding;
+      return t;
+    }
+
+    var bodies = [];
+    function addPlanet(name, x, y, z, r, tex, ring, atmoHex) {
+      var g = new THREE.Group();
+      g.position.set(x, y, z);
+      var m = new THREE.Mesh(new THREE.SphereGeometry(r, 48, 32),
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0.02 }));
+      g.add(m);
+      // 대기 글로우
+      var atmo = new THREE.Mesh(new THREE.SphereGeometry(r * 1.045, 40, 26),
+        new THREE.MeshBasicMaterial({
+          color: atmoHex, transparent: true, opacity: 0.20,
+          side: THREE.BackSide, blending: THREE.AdditiveBlending
+        }));
+      g.add(atmo);
+      if (ring) {
+        var rg = new THREE.RingGeometry(r * 1.4, r * 2.25, 96);
+        var rm = new THREE.MeshBasicMaterial({
+          color: ring, transparent: true, opacity: 0.5, side: THREE.DoubleSide
+        });
+        var rr3 = new THREE.Mesh(rg, rm);
+        rr3.rotation.x = Math.PI / 2 - 0.32;
+        g.add(rr3);
+      }
+      space.add(g);
+      bodies.push({ g: g, m: m, r: r, name: name });
+      return g;
+    }
+
+    addPlanet('KEPLER-9B', 5200, -400, -9000, 1500,
+      planetTex('#3f6ea8', '#7fb2e0', 26), null, 0x6fb5ff);
+    addPlanet('VESTRA', -11000, 900, 4200, 2200,
+      planetTex('#a05a2c', '#e0a468', 20), 0xd9b98a, 0xffb46a);
+    addPlanet('IO-PRIME', 8600, 1400, 12000, 900,
+      planetTex('#8a8f6a', '#cfd2a8', 14), null, 0xc8d08a);
+    addPlanet('THALASSA', -6200, -1800, -14000, 1700,
+      planetTex('#2f7f74', '#8fd8cc', 22), null, 0x66e0cf);
+
+    var sunMesh = new THREE.Mesh(new THREE.SphereGeometry(2600, 32, 20),
+      new THREE.MeshBasicMaterial({ color: 0xfff2cf }));
+    sunMesh.position.set(26000, 6000, 14000);
+    space.add(sunMesh);
+    var sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: nebulaTex(40), color: 0xffd9a0, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85
+    }));
+    sunGlow.scale.set(16000, 16000, 1);
+    sunGlow.position.copy(sunMesh.position);
+    space.add(sunGlow);
+
+    // 소행성대
+    (function () {
+      var g = new THREE.IcosahedronGeometry(1, 0);
+      var m = new THREE.MeshStandardMaterial({ color: sc(0x6b6459), roughness: 0.95, flatShading: true });
+      var im = new THREE.InstancedMesh(g, m, 260);
+      var dm = new THREE.Object3D();
+      for (var i = 0; i < 260; i++) {
+        var a = 1.1 + (Math.random() - 0.5) * 1.5;
+        var rad = 9000 + Math.random() * 4500;
+        dm.position.set(Math.cos(a) * rad, (Math.random() - 0.5) * 1500, Math.sin(a) * rad);
+        dm.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        var s = 60 + Math.random() * 260;
+        dm.scale.set(s, s * (0.6 + Math.random() * 0.6), s);
+        dm.updateMatrix();
+        im.setMatrixAt(i, dm.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      space.add(im);
+    })();
+
+    // ---------------------------------------------- 은하
+    function galaxyTex(hueA, hueB) {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 512;
+      var g = cv.getContext('2d');
+      g.fillStyle = 'rgba(0,0,0,0)'; g.fillRect(0, 0, 512, 512);
+      var CX = 256, CY = 256;
+      // 나선팔: 로그 나선을 따라 별을 뿌린다
+      var ARMS = 2 + Math.floor(Math.random() * 3);
+      for (var a = 0; a < ARMS; a++) {
+        var off = a / ARMS * Math.PI * 2;
+        for (var i = 0; i < 3400; i++) {
+          var t = Math.pow(Math.random(), 0.55) * 4.2;
+          var rad = 14 * Math.exp(0.29 * t);
+          if (rad > 244) continue;
+          var spread = 0.10 + 0.30 * (rad / 244);
+          var ang = t + off + (Math.random() - 0.5) * spread * 2.2;
+          var jitter = (Math.random() - 0.5) * rad * 0.16;
+          var x = CX + Math.cos(ang) * rad + jitter;
+          var y = CY + Math.sin(ang) * rad + jitter * 0.7;
+          var mix = Math.random();
+          var hue = mix > 0.72 ? hueB : hueA;
+          var lum = 62 + Math.random() * 32;
+          var al = 0.10 + Math.random() * 0.42 * (1 - rad / 300);
+          g.fillStyle = 'hsla(' + hue + ',78%,' + lum + '%,' + al.toFixed(3) + ')';
+          var sz = Math.random() < 0.05 ? 2.2 : 1.1;
+          g.fillRect(x, y, sz, sz);
+        }
+      }
+      // 팔을 잇는 확산광
+      for (var k = 0; k < 150; k++) {
+        var t2 = Math.pow(Math.random(), 0.5) * 4.2;
+        var r2 = 14 * Math.exp(0.29 * t2);
+        if (r2 > 240) continue;
+        var an2 = t2 + (Math.floor(Math.random() * ARMS) / ARMS) * Math.PI * 2
+                  + (Math.random() - 0.5) * 0.7;
+        var gx = CX + Math.cos(an2) * r2, gy = CY + Math.sin(an2) * r2;
+        var rr4 = 12 + Math.random() * 40;
+        var gr = g.createRadialGradient(gx, gy, 0, gx, gy, rr4);
+        gr.addColorStop(0, 'hsla(' + (Math.random() > 0.5 ? hueA : hueB) + ',80%,66%,0.10)');
+        gr.addColorStop(1, 'hsla(' + hueA + ',80%,55%,0)');
+        g.fillStyle = gr;
+        g.beginPath(); g.arc(gx, gy, rr4, 0, 7); g.fill();
+      }
+      // 중심 팽대부
+      var core = g.createRadialGradient(CX, CY, 0, CX, CY, 86);
+      core.addColorStop(0, 'rgba(255,250,235,0.95)');
+      core.addColorStop(0.18, 'hsla(' + hueA + ',60%,82%,0.55)');
+      core.addColorStop(0.55, 'hsla(' + hueA + ',70%,60%,0.16)');
+      core.addColorStop(1, 'hsla(' + hueA + ',70%,50%,0)');
+      g.fillStyle = core;
+      g.beginPath(); g.arc(CX, CY, 86, 0, 7); g.fill();
+      var t3 = new THREE.CanvasTexture(cv);
+      t3.encoding = THREE.sRGBEncoding;
+      return t3;
+    }
+
+    var galaxies = [];
+    function addGalaxy(name, x, y, z, size, hueA, hueB, tiltX, tiltZ) {
+      var g = new THREE.Group();
+      g.position.set(x, y, z);
+      var disc = new THREE.Mesh(new THREE.PlaneGeometry(size, size),
+        new THREE.MeshBasicMaterial({
+          map: galaxyTex(hueA, hueB), transparent: true, depthWrite: false,
+          blending: THREE.AdditiveBlending, side: THREE.DoubleSide, opacity: 0.95
+        }));
+      g.add(disc);
+      // 팽대부 헤일로
+      var halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: nebulaTex(hueA), color: 0xfff2dc, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.32
+      }));
+      halo.scale.set(size * 0.34, size * 0.34, 1);
+      g.add(halo);
+      g.rotation.set(tiltX, 0, tiltZ);
+      space.add(g);
+      galaxies.push({ g: g, name: name, size: size });
+      return g;
+    }
+
+    addGalaxy('ANDROMEDA-VII', -34000, 9000, -42000, 30000, 212, 28, -0.42, 0.30);
+    addGalaxy('CORVUS SPIRAL', 41000, -12000, 30000, 24000, 285, 190, 0.55, -0.5);
+    addGalaxy('LYRA CASCADE', -8000, -21000, 46000, 20000, 168, 42, 1.15, 0.18);
+    addGalaxy('DISTANT WHEEL', 30000, 20000, -38000, 16000, 44, 320, -0.85, 0.9);
+
+    // ---------------------------------------------- 웜홀
+    var WH_VS = [
+      'varying vec2 vUv; varying vec3 vPos;',
+      'void main(){ vUv = uv; vPos = position;',
+      'gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+    ].join('\n');
+    var WH_FS = [
+      'uniform float uTime; uniform vec3 cA; uniform vec3 cB; uniform float uOpen;',
+      'varying vec2 vUv;',
+      'void main(){',
+      '  vec2 p = vUv - 0.5;',
+      '  float r = length(p) * 2.0;',
+      '  float ang = atan(p.y, p.x);',
+      // 소용돌이: 반경에 따라 각을 비튼다
+      '  float sw = ang * 3.0 + uTime * 1.4 - 9.0 * pow(max(r, 0.10), -0.85);',
+      '  float band = 0.5 + 0.5 * sin(sw);',
+      '  float band2 = 0.5 + 0.5 * sin(sw * 2.0 + 1.7);',
+      '  float mixv = band * 0.65 + band2 * 0.35;',
+      '  vec3 col = mix(cA, cB, mixv);',
+      // 중심 사건지평선은 검게, 가장자리는 발광
+      '  float throat = smoothstep(0.24, 0.52, r);',
+      '  float rim = smoothstep(1.0, 0.62, r);',
+      '  float glow = pow(max(1.0 - abs(r - 0.70) / 0.34, 0.0), 3.0);',
+      '  col += vec3(0.85, 0.95, 1.0) * max(glow, 0.0) * 0.75;',
+      '  float alpha = throat * rim * (0.55 + 0.45 * mixv) * uOpen;',
+      '  if (r > 1.0) discard;',
+      '  gl_FragColor = vec4(col * (0.35 + 0.9 * mixv), alpha);',
+      '}'
+    ].join('\n');
+
+    var wormholes = [];
+    function addWormhole(name, x, y, z, r, ca, cb, dest) {
+      var g = new THREE.Group();
+      g.position.set(x, y, z);
+      var mat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 }, uOpen: { value: 1 },
+          cA: { value: new THREE.Color(ca) }, cB: { value: new THREE.Color(cb) }
+        },
+        vertexShader: WH_VS, fragmentShader: WH_FS,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+      });
+      var disc = new THREE.Mesh(new THREE.PlaneGeometry(r * 2.6, r * 2.6), mat);
+      g.add(disc);
+      // 강착 고리
+      var ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, r * 0.055, 10, 64),
+        new THREE.MeshBasicMaterial({ color: ca, transparent: true, opacity: 0.75,
+          blending: THREE.AdditiveBlending, depthWrite: false }));
+      g.add(ring);
+      var ring2 = new THREE.Mesh(new THREE.TorusGeometry(r * 1.32, r * 0.03, 10, 64),
+        new THREE.MeshBasicMaterial({ color: cb, transparent: true, opacity: 0.45,
+          blending: THREE.AdditiveBlending, depthWrite: false }));
+      ring2.rotation.z = 0.5;
+      g.add(ring2);
+      space.add(g);
+      var w = { g: g, disc: disc, mat: mat, ring: ring, ring2: ring2,
+                r: r, name: name, dest: dest };
+      wormholes.push(w);
+      return w;
+    }
+
+    addWormhole('WORMHOLE ALPHA', -2500, 1200, -20000, 900, 0x63b8ff, 0xb464ff,
+      new THREE.Vector3(38000, -6000, 34000));
+    addWormhole('WORMHOLE BETA', 14000, -2600, -4000, 750, 0xffa14a, 0x6affd0,
+      new THREE.Vector3(-30000, 12000, -40000));
+
+    // 워프 스트릭
+    var WARP_N = 1400;
+    var warpGeo = new THREE.BufferGeometry();
+    var warpPos = new Float32Array(WARP_N * 6);
+    var warpSeed = [];
+    for (var wi = 0; wi < WARP_N; wi++) {
+      var ra = Math.random() * Math.PI * 2;
+      var rd = (0.35 + Math.sqrt(Math.random()) * 0.65) * 1500;
+      warpSeed.push(new THREE.Vector3(
+        Math.cos(ra) * rd, Math.sin(ra) * rd, -Math.random() * 2400 - 200));
+    }
+    warpGeo.setAttribute('position', new THREE.BufferAttribute(warpPos, 3));
+    var warpLines = new THREE.LineSegments(warpGeo, new THREE.LineBasicMaterial({
+      color: 0xdaf2ff, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    warpLines.renderOrder = 5;
+    warpLines.frustumCulled = false;
+    space.add(warpLines);
+
+    // 조종석 프레임(항해 중 화면 가장자리)
+    var hudFrame = new THREE.Group();
+    space.add(hudFrame);
+
+    // ================================================ 상태
+    var MODE_WALK = 0, MODE_FLY = 1;
+    var mode = MODE_WALK;
+    var pos = new THREE.Vector3(ROOMS[0].x, 1.62, ROOMS[0].z + 2);
+    var yaw = -Math.PI / 2, pitch = 0;
+    var vel = new THREE.Vector3();
+    var bob = 0, nearSeat = false;
+
+    var shipPos = new THREE.Vector3(0, 0, 0);
+    var shipQuat = new THREE.Quaternion();
+    var throttle = 0, speed = 0, warp = 0, warpCharge = 1;
+    var MAXSPD = 900, WARPSPD = 14000;
+    var seatT = 0;
+    var transit = 0, transitDir = 0, transitTarget = null, lastWH = null;
+
+    // ================================================ 입력
+    var keys = {}, helpOn = true, helpTimer = 15, postOn = true, locked = false;
+    var helpEl = document.getElementById('help');
+    var lockEl = document.getElementById('lock');
+
+    window.addEventListener('keydown', function (e) {
+      keys[e.code] = true;
+      if (e.code === 'KeyH') { helpOn = !helpOn; helpEl.classList.toggle('dim', !helpOn); helpTimer = 15; }
+      if (e.code === 'KeyP') { postOn = !postOn; }
+      if (e.code === 'KeyE') {
+        if (mode === MODE_WALK && nearSeat) {
+          mode = MODE_FLY; seatT = 0;
+          helpOn = false; helpEl.classList.add('dim');
+          yaw = 0; pitch = 0;
+        } else if (mode === MODE_FLY) {
+          mode = MODE_WALK;
+          pos.set(pilotSeat.x - 1.8, 1.62, pilotSeat.z);
+          yaw = -Math.PI / 2; pitch = 0;
+          throttle = 0; speed *= 0.2; warp = 0;
+        }
+      }
+      if (e.code === 'Space') e.preventDefault();
+    });
+    window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+
+    glCanvas.addEventListener('click', function () {
+      if (!locked) glCanvas.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange', function () {
+      locked = document.pointerLockElement === glCanvas;
+      lockEl.classList.toggle('hide', locked);
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!locked) return;
+      yaw -= e.movementX * 0.0022;
+      pitch = clamp(pitch - e.movementY * 0.0022, -1.35, 1.35);
+    });
+
+    // ================================================ 후처리
+    var rtScene = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, depthBuffer: true, stencilBuffer: false
+    });
+    var rtA = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false
+    });
+    var rtB = rtA.clone();
+    var PVS = 'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
+    var brightMat = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, threshold: { value: 0.62 } },
+      vertexShader: PVS,
+      fragmentShader: [
+        'uniform sampler2D tDiffuse;uniform float threshold;varying vec2 vUv;',
+        'void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;',
+        'float l=dot(c,vec3(0.2126,0.7152,0.0722));',
+        'gl_FragColor=vec4(c*max(l-threshold,0.0)/max(l,0.0001),1.0);}'
+      ].join('\n')
+    });
+    var blurMat = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2() }, res: { value: new THREE.Vector2(1, 1) } },
+      vertexShader: PVS,
+      fragmentShader: [
+        'uniform sampler2D tDiffuse;uniform vec2 dir;uniform vec2 res;varying vec2 vUv;',
+        'void main(){vec2 t=dir/res;vec3 s=texture2D(tDiffuse,vUv).rgb*0.227027;',
+        's+=(texture2D(tDiffuse,vUv+t*1.3846).rgb+texture2D(tDiffuse,vUv-t*1.3846).rgb)*0.316216;',
+        's+=(texture2D(tDiffuse,vUv+t*3.2307).rgb+texture2D(tDiffuse,vUv-t*3.2307).rgb)*0.070270;',
+        'gl_FragColor=vec4(s,1.0);}'
+      ].join('\n')
+    });
+    var compMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tScene: { value: null }, tBloom: { value: null },
+        bloomAmt: { value: 0.85 }, vigAmt: { value: 0.42 },
+        grainAmt: { value: 0.018 }, aberrAmt: { value: 0.0022 },
+        speedAmt: { value: 0.0 }, tSeed: { value: 0 }
+      },
+      vertexShader: PVS,
+      fragmentShader: [
+        'uniform sampler2D tScene;uniform sampler2D tBloom;',
+        'uniform float bloomAmt;uniform float vigAmt;uniform float grainAmt;',
+        'uniform float aberrAmt;uniform float speedAmt;uniform float tSeed;',
+        'varying vec2 vUv;',
+        'void main(){',
+        '  vec2 d=vUv-0.5;float r2=dot(d,d);',
+        '  vec2 off=d*aberrAmt*(0.35+r2*3.0);',
+        '  vec3 c;',
+        '  c.r=texture2D(tScene,vUv+off).r;',
+        '  c.g=texture2D(tScene,vUv).g;',
+        '  c.b=texture2D(tScene,vUv-off).b;',
+        '  vec3 rb=vec3(0.0);',
+        '  for(int i=1;i<=6;i++){float f=float(i)/6.0;rb+=texture2D(tScene,vUv-d*f*speedAmt).rgb;}',
+        '  c=mix(c,rb/6.0,clamp(speedAmt*9.0,0.0,0.72));',
+        '  c+=texture2D(tBloom,vUv).rgb*bloomAmt;',
+        '  gl_FragColor=vec4(max(c,0.0),1.0);',
+        '  #include <encodings_fragment>',
+        '  gl_FragColor.rgb*=1.0-vigAmt*smoothstep(0.08,0.62,r2);',
+        '  float n=fract(sin(dot(vUv*vec2(tSeed+1.3,tSeed+2.7),vec2(12.9898,78.233)))*43758.5453);',
+        '  gl_FragColor.rgb+=(n-0.5)*grainAmt;',
+        '}'
+      ].join('\n')
+    });
+    var postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    var postScene = new THREE.Scene();
+    var postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), brightMat);
+    postQuad.frustumCulled = false;
+    postScene.add(postQuad);
+    function pass(m, t) { postQuad.material = m; renderer.setRenderTarget(t); renderer.render(postScene, postCam); }
+
+    // ================================================ UI
+    var uiCanvas = document.getElementById('ui');
+    var ux = uiCanvas.getContext('2d');
+    var L = null;
+    function mono(s, w) { return (w || '') + ' ' + s + 'px Consolas,"Courier New",monospace'; }
+    function rr(ctx, x, y, w, h, r) {
+      r = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function onResize() {
+      var w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var W = Math.round(w * dpr), H = Math.round(h * dpr);
+      var S = Math.max(W / 1600, H / 900);
+      L = { W: W, H: H, S: S, vw: W / S, vh: H / S };
+      L.l = 800 - L.vw / 2; L.r = 800 + L.vw / 2;
+      L.t = 450 - L.vh / 2; L.b = 450 + L.vh / 2;
+      L.narrow = L.vw < 1000;
+      uiCanvas.width = W; uiCanvas.height = H;
+      var pr = renderer.getPixelRatio();
+      var pw = Math.max(2, Math.floor(w * pr)), ph = Math.max(2, Math.floor(h * pr));
+      rtScene.setSize(pw, ph);
+      rtA.setSize(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+      rtB.setSize(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+      blurMat.uniforms.res.value.set(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+    function setTx(c) { c.setTransform(L.S, 0, 0, L.S, L.W / 2 - 800 * L.S, L.H / 2 - 450 * L.S); }
+
+    // ================================================ 루프
+    var last = performance.now();
+    var tmpV = new THREE.Vector3();
+    var vProj = new THREE.Vector3();
+    var eul = new THREE.Euler(0, 0, 0, 'YXZ');
+    var bootEl = document.getElementById('boot');
+    setTimeout(function () { bootEl.classList.add('done'); }, 800);
+    var curRoom = ROOMS[0];
+
+    function walkCollide(nx, nz) {
+      var R = 0.42;
+      for (var i = 0; i < walls.length; i++) {
+        var w = walls[i];
+        var hx = w.w / 2 + R, hz = w.d / 2 + R;
+        var dx = nx - w.x, dz = nz - w.z;
+        if (Math.abs(dx) < hx && Math.abs(dz) < hz) {
+          var px = hx - Math.abs(dx), pz = hz - Math.abs(dz);
+          if (px < pz) nx = w.x + (dx > 0 ? hx : -hx);
+          else nz = w.z + (dz > 0 ? hz : -hz);
+        }
+      }
+      // 방 밖으로 나가지 않도록
+      if (!roomAt(nx, nz)) return null;
+      return { x: nx, z: nz };
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      var now = performance.now();
+      var dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      if (helpOn && helpTimer > 0) { helpTimer -= dt; if (helpTimer <= 0) helpEl.classList.add('dim'); }
+
+      // 선내 애니메이션
+      var ud = interior.userData;
+      if (ud && ud.holo) { ud.holo.rotation.y += dt * 0.35; ud.ring.rotation.z += dt * 0.6; }
+      if (ud && ud.core) {
+        var p2 = 0.55 + Math.sin(now / 340) * 0.18;
+        ud.core.material.opacity = p2;
+        ud.core.scale.setScalar(0.97 + Math.sin(now / 500) * 0.03);
+      }
+
+      if (mode === MODE_WALK) {
+        // ---------------- 도보
+        eul.set(pitch, yaw, 0);
+        var fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        var rgt = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+        var mv = new THREE.Vector3();
+        if (keys['KeyW']) mv.add(fwd);
+        if (keys['KeyS']) mv.sub(fwd);
+        if (keys['KeyD']) mv.add(rgt);
+        if (keys['KeyA']) mv.sub(rgt);
+        if (mv.lengthSq() > 0) mv.normalize();
+        var sp = (keys['ShiftLeft'] ? 5.4 : 3.1);
+        vel.lerp(mv.multiplyScalar(sp), clamp(dt * 9, 0, 1));
+
+        var nxt = walkCollide(pos.x + vel.x * dt, pos.z + vel.z * dt);
+        if (nxt) { pos.x = nxt.x; pos.z = nxt.z; }
+        else {
+          var tryX = walkCollide(pos.x + vel.x * dt, pos.z);
+          if (tryX) pos.x = tryX.x;
+          var tryZ = walkCollide(pos.x, pos.z + vel.z * dt);
+          if (tryZ) pos.z = tryZ.z;
+        }
+
+        var moving = vel.lengthSq() > 0.4;
+        bob += dt * (moving ? 9 : 0);
+        pos.y = 1.62 + (moving ? Math.sin(bob) * 0.045 : 0);
+
+        var r0 = roomAt(pos.x, pos.z);
+        if (r0) curRoom = r0;
+
+        var seatD = Math.hypot(pos.x - pilotSeat.x, pos.z - pilotSeat.z);
+        nearSeat = seatD < 3.6;
+
+        camera.position.copy(pos);
+        camera.quaternion.setFromEuler(eul);
+        camera.fov = lerp(camera.fov, 72, clamp(dt * 5, 0, 1));
+        camera.updateProjectionMatrix();
+      } else {
+        // ---------------- 항해
+        seatT = Math.min(1, seatT + dt * 1.4);
+
+        var pitchIn = (keys['ArrowUp'] ? 1 : 0) - (keys['ArrowDown'] ? 1 : 0);
+        if (keys['KeyW']) throttle = clamp(throttle + dt * 0.42, 0, 1);
+        if (keys['KeyS']) throttle = clamp(throttle - dt * 0.55, 0, 1);
+        if (keys['Space']) { throttle = Math.max(0, throttle - dt * 2.2); speed *= Math.exp(-2.4 * dt); }
+
+        var wantWarp = !!(keys['ShiftLeft'] || keys['ShiftRight']) && throttle > 0.55 && warpCharge > 0.05;
+        warp = lerp(warp, wantWarp ? 1 : 0, clamp(dt * (wantWarp ? 1.1 : 2.2), 0, 1));
+        warpCharge = clamp(warpCharge + (wantWarp ? -dt * 0.13 : dt * 0.055), 0, 1);
+
+        var target = throttle * MAXSPD + warp * WARPSPD;
+        speed = lerp(speed, target, clamp(dt * (warp > 0.3 ? 0.9 : 1.6), 0, 1));
+
+        // 마우스 시점 = 함선 자세
+        var qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        var qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
+        var goal = qy.multiply(qx);
+        shipQuat.slerp(goal, clamp(dt * 2.6, 0, 1));
+
+        tmpV.set(0, 0, -1).applyQuaternion(shipQuat);
+        shipPos.addScaledVector(tmpV, speed * dt);
+        void pitchIn;
+
+        camera.position.set(0, 0, 0);
+        camera.quaternion.copy(shipQuat);
+        var shakeAmt = (warp * 0.9 + throttle * 0.15) * 0.004;
+        camera.position.x += (Math.random() - 0.5) * shakeAmt * 60;
+        camera.position.y += (Math.random() - 0.5) * shakeAmt * 60;
+        var tEase = Math.sin(clamp(transit, 0, 1) * Math.PI);
+        camera.fov = lerp(camera.fov, 66 + warp * 26 + throttle * 6 + tEase * 42, clamp(dt * 4.0, 0, 1));
+        camera.updateProjectionMatrix();
+
+        // 천체를 카메라 기준 상대 배치
+        for (var bi = 0; bi < bodies.length; bi++) {
+          bodies[bi].m.rotation.y += dt * 0.012;
+        }
+        space.position.set(-shipPos.x, -shipPos.y, -shipPos.z);
+
+        // ---- 웜홀: 항상 카메라를 향하고 소용돌이가 돈다
+        var nearestWH = null, nearestWHd = 1e18;
+        for (var wq = 0; wq < wormholes.length; wq++) {
+          var wh = wormholes[wq];
+          wh.mat.uniforms.uTime.value = now / 1000;
+          var whWorld = tmpV.copy(wh.g.position).add(space.position);
+          wh.g.lookAt(camera.position.clone().sub(space.position));
+          wh.ring.rotation.z += dt * 0.5;
+          wh.ring2.rotation.z -= dt * 0.32;
+          var wd = whWorld.length();
+          if (wd < nearestWHd) { nearestWHd = wd; nearestWH = wh; }
+          // 통과 판정: 사건지평선 안으로 들어오면 전이 시작
+          if (transit === 0 && wd < wh.r && wh !== lastWH) {
+            transit = 0.001; transitDir = 1; transitTarget = wh;
+          }
+        }
+        if (transit > 0) {
+          if (transitDir > 0) {
+            transit += dt * 1.25;
+            if (transit >= 1) {
+              // 반대편으로 사출
+              shipPos.copy(transitTarget.dest);
+              lastWH = transitTarget;
+              transitDir = -1; transit = 1;
+            }
+          } else {
+            transit -= dt * 0.85;
+            if (transit <= 0) { transit = 0; transitDir = 0; transitTarget = null; }
+          }
+        }
+        // 웜홀에서 충분히 멀어지면 재진입 허용
+        if (lastWH) {
+          var lw = tmpV.copy(lastWH.g.position).add(space.position).length();
+          if (lw > lastWH.r * 4) lastWH = null;
+        }
+        window.__nearWH = nearestWH ? { n: nearestWH.name, d: nearestWHd } : null;
+
+        // ---- 은하는 항상 카메라를 향한 원반이 아니라 고정 자세를 유지 (회전만)
+        for (var gq = 0; gq < galaxies.length; gq++) {
+          galaxies[gq].g.rotation.y += dt * 0.006;
+        }
+
+        // 워프 중 배경 별은 흐려진다
+        for (var sl = 0; sl < starLayers.length; sl++) {
+          starLayers[sl].material.opacity = 0.95 * (1 - warp * 0.55);
+        }
+        // 워프 스트릭 갱신
+        var wm = warpLines.material;
+        wm.opacity = clamp(warp * 1.4 - 0.05, 0, 1) * 0.62;
+        warpLines.position.copy(shipPos);
+        if (wm.opacity > 0.01) {
+          var arr = warpGeo.attributes.position.array;
+          var len = 60 + warp * warp * 900;
+          for (var k = 0; k < WARP_N; k++) {
+            var sd = warpSeed[k];
+            sd.z += Math.min(speed * dt * 0.55, 1400);
+            if (sd.z > 120) {
+              var ra2 = Math.random() * Math.PI * 2;
+              var rd2 = (0.35 + Math.sqrt(Math.random()) * 0.65) * 1500;
+              sd.z = -2400 - Math.random() * 400;
+              sd.x = Math.cos(ra2) * rd2;
+              sd.y = Math.sin(ra2) * rd2;
+            }
+            var a = tmpV.set(sd.x, sd.y, sd.z).applyQuaternion(shipQuat);
+            arr[k * 6] = a.x; arr[k * 6 + 1] = a.y; arr[k * 6 + 2] = a.z;
+            var b = tmpV.set(sd.x, sd.y, sd.z - len).applyQuaternion(shipQuat);
+            arr[k * 6 + 3] = b.x; arr[k * 6 + 4] = b.y; arr[k * 6 + 5] = b.z;
+          }
+          warpGeo.attributes.position.needsUpdate = true;
+        }
+      }
+
+      // ---------------- 렌더
+      var activeScene = mode === MODE_WALK ? interior : space;
+      renderer.setRenderTarget(postOn ? rtScene : null);
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+      renderer.clear(true, true, false);
+      renderer.render(activeScene, camera);
+
+      if (postOn) {
+        var tE = Math.sin(clamp(transit, 0, 1) * Math.PI);
+        var sAmt = mode === MODE_FLY ? clamp(warp * warp * 0.085 + throttle * 0.010 + tE * 0.11, 0, 0.20) : 0;
+        compMat.uniforms.speedAmt.value = sAmt;
+        compMat.uniforms.bloomAmt.value = mode === MODE_FLY ? 0.95 : 0.55;
+        brightMat.uniforms.tDiffuse.value = rtScene.texture;
+        pass(brightMat, rtA);
+        blurMat.uniforms.tDiffuse.value = rtA.texture;
+        blurMat.uniforms.dir.value.set(1, 0); pass(blurMat, rtB);
+        blurMat.uniforms.tDiffuse.value = rtB.texture;
+        blurMat.uniforms.dir.value.set(0, 1); pass(blurMat, rtA);
+        compMat.uniforms.tScene.value = rtScene.texture;
+        compMat.uniforms.tBloom.value = rtA.texture;
+        compMat.uniforms.tSeed.value = (now % 10000) / 900;
+        pass(compMat, null);
+      }
+
+      // ---------------- HUD
+      ux.setTransform(1, 0, 0, 1, 0, 0);
+      ux.clearRect(0, 0, L.W, L.H);
+      setTx(ux);
+
+      if (mode === MODE_WALK) {
+        ux.textAlign = 'center';
+        ux.strokeStyle = 'rgba(207,230,242,.7)'; ux.lineWidth = 1.5;
+        ux.beginPath(); ux.arc(800, 450, 3.4, 0, 7); ux.stroke();
+
+        ux.fillStyle = '#5fd8ff'; ux.font = mono(13, 'bold');
+        ux.fillText(curRoom.n, 800, L.t + 40);
+
+        if (nearSeat) {
+          var pulse = 0.65 + Math.sin(now / 220) * 0.35;
+          ux.fillStyle = 'rgba(5,10,16,.7)';
+          rr(ux, 800 - 118, 500, 236, 40, 8); ux.fill();
+          ux.strokeStyle = 'rgba(255,179,71,' + pulse.toFixed(2) + ')'; ux.lineWidth = 1.6; ux.stroke();
+          ux.fillStyle = '#ffb347'; ux.font = mono(15, 'bold');
+          ux.fillText('[ E ]  조종석 착석', 800, 525);
+        }
+      } else {
+        var kps = speed;
+        var ease = seatT * seatT * (3 - 2 * seatT);
+
+        // 조종석 실루엣: 화면 가장자리 프레임
+        ux.save();
+        ux.globalAlpha = ease;
+        var fh = L.vh * 0.17;
+        var gradF = ux.createLinearGradient(0, L.b - fh, 0, L.b);
+        gradF.addColorStop(0, 'rgba(10,14,20,0)');
+        gradF.addColorStop(0.45, 'rgba(12,17,24,.85)');
+        gradF.addColorStop(1, 'rgba(6,9,14,1)');
+        ux.fillStyle = gradF;
+        ux.beginPath();
+        ux.moveTo(L.l, L.b);
+        ux.lineTo(L.l, L.b - fh * 0.5);
+        ux.quadraticCurveTo(800, L.b - fh * 1.25, L.r, L.b - fh * 0.5);
+        ux.lineTo(L.r, L.b);
+        ux.closePath(); ux.fill();
+        ux.strokeStyle = 'rgba(95,216,255,.30)'; ux.lineWidth = 2;
+        ux.beginPath();
+        ux.moveTo(L.l, L.b - fh * 0.5);
+        ux.quadraticCurveTo(800, L.b - fh * 1.25, L.r, L.b - fh * 0.5);
+        ux.stroke();
+        // 좌우 A필러
+        ux.fillStyle = 'rgba(9,13,19,.92)';
+        ux.beginPath();
+        ux.moveTo(L.l, L.t); ux.lineTo(L.l + L.vw * 0.055, L.t);
+        ux.lineTo(L.l + L.vw * 0.018, L.b); ux.lineTo(L.l, L.b);
+        ux.closePath(); ux.fill();
+        ux.beginPath();
+        ux.moveTo(L.r, L.t); ux.lineTo(L.r - L.vw * 0.055, L.t);
+        ux.lineTo(L.r - L.vw * 0.018, L.b); ux.lineTo(L.r, L.b);
+        ux.closePath(); ux.fill();
+        ux.restore();
+
+        // 조준 십자
+        ux.strokeStyle = 'rgba(95,216,255,.85)'; ux.lineWidth = 1.6;
+        ux.beginPath(); ux.arc(800, 450, 16, 0, 7); ux.stroke();
+        ux.beginPath();
+        ux.moveTo(800 - 30, 450); ux.lineTo(800 - 20, 450);
+        ux.moveTo(800 + 20, 450); ux.lineTo(800 + 30, 450);
+        ux.moveTo(800, 450 - 30); ux.lineTo(800, 450 - 20);
+        ux.moveTo(800, 450 + 20); ux.lineTo(800, 450 + 30);
+        ux.stroke();
+
+        // 은하 라벨
+        ux.font = mono(10, 'bold');
+        for (var gl = 0; gl < galaxies.length; gl++) {
+          var ga = galaxies[gl];
+          vProj.copy(ga.g.position).add(space.position).project(camera);
+          if (vProj.z > 1) continue;
+          var gsx = 800 + vProj.x * L.vw / 2, gsy = 450 - vProj.y * L.vh / 2;
+          if (gsx < L.l + 60 || gsx > L.r - 60) continue;
+          ux.fillStyle = 'rgba(180,160,255,.55)'; ux.textAlign = 'center';
+          ux.fillText(ga.name, gsx, gsy);
+        }
+
+        // 웜홀 라벨 + 접근 경고
+        ux.font = mono(11, 'bold');
+        for (var wl = 0; wl < wormholes.length; wl++) {
+          var wo = wormholes[wl];
+          var wrel = wo.g.position.clone().add(space.position);
+          vProj.copy(wrel).project(camera);
+          if (vProj.z > 1) continue;
+          var wsx = 800 + vProj.x * L.vw / 2, wsy = 450 - vProj.y * L.vh / 2;
+          if (wsx < L.l + 40 || wsx > L.r - 40) continue;
+          var wdist = wrel.length();
+          var pulse2 = 0.55 + Math.sin(now / 200) * 0.45;
+          ux.strokeStyle = 'rgba(180,120,255,' + pulse2.toFixed(2) + ')';
+          ux.lineWidth = 1.6;
+          var hs = 20;
+          ux.beginPath();
+          ux.moveTo(wsx - hs, wsy - hs + 7); ux.lineTo(wsx - hs, wsy - hs); ux.lineTo(wsx - hs + 7, wsy - hs);
+          ux.moveTo(wsx + hs - 7, wsy - hs); ux.lineTo(wsx + hs, wsy - hs); ux.lineTo(wsx + hs, wsy - hs + 7);
+          ux.moveTo(wsx + hs, wsy + hs - 7); ux.lineTo(wsx + hs, wsy + hs); ux.lineTo(wsx + hs - 7, wsy + hs);
+          ux.moveTo(wsx - hs + 7, wsy + hs); ux.lineTo(wsx - hs, wsy + hs); ux.lineTo(wsx - hs, wsy + hs - 7);
+          ux.stroke();
+          ux.fillStyle = '#c89bff'; ux.textAlign = 'center';
+          ux.fillText(wo.name, wsx, wsy + hs + 15);
+          ux.fillStyle = 'rgba(207,230,242,.6)'; ux.font = mono(10, 'bold');
+          ux.fillText((wdist / 1000).toFixed(1) + ' Mm', wsx, wsy + hs + 28);
+          ux.font = mono(11, 'bold');
+        }
+
+        // 천체 라벨
+        ux.font = mono(11, 'bold');
+        for (var q = 0; q < bodies.length; q++) {
+          var bd = bodies[q];
+          vProj.copy(bd.g.position).add(space.position).project(camera);
+          if (vProj.z > 1) continue;
+          var sx = 800 + vProj.x * L.vw / 2, sy = 450 - vProj.y * L.vh / 2;
+          if (sx < L.l + 40 || sx > L.r - 40) continue;
+          var dist = bd.g.position.clone().add(space.position).length();
+          ux.strokeStyle = 'rgba(95,216,255,.6)'; ux.lineWidth = 1.2;
+          ux.beginPath(); ux.arc(sx, sy, 13, 0, 7); ux.stroke();
+          ux.fillStyle = 'rgba(95,216,255,.9)'; ux.textAlign = 'left';
+          ux.fillText(bd.name, sx + 19, sy - 3);
+          ux.fillStyle = 'rgba(207,230,242,.55)';
+          ux.fillText((dist / 1000).toFixed(1) + ' Mm', sx + 19, sy + 11);
+        }
+
+        // 좌측 계기
+        ux.save();
+        ux.globalAlpha = ease;
+        var px = L.l + 40, py = L.b - 150;
+        ux.fillStyle = 'rgba(6,11,18,.62)';
+        rr(ux, px - 14, py - 34, L.narrow ? 200 : 240, 150, 9); ux.fill();
+        ux.strokeStyle = 'rgba(95,216,255,.26)'; ux.lineWidth = 1; ux.stroke();
+        ux.textAlign = 'left';
+        ux.fillStyle = '#5fd8ff'; ux.font = mono(11, 'bold');
+        ux.fillText('NAVIGATION', px, py - 16);
+        ux.fillStyle = '#e8f2f8'; ux.font = mono(30, 'bold');
+        ux.fillText(kps >= 1000 ? (kps / 1000).toFixed(2) : Math.round(kps), px, py + 20);
+        ux.fillStyle = 'rgba(232,242,248,.5)'; ux.font = mono(11, 'bold');
+        ux.fillText(kps >= 1000 ? 'x1000 km/s' : 'km/s', px + (kps >= 1000 ? 96 : 60), py + 20);
+
+        // 추력 바
+        ux.fillStyle = 'rgba(255,255,255,.09)'; ux.fillRect(px, py + 36, 190, 9);
+        ux.fillStyle = warp > 0.3 ? '#ffb347' : '#5fd8ff';
+        ux.fillRect(px, py + 36, 190 * throttle, 9);
+        ux.fillStyle = 'rgba(232,242,248,.5)'; ux.font = mono(10, 'bold');
+        ux.fillText('THRUST', px, py + 58);
+        // 워프 충전
+        ux.fillStyle = 'rgba(255,255,255,.09)'; ux.fillRect(px, py + 68, 190, 9);
+        ux.fillStyle = warpCharge > 0.3 ? '#a8e6ff' : '#ff6b5a';
+        ux.fillRect(px, py + 68, 190 * warpCharge, 9);
+        ux.fillText('WARP CORE', px, py + 90);
+        ux.fillStyle = warp > 0.3 ? '#ffb347' : 'rgba(232,242,248,.4)';
+        ux.font = mono(12, 'bold');
+        ux.fillText(warp > 0.5 ? 'FTL ENGAGED' : (throttle > 0.05 ? 'SUBLIGHT CRUISE' : 'STATION KEEPING'),
+          px, py + 110);
+        ux.restore();
+
+        // 우측 상단
+        ux.save();
+        ux.globalAlpha = ease;
+        ux.textAlign = 'right';
+        ux.fillStyle = 'rgba(95,216,255,.85)'; ux.font = mono(12, 'bold');
+        ux.fillText('ODYSSEY  \u2014  DEEP SPACE', L.r - 34, L.t + 36);
+        ux.fillStyle = 'rgba(207,230,242,.5)'; ux.font = mono(11, 'bold');
+        ux.fillText('POS  ' + (shipPos.x / 1000).toFixed(1) + ' / ' +
+          (shipPos.y / 1000).toFixed(1) + ' / ' + (shipPos.z / 1000).toFixed(1) + ' Mm',
+          L.r - 34, L.t + 54);
+        ux.fillText('[ E ]  이탈', L.r - 34, L.t + 72);
+        ux.restore();
+
+        // 웜홀 전이 연출
+        if (transit > 0) {
+          var te = Math.sin(clamp(transit, 0, 1) * Math.PI);
+          // 보라빛 터널 링
+          ux.save();
+          for (var ri = 0; ri < 7; ri++) {
+            var f2 = (ri / 7 + (now / 500) % 1) % 1;
+            var rad2 = f2 * L.vw * 0.85;
+            ux.strokeStyle = 'rgba(190,140,255,' + (te * (1 - f2) * 0.55).toFixed(3) + ')';
+            ux.lineWidth = 2 + (1 - f2) * 12;
+            ux.beginPath(); ux.arc(800, 450, rad2, 0, 7); ux.stroke();
+          }
+          ux.restore();
+          // 화이트아웃
+          ux.fillStyle = 'rgba(228,224,255,' + (Math.pow(te, 2.4) * 0.92).toFixed(3) + ')';
+          ux.fillRect(L.l, L.t, L.vw, L.vh);
+          if (te > 0.30) {
+            ux.textAlign = 'center';
+            ux.fillStyle = 'rgba(30,16,60,' + Math.min(1, (te - 0.30) * 2.4).toFixed(2) + ')';
+            ux.font = mono(26, 'bold');
+            ux.fillText('WORMHOLE TRANSIT', 800, 420);
+            ux.font = mono(13, 'bold');
+            ux.fillText(transitTarget ? transitTarget.name : '', 800, 448);
+          }
+        }
+
+        // 워프 진입 플래시
+        if (warp > 0.75) {
+          ux.fillStyle = 'rgba(190,235,255,' + ((warp - 0.75) * 0.22).toFixed(3) + ')';
+          ux.fillRect(L.l, L.t, L.vw, L.vh);
+        }
+      }
+      ux.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    animate();
+  }
+})();
+</script>
+</body>
+</html>
