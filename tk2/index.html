@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미니 지오메트리 대쉬 - HELL WALLS</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        h1 {
+            margin-bottom: 10px;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffcc;
+        }
+        canvas {
+            border: 4px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+            background: linear-gradient(to bottom, #111, #222);
+        }
+        .info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>GEOMETRY DASH (HELL MODE)</h1>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div class="info">조작법: <strong>스페이스바</strong> 또는 <strong>마우스 클릭</strong> | 4번 지옥 모드는 앞이 막히고 뚫린 곳으로 통과하는 벽 등장!</div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let gameState = 'menu';
+        let score = 0;
+        let highScore = 0;
+        let isFlying = false;
+
+        const difficulties = {
+            1: { name: "쉬움 (EASY)", speed: 4, intervalMin: 90, intervalMax: 140, gravity: 0.55, jumpPower: -10.5, fly: false },
+            2: { name: "보통 (NORMAL)", speed: 6, intervalMin: 70, intervalMax: 110, gravity: 0.6, jumpPower: -11, fly: false },
+            3: { name: "어려움 (HARD)", speed: 8, intervalMin: 50, intervalMax: 90, gravity: 0.65, jumpPower: -11.5, fly: false },
+            4: { name: "지옥 (HELL - WALLS)", speed: 13, intervalMin: 55, intervalMax: 80, gravity: 0.45, jumpPower: -12, fly: true }
+        };
+        let currentDifficulty = difficulties[1];
+
+        const player = {
+            x: 100,
+            y: 300,
+            size: 30,
+            dy: 0,
+            grounded: false,
+            rotation: 0,
+            
+            reset() {
+                this.y = 300;
+                this.dy = 0;
+                this.grounded = false;
+                this.rotation = 0;
+            },
+
+            update() {
+                if (currentDifficulty.fly) {
+                    this.dy += isFlying ? -0.5 : 0.5;
+                    this.y += this.dy;
+
+                    if (this.y < 10) { this.y = 10; this.dy = 0; }
+                    if (this.y + this.size >= 330) {
+                        this.y = 330 - this.size;
+                        this.dy = 0;
+                        this.grounded = true;
+                    } else {
+                        this.grounded = false;
+                    }
+                    this.rotation = this.dy * 3;
+                } else {
+                    this.dy += currentDifficulty.gravity;
+                    this.y += this.dy;
+
+                    if (this.y + this.size >= 330) {
+                        this.y = 330 - this.size;
+                        this.dy = 0;
+                        this.grounded = true;
+                        this.rotation = Math.round(this.rotation / 90) * 90;
+                    } else {
+                        this.grounded = false;
+                        this.rotation += 6;
+                    }
+                }
+            },
+
+            jump() {
+                if (this.grounded && gameState === 'playing' && !currentDifficulty.fly) {
+                    this.dy = currentDifficulty.jumpPower;
+                    this.grounded = false;
+                }
+            },
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.size / 2, this.y + this.size / 2);
+                ctx.rotate((this.rotation * Math.PI) / 180);
+
+                ctx.fillStyle = currentDifficulty.fly ? "#ff0055" : "#00ffcc";
+                ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 3;
+                ctx.strokeRect(-this.size / 2 + 5, -this.size / 2 + 5, this.size - 10, this.size - 10);
+
+                ctx.restore();
+            }
+        };
+
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 90;
+        let gameSpeed = 5;
+
+        function spawnObstacle() {
+            if (currentDifficulty.fly) {
+                // 지옥 모드: 위아래가 막히고 한 곳만 뚫린 벽(두 개의 파츠: 윗벽, 아랫벽) 생성
+                const gapHeight = 90; // 통과할 수 있는 구멍의 크기
+                const maxTopHeight = 220;
+                const minTopHeight = 40;
+                const topHeight = Math.floor(Math.random() * (maxTopHeight - minTopHeight)) + minTopHeight;
+                
+                const wallWidth = 45;
+                const bottomY = topHeight + gapHeight;
+                const bottomHeight = 330 - bottomY;
+
+                // 윗벽
+                obstacles.push({
+                    x: canvas.width,
+                    y: 0,
+                    width: wallWidth,
+                    height: topHeight,
+                    type: 'wall'
+                });
+                // 아랫벽
+                obstacles.push({
+                    x: canvas.width,
+                    y: bottomY,
+                    width: wallWidth,
+                    height: bottomHeight,
+                    type: 'wall'
+                });
+            } else {
+                const types = ['spike', 'block'];
+                const type = types[Math.floor(Math.random() * types.length)];
+
+                if (type === 'spike') {
+                    obstacles.push({
+                        x: canvas.width,
+                        y: 330 - 30,
+                        width: 30,
+                        height: 30,
+                        type: 'spike'
+                    });
+                } else {
+                    obstacles.push({
+                        x: canvas.width,
+                        y: 330 - 50,
+                        width: 40,
+                        height: 50,
+                        type: 'block'
+                    });
+                }
+            }
+        }
+
+        function startGame(diffKey) {
+            currentDifficulty = difficulties[diffKey];
+            gameState = 'playing';
+            score = 0;
+            obstacles = [];
+            obstacleTimer = 0;
+            isFlying = false;
+            gameSpeed = currentDifficulty.speed;
+            obstacleInterval = currentDifficulty.intervalMin;
+            player.reset();
+        }
+
+        window.addEventListener("keydown", (e) => {
+            if (gameState === 'menu') {
+                if (['1', '2', '3', '4'].includes(e.key)) {
+                    startGame(parseInt(e.key));
+                }
+            } else if (gameState === 'playing') {
+                if (e.code === "Space" || e.code === "ArrowUp") {
+                    e.preventDefault();
+                    if (currentDifficulty.fly) {
+                        isFlying = true;
+                    } else {
+                        player.jump();
+                    }
+                }
+            } else if (gameState === 'gameover') {
+                if (e.code === "Space" || e.code === "ArrowUp") {
+                    e.preventDefault();
+                    gameState = 'menu';
+                }
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            if (e.code === "Space" || e.code === "ArrowUp") {
+                if (currentDifficulty.fly) {
+                    isFlying = false;
+                }
+            }
+        });
+
+        canvas.addEventListener("click", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (gameState === 'menu') {
+                const btnWidth = 320;
+                const btnHeight = 40;
+                const btnX = (canvas.width - btnWidth) / 2;
+                const startY = 150;
+                const gap = 52;
+
+                for (let i = 1; i <= 4; i++) {
+                    let btnY = startY + (i - 1) * gap;
+                    if (mouseX >= btnX && mouseX <= btnX + btnWidth && mouseY >= btnY && mouseY <= btnY + btnHeight) {
+                        startGame(i);
+                    }
+                }
+            } else if (gameState === 'playing' && !currentDifficulty.fly) {
+                player.jump();
+            } else if (gameState === 'gameover') {
+                gameState = 'menu';
+            }
+        });
+
+        canvas.addEventListener("mousedown", () => {
+            if (gameState === 'playing' && currentDifficulty.fly) {
+                isFlying = true;
+            }
+        });
+
+        canvas.addEventListener("mouseup", () => {
+            if (gameState === 'playing' && currentDifficulty.fly) {
+                isFlying = false;
+            }
+        });
+
+        function checkCollision(rect1, rect2) {
+            const padding = 5;
+            return (
+                rect1.x + padding < rect2.x + rect2.width - padding &&
+                rect1.x + rect1.size - padding > rect2.x + padding &&
+                rect1.y + padding < rect2.y + rect2.height - padding &&
+                rect1.y + rect1.size - padding > rect2.y + padding
+            );
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 330);
+            ctx.lineTo(canvas.width, 330);
+            ctx.stroke();
+
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, 330);
+                ctx.stroke();
+            }
+
+            if (gameState === 'menu') {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 22px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("난이도를 선택하세요", canvas.width / 2, 105);
+
+                const btnWidth = 320;
+                const btnHeight = 40;
+                const btnX = (canvas.width - btnWidth) / 2;
+                const startY = 150;
+                const gap = 52;
+                const colors = ["#00cc66", "#3399ff", "#ff9900", "#ff0055"];
+
+                for (let i = 1; i <= 4; i++) {
+                    let btnY = startY + (i - 1) * gap;
+                    
+                    ctx.fillStyle = colors[i - 1];
+                    ctx.fillRect(btnX, btnY, btnWidth, btnHeight);
+                    
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(btnX, btnY, btnWidth, btnHeight);
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "bold 15px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(`${i}. ${difficulties[i].name}`, canvas.width / 2, btnY + 25);
+                }
+
+            } else if (gameState === 'playing') {
+                gameSpeed += 0.0005;
+                score += 1;
+
+                obstacleTimer++;
+                if (obstacleTimer >= obstacleInterval) {
+                    spawnObstacle();
+                    obstacleTimer = 0;
+                    obstacleInterval = Math.floor(Math.random() * (currentDifficulty.intervalMax - currentDifficulty.intervalMin)) + currentDifficulty.intervalMin;
+                }
+
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    let obs = obstacles[i];
+                    obs.x -= gameSpeed;
+
+                    if (obs.type === 'wall') {
+                        ctx.fillStyle = "#ff0055";
+                        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+                    } else if (obs.type === 'spike') {
+                        ctx.fillStyle = "#ff3366";
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x, obs.y + obs.height);
+                        ctx.lineTo(obs.x + obs.width / 2, obs.y);
+                        ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else {
+                        ctx.fillStyle = "#ff9900";
+                        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+                    }
+
+                    if (checkCollision(player, obs)) {
+                        gameState = 'gameover';
+                        let currentScore = Math.floor(score / 10);
+                        if (currentScore > highScore) {
+                            highScore = currentScore;
+                        }
+                    }
+
+                    if (obs.x + obs.width < 0) {
+                        obstacles.splice(i, 1);
+                    }
+                }
+
+                player.update();
+                player.draw();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 16px Arial";
+                ctx.textAlign = "left";
+                ctx.fillText(`SCORE: ${Math.floor(score / 10)}`, 20, 30);
+                ctx.textAlign = "right";
+                ctx.fillText(`난이도: ${currentDifficulty.name}`, canvas.width - 20, 30);
+
+            } else if (gameState === 'gameover') {
+                player.draw();
+
+                ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = "#ff0055";
+                ctx.font = "bold 30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+                
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "18px Arial";
+                ctx.fillText(`점수: ${Math.floor(score / 10)}`, canvas.width / 2, canvas.height / 2);
+                ctx.fillText(`최고 기록: ${highScore}`, canvas.width / 2, canvas.height / 2 + 30);
+                
+                ctx.font = "14px Arial";
+                ctx.fillStyle = "#888";
+                ctx.fillText("메뉴로 돌아가려면 클릭 또는 스페이스바", canvas.width / 2, canvas.height / 2 + 75);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 좀비 서바이벌: E키 즉시 탈출 엔딩 추가</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: white; font-family: 'Malgun Gothic', sans-serif; user-select: none; }
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10; font-size: 18px; text-shadow: 2px 2px 4px #000; }
+        .ui-row { margin-bottom: 5px; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 10; }
+        #crosshair.zoom { border-color: red; width: 4px; height: 4px; }
+        #weapon-bar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; pointer-events: none; }
+        .w-slot { background: rgba(0,0,0,0.7); border: 2px solid #555; padding: 8px 15px; border-radius: 5px; font-size: 14px; text-align: center; }
+        .w-slot.active { border-color: #ffcc00; background: rgba(50,50,0,0.7); font-weight: bold; }
+        #scope { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: radial-gradient(circle, transparent 25%, rgba(0,0,0,0.95) 26%); display: none; pointer-events: none; z-index: 9; }
+        
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 30; text-align: center;
+        }
+        .btn { background: #ff4444; color: white; border: none; padding: 15px 30px; font-size: 20px; border-radius: 8px; cursor: pointer; margin-top: 20px; font-weight: bold; }
+        .btn:hover { background: #ff6666; }
+        #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; background: rgba(0,0,0,0.9); padding: 40px; border-radius: 12px; border: 2px solid #ff4444; z-index: 20; }
+    </style>
+</head>
+<body>
+
+<div id="start-screen">
+    <h1 style="color:#ffcc00;">3D 좀비 서바이벌 (E키 즉시 탈출 엔딩 추가)</h1>
+    <p>🚁 <b>언제든지 [E] 키를 누르면 헬기가 소환되며 즉시 탈출 엔딩 연출을 볼 수 있습니다!</b><br>🛡️ 터렛 체력 및 좀비 공격, 캐릭터 탑승 헬기 연출 모두 포함</p>
+    <button class="btn" id="start-btn">게임 시작하기</button>
+</div>
+
+<div id="ui">
+    <div class="ui-row">체력: <span id="hp-val">100</span> / 100</div>
+    <div class="ui-row">웨이브: <span id="wave-val">1</span> / 99</div>
+    <div class="ui-row">남은 적: <span id="enemy-val">0</span></div>
+    <div class="ui-row">터렛(T): <span id="turret-val" style="color:#aaa;">사용 불가 (2킬 필요)</span></div>
+    <div class="ui-row" style="color:#00ffcc; margin-top:10px;">헬기 즉시 탈출: [E 키]</div>
+</div>
+
+<div id="crosshair"></div>
+<div id="scope"></div>
+
+<div id="weapon-bar">
+    <div id="s-1" class="w-slot active">1. RPG</div>
+    <div id="s-2" class="w-slot">2. 스나이퍼 (헤드 한방)</div>
+    <div id="s-3" class="w-slot">3. 카람빗 (V키 회전)</div>
+    <div id="s-4" class="w-slot">4. 돌격소총 (연사 기능)</div>
+</div>
+
+<div id="game-over">
+    <h1 id="go-title" style="color:#ff4444;">게임 오버</h1>
+    <p id="go-desc">좀비에게 당했습니다.</p>
+    <button class="btn" onclick="location.reload()">다시 시작</button>
+</div>
+
+<!-- Three.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    let scene, camera, renderer;
+    let gameStarted = false, gameRunning = true;
+    let wave = 1, maxWaves = 99;
+    let isMouseDown = false;
+    
+    const player = {
+        x: 0, z: 0, hp: 100, speed: 0.2, weapon: 1,
+        killCount: 0, turretReady: false, isAiming: false, isEscaping: false,
+        isSpinning: false, spinAngle: 0
+    };
+
+    let keys = { w: false, a: false, s: false, d: false };
+    let yaw = 0, pitch = 0;
+    let zombies = [], turrets = [], activeProjectiles = [];
+    let escapeHelicopter = null, escapeRotor = null, escapeCharacter = null, escapeTimer = 0;
+    let weaponMesh = null;
+
+    const weapons = {
+        1: { name: 'RPG', damage: 999, cooldown: 60, lastShot: 0, speed: 1.2, color: 0xff5500, size: 0.4 },
+        2: { name: '스나이퍼', damage: 60, cooldown: 45, lastShot: 0, speed: 3.5, color: 0x00ffff, size: 0.2 },
+        3: { name: '카람빗', damage: 80, cooldown: 15, lastShot: 0, speed: 0, color: 0xffffff, size: 0.1 },
+        4: { name: '돌격소총', damage: 25, cooldown: 5, lastShot: 0, speed: 3.0, color: 0xffff00, size: 0.15 }
+    };
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x2a3042);
+        scene.fog = new THREE.FogExp2(0x2a3042, 0.008);
+
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(50, 150, 50);
+        scene.add(dirLight);
+
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(400, 400),
+            new THREE.MeshStandardMaterial({ color: 0x3d4e3d, roughness: 0.8 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        createWeaponMesh();
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-screen').style.display = 'none';
+            renderer.domElement.requestPointerLock();
+            gameStarted = true;
+            startWave();
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('keydown', e => {
+            if (!gameRunning || !gameStarted) return;
+            if (e.key === 'w' || e.key === 'W') keys.w = true;
+            if (e.key === 's' || e.key === 'S') keys.s = true;
+            if (e.key === 'a' || e.key === 'A') keys.a = true;
+            if (e.key === 'd' || e.key === 'D') keys.d = true;
+
+            if (['1','2','3','4'].includes(e.key)) switchWeapon(parseInt(e.key));
+            if ((e.key === 't' || e.key === 'T') && player.turretReady) spawnTurret();
+            
+            // 💡 E키를 누르면 즉시 헬기 탈출 엔딩 시작
+            if ((e.key === 'e' || e.key === 'E') && !player.isEscaping) {
+                triggerEscapeSequence();
+            }
+            
+            if ((e.key === 'v' || e.key === 'V') && player.weapon === 3 && !player.isSpinning) {
+                player.isSpinning = true;
+                player.spinAngle = 0;
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            if (e.key === 'w' || e.key === 'W') keys.w = false;
+            if (e.key === 's' || e.key === 'S') keys.s = false;
+            if (e.key === 'a' || e.key === 'A') keys.a = false;
+            if (e.key === 'd' || e.key === 'D') keys.d = false;
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (document.pointerLockElement !== renderer.domElement || !gameRunning || player.isEscaping) return;
+            yaw -= e.movementX * 0.002;
+            pitch -= e.movementY * 0.002;
+            if (pitch > 1.4) pitch = 1.4;
+            if (pitch < -1.4) pitch = -1.4;
+        });
+
+        document.addEventListener('mousedown', e => {
+            if (document.pointerLockElement !== renderer.domElement || !gameRunning || player.isEscaping) return;
+            if (e.button === 0) {
+                isMouseDown = true;
+                shoot();
+            } else if (e.button === 2 && player.weapon === 2) {
+                toggleSniperZoom(true);
+            }
+        });
+
+        document.addEventListener('mouseup', e => {
+            if (e.button === 0) {
+                isMouseDown = false;
+            } else if (e.button === 2 && player.weapon === 2) {
+                toggleSniperZoom(false);
+            }
+        });
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        animate();
+    }
+
+    function createWeaponMesh() {
+        if (weaponMesh) camera.remove(weaponMesh);
+        weaponMesh = new THREE.Group();
+        
+        let darkMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.2, metalness: 0.8 });
+        let metalMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.3, metalness: 0.9 });
+        let woodMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.7 });
+        let goldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.9 });
+
+        if (player.weapon === 1) {
+            let tube = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 1.8, 12), darkMat);
+            tube.rotation.x = Math.PI / 2;
+            let grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.15), woodMat);
+            grip.position.set(0, -0.2, 0.2);
+            let scope = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), metalMat);
+            scope.position.set(0, 0.2, -0.2);
+            scope.rotation.z = Math.PI / 2;
+            weaponMesh.add(tube, grip, scope);
+        } else if (player.weapon === 2) {
+            let body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 2.2), darkMat);
+            let barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 8), metalMat);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.05, -1.5);
+            let scopeObj = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.8, 8), metalMat);
+            scopeObj.rotation.x = Math.PI / 2;
+            scopeObj.position.set(0, 0.2, -0.1);
+            let stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.8), woodMat);
+            stock.position.set(0, -0.05, 0.9);
+            weaponMesh.add(body, barrel, scopeObj, stock);
+        } else if (player.weapon === 3) {
+            let handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.3, 8), darkMat);
+            let ring = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 8, 16), metalMat);
+            ring.position.set(0, -0.18, 0);
+            let blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.35, 0.12), goldMat);
+            blade.position.set(0, 0.2, 0.05);
+            blade.rotation.x = -Math.PI / 6;
+            weaponMesh.add(handle, ring, blade);
+        } else if (player.weapon === 4) {
+            let body = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.22, 1.4), darkMat);
+            let barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), metalMat);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.05, -1.0);
+            let mag = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.15), metalMat);
+            mag.position.set(0, -0.3, -0.1);
+            mag.rotation.x = -Math.PI / 12;
+            weaponMesh.add(body, barrel, mag);
+        }
+
+        weaponMesh.position.set(0.4, -0.3, -0.7);
+        camera.add(weaponMesh);
+        scene.add(camera);
+    }
+
+    function switchWeapon(num) {
+        player.weapon = num;
+        document.querySelectorAll('.w-slot').forEach(el => el.classList.remove('active'));
+        document.getElementById(`s-${num}`).classList.add('active');
+        if (num !== 2 && player.isAiming) toggleSniperZoom(false);
+        createWeaponMesh();
+    }
+
+    function toggleSniperZoom(zoom) {
+        player.isAiming = zoom;
+        camera.fov = zoom ? 25 : 75;
+        camera.updateProjectionMatrix();
+        document.getElementById('scope').style.display = zoom ? 'block' : 'none';
+        document.getElementById('crosshair').classList.toggle('zoom', zoom);
+        if(weaponMesh) weaponMesh.visible = !zoom;
+    }
+
+    function startWave() {
+        zombies.forEach(z => scene.remove(z.mesh));
+        zombies = [];
+        let count = 3 + wave * 2;
+        for (let i = 0; i < count; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let dist = 60 + Math.random() * 40;
+            let zx = Math.cos(angle) * dist;
+            let zz = Math.sin(angle) * dist;
+
+            let isTank = (wave >= 3 && Math.random() < Math.min(0.15 + (wave * 0.005), 0.5));
+            let zHp = isTank ? (200 + wave * 10) : (100 + wave * 5);
+            let zSpeed = isTank ? (0.03 + wave * 0.0002) : (0.04 + wave * 0.0003);
+            let scaleMultiplier = isTank ? 1.8 : 1.0;
+
+            const zombieGroup = new THREE.Group();
+            const skinMat = new THREE.MeshStandardMaterial({ color: isTank ? 0x8b0000 : 0x556b2f, roughness: 0.8 });
+            const clothMat = new THREE.MeshStandardMaterial({ color: isTank ? 0x2b0000 : 0x34495e, roughness: 0.9 });
+
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.9), clothMat);
+            torso.position.y = 1.6;
+            zombieGroup.add(torso);
+
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), skinMat);
+            head.position.y = 3.0;
+            zombieGroup.add(head);
+
+            const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 1.5), skinMat);
+            leftArm.position.set(-0.7, 2.0, 0.7);
+            leftArm.rotation.x = Math.PI / 4;
+            zombieGroup.add(leftArm);
+
+            const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 1.5), skinMat);
+            rightArm.position.set(0.7, 2.0, 0.7);
+            rightArm.rotation.x = Math.PI / 4;
+            zombieGroup.add(rightArm);
+
+            const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.5, 0.4), clothMat);
+            leftLeg.position.set(-0.3, 0.75, 0);
+            zombieGroup.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.5, 0.4), clothMat);
+            rightLeg.position.set(0.3, 0.75, 0);
+            zombieGroup.add(rightLeg);
+
+            zombieGroup.scale.set(scaleMultiplier, scaleMultiplier, scaleMultiplier);
+            zombieGroup.position.set(zx, 0, zz);
+            scene.add(zombieGroup);
+
+            zombies.push({ 
+                mesh: zombieGroup, leftArm: leftArm, rightArm: rightArm, 
+                x: zx, z: zz, speed: zSpeed, hp: zHp, maxHp: zHp, isTank: isTank, hitCooldown: 0, animTimer: Math.random() * 10 
+            });
+        }
+    }
+
+    function spawnTurret() {
+        const tGroup = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+        base.position.y = 0.4;
+        tGroup.add(base);
+        
+        const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 1.6), new THREE.MeshStandardMaterial({ color: 0x00aa55 }));
+        top.position.y = 1.2;
+        tGroup.add(top);
+
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2, 8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 1.2, 1);
+        tGroup.add(barrel);
+
+        tGroup.position.set(player.x, 0, player.z);
+        scene.add(tGroup);
+        
+        turrets.push({ group: tGroup, top: top, x: player.x, z: player.z, range: 35, cooldown: 25, timer: 0, hp: 150 });
+
+        player.turretReady = false;
+        player.killCount = 0;
+    }
+
+    function shoot() {
+        let w = weapons[player.weapon];
+        if (w.lastShot > 0) return;
+        w.lastShot = w.cooldown;
+
+        if (player.weapon === 3) {
+            zombies.forEach(z => {
+                if (Math.hypot(player.x - z.x, player.z - z.z) < 3.5) {
+                    z.hp -= w.damage;
+                }
+            });
+            return;
+        }
+
+        const pGeo = new THREE.SphereGeometry(w.size, 8, 8);
+        const pMat = new THREE.MeshBasicMaterial({ color: w.color });
+        const bulletMesh = new THREE.Mesh(pGeo, pMat);
+
+        bulletMesh.position.copy(camera.position);
+        scene.add(bulletMesh);
+
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+
+        activeProjectiles.push({
+            mesh: bulletMesh,
+            dir: dir,
+            speed: w.speed,
+            weaponType: player.weapon,
+            damage: w.damage,
+            range: 150,
+            traveled: 0
+        });
+    }
+
+    function triggerEscapeSequence() {
+        player.isEscaping = true;
+        document.exitPointerLock();
+        document.getElementById('scope').style.display = 'none';
+        if(weaponMesh) weaponMesh.visible = false;
+
+        const heliGroup = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 9), new THREE.MeshStandardMaterial({ color: 0x224466 }));
+        body.position.y = 2;
+        heliGroup.add(body);
+
+        escapeRotor = new THREE.Mesh(new THREE.BoxGeometry(14, 0.2, 1.2), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        escapeRotor.position.y = 3.8;
+        heliGroup.add(escapeRotor);
+
+        const charGroup = new THREE.Group();
+        const cTorso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x1e90ff }));
+        cTorso.position.set(1.2, 1.5, 0);
+        charGroup.add(cTorso);
+
+        const cHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xffdbac }));
+        cHead.position.set(1.2, 2.3, 0);
+        charGroup.add(cHead);
+
+        heliGroup.add(charGroup);
+        escapeCharacter = charGroup;
+
+        heliGroup.position.set(player.x, 15, player.z - 15);
+        scene.add(heliGroup);
+        escapeHelicopter = heliGroup;
+    }
+
+    function update() {
+        if (!gameRunning || !gameStarted) return;
+
+        for (let k in weapons) if (weapons[k].lastShot > 0) weapons[k].lastShot--;
+
+        if (isMouseDown && player.weapon === 4) {
+            shoot();
+        }
+
+        if (player.isSpinning && weaponMesh && player.weapon === 3) {
+            player.spinAngle += 0.3;
+            weaponMesh.rotation.z = player.spinAngle;
+            if (player.spinAngle >= Math.PI * 2) {
+                player.isSpinning = false;
+                weaponMesh.rotation.z = 0;
+            }
+        }
+
+        for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+            let p = activeProjectiles[i];
+            let prevPos = p.mesh.position.clone();
+            p.mesh.position.addScaledVector(p.dir, p.speed);
+            p.traveled += p.speed;
+
+            let hit = false;
+            for (let j = zombies.length - 1; j >= 0; j--) {
+                let z = zombies[j];
+                let zPos = new THREE.Vector3(z.x, z.isTank ? 2.5 : 1.6, z.z);
+
+                let bulletDir = p.mesh.position.clone().sub(prevPos);
+                let bulletLen = bulletDir.length();
+                if (bulletLen > 0) {
+                    bulletDir.normalize();
+                    let rayToZombie = zPos.clone().sub(prevPos);
+                    let t = rayToZombie.dot(bulletDir);
+                    t = Math.max(0, Math.min(bulletLen, t));
+                    let nearestPoint = prevPos.clone().addScaledVector(bulletDir, t);
+                    
+                    let hitRadius = z.isTank ? 3.0 : 1.8;
+                    if (nearestPoint.distanceTo(zPos) < hitRadius) {
+                        if (p.weaponType === 1) {
+                            z.hp = 0;
+                            hit = true;
+                        } else if (p.weaponType === 2) {
+                            let headHeight = z.isTank ? 4.5 : 2.6;
+                            if (nearestPoint.y > headHeight) {
+                                z.hp -= 150;
+                            } else {
+                                z.hp -= p.damage;
+                            }
+                            hit = true;
+                        } else {
+                            z.hp -= p.damage;
+                            hit = true;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (hit || p.traveled > p.range) {
+                scene.remove(p.mesh);
+                activeProjectiles.splice(i, 1);
+            }
+        }
+
+        if (player.isEscaping) {
+            escapeTimer += 0.016;
+            if (escapeHelicopter) {
+                if (escapeTimer < 3.0) {
+                    escapeHelicopter.position.y += (1.5 - escapeHelicopter.position.y) * 0.04;
+                    escapeHelicopter.position.z += (player.z - 6 - escapeHelicopter.position.z) * 0.04;
+                } else {
+                    escapeHelicopter.position.y += 0.3;
+                    escapeHelicopter.position.z -= 0.5;
+                }
+                if (escapeRotor) escapeRotor.rotation.y += 1.2;
+            }
+
+            camera.position.x += (player.x + 6 - camera.position.x) * 0.03;
+            camera.position.y += (4.5 - camera.position.y) * 0.03;
+            camera.position.z += (player.z + 10 - camera.position.z) * 0.03;
+            if (escapeHelicopter) camera.lookAt(escapeHelicopter.position);
+
+            if (escapeTimer > 6.0) {
+                gameRunning = false;
+                document.getElementById('go-title').innerText = "최종 탈출 성공!";
+                document.getElementById('go-title').style.color = "#00ff00";
+                document.getElementById('go-desc').innerText = "헬기에 탑승하여 안전하게 구역을 탈출했습니다!";
+                document.getElementById('game-over').style.display = 'block';
+            }
+            return;
+        }
+
+        let mx = 0, mz = 0;
+        if (keys.w) { mx -= Math.sin(yaw); mz -= Math.cos(yaw); }
+        if (keys.s) { mx += Math.sin(yaw); mz += Math.cos(yaw); }
+        if (keys.a) { mx -= Math.cos(yaw); mz += Math.sin(yaw); }
+        if (keys.d) { mx += Math.cos(yaw); mz -= Math.sin(yaw); }
+        if (mx && mz) { mx *= 0.707; mz *= 0.707; }
+
+        player.x += mx * player.speed;
+        player.z += mz * player.speed;
+        camera.position.set(player.x, 2, player.z);
+        camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+
+        for (let i = turrets.length - 1; i >= 0; i--) {
+            let t = turrets[i];
+            t.timer++;
+            let nearZ = null, minD = t.range;
+            zombies.forEach(z => {
+                let d = Math.hypot(z.x - t.x, z.z - t.z);
+                if (d < minD) { minD = d; nearZ = z; }
+            });
+            if (nearZ) {
+                t.top.rotation.y = Math.atan2(nearZ.x - t.x, nearZ.z - t.z);
+                if (t.timer >= t.cooldown) { t.timer = 0; nearZ.hp -= 50; }
+            }
+
+            zombies.forEach(z => {
+                if (Math.hypot(z.x - t.x, z.z - t.z) < 2.0) {
+                    t.hp -= 1;
+                }
+            });
+
+            if (t.hp <= 0) {
+                scene.remove(t.group);
+                turrets.splice(i, 1);
+            }
+        }
+
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            let z = zombies[i];
+            let ang = Math.atan2(player.x - z.x, player.z - z.z);
+            z.x += Math.sin(ang) * z.speed;
+            z.z += Math.cos(ang) * z.speed;
+            z.mesh.position.set(z.x, 0, z.z);
+
+            z.animTimer += 0.15;
+            let bounceY = Math.abs(Math.sin(z.animTimer)) * (z.isTank ? 0.3 : 0.2);
+            z.mesh.position.y = bounceY;
+            z.leftArm.rotation.z = Math.sin(z.animTimer) * 0.2;
+            z.rightArm.rotation.z = -Math.sin(z.animTimer) * 0.2;
+
+            let touchDist = z.isTank ? 2.5 : 1.8;
+            if (Math.hypot(player.x - z.x, player.z - z.z) < touchDist) {
+                if (z.hitCooldown <= 0) {
+                    player.hp -= z.isTank ? 25 : 10;
+                    z.hitCooldown = 50;
+                    if (player.hp <= 0) {
+                        player.hp = 0;
+                        gameRunning = false;
+                        document.exitPointerLock();
+                        document.getElementById('go-title').innerText = "게임 오버";
+                        document.getElementById('go-title').style.color = "#ff4444";
+                        document.getElementById('go-desc').innerText = `${wave} 웨이브에서 좀비에게 당했습니다.`;
+                        document.getElementById('game-over').style.display = 'block';
+                    }
+                }
+            }
+            if (z.hitCooldown > 0) z.hitCooldown--;
+
+            if (z.hp <= 0) {
+                scene.remove(z.mesh);
+                zombies.splice(i, 1);
+                player.killCount++;
+                if (player.killCount >= 2) player.turretReady = true;
+            }
+        }
+
+        if (zombies.length === 0) {
+            if (wave < maxWaves) {
+                wave++;
+                startWave();
+            } else {
+                triggerEscapeSequence();
+            }
+        }
+
+        document.getElementById('hp-val').innerText = player.hp;
+        document.getElementById('wave-val').innerText = `${wave} / ${maxWaves}`;
+        document.getElementById('enemy-val').innerText = zombies.length;
+        let tElem = document.getElementById('turret-val');
+        if (player.turretReady) {
+            tElem.innerText = "설치 가능! [T 키]";
+            tElem.style.color = "#00ff00";
+        } else {
+            tElem.innerText = `충전 중 (${player.killCount}/2 킬)`;
+            tElem.style.color = "#aaa";
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        update();
+        renderer.render(scene, camera);
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
