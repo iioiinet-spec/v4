@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>네온 벽돌깨기 아케이드</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #2b0a0a; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #ffcccc;
+            font-family: 'Arial', sans-serif;
+            transition: background-color 0.5s ease;
+        }
+        #game-container { text-align: center; position: relative; }
+        canvas {
+            background: rgba(30, 5, 5, 0.9);
+            border: 3px solid #ff4444;
+            box-shadow: 0 0 25px rgba(255, 0, 0, 0.3);
+            display: block;
+            cursor: none;
+        }
+        .ui { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            width: 480px; 
+            margin-bottom: 10px; 
+            font-weight: bold; 
+            font-size: 13px;
+            text-shadow: 0 0 5px #ff0000;
+        }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 480px; height: 360px;
+            background: rgba(0,0,0,0.85); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10;
+        }
+        h1 { margin-bottom: 15px; font-size: 32px; text-shadow: 0 0 10px #ff0000; }
+        .btn-group { display: flex; gap: 10px; }
+        button { 
+            padding: 10px 20px; cursor: pointer; background: #cc0000; color: white; 
+            border: none; font-size: 16px; font-weight: bold; border-radius: 4px;
+            box-shadow: 0 0 10px #ff0000; transition: 0.2s;
+        }
+        button:hover { background: #ff3333; box-shadow: 0 0 15px #ff6666; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="ui">
+        <div>STAGE: <span id="stage">1</span></div>
+        <div>SCORE: <span id="score">0</span></div>
+        <div>HIGH: <span id="high-score">0</span></div>
+        <div id="lives-container"></div>
+    </div>
+    <div style="position: relative;">
+        <canvas id="gameCanvas" width="480" height="360"></canvas>
+        <div id="overlay">
+            <h1 id="msg">GAME OVER</h1>
+            <p id="final-score" style="margin-bottom: 20px; font-size: 18px;"></p>
+            <div class="btn-group" id="btn-container">
+                <button onclick="restartGame()">다시하기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    
+    let score = 0;
+    let highScore = localStorage.getItem("brickHighScore") || 0;
+    document.getElementById("high-score").innerText = highScore;
+
+    let lives = 3;
+    let ceilBounceCount = 3; 
+    let level = 1; 
+    let isGameOver = false;
+    let bgRedValue = 43;
+
+    let fireworks = [];
+    let isVictoryFireworks = false;
+
+    // 제자리(벽돌이 있던 자리)에 가만히 고정되는 아이템 배열
+    // 속성: x, y, type ('bomb' 또는 'life'), radius
+    let items = [];
+
+    function updateLivesDisplay() {
+        let hearts = "";
+        for(let i = 0; i < lives; i++) {
+            hearts += "❤️";
+        }
+        document.getElementById("lives-container").innerHTML = hearts;
+    }
+    updateLivesDisplay();
+
+    let ball = { 
+        x: 240, 
+        y: 300, 
+        dx: 3, 
+        dy: -3, 
+        radius: 6, 
+        history: [] 
+    };
+    let paddle = { x: 200, w: 80, h: 12 };
+    
+    const brickColumnCount = 5;
+    let brickRowCount = 3; 
+    const padding = 4;
+    const offsetTop = 40;
+    const offsetLeft = 25;
+    const bW = (canvas.width - (offsetLeft * 2) - (padding * (brickColumnCount - 1))) / brickColumnCount;
+    let bH = 16; 
+
+    const stagePalettes = [
+        ["#ff0055", "#ff5500", "#ffcc00", "#00ffcc", "#00ccff"], 
+        ["#bf00ff", "#ff00bf", "#ff0055", "#ff8000", "#ffff00"], 
+        ["#00ff00", "#80ff00", "#ffff00", "#00ffff", "#0080ff"], 
+        ["#ff0000", "#ff3300", "#ff6600", "#ff9900", "#ffcc00"]  
+    ];
+
+    const ballColorThemes = [
+        { main: "#ffffff", shadow: "#ff0055", trail: "rgba(255, 0, 85, " }, 
+        { main: "#00ffff", shadow: "#00ffff", trail: "rgba(0, 255, 255, " }, 
+        { main: "#ffcc00", shadow: "#ffaa00", trail: "rgba(255, 204, 0, " },  
+        { main: "#00ff66", shadow: "#00ff00", trail: "rgba(0, 255, 102, " }, 
+        { main: "#bf00ff", shadow: "#bf00ff", trail: "rgba(191, 0, 255, " }  
+    ];
+
+    const canvasBgThemes = [
+        { bg: "rgba(30, 5, 5, 0.9)", border: "#ff4444", shadow: "rgba(255, 0, 0, 0.3)" },   
+        { bg: "rgba(5, 25, 30, 0.9)", border: "#00ffff", shadow: "rgba(0, 255, 255, 0.3)" }, 
+        { bg: "rgba(25, 25, 5, 0.9)", border: "#ffcc00", shadow: "rgba(255, 204, 0, 0.3)" },  
+        { bg: "rgba(5, 30, 15, 0.9)", border: "#00ff66", shadow: "rgba(0, 255, 102, 0.3)" }, 
+        { bg: "rgba(20, 5, 30, 0.9)", border: "#bf00ff", shadow: "rgba(191, 0, 255, 0.3)" }, 
+        { bg: "rgba(30, 15, 5, 0.9)", border: "#ff8800", shadow: "rgba(255, 136, 0, 0.3)" }  
+    ];
+
+    function getCanvasBackground() {
+        let themeIndex = Math.floor((level - 1) / 5) % canvasBgThemes.length;
+        return canvasBgThemes[themeIndex];
+    }
+
+    function getBallColors() {
+        let themeIndex = Math.floor((level - 1) / 10) % ballColorThemes.length;
+        return ballColorThemes[themeIndex];
+    }
+
+    let currentColors = [];
+    let brickScores = [];
+
+    let bricks = [];
+    function initBricks() {
+        let paletteIndex = (level - 1) % stagePalettes.length;
+        let basePalette = stagePalettes[paletteIndex];
+
+        currentColors = [];
+        brickScores = [];
+
+        for (let r = 0; r < brickRowCount; r++) {
+            let color = basePalette[r % basePalette.length];
+            currentColors.push(color);
+            brickScores.push((brickRowCount - r) * 10); 
+        }
+
+        // 레벨 1, 15, 30일 때 총 폭탄 3개, 하트 2개 지정
+        let specialItemsList = [];
+        if (level === 1 || level === 15 || level === 30) {
+            specialItemsList = ['bomb', 'bomb', 'bomb', 'life', 'life'];
+            let totalBricks = brickColumnCount * brickRowCount;
+            while(specialItemsList.length < totalBricks) {
+                specialItemsList.push('none');
+            }
+            // 셔플
+            for (let i = specialItemsList.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                [specialItemsList[i], specialItemsList[j]] = [specialItemsList[j], specialItemsList[i]];
+            }
+        }
+
+        bricks = [];
+        let index = 0;
+        for (let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (let r = 0; r < brickRowCount; r++) {
+                let assignedType = 'none';
+                if ((level === 1 || level === 15 || level === 30) && specialItemsList.length > 0) {
+                    assignedType = specialItemsList[index++];
+                }
+                bricks[c][r] = { 
+                    x: c * (bW + padding) + offsetLeft, 
+                    y: r * (bH + padding) + offsetTop, 
+                    status: 1, 
+                    flash: 0,
+                    row: r,
+                    clearedNotified: false,
+                    itemType: assignedType // 'bomb', 'life', 'none'
+                };
+            }
+        }
+    }
+    initBricks();
+
+    let winButton = {
+        x: canvas.width / 2 - 50,
+        y: 5,
+        w: 100,
+        h: 20,
+        active: false
+    };
+
+    document.addEventListener("mousemove", e => {
+        let relativeX = e.clientX - canvas.getBoundingClientRect().left;
+        if(relativeX > 0 && relativeX < canvas.width) paddle.x = relativeX - paddle.w/2;
+    });
+
+    function checkRowCompletion() {
+        for(let r=0; r<brickRowCount; r++) {
+            let rowCleared = true;
+            for(let c=0; c<brickColumnCount; c++) {
+                if(bricks[c][r].status == 1) {
+                    rowCleared = false;
+                    break;
+                }
+            }
+            if(rowCleared && !bricks[0][r].clearedNotified) {
+                for(let c=0; c<brickColumnCount; c++) bricks[c][r].clearedNotified = true;
+                bgRedValue = Math.min(bgRedValue + 15, 120);
+                document.body.style.backgroundColor = `rgb(${bgRedValue}, 10, 10)`;
+            }
+        }
+    }
+
+    function updateHighScore() {
+        if(score > highScore) {
+            highScore = score;
+            localStorage.setItem("brickHighScore", highScore);
+            document.getElementById("high-score").innerText = highScore;
+        }
+    }
+
+    function resetBallVelocity() {
+        let baseSpeed;
+        if (level < 13) {
+            baseSpeed = 4.2 + (level - 1) * 0.4;
+        } else {
+            baseSpeed = (4.2 + 12 * 0.4) * Math.pow(1.5, level - 13);
+        }
+        ball.dx = baseSpeed * 0.707; 
+        ball.dy = -baseSpeed * 0.707;
+    }
+
+    function draw() {
+        if(isGameOver) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (isVictoryFireworks) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            fireworks.forEach((p, index) => {
+                p.x += p.dx;
+                p.y += p.dy;
+                p.dy += 0.05; 
+                p.alpha -= 0.015;
+
+                if (p.alpha <= 0) {
+                    fireworks.splice(index, 1);
+                } else {
+                    ctx.save();
+                    ctx.globalAlpha = p.alpha;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            });
+
+            if (Math.random() < 0.1) {
+                createFirework(Math.random() * canvas.width, Math.random() * (canvas.height / 2));
+            }
+
+            requestAnimationFrame(draw);
+            return;
+        }
+
+        // 제자리에 고정된 아이템들 처리 및 렌더링
+        for (let i = items.length - 1; i >= 0; i--) {
+            let it = items[i];
+
+            // 공이 고정된 아이템에 닿았는지 체크 (공이 아이템을 지나가며 맞춤)
+            let distToBall = Math.hypot(ball.x - it.x, ball.y - it.y);
+            if (distToBall < ball.radius + it.radius) {
+                if (it.type === 'bomb') {
+                    // 폭탄을 맞추면 목숨 1개 감소
+                    lives--;
+                    updateLivesDisplay();
+                    if (lives <= 0) {
+                        isGameOver = true;
+                        updateHighScore();
+                        document.getElementById("msg").innerText = "GAME OVER";
+                        document.getElementById("final-score").innerText = `최종 점수: ${score}`;
+                        document.getElementById("btn-container").innerHTML = `
+                            <button onclick="restartGame()">다시하기</button>
+                            <button onclick="restartGameFromStage1()">처음부터</button>
+                        `;
+                        document.getElementById("overlay").style.display = "flex";
+                        return;
+                    }
+                } else if (it.type === 'life') {
+                    // 하트를 맞추면 목숨 1개 증가
+                    lives++;
+                    updateLivesDisplay();
+                }
+                // 아이템과 접촉 후 사라짐
+                items.splice(i, 1);
+                continue;
+            }
+
+            // 제자리에 아이템 그림 고정 출력
+            ctx.save();
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            if (it.type === 'bomb') {
+                ctx.fillText("💣", it.x, it.y);
+            } else {
+                ctx.fillText("❤️", it.x, it.y);
+            }
+            ctx.restore();
+        }
+
+        let activeCount = 0;
+        for(let c=0; c<brickColumnCount; c++) {
+            for(let r=0; r<brickRowCount; r++) {
+                let b = bricks[c][r];
+                if(b.status == 1) {
+                    activeCount++;
+                    let brickColor = currentColors[r % currentColors.length];
+                    
+                    ctx.fillStyle = brickColor;
+                    ctx.shadowBlur = b.flash > 0 ? 30 : 6;
+                    ctx.shadowColor = brickColor;
+                    ctx.fillRect(b.x, b.y, bW, bH);
+                    ctx.shadowBlur = 0;
+                    if(b.flash > 0) b.flash--;
+                }
+            }
+        }
+
+        let ballTheme = getBallColors();
+
+        ball.history.push({x: ball.x, y: ball.y});
+        if(ball.history.length > 8) ball.history.shift();
+        ball.history.forEach((pos, i) => {
+            ctx.fillStyle = `${ballTheme.trail}${(i+1)/ball.history.length * 0.15})`;
+            ctx.beginPath(); ctx.arc(pos.x, pos.y, ball.radius, 0, Math.PI*2); ctx.fill();
+        });
+        
+        ctx.fillStyle = ballTheme.main;
+        ctx.shadowBlur = 12; 
+        ctx.shadowColor = ballTheme.shadow;
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = "#00ffcc";
+        ctx.shadowBlur = 10; ctx.shadowColor = "#00ffcc";
+        ctx.fillRect(paddle.x, 340, paddle.w, paddle.h);
+        ctx.shadowBlur = 0;
+
+        if(activeCount == 0 && !winButton.active) {
+            winButton.active = true;
+        }
+
+        if(winButton.active) {
+            ctx.fillStyle = "#00ff00";
+            ctx.shadowBlur = 15; ctx.shadowColor = "#00ff00";
+            ctx.fillRect(winButton.x, winButton.y, winButton.w, winButton.h);
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 11px Arial";
+            ctx.fillText("CLEAR TARGET", winButton.x + 8, winButton.y + 14);
+        }
+
+        if(ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+            ball.dx = -ball.dx;
+        }
+
+        if(ball.y + ball.dy < ball.radius) {
+            if(winButton.active && ball.x >= winButton.x && ball.x <= winButton.x + winButton.w) {
+                if (level >= 30) {
+                    triggerFinalVictoryState();
+                } else {
+                    triggerWinState();
+                }
+                return;
+            }
+
+            if (level < 20) {
+                if(ceilBounceCount > 0) {
+                    ceilBounceCount--;
+                    ball.dy = -ball.dy;
+                } else {
+                    ball.dy = -ball.dy;
+                }
+            }
+        }
+        else if(level >= 20 && ball.y < 0) {
+            ball.dy = -ball.dy;
+        }
+
+        if(ball.y + ball.dy > 340 - ball.radius && ball.y + ball.dy < 340 + paddle.h) {
+            if(ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
+                let hitPoint = ball.x - (paddle.x + paddle.w / 2);
+                let currentSpeed;
+                if (level < 13) {
+                    currentSpeed = 4.2 + (level - 1) * 0.4;
+                } else {
+                    currentSpeed = (4.2 + 12 * 0.4) * Math.pow(1.5, level - 13);
+                }
+                let angle = (hitPoint / (paddle.w / 2)) * (Math.PI / 3);
+                ball.dx = currentSpeed * Math.sin(angle);
+                ball.dy = -Math.abs(currentSpeed * Math.cos(angle));
+            }
+        } 
+        
+        if(ball.y > 360) {
+            lives--;
+            updateLivesDisplay();
+            if(lives <= 0) {
+                isGameOver = true;
+                updateHighScore();
+                document.getElementById("msg").innerText = "GAME OVER";
+                document.getElementById("final-score").innerText = `최종 점수: ${score}`;
+                document.getElementById("btn-container").innerHTML = `
+                    <button onclick="restartGame()">다시하기</button>
+                    <button onclick="restartGameFromStage1()">처음부터</button>
+                `;
+                document.getElementById("overlay").style.display = "flex";
+                return;
+            }
+            ball.x = 240; ball.y = 300; 
+            resetBallVelocity(); 
+            ball.history = [];
+        }
+        
+        bricks.forEach(col => col.forEach(b => {
+            if(b.status == 1 && ball.x > b.x && ball.x < b.x+bW && ball.y > b.y && ball.y < b.y+bH) {
+                ball.dy = -ball.dy; 
+                b.status = 0; 
+                score += brickScores[b.row];
+                document.getElementById("score").innerText = score;
+                updateHighScore();
+
+                // 벽돌이 깨진 그 자리(중앙 좌표)에 아이템 고정 생성
+                if (b.itemType && b.itemType !== 'none') {
+                    items.push({
+                        x: b.x + bW / 2,
+                        y: b.y + bH / 2,
+                        radius: 10,
+                        type: b.itemType // 'bomb' 또는 'life'
+                    });
+                }
+
+                bricks.forEach(c => c.forEach(br => { if(br.row <= b.row && br.status == 1) br.flash = 35; }));
+                checkRowCompletion();
+            }
+        }));
+
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+        requestAnimationFrame(draw);
+    }
+
+    function createFirework(x, y) {
+        const colors = ["#ff0055", "#00ffcc", "#ffcc00", "#00ffff", "#bf00ff", "#ffffff"];
+        for (let i = 0; i < 40; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 4 + 1;
+            fireworks.push({
+                x: x,
+                y: y,
+                dx: Math.cos(angle) * speed,
+                dy: Math.sin(angle) * speed,
+                radius: Math.random() * 3 + 1,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                alpha: 1
+            });
+        }
+    }
+
+    function triggerWinState() {
+        isGameOver = true;
+        updateHighScore();
+        document.getElementById("msg").innerText = "VICTORY!";
+        document.getElementById("final-score").innerText = `획득 점수: ${score}`;
+        document.getElementById("btn-container").innerHTML = `
+            <button onclick="nextStage()">다음 단계</button>
+            <button onclick="restartGameFromStage1()">처음부터</button>
+        `;
+        document.getElementById("overlay").style.display = "flex";
+    }
+
+    function triggerFinalVictoryState() {
+        isGameOver = true;
+        isVictoryFireworks = true;
+        updateHighScore();
+        document.getElementById("msg").innerText = "승리";
+        document.getElementById("final-score").innerText = `최종 30단계 클리어! 최종 점수: ${score}`;
+        document.getElementById("btn-container").innerHTML = `<button onclick="restartGameFromStage1()">다시하기</button>`;
+        document.getElementById("overlay").style.display = "flex";
+        draw();
+    }
+
+    function updateCanvasTheme() {
+        let theme = getCanvasBackground();
+        canvas.style.background = theme.bg;
+        canvas.style.borderColor = theme.border;
+        canvas.style.boxShadow = `0 0 25px ${theme.shadow}`;
+    }
+
+    function nextStage() {
+        level++;
+        if (level < 13) {
+            brickRowCount += 1; 
+        }
+        document.getElementById("stage").innerText = level;
+
+        isGameOver = false;
+        winButton.active = false;
+        ceilBounceCount = 3; 
+        bgRedValue = 43;
+        items = [];
+        document.body.style.backgroundColor = `#2b0a0a`;
+        
+        updateCanvasTheme();
+
+        ball.x = 240; ball.y = 300; 
+        resetBallVelocity(); 
+        ball.history = [];
+        
+        initBricks();
+        document.getElementById("overlay").style.display = "none";
+        draw();
+    }
+
+    function restartGame() {
+        score = 0; 
+        document.getElementById("score").innerText = score;
+
+        lives = 3;
+        updateLivesDisplay();
+        ceilBounceCount = 3;
+        isGameOver = false;
+        isVictoryFireworks = false;
+        winButton.active = false;
+        bgRedValue = 43;
+        items = [];
+        document.body.style.backgroundColor = `#2b0a0a`;
+        
+        updateCanvasTheme();
+
+        ball.x = 240; ball.y = 300; 
+        resetBallVelocity(); 
+        ball.history = [];
+        
+        initBricks(); 
+        document.getElementById("overlay").style.display = "none";
+        draw();
+    }
+
+    function restartGameFromStage1() {
+        score = 0;
+        lives = 3;
+        updateLivesDisplay();
+        ceilBounceCount = 3;
+        level = 1;
+        brickRowCount = 3; 
+        document.getElementById("stage").innerText = level;
+        document.getElementById("score").innerText = score;
+
+        isGameOver = false;
+        isVictoryFireworks = false;
+        winButton.active = false;
+        bgRedValue = 43;
+        items = [];
+        document.body.style.backgroundColor = `#2b0a0a`;
+        
+        updateCanvasTheme();
+
+        ball.x = 240; ball.y = 300; 
+        resetBallVelocity(); 
+        ball.history = [];
+        
+        initBricks();
+        document.getElementById("overlay").style.display = "none";
+        draw();
+    }
+
+    updateCanvasTheme();
+    resetBallVelocity();
+    draw();
+</script>
+</body>
+</html>
