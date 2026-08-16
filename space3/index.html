@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Cosmic Navigator — 3D 우주 탐험 시뮬레이션</title>
+<style>
+  :root{
+    --cyan:#68e8ff; --blue:#4379ff; --violet:#b36cff; --bg:#02030a;
+    --panel:rgba(5,12,30,.68); --line:rgba(126,231,255,.28); --text:#eafaff;
+    --muted:#9eb7c7; --good:#8dffcf; --warn:#ffd87a;
+  }
+  *{box-sizing:border-box}
+  html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #warpFx{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .2s ease}
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(circle at center,transparent 48%,rgba(0,4,14,.36) 80%,rgba(0,0,0,.85) 100%)}
+  #scanlines{position:fixed;inset:0;pointer-events:none;opacity:.12;
+    background:repeating-linear-gradient(to bottom,rgba(255,255,255,.025) 0 1px,transparent 1px 4px)}
+  .panel{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    background:linear-gradient(180deg,rgba(9,22,48,.76),rgba(4,10,26,.56));
+    border:1px solid var(--line);box-shadow:0 0 30px rgba(58,144,255,.12),inset 0 0 25px rgba(90,220,255,.04)}
+  #hud{position:fixed;left:18px;top:18px;width:min(390px,calc(100vw - 36px));padding:14px 16px;border-radius:16px;z-index:5}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.14em;font-size:13px;color:#bdf6ff}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--cyan);box-shadow:0 0 16px var(--cyan)}
+  .big{font-size:27px;font-weight:850;letter-spacing:-.03em;margin-top:6px}
+  .sub{font-size:12px;color:var(--muted);line-height:1.5;margin-top:4px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  .card{padding:9px 10px;border-radius:11px;background:rgba(0,0,0,.18);border:1px solid rgba(133,228,255,.12)}
+  .label{font-size:10px;letter-spacing:.13em;color:#80b9cb;text-transform:uppercase}
+  .value{font:700 13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin-top:3px;color:white}
+  #speedBar{height:5px;background:rgba(255,255,255,.08);border-radius:20px;overflow:hidden;margin-top:7px}
+  #speedFill{height:100%;width:35%;background:linear-gradient(90deg,var(--cyan),var(--violet));box-shadow:0 0 12px var(--cyan)}
+  #controls{position:fixed;left:18px;bottom:34px;padding:12px 14px;border-radius:14px;z-index:5;max-width:440px}
+  #controls .keys{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  kbd{min-width:30px;text-align:center;padding:5px 7px;border-radius:7px;border:1px solid rgba(136,229,255,.24);
+    background:rgba(255,255,255,.06);font:700 11px ui-monospace,monospace;box-shadow:inset 0 -2px 0 rgba(0,0,0,.2)}
+  #warpPanel{position:fixed;right:18px;top:18px;width:min(290px,calc(100vw - 36px));padding:13px;border-radius:16px;z-index:5}
+  #warpPanel h3{margin:0 0 10px;font-size:12px;letter-spacing:.13em;color:#bdf6ff}
+  .warpGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .warpBtn{appearance:none;border:1px solid rgba(125,224,255,.2);background:rgba(26,50,84,.5);color:#ecfbff;
+    border-radius:10px;padding:9px 8px;font-weight:750;font-size:11px;cursor:pointer;transition:.18s transform,.18s background,.18s box-shadow}
+  .warpBtn:hover{transform:translateY(-1px);background:rgba(41,88,145,.65);box-shadow:0 0 18px rgba(78,199,255,.2)}
+  .warpBtn span{display:block;color:#78dfff;font-size:9px;font-weight:600;margin-top:2px}
+  #targetHud{position:fixed;left:50%;top:17%;transform:translateX(-50%) translateY(-10px);z-index:6;min-width:300px;
+    max-width:min(520px,85vw);padding:12px 16px;border-radius:14px;text-align:center;opacity:0;pointer-events:none;transition:.22s}
+  #targetHud.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #targetName{font-size:20px;font-weight:900;letter-spacing:.04em}
+  #targetDesc{font-size:12px;color:#b7cedb;line-height:1.5;margin-top:4px}
+  #targetDistance{font:700 11px ui-monospace,monospace;color:var(--good);margin-top:5px}
+  #crosshair{position:fixed;left:50%;top:50%;width:28px;height:28px;transform:translate(-50%,-50%);pointer-events:none;z-index:4;opacity:.8}
+  #crosshair:before,#crosshair:after{content:"";position:absolute;background:rgba(152,237,255,.72);box-shadow:0 0 8px rgba(80,213,255,.6)}
+  #crosshair:before{left:13px;top:1px;width:1px;height:26px}
+  #crosshair:after{top:13px;left:1px;height:1px;width:26px}
+  #crosshair i{position:absolute;inset:8px;border:1px solid rgba(166,243,255,.45);border-radius:50%}
+  #intro{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:
+    radial-gradient(circle at 50% 46%,rgba(29,69,145,.26),transparent 28%),
+    linear-gradient(180deg,rgba(0,4,16,.88),rgba(0,1,7,.96));transition:.55s opacity}
+  #intro.hide{opacity:0;pointer-events:none}
+  .introCard{width:min(720px,90vw);padding:30px;border-radius:24px;text-align:center}
+  .eyebrow{font-size:12px;letter-spacing:.22em;color:#75dcff}
+  .introCard h1{font-size:clamp(34px,6vw,72px);line-height:.95;margin:12px 0 14px;letter-spacing:-.05em}
+  .introCard p{max-width:580px;margin:0 auto;color:#b5cad7;line-height:1.7;font-size:14px}
+  #enterBtn{margin-top:22px;border:1px solid rgba(119,232,255,.45);background:linear-gradient(135deg,#12335f,#311c74);
+    color:white;border-radius:999px;padding:13px 24px;font-weight:850;letter-spacing:.06em;cursor:pointer;box-shadow:0 0 30px rgba(70,184,255,.18)}
+  #lockHint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:6;font-size:11px;color:#9fb9c7;
+    background:rgba(0,0,0,.32);padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.08)}
+  footer{position:fixed;right:18px;bottom:10px;z-index:5;font-size:10px;letter-spacing:.08em;color:rgba(181,221,237,.6)}
+  @media(max-width:780px){
+    #warpPanel{top:auto;bottom:120px;right:12px;width:220px}
+    #hud{left:12px;top:12px;width:calc(100vw - 24px)}
+    #controls{left:12px;bottom:12px;max-width:calc(100vw - 244px)}
+    .big{font-size:21px}.sub{display:none} footer{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<canvas id="warpFx"></canvas>
+<div id="vignette"></div>
+<div id="scanlines"></div>
+<div id="crosshair"><i></i></div>
+
+<div id="hud" class="panel">
+  <div class="brand"><span class="dot"></span>COSMIC NAVIGATOR // OBSERVATION MODE</div>
+  <div class="big">3D 우주 탐험</div>
+  <div class="sub">관측된 우주의 구조를 교육용 로그 압축 스케일로 재구성한 자유 항해 시뮬레이션입니다.</div>
+  <div class="grid">
+    <div class="card"><div class="label">POSITION</div><div id="pos" class="value">0, 0, 0</div></div>
+    <div class="card"><div class="label">VELOCITY</div><div id="vel" class="value">12.0 u/s</div><div id="speedBar"><div id="speedFill"></div></div></div>
+    <div class="card"><div class="label">REGION</div><div id="region" class="value">Solar Neighborhood</div></div>
+    <div class="card"><div class="label">MODE</div><div id="mode" class="value">CRUISE</div></div>
+  </div>
+</div>
+
+<div id="warpPanel" class="panel">
+  <h3>QUICK WARP TARGETS</h3>
+  <div class="warpGrid">
+    <button class="warpBtn" data-target="Sun">SUN<span>태양</span></button>
+    <button class="warpBtn" data-target="Earth">EARTH<span>지구</span></button>
+    <button class="warpBtn" data-target="Jupiter">JUPITER<span>목성</span></button>
+    <button class="warpBtn" data-target="Saturn">SATURN<span>토성</span></button>
+    <button class="warpBtn" data-target="Orion">ORION<span>오리온 성운</span></button>
+    <button class="warpBtn" data-target="Andromeda">ANDROMEDA<span>M31</span></button>
+    <button class="warpBtn" data-target="MilkyWay">MILKY WAY<span>은하수 중심</span></button>
+    <button class="warpBtn" data-target="CosmicWeb">COSMIC WEB<span>우주 거대구조</span></button>
+  </div>
+</div>
+
+<div id="controls" class="panel">
+  <div class="label">FLIGHT CONTROL</div>
+  <div class="keys">
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+    <kbd>SPACE ↑</kbd><kbd>SHIFT ↓</kbd><kbd>WHEEL SPEED</kbd><kbd>DRAG / CLICK LOOK</kbd>
+  </div>
+</div>
+
+<div id="targetHud" class="panel">
+  <div id="targetName">EARTH</div>
+  <div id="targetDesc"></div>
+  <div id="targetDistance"></div>
+</div>
+
+<div id="intro">
+  <div class="introCard panel">
+    <div class="eyebrow">INTERACTIVE ASTRONOMY LAB</div>
+    <h1>COSMIC<br>NAVIGATOR</h1>
+    <p>태양계에서 출발해 오리온 성운, 은하수의 나선 구조, 안드로메다 은하와 코스믹 웹까지 자유롭게 비행하세요. 실제 우주 거리와 크기는 너무 커서 한 화면에 담을 수 없으므로 시각적 탐험을 위해 로그 압축했습니다.</p>
+    <button id="enterBtn">ENTER SIMULATION</button>
+  </div>
+</div>
+
+<div id="lockHint">화면 클릭: Pointer Lock · ESC: 해제 · 드래그 시선 회전 가능</div>
+<footer>-세영코딩연구소-    ph.D KIM</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script>
+(() => {
+'use strict';
+
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x010208);
+scene.fog = new THREE.FogExp2(0x02040c, 0.000045);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 12000);
+camera.position.set(0, 11, 58);
+camera.rotation.order = 'YXZ';
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+app.appendChild(renderer.domElement);
+
+// Bloom post-processing
+let composer = null;
+try{
+  composer = new THREE.EffectComposer(renderer);
+  const renderPass = new THREE.RenderPass(scene, camera);
+  const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 1.18, .65, .15);
+  bloom.threshold = .05; bloom.strength = 1.15; bloom.radius = .55;
+  composer.addPass(renderPass); composer.addPass(bloom);
+}catch(e){ console.warn('Bloom fallback:',e); }
+
+// --------------------- LIGHTING ---------------------
+scene.add(new THREE.AmbientLight(0x263a66, .24));
+const sunLight = new THREE.PointLight(0xffe1a8, 3.5, 800, 1.2);
+scene.add(sunLight);
+
+// --------------------- HELPERS ---------------------
+function rand(a,b){ return a + Math.random()*(b-a); }
+function hslColor(h,s,l){
+  const c = new THREE.Color(); c.setHSL(h,s,l); return c;
+}
+function makeGlowTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const g=c.getContext('2d'), gr=g.createRadialGradient(64,64,0,64,64,64);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(.12,'rgba(180,235,255,.9)');
+  gr.addColorStop(.35,'rgba(80,150,255,.33)');
+  gr.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=gr; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const glowTex=makeGlowTexture();
+
+function spriteGlow(color, scale, opacity=1){
+  const mat=new THREE.SpriteMaterial({map:glowTex,color,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending});
+  const s=new THREE.Sprite(mat); s.scale.set(scale,scale,1); return s;
+}
+function lineCircle(radius, color=0x1a6d91, opacity=.23){
+  const pts=[]; for(let i=0;i<=160;i++){const a=i/160*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(a)*radius,0,Math.sin(a)*radius));}
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  return new THREE.Line(geo,new THREE.LineBasicMaterial({color,transparent:true,opacity}));
+}
+
+// --------------------- STARFIELD: 24,000 particles ---------------------
+function createStarfield(count=24000){
+  const geo=new THREE.BufferGeometry(), pos=new Float32Array(count*3), col=new Float32Array(count*3), sizes=new Float32Array(count);
+  for(let i=0;i<count;i++){
+    const r=Math.pow(Math.random(),.38)*5800+180;
+    const theta=Math.acos(rand(-1,1)), phi=Math.random()*Math.PI*2;
+    pos[i*3]=r*Math.sin(theta)*Math.cos(phi);
+    pos[i*3+1]=r*Math.cos(theta);
+    pos[i*3+2]=r*Math.sin(theta)*Math.sin(phi);
+    const t=Math.random();
+    let c;
+    if(t<.14)c=new THREE.Color(0x8ebcff);
+    else if(t<.25)c=new THREE.Color(0xffd7a5);
+    else if(t<.31)c=new THREE.Color(0xff9e88);
+    else c=new THREE.Color(0xeaf5ff);
+    const br=rand(.45,1.0); c.multiplyScalar(br);
+    col.set([c.r,c.g,c.b],i*3);
+    sizes[i]=rand(.6,2.4);
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({size:1.7,map:glowTex,vertexColors:true,transparent:true,opacity:.88,
+    depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+  const p=new THREE.Points(geo,mat); scene.add(p); return p;
+}
+const starfield=createStarfield();
+
+// --------------------- SOLAR SYSTEM ---------------------
+const solar = new THREE.Group(); scene.add(solar);
+const sun = new THREE.Mesh(new THREE.SphereGeometry(5.2,48,48),
+  new THREE.MeshBasicMaterial({color:0xffb22e}));
+sun.name='Sun'; solar.add(sun);
+sun.add(spriteGlow(0xffa72c,28,.88));
+sun.add(spriteGlow(0xffdf80,15,.7));
+sunLight.position.copy(sun.position);
+
+const bodies = {};
+const targets = {};
+const planetDefs=[
+  ['Mercury',0.72,9,0x9c9185,.47,4.15,'수성 · 태양에 가장 가까운 행성'],
+  ['Venus',1.12,13,0xe8be70,.35,1.62,'금성 · 짙은 이산화탄소 대기와 강한 온실효과'],
+  ['Earth',1.20,18,0x3b77d9,.28,1.00,'지구 · 액체 물과 생명이 확인된 우리의 행성'],
+  ['Mars',.92,23,0xc45a3b,.22,.53,'화성 · 철 산화물로 붉게 보이는 암석 행성'],
+  ['Jupiter',3.45,32,0xd9b18a,.12,11.86,'목성 · 태양계에서 가장 큰 가스 행성'],
+  ['Saturn',2.95,43,0xe4cf9a,.09,29.46,'토성 · 거대한 고리계가 특징인 가스 행성'],
+  ['Uranus',2.05,53,0x8bd4db,.07,84.0,'천왕성 · 자전축이 크게 기울어진 얼음 거대행성'],
+  ['Neptune',1.98,63,0x3f63db,.055,164.8,'해왕성 · 태양계 바깥쪽의 푸른 얼음 거대행성']
+];
+planetDefs.forEach((d,idx)=>{
+  const [name,size,orbit,color,speed,year,desc]=d;
+  solar.add(lineCircle(orbit,0x1f7ca5,idx<4?.29:.16));
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(size,32,32),
+      new THREE.MeshStandardMaterial({color,roughness:.72,metalness:.02,emissive:new THREE.Color(color).multiplyScalar(.08)}));
+  mesh.userData={orbit,speed,angle:Math.random()*Math.PI*2,desc,year};
+  mesh.name=name;
+  solar.add(mesh); bodies[name]=mesh;
+  const glow=spriteGlow(color,size*3.8,.28); mesh.add(glow);
+  if(name==='Saturn'){
+    const ring=new THREE.Mesh(new THREE.RingGeometry(4.0,6.0,72),
+      new THREE.MeshBasicMaterial({color:0xcdbf9d,side:THREE.DoubleSide,transparent:true,opacity:.58,depthWrite:false}));
+    ring.rotation.x=Math.PI/2; ring.rotation.z=.35; mesh.add(ring);
+  }
+  if(name==='Earth'){
+    const moon=new THREE.Mesh(new THREE.SphereGeometry(.32,18,18),new THREE.MeshStandardMaterial({color:0xbcc4c9,roughness:1}));
+    moon.position.set(2.4,0,0); mesh.add(moon);
+  }
+});
+targets.Sun={obj:sun,offset:new THREE.Vector3(0,4,16),desc:'태양 · 태양계 질량의 대부분을 차지하는 G형 주계열성'};
+['Earth','Jupiter','Saturn'].forEach(n=>targets[n]={obj:bodies[n],offset:new THREE.Vector3(0,3,Math.max(9,bodies[n].geometry.parameters.radius*4)),desc:bodies[n].userData.desc});
+
+// --------------------- MILKY WAY SPIRAL ---------------------
+function createSpiralGalaxy(center,count=18000,radius=900,arms=4,colorA=0x82bfff,colorB=0xffcaa6){
+  const g=new THREE.Group(); g.position.copy(center);
+  const pos=new Float32Array(count*3), col=new Float32Array(count*3);
+  const ca=new THREE.Color(colorA), cb=new THREE.Color(colorB);
+  for(let i=0;i<count;i++){
+    const arm=i%arms, r=Math.pow(Math.random(),.57)*radius;
+    const a=(arm/arms)*Math.PI*2 + r*.012 + rand(-.28,.28);
+    const spread=(1-r/radius)*24+6;
+    pos[i*3]=Math.cos(a)*r+rand(-spread,spread);
+    pos[i*3+1]=rand(-1,1)*(12+36*(r/radius))+rand(-6,6);
+    pos[i*3+2]=Math.sin(a)*r+rand(-spread,spread);
+    const c=ca.clone().lerp(cb,Math.random()*.65).multiplyScalar(rand(.45,1.0));
+    col.set([c.r,c.g,c.b],i*3);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({size:2.05,map:glowTex,vertexColors:true,transparent:true,opacity:.66,
+    blending:THREE.AdditiveBlending,depthWrite:false});
+  g.add(new THREE.Points(geo,mat));
+  const core=spriteGlow(0xffe7be,125,.75); g.add(core);
+  scene.add(g); return g;
+}
+const milkyWay=createSpiralGalaxy(new THREE.Vector3(0,-110,-1450),19000,850,4);
+targets.MilkyWay={position:new THREE.Vector3(0,40,-1120),lookAt:new THREE.Vector3(0,-110,-1450),
+ desc:'은하수 · 태양계가 속한 막대나선은하. 이 장면은 구조 학습을 위해 압축 표현됨.'};
+
+// --------------------- ANDROMEDA ---------------------
+function createAndromeda(){
+  const g=createSpiralGalaxy(new THREE.Vector3(1500,210,-2450),13000,420,2,0xaec8ff,0xffd3c1);
+  g.rotation.set(.22,.25,-.68); g.scale.set(1.55,.36,1);
+  return g;
+}
+const andromeda=createAndromeda();
+targets.Andromeda={position:new THREE.Vector3(1420,250,-1950),lookAt:new THREE.Vector3(1500,210,-2450),
+ desc:'안드로메다 은하(M31) · 지구에서 약 250만 광년 떨어진 대형 나선은하.'};
+
+// --------------------- ORION NEBULA ---------------------
+function createNebula(center,count=9000){
+  const geo=new THREE.BufferGeometry(),pos=new Float32Array(count*3),col=new Float32Array(count*3);
+  const palette=[new THREE.Color(0x915dff),new THREE.Color(0x35bfff),new THREE.Color(0xff6ea8),new THREE.Color(0xc4f1ff)];
+  for(let i=0;i<count;i++){
+    const u=Math.random(), r=Math.pow(u,1.9)*150;
+    const t=Math.random()*Math.PI*2, p=Math.acos(rand(-1,1));
+    pos[i*3]=center.x + Math.sin(p)*Math.cos(t)*r*1.25 + rand(-18,18);
+    pos[i*3+1]=center.y + Math.cos(p)*r*.75 + Math.sin(t*3)*20;
+    pos[i*3+2]=center.z + Math.sin(p)*Math.sin(t)*r + rand(-16,16);
+    const c=palette[Math.floor(Math.random()*palette.length)].clone().multiplyScalar(rand(.4,1));
+    col.set([c.r,c.g,c.b],i*3);
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({size:3.5,map:glowTex,vertexColors:true,transparent:true,opacity:.45,
+    blending:THREE.AdditiveBlending,depthWrite:false});
+  const p=new THREE.Points(geo,mat);scene.add(p);
+  const s=spriteGlow(0x934dff,260,.2);s.position.copy(center);scene.add(s);return p;
+}
+const orionPos=new THREE.Vector3(-760,160,-950); createNebula(orionPos);
+targets.Orion={position:new THREE.Vector3(-650,180,-720),lookAt:orionPos,
+ desc:'오리온 성운(M42) · 약 1,300~1,500광년 거리로 알려진 가까운 대규모 별 탄생 영역.'};
+
+// --------------------- COSMIC WEB ---------------------
+function createCosmicWeb(){
+  const group=new THREE.Group(); group.position.set(0,0,-3900);
+  const nodes=[];
+  for(let i=0;i<115;i++){
+    const p=new THREE.Vector3(rand(-1800,1800),rand(-1050,1050),rand(-900,900)); nodes.push(p);
+    const s=spriteGlow(Math.random()>.72?0x9e88ff:0x54bfff,rand(10,35),rand(.15,.4)); s.position.copy(p);group.add(s);
+  }
+  const mat=new THREE.LineBasicMaterial({color:0x4269a8,transparent:true,opacity:.13,blending:THREE.AdditiveBlending});
+  for(let i=0;i<nodes.length;i++){
+    const nearest=[];
+    for(let j=0;j<nodes.length;j++) if(i!==j){const d=nodes[i].distanceToSquared(nodes[j]); if(d<220000)nearest.push([d,j]);}
+    nearest.sort((a,b)=>a[0]-b[0]);
+    nearest.slice(0,2).forEach(x=>{
+      const geo=new THREE.BufferGeometry().setFromPoints([nodes[i],nodes[x[1]]]); group.add(new THREE.Line(geo,mat));
+    });
+  }
+  scene.add(group); return group;
+}
+const cosmicWeb=createCosmicWeb();
+targets.CosmicWeb={position:new THREE.Vector3(0,150,-3150),lookAt:new THREE.Vector3(0,0,-3900),
+ desc:'Cosmic Web · 은하와 은하단이 필라멘트와 공극을 이루는 거시적 대규모 구조의 시각화.'};
+
+// --------------------- HUD / INTERACTION ---------------------
+const posEl=document.getElementById('pos'),velEl=document.getElementById('vel'),regionEl=document.getElementById('region'),
+      modeEl=document.getElementById('mode'),speedFill=document.getElementById('speedFill');
+const targetHud=document.getElementById('targetHud'),targetName=document.getElementById('targetName'),
+      targetDesc=document.getElementById('targetDesc'),targetDistance=document.getElementById('targetDistance');
+
+let yaw=0,pitch=0,drag=false,lastX=0,lastY=0;
+let speed=18, speedTarget=18;
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true; if(e.code==='Space')e.preventDefault();});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('wheel',e=>{
+  speedTarget*= e.deltaY<0 ? 1.28 : .78;
+  speedTarget=THREE.MathUtils.clamp(speedTarget,2,1600);
+},{passive:true});
+
+renderer.domElement.addEventListener('mousedown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;});
+addEventListener('mouseup',()=>drag=false);
+addEventListener('mousemove',e=>{
+  let dx=0,dy=0;
+  if(document.pointerLockElement===renderer.domElement){dx=e.movementX;dy=e.movementY;}
+  else if(drag){dx=e.clientX-lastX;dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;}
+  if(dx||dy){yaw-=dx*.0024; pitch-=dy*.0022; pitch=THREE.MathUtils.clamp(pitch,-Math.PI/2+.02,Math.PI/2-.02);}
+});
+renderer.domElement.addEventListener('click',()=>{ if(document.pointerLockElement!==renderer.domElement) renderer.domElement.requestPointerLock?.(); });
+document.getElementById('enterBtn').addEventListener('click',()=>{
+  document.getElementById('intro').classList.add('hide');
+  renderer.domElement.requestPointerLock?.();
+});
+document.addEventListener('pointerlockchange',()=>{
+  document.getElementById('lockHint').textContent=document.pointerLockElement===renderer.domElement?'Pointer Lock ON · ESC로 해제':'화면 클릭: Pointer Lock · ESC: 해제 · 드래그 시선 회전 가능';
+});
+
+const warpCanvas=document.getElementById('warpFx'),wctx=warpCanvas.getContext('2d');
+let warpIntensity=0,warpTimer=0;
+function resizeWarp(){warpCanvas.width=innerWidth*devicePixelRatio;warpCanvas.height=innerHeight*devicePixelRatio;}
+resizeWarp();
+
+function startWarp(targetKey){
+  const t=targets[targetKey]; if(!t)return;
+  warpIntensity=1; warpTimer=1.1; modeEl.textContent='WARP';
+  const dest=t.obj ? t.obj.getWorldPosition(new THREE.Vector3()).add(t.offset) : t.position.clone();
+  const look=t.obj ? t.obj.getWorldPosition(new THREE.Vector3()) : t.lookAt.clone();
+  const start=camera.position.clone(), startQ=camera.quaternion.clone();
+  const tmpCam=camera.clone(); tmpCam.position.copy(dest); tmpCam.lookAt(look); const endQ=tmpCam.quaternion.clone();
+  let elapsed=0,duration=.9;
+  function step(ts){
+    if(!step.prev)step.prev=ts; elapsed+=(ts-step.prev)/1000;step.prev=ts;
+    const k=Math.min(1,elapsed/duration), ease=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
+    camera.position.lerpVectors(start,dest,ease);
+    camera.quaternion.slerpQuaternions(startQ,endQ,ease);
+    if(k<1)requestAnimationFrame(step); else{
+      camera.rotation.setFromQuaternion(camera.quaternion,'YXZ'); yaw=camera.rotation.y;pitch=camera.rotation.x;
+      modeEl.textContent='CRUISE';
+    }
+  }
+  requestAnimationFrame(step);
+}
+document.querySelectorAll('.warpBtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();startWarp(b.dataset.target)}));
+
+function drawWarpFx(dt){
+  warpIntensity=Math.max(0,warpIntensity-dt*.75);
+  const on=warpIntensity>0.01;
+  warpCanvas.style.opacity=on?Math.min(1,warpIntensity*1.5):0;
+  if(!on)return;
+  const dpr=devicePixelRatio,w=innerWidth*dpr,h=innerHeight*dpr,cx=w/2,cy=h/2;
+  wctx.clearRect(0,0,w,h);
+  wctx.save();wctx.globalCompositeOperation='lighter';
+  const lines=190;
+  for(let i=0;i<lines;i++){
+    const a=Math.random()*Math.PI*2,r=Math.pow(Math.random(),.55)*Math.min(w,h)*.55;
+    const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
+    const len=(30+Math.random()*170)*dpr*warpIntensity;
+    const grad=wctx.createLinearGradient(x,y,x+Math.cos(a)*len,y+Math.sin(a)*len);
+    grad.addColorStop(0,'rgba(90,180,255,0)');grad.addColorStop(1,`rgba(190,235,255,${.65*warpIntensity})`);
+    wctx.strokeStyle=grad;wctx.lineWidth=(.5+Math.random()*1.4)*dpr;
+    wctx.beginPath();wctx.moveTo(x,y);wctx.lineTo(x+Math.cos(a)*len,y+Math.sin(a)*len);wctx.stroke();
+  }
+  wctx.restore();
+}
+
+function regionName(){
+  const p=camera.position;
+  if(p.z<-3000)return 'Cosmic Web';
+  if(p.distanceTo(new THREE.Vector3(1500,210,-2450))<700)return 'Andromeda / M31';
+  if(p.distanceTo(orionPos)<400)return 'Orion Molecular Region';
+  if(p.z<-700)return 'Milky Way Structure';
+  return 'Solar Neighborhood';
+}
+function nearestTarget(){
+  let best=null,bd=Infinity;
+  Object.entries(targets).forEach(([name,t])=>{
+    const p=t.obj?t.obj.getWorldPosition(new THREE.Vector3()):(t.lookAt||t.position);
+    const d=camera.position.distanceTo(p); if(d<bd){bd=d;best={name,t,d};}
+  });
+  return best;
+}
+
+// --------------------- ANIMATION ---------------------
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.05);
+  const elapsed=clock.elapsedTime;
+
+  // Planet orbits / spins
+  planetDefs.forEach(d=>{
+    const mesh=bodies[d[0]],u=mesh.userData;
+    u.angle += dt*u.speed*.18;
+    mesh.position.set(Math.cos(u.angle)*u.orbit,0,Math.sin(u.angle)*u.orbit);
+    mesh.rotation.y += dt*(.25+u.speed*.08);
+  });
+  sun.rotation.y+=dt*.04;
+  starfield.rotation.y+=dt*.0007;
+  milkyWay.rotation.y+=dt*.0015;
+
+  speed += (speedTarget-speed)*Math.min(1,dt*4);
+  camera.rotation.y=yaw; camera.rotation.x=pitch;
+
+  const forward=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+  const up=new THREE.Vector3(0,1,0);
+  const dir=new THREE.Vector3();
+  if(keys.KeyW)dir.add(forward); if(keys.KeyS)dir.sub(forward);
+  if(keys.KeyD)dir.add(right); if(keys.KeyA)dir.sub(right);
+  if(keys.Space)dir.add(up); if(keys.ShiftLeft||keys.ShiftRight)dir.sub(up);
+  if(dir.lengthSq()>0)camera.position.addScaledVector(dir.normalize(),speed*dt);
+
+  posEl.textContent=`${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}`;
+  velEl.textContent=`${speed.toFixed(speed<100?1:0)} u/s`;
+  speedFill.style.width=(Math.log(speed/2)/Math.log(1600/2)*100).toFixed(1)+'%';
+  regionEl.textContent=regionName();
+
+  const near=nearestTarget();
+  if(near && near.d < (near.name==='Sun'?45: near.name==='CosmicWeb'?900: near.name==='Andromeda'?650: near.name==='Orion'?300:90)){
+    targetName.textContent=near.name.toUpperCase();
+    targetDesc.textContent=near.t.desc;
+    targetDistance.textContent=`SIM DISTANCE ${near.d.toFixed(1)} units`;
+    targetHud.classList.add('show');
+  }else targetHud.classList.remove('show');
+
+  drawWarpFx(dt);
+
+  // subtle warp camera FOV pulse = depth/speed illusion
+  const targetFov=72 + Math.min(20,(speed/1600)*16) + warpIntensity*18;
+  camera.fov += (targetFov-camera.fov)*Math.min(1,dt*5); camera.updateProjectionMatrix();
+
+  if(composer)composer.render();else renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);resizeWarp();
+});
+})();
+</script>
+</body>
+</html>
