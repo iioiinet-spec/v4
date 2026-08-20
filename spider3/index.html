@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>NIGHTLINE / CITY SWING</title>
+<style>
+  :root{ --acc:#7ef0d0; --warn:#ff5a4a; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#05070a;}
+  body{font-family:'Consolas','Menlo','Courier New',monospace;user-select:none;-webkit-user-select:none;touch-action:none;cursor:crosshair;}
+  canvas{display:block;position:fixed;top:0;left:0;width:100%;height:100%;}
+  #gl{z-index:1;}
+  #ui{z-index:2;pointer-events:none;}
+  #help{
+    position:fixed;z-index:5;left:18px;top:18px;max-width:342px;
+    padding:13px 15px 14px;background:rgba(6,10,14,.82);
+    border:1px solid rgba(126,240,208,.32);border-left:3px solid var(--acc);
+    color:#d5e8e2;font-size:12px;line-height:1.65;backdrop-filter:blur(6px);
+    transition:opacity .6s ease;
+  }
+  #help h1{margin:0 0 8px;font-size:12px;letter-spacing:2.5px;color:var(--acc);font-weight:700;}
+  #help dl{margin:0;display:grid;grid-template-columns:104px 1fr;gap:3px 10px;}
+  #help dt{color:#ff9d6b;font-weight:700;}
+  #help dd{margin:0;color:#b6cbc5;}
+  #help .foot{margin-top:9px;padding-top:8px;border-top:1px solid rgba(126,240,208,.18);color:#7b918b;font-size:11px;}
+  #help.dim{opacity:0;}
+  #boot{
+    position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;background:#05070a;color:var(--acc);font-size:13px;letter-spacing:4px;
+  }
+  #boot span{margin-top:14px;color:#41615a;font-size:11px;letter-spacing:2px;}
+  #boot.done{opacity:0;pointer-events:none;transition:opacity .8s ease;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<canvas id="ui"></canvas>
+
+<div id="help">
+  <h1>NIGHTLINE &middot; CITY SWING</h1>
+  <dl>
+    <dt>마우스 클릭</dt><dd>벽=줄 발사 / 스윙, 헐크=거미줄 공격(7~8)</dd>
+    <dt>버튼 놓기</dt><dd>줄 끊고 관성으로 비행</dd>
+    <dt>W A S D</dt><dd>이동 / 벽에 붙으면 자동 벽타기</dd>
+    <dt>Space</dt><dd>점프 (벽타기 중엔 도약, 슈퍼모드는 상승)</dd>
+    <dt>Shift</dt><dd>줄 감기 · 우클릭 시점조작 토글 · 슈퍼모드 하강</dd>
+    <dt>E</dt><dd>부스터 On/Off (1000km/h)</dd>
+    <dt>Q</dt><dd>슈퍼모드 On/Off (비행+레이저)</dd>
+    <dt>G</dt><dd>(슈퍼모드) 레이저 발사 - 20dmg</dd>
+    <dt>R</dt><dd>출발 지점으로 복귀</dd>
+    <dt>T</dt><dd>몬스터 무작위 소환 (타노스/베놈/좀비)</dd>
+    <dt>M</dt><dd>주변 몬스터 3초간 마비 (재사용대기 5초)</dd>
+    <dt>H / P</dt><dd>안내창 / 화질 전환</dd>
+  </dl>
+  <p class="foot">건물 벽으로 뛰어들면 손발로 벽을 탑니다. 헐크(HP500)를 클릭하면 거미줄로 공격, 슈퍼모드 G키 레이저는 20의 피해를 줍니다. 헐크는 근접시 일반공격(5)/펀치(15)로 반격합니다. 타노스(HP130/공50), 베놈(HP150/공10), 좀비(HP30/공6)도 클릭 또는 레이저로 공격 가능. 시작 지점 바로 옆 칭크(+X 방향)에는 좀비가 다수 서식합니다.</p>
+</div>
+
+<div id="boot">SYSTEMS INITIALIZING<span>CITY MESH / TRAVERSAL</span></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DEG = Math.PI / 180;
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  var C = {
+    acc: '#ff3a48', ice: '#f2f4f6', warn: '#ff8a3a',
+    amber: '#ffb04a', dim: 'rgba(242,244,246,.45)'
+  };
+  var FOV = 72;
+
+  if (typeof THREE === 'undefined') {
+    document.getElementById('boot').innerHTML =
+      'THREE.JS \uB85C\uB4DC \uC2E4\uD328<span>\uC778\uD130\uB137 \uC5F0\uACB0\uC744 \uD655\uC778\uD558\uC138\uC694</span>';
+    return;
+  }
+  start();
+
+  function start() {
+
+    function sRGBc(hex) { return new THREE.Color(hex).convertSRGBToLinear(); }
+
+    // ---------------------------------------------- renderer
+    var glCanvas = document.getElementById('gl');
+    var renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.autoClear = false;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.06;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(sRGBc(0x120a0e).getHex(), 0.00115);
+
+    var camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.15, 3000);
+
+    // ---------------------------------------------- sky (unmanaged, display space)
+    var skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {
+        top: { value: new THREE.Color(0x07080b) },
+        mid: { value: new THREE.Color(0x14121a) },
+        bot: { value: new THREE.Color(0x4d0d16) }
+      },
+      vertexShader: 'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+      fragmentShader: [
+        'uniform vec3 top;uniform vec3 mid;uniform vec3 bot;varying vec3 vP;',
+        'void main(){float y=clamp(vP.y*1.5+0.05,-1.0,1.0);',
+        'vec3 c=y>0.0?mix(mid,top,pow(y,0.7)):mix(mid,bot,pow(-y,0.42));',
+        'gl_FragColor=vec4(c,1.0);}'
+      ].join('\n')
+    });
+    var sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 18), skyMat);
+    sky.renderOrder = -1;
+    scene.add(sky);
+
+    scene.add(new THREE.HemisphereLight(sRGBc(0x3c4d70), sRGBc(0x181520), 0.52));
+    var fill = new THREE.DirectionalLight(sRGBc(0xff3a46), 0.10);
+    fill.position.set(220, 60, -180);
+    scene.add(fill);
+    var sun = new THREE.DirectionalLight(sRGBc(0xe4ecf7), 2.45);
+    sun.position.set(-180, 220, 120);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    var shCam = sun.shadow.camera;
+    shCam.left = -140; shCam.right = 140; shCam.top = 140; shCam.bottom = -140;
+    shCam.near = 1; shCam.far = 700;
+    shCam.updateProjectionMatrix();
+    sun.shadow.bias = -0.0008;
+    sun.shadow.normalBias = 0.8;
+    scene.add(sun);
+    scene.add(sun.target);
+
+    // flat cel ramp: a handful of hard value steps, like screen-printed art
+    function toonRamp(steps) {
+      var d = new Uint8Array(steps);
+      for (var i = 0; i < steps; i++) d[i] = Math.round(28 + (i / (steps - 1)) * 227);
+      var t = new THREE.DataTexture(d, steps, 1, THREE.LuminanceFormat);
+      t.minFilter = THREE.NearestFilter;
+      t.magFilter = THREE.NearestFilter;
+      t.generateMipmaps = false;
+      t.needsUpdate = true;
+      return t;
+    }
+    var RAMP = toonRamp(4);
+
+    // crimson rim so silhouettes separate from the black field
+    function rimLight(mat, hex, amt, power) {
+      var col = sRGBc(hex);
+      mat.onBeforeCompile = function (sh) {
+        sh.uniforms.rimCol = { value: col };
+        sh.uniforms.rimAmt = { value: amt };
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>',
+            '#include <common>\nuniform vec3 rimCol;uniform float rimAmt;')
+          .replace('#include <tonemapping_fragment>',
+            'float rimF = pow( 1.0 - clamp( dot( normalize( normal ), normalize( vViewPosition ) ), 0.0, 1.0 ), ' + power.toFixed(1) + ' );\n' +
+            'gl_FragColor.rgb += rimCol * rimF * rimAmt;\n' +
+            '#include <tonemapping_fragment>');
+      };
+      mat.customProgramCacheKey = function () { return 'rim' + amt + '_' + power; };
+      return mat;
+    }
+    function skySheen(mat) { return mat; }
+
+    // ---------------------------------------------- street grid ground
+    var GH = 0;
+    var groundGeo = new THREE.PlaneGeometry(3000, 3000, 1, 1);
+    groundGeo.rotateX(-Math.PI / 2);
+    var streetTex = (function () {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 512;
+      var g = cv.getContext('2d');
+      g.fillStyle = '#2e3237'; g.fillRect(0, 0, 512, 512);
+      for (var i = 0; i < 4000; i++) {
+        g.fillStyle = 'rgba(' + (Math.random() > 0.5 ? '210,214,220,' : '12,14,17,') + (0.04 + Math.random() * 0.16) + ')';
+        g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+      }
+      // pavement border of the block
+      g.fillStyle = '#5b6068';
+      g.fillRect(0, 0, 512, 62); g.fillRect(0, 450, 512, 62);
+      g.fillRect(0, 0, 62, 512); g.fillRect(450, 0, 62, 512);
+      // lane dashes
+      g.fillStyle = '#c9cdd2';
+      for (var d = 0; d < 512; d += 46) { g.fillRect(d, 253, 22, 5); g.fillRect(253, d, 5, 22); }
+      var t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(3000 / 132, 3000 / 132);
+      t.encoding = THREE.sRGBEncoding;
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      return t;
+    })();
+    var groundMesh = new THREE.Mesh(groundGeo, new THREE.MeshToonMaterial({
+      map: streetTex, color: sRGBc(0x8b929c), gradientMap: RAMP
+    }));
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // ---------------------------------------------- city (칭크 기반)
+    var buildings = [];   // AABBs for collision and grapple targeting
+    var START_HALF = 1150;   // 시작 칭크 반경
+    var NEI_HALF = 520;      // 주변 칭크 반경 (조금 더 작음)
+    var CHUNK_SIZE = 2600;   // 칭크 중심 사이 거리
+    // 칭크 목록: (0,0)=시작 칭크, 나머지는 주변 칭크. (1,0)이 시작 칭크 바로 옆 칭크 = 좀비 다발지역
+    var CHUNKS = [
+      { cx: 0, cz: 0, half: START_HALF, isStart: true },
+      { cx: 1, cz: 0, half: NEI_HALF, isZombie: true },
+      { cx: -1, cz: 0, half: NEI_HALF },
+      { cx: 0, cz: 1, half: NEI_HALF },
+      { cx: 0, cz: -1, half: NEI_HALF }
+    ];
+    var ZOMBIE_CHUNK = CHUNKS[1];
+    (function buildCity() {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 256;
+      var x2 = cv.getContext('2d');
+      var bg = x2.createLinearGradient(0, 0, 0, 256);
+      bg.addColorStop(0, '#7a8492'); bg.addColorStop(1, '#616b79');
+      x2.fillStyle = bg; x2.fillRect(0, 0, 256, 256);
+      for (var wy = 0; wy < 8; wy++) {
+        x2.fillStyle = 'rgba(8,9,12,.6)';
+        x2.fillRect(0, wy * 32 + 26, 256, 6);
+        for (var wx = 0; wx < 8; wx++) {
+          var l = Math.random();
+          x2.fillStyle = l > 0.94 ? '#ff6a52' : (l > 0.84 ? '#f0ad68' : (l > 0.55 ? '#6d7b91' : '#4a5464'));
+          x2.fillRect(wx * 32 + 5, wy * 32 + 6, 22, 19);
+          x2.fillStyle = 'rgba(255,255,255,.06)';
+          x2.fillRect(wx * 32 + 5, wy * 32 + 6, 22, 5);
+          x2.fillStyle = 'rgba(10,12,15,.45)';
+          x2.fillRect(wx * 32 + 27, wy * 32 + 6, 2, 19);
+        }
+      }
+      var winTex = new THREE.CanvasTexture(cv);
+      winTex.wrapS = winTex.wrapT = THREE.RepeatWrapping;
+      winTex.encoding = THREE.sRGBEncoding;
+      winTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+      var P = [], NR = [], UV = [], CL = [], IDX = [];
+      var tints = [0x99a3b1, 0x8b95a3, 0xa08a90, 0x818b99, 0xa4adba].map(sRGBc);
+      var seed = 730941;
+      function rnd() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
+
+      function face(v, nx, ny, nz, uw, uh, col) {
+        var b = P.length / 3;
+        var uvs = [[0, 0], [uw, 0], [uw, uh], [0, uh]];
+        for (var i = 0; i < 4; i++) {
+          P.push(v[i][0], v[i][1], v[i][2]);
+          NR.push(nx, ny, nz);
+          UV.push(uvs[i][0], uvs[i][1]);
+          CL.push(col.r, col.g, col.b);
+        }
+        IDX.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+      function box(cx, cz, w, d, h, y0, tint) {
+        var x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, y1 = y0 + h;
+        var uw = w / 4.2, ud = d / 4.2, uh = h / 4.2;
+        face([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], 0, 0, 1, uw, uh, tint);
+        face([[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], 0, 0, -1, uw, uh, tint);
+        face([[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], 1, 0, 0, ud, uh, tint);
+        face([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], -1, 0, 0, ud, uh, tint);
+        var roof = tint.clone().multiplyScalar(0.55);
+        face([[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]], 0, 1, 0, 0.3, 0.3, roof);
+      }
+
+      var STEP = 132;
+      for (var ci = 0; ci < CHUNKS.length; ci++) {
+        var chunk = CHUNKS[ci];
+        var HALF = chunk.half;
+        var originX = chunk.cx * CHUNK_SIZE, originZ = chunk.cz * CHUNK_SIZE;
+        seed = 730941 + chunk.cx * 104729 + chunk.cz * 65537 + (chunk.isStart ? 0 : 99991);
+        for (var bx = -HALF; bx <= HALF; bx += STEP) {
+          for (var bz = -HALF; bz <= HALF; bz += STEP) {
+            var lots = 1 + Math.floor(rnd() * 2);
+            for (var li = 0; li < lots; li++) {
+              var w = 34 + rnd() * 46, d = 34 + rnd() * 46;
+              var cx = originX + bx + (rnd() - 0.5) * (STEP - 96);
+              var cz = originZ + bz + (rnd() - 0.5) * (STEP - 96);
+              var dist = chunk.isStart ? Math.hypot(cx, cz) : 0;
+              var tall = rnd();
+              var h = 34 + rnd() * 60 + (dist < 780 ? tall * tall * 150 : 0);
+              var tint = tints[Math.floor(rnd() * tints.length)];
+              box(cx, cz, w, d, h, GH, tint);
+              buildings.push({ x: cx, z: cz, w: w, d: d, h: h, y0: GH, chunkCx: chunk.cx, chunkCz: chunk.cz });
+              if (h > 130 && rnd() > 0.4) {
+                var h2 = h * (0.16 + rnd() * 0.2);
+                box(cx, cz, w * 0.6, d * 0.6, h2, GH + h, tint);
+                buildings.push({ x: cx, z: cz, w: w * 0.6, d: d * 0.6, h: h2, y0: GH + h, chunkCx: chunk.cx, chunkCz: chunk.cz });
+              }
+            }
+          }
+        }
+      }
+
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(NR, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(CL, 3));
+      g.setIndex(IDX);
+      var m = new THREE.Mesh(g, new THREE.MeshToonMaterial({
+        map: winTex, vertexColors: true, gradientMap: RAMP
+      }));
+      m.castShadow = true; m.receiveShadow = true;
+      scene.add(m);
+      window.__cityMesh = m;
+    })();
+
+    // ---------------------------------------------- the grappler
+    var suit = rimLight(new THREE.MeshToonMaterial({ color: sRGBc(0x0d0f13), gradientMap: RAMP }), 0xff3341, 0.72, 3.4);
+    var crimson = rimLight(new THREE.MeshToonMaterial({ color: sRGBc(0xb01522), gradientMap: RAMP }), 0xff5a63, 0.5, 3.2);
+    var trim = new THREE.MeshBasicMaterial({ color: sRGBc(0xd6dae0) });
+    var lens = new THREE.MeshBasicMaterial({ color: sRGBc(0xf4f6f8) });
+
+    var hero = new THREE.Group();
+    var torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.86, 0.36), suit);
+    torso.position.y = 0.05; hero.add(torso);
+    var hips = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.3, 0.34), suit);
+    hips.position.y = -0.5; hero.add(hips);
+    var shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.26, 0.38), crimson);
+    shoulderL.position.set(-0.36, 0.4, 0); hero.add(shoulderL);
+    var shoulderR = shoulderL.clone(); shoulderR.position.x = 0.36; hero.add(shoulderR);
+    var chestP = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.03), crimson);
+    chestP.position.set(0, 0.22, -0.19); hero.add(chestP);
+    var embV = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.03), trim);
+    embV.position.set(0, 0.22, -0.21); hero.add(embV);
+    var embH = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.07, 0.03), trim);
+    embH.position.set(0, 0.28, -0.21); hero.add(embH);
+    var belt = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.09, 0.36), crimson);
+    belt.position.set(0, -0.36, 0); hero.add(belt);
+    var head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.38, 0.36), suit);
+    head.position.y = 0.68; hero.add(head);
+    var eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.07, 0.03), lens);
+    eyeL.position.set(-0.10, 0.72, -0.19); eyeL.rotation.z = 0.22; hero.add(eyeL);
+    var eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.07, 0.03), lens);
+    eyeR.position.set(0.10, 0.72, -0.19); eyeR.rotation.z = -0.22; hero.add(eyeR);
+    var crown = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.38), crimson);
+    crown.position.set(0, 0.86, 0); hero.add(crown);
+
+    function limb(len, w) {
+      var grp = new THREE.Group();
+      var m2 = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), suit);
+      m2.position.y = -len / 2;
+      grp.add(m2);
+      return grp;
+    }
+    function cuff(grp, len, w) {
+      var c = new THREE.Mesh(new THREE.BoxGeometry(w * 1.18, len * 0.34, w * 1.18), crimson);
+      c.position.y = -len * 0.82;
+      grp.add(c);
+    }
+    var armL = limb(0.78, 0.17); armL.position.set(-0.38, 0.42, 0); cuff(armL, 0.78, 0.17); hero.add(armL);
+    var armR = limb(0.78, 0.17); armR.position.set(0.38, 0.42, 0); cuff(armR, 0.78, 0.17); hero.add(armR);
+    var legL = limb(0.9, 0.2); legL.position.set(-0.17, -0.6, 0); cuff(legL, 0.9, 0.2); hero.add(legL);
+    var legR = limb(0.9, 0.2); legR.position.set(0.17, -0.6, 0); cuff(legR, 0.9, 0.2); hero.add(legR);
+    hero.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(hero);
+
+    // web line
+    var webGeoC = new THREE.CylinderGeometry(0.055, 0.055, 1, 6, 1, true);
+    var webLine = new THREE.Mesh(webGeoC, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    webLine.frustumCulled = false;
+    webLine.visible = false;
+    scene.add(webLine);
+    var WEB_UP = new THREE.Vector3(0, 1, 0);
+
+    var anchorMark = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    anchorMark.visible = false;
+    scene.add(anchorMark);
+
+    // ---------------------------------------------- the wall breaker
+    var brute = new THREE.Group();
+    (function () {
+      var skin = rimLight(new THREE.MeshToonMaterial({ color: sRGBc(0x2f8a34), gradientMap: RAMP }), 0x7dff8a, 0.45, 3.6);
+      var cloth = new THREE.MeshToonMaterial({ color: sRGBc(0x14161a), gradientMap: RAMP });
+      var t = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.0, 2.0), skin);
+      t.position.y = 1.6; brute.add(t);
+      var sh = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.2, 2.2), skin);
+      sh.position.y = 2.7; brute.add(sh);
+      var hd = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), skin);
+      hd.position.y = 3.6; brute.add(hd);
+      var pants = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.4, 2.0), cloth);
+      pants.position.y = -0.2; brute.add(pants);
+      function big(len, w) {
+        var g2 = new THREE.Group();
+        var mm = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), skin);
+        mm.position.y = -len / 2; g2.add(mm);
+        var fist = new THREE.Mesh(new THREE.BoxGeometry(w * 1.5, w * 1.4, w * 1.5), skin);
+        fist.position.y = -len; g2.add(fist);
+        return g2;
+      }
+      brute.userData.armR = big(2.6, 1.05); brute.userData.armR.position.set(2.1, 2.9, 0);
+      brute.userData.armL = big(2.6, 1.05); brute.userData.armL.position.set(-2.1, 2.9, 0);
+      brute.add(brute.userData.armR, brute.userData.armL);
+      var lg = big(2.2, 1.1); lg.position.set(0.9, -0.7, 0); brute.add(lg);
+      var lg2 = big(2.2, 1.1); lg2.position.set(-0.9, -0.7, 0); brute.add(lg2);
+      brute.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    })();
+    scene.add(brute);
+
+    var bruteHost = null, bruteFace = null, bruteY = 60, bruteT = 0, punchT = 0, bruteFrozenT = 0;
+    (function pickHost() {
+      var best = null;
+      for (var i = 0; i < buildings.length; i++) {
+        var b = buildings[i];
+        if (b.h < 120) continue;
+        var d = Math.hypot(b.x - 140, b.z - 140);
+        if (!best || d < best.d) best = { b: b, d: d };
+      }
+      bruteHost = best ? best.b : buildings[0];
+      bruteFace = { nx: 0, nz: 1 };
+      bruteY = GH + 3.7;
+      brute.position.set(bruteHost.x, bruteY, bruteHost.z + bruteHost.d / 2 + 40);
+    })();
+
+    // ---------------------------------------------- 일반 몬스터 (타노스 / 베놈 / 좀비)
+    var MONSTER_TYPES = {
+      thanos: { hp: 130, atk: 50, color: 0x7a4fae, scale: 1.28, speed: 15, atkRange: 4.4, atkCooldown: 1.6, name: 'THANOS' },
+      venom:  { hp: 150, atk: 10, color: 0x0d0e12, scale: 1.16, speed: 17, atkRange: 4.0, atkCooldown: 0.9, name: 'VENOM' },
+      zombie: { hp: 30,  atk: 6,  color: 0x4a6b3a, scale: 0.9,  speed: 9,  atkRange: 3.1, atkCooldown: 1.3, name: 'ZOMBIE' }
+    };
+    var monsters = [];
+
+    function makeMonsterMesh(type) {
+      var cfg = MONSTER_TYPES[type];
+      var s = cfg.scale;
+      var grp = new THREE.Group();
+      var skin = rimLight(new THREE.MeshToonMaterial({ color: sRGBc(cfg.color), gradientMap: RAMP }), cfg.color, 0.42, 3.3);
+      var torso = new THREE.Mesh(new THREE.BoxGeometry(1.6 * s, 2.0 * s, 1.1 * s), skin);
+      torso.position.y = 2.0 * s * 0.5 + 0.7 * s; grp.add(torso);
+      var head = new THREE.Mesh(new THREE.BoxGeometry(0.85 * s, 0.85 * s, 0.85 * s), skin);
+      head.position.y = torso.position.y + 1.0 * s + 0.42 * s; grp.add(head);
+      function limbM(len, w) {
+        var g2 = new THREE.Group();
+        var mm = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), skin);
+        mm.position.y = -len / 2; g2.add(mm);
+        return g2;
+      }
+      var armR = limbM(1.35 * s, 0.42 * s); armR.position.set(1.05 * s, torso.position.y + 0.55 * s, 0); grp.add(armR);
+      var armL = limbM(1.35 * s, 0.42 * s); armL.position.set(-1.05 * s, torso.position.y + 0.55 * s, 0); grp.add(armL);
+      var legL = limbM(1.35 * s, 0.5 * s); legL.position.set(-0.48 * s, torso.position.y - 1.0 * s, 0); grp.add(legL);
+      var legR = limbM(1.35 * s, 0.5 * s); legR.position.set(0.48 * s, torso.position.y - 1.0 * s, 0); grp.add(legR);
+      if (type === 'venom') {
+        var emblem = new THREE.Mesh(new THREE.BoxGeometry(0.5 * s, 0.5 * s, 0.05),
+          new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        emblem.position.set(0, torso.position.y + 0.2 * s, -0.58 * s); grp.add(emblem);
+      } else if (type === 'thanos') {
+        var gauntlet = new THREE.Mesh(new THREE.BoxGeometry(0.55 * s, 0.55 * s, 0.55 * s),
+          new THREE.MeshBasicMaterial({ color: 0xd8b13a }));
+        gauntlet.position.set(1.05 * s, torso.position.y - 1.0 * s, 0); grp.add(gauntlet);
+      }
+      grp.userData = { armR: armR, armL: armL, legL: legL, legR: legR, groundOffset: torso.position.y - 1.65 * s };
+      grp.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      return grp;
+    }
+
+    function spawnMonster(type, x, z) {
+      var cfg = MONSTER_TYPES[type];
+      var mesh = makeMonsterMesh(type);
+      mesh.position.set(x, GH - mesh.userData.groundOffset, z);
+      scene.add(mesh);
+      monsters.push({
+        type: type, cfg: cfg, mesh: mesh,
+        hp: cfg.hp, maxHp: cfg.hp, atk: cfg.atk,
+        alive: true, atkTimer: 0, frozenT: 0, walkT: Math.random() * 10
+      });
+      return monsters[monsters.length - 1];
+    }
+    function killMonster(mo) {
+      mo.alive = false;
+      scene.remove(mo.mesh);
+    }
+    function spawnRandomMonster(x, z) {
+      var pool = ['thanos', 'venom', 'zombie'];
+      var t = pool[Math.floor(Math.random() * pool.length)];
+      return spawnMonster(t, x, z);
+    }
+    // 시작 칭크 바로 옆(+X) 칭크: 좀비를 다수 배치
+    (function populateZombieChunk() {
+      var originX = ZOMBIE_CHUNK.cx * CHUNK_SIZE, originZ = ZOMBIE_CHUNK.cz * CHUNK_SIZE;
+      var n = 16;
+      for (var i = 0; i < n; i++) {
+        var ang = Math.random() * Math.PI * 2;
+        var r = Math.random() * (NEI_HALF - 60);
+        spawnMonster('zombie', originX + Math.cos(ang) * r, originZ + Math.sin(ang) * r);
+      }
+    })();
+
+    // debris + shockwave pools
+    var debris = [], debrisPool = [];
+    var debGeo = new THREE.BoxGeometry(1, 1, 1);
+    var debMat = new THREE.MeshToonMaterial({ color: sRGBc(0x6d7580), gradientMap: RAMP, flatShading: true });
+    for (var di = 0; di < 90; di++) {
+      var dm = new THREE.Mesh(debGeo, debMat);
+      dm.visible = false; dm.castShadow = true;
+      scene.add(dm);
+      debrisPool.push({ m: dm, v: new THREE.Vector3(), spin: new THREE.Vector3(), life: 0 });
+    }
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0xff3a45, transparent: true, opacity: 0, side: THREE.DoubleSide });
+    var ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1.0, 40), ringMat);
+    ring.visible = false;
+    scene.add(ring);
+    var ringT = 0;
+
+    function spawnDebris(pos, nrm, power) {
+      for (var i = 0; i < 14; i++) {
+        if (!debrisPool.length) break;
+        var p = debrisPool.pop();
+        p.m.position.copy(pos);
+        p.m.position.x += (Math.random() - 0.5) * 3;
+        p.m.position.y += (Math.random() - 0.5) * 3;
+        p.m.position.z += (Math.random() - 0.5) * 3;
+        var s = 0.35 + Math.random() * 1.1;
+        p.m.scale.set(s, s * (0.5 + Math.random()), s);
+        p.m.visible = true;
+        p.v.set(nrm.x * (6 + Math.random() * 10), 4 + Math.random() * 9, nrm.z * (6 + Math.random() * 10));
+        p.v.x += (Math.random() - 0.5) * 7; p.v.z += (Math.random() - 0.5) * 7;
+        p.v.multiplyScalar(power);
+        p.spin.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        p.life = 2.4 + Math.random() * 1.6;
+        debris.push(p);
+      }
+    }
+
+    // ---------------------------------------------- player physics
+    var pos = new THREE.Vector3(0, 90, 260);
+    var vel = new THREE.Vector3(0, 0, 0);
+    var anchor = new THREE.Vector3();
+    var attached = false, ropeLen = 0;
+    var grounded = false;
+    var camYaw = Math.PI, camPitch = -0.12;
+    var shake = 0, distTravel = 0, topSpeed = 0;
+    var facing = Math.PI;
+    var swingPhase = 0;
+
+    // ---------------------------------------------- new systems: HP / boost / super mode / wall-climb / freelook
+    var PLAYER_MAX_HP = 100, HULK_MAX_HP = 500;
+    var playerHP = PLAYER_MAX_HP, hulkHP = HULK_MAX_HP, hulkAlive = true;
+    var speedBoost = false;           // E key: 1000km/h
+    var BOOST_MS = 1000 / 3.6;        // 1000 km/h in m/s
+    var superMode = false;            // Q key: flight + laser
+    var SUPER_BASE_SPD = 100;         // 슈퍼모드 기본 유지 속도
+    var freeLook = false;             // Shift toggle: 우클릭 시점 조작
+    var rightMouseDown = false;
+    var wallClimb = false;
+    var wallNormal = new THREE.Vector3();
+    var webAtkCooldown = 0, laserCooldown = 0;
+    var hulkNormalAtkT = 0, hitFlash = 0, playerDead = false;
+    var FREEZE_RANGE = 50, FREEZE_DURATION = 3.0, FREEZE_COOLDOWN = 5.0;
+    var freezeCooldownT = 0, freezeFX = 0;
+    var laserBeam = new THREE.Mesh(webGeoC, new THREE.MeshBasicMaterial({ color: 0x36e8ff }));
+    laserBeam.visible = false; laserBeam.frustumCulled = false;
+    scene.add(laserBeam);
+    var laserBeamT = 0;
+    var wallRay = new THREE.Raycaster();
+
+    function resetPlayer() {
+      // start on the approach to the wall breaker so it reads immediately
+      pos.set(bruteHost.x + 6, bruteY + 46, bruteHost.z + bruteHost.d / 2 + 165);
+      vel.set(0, 0, -9);
+      attached = false; webLine.visible = false; anchorMark.visible = false;
+      distTravel = 0; topSpeed = 0; camYaw = 0; facing = 0;
+      camPos.set(pos.x, pos.y + 3, pos.z + 9);
+      wallClimb = false; playerDead = false; playerHP = PLAYER_MAX_HP;
+    }
+
+    var deathTimer = 0;
+    function applyPlayerDamage(dmg, src) {
+      if (playerDead) return;
+      playerHP = Math.max(0, playerHP - dmg);
+      hitFlash = 0.28;
+      shake = Math.max(shake, 0.35);
+      if (playerHP <= 0) { playerDead = true; deathTimer = 1.6; }
+    }
+
+    // ---------------------------------------------- input
+    var keys = {}, mouseDown = false;
+    var mouseNDC = new THREE.Vector2(0, 0);
+    var helpEl = document.getElementById('help');
+    var helpOn = true, helpTimer = 14, postOn = true;
+
+    window.addEventListener('keydown', function (e) {
+      keys[e.code] = true;
+      if (e.code === 'KeyH') { helpOn = !helpOn; helpEl.classList.toggle('dim', !helpOn); helpTimer = 14; }
+      if (e.code === 'KeyR') resetPlayer();
+      if (e.code === 'KeyP') {
+        postOn = !postOn;
+        renderer.shadowMap.enabled = postOn;
+        scene.traverse(function (o) { if (o.material) o.material.needsUpdate = true; });
+      }
+      if (e.code === 'Space') e.preventDefault();
+      if (e.code === 'KeyE' && !e.repeat) {
+        speedBoost = !speedBoost;
+      }
+      if (e.code === 'KeyQ' && !e.repeat) {
+        superMode = !superMode;
+        if (superMode) { attached = false; webLine.visible = false; anchorMark.visible = false; }
+      }
+      if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) {
+        if (!superMode && !attached) { freeLook = !freeLook; }
+      }
+      if (e.code === 'KeyT' && !e.repeat) {
+        var ang = Math.random() * Math.PI * 2;
+        var dist = 26 + Math.random() * 22;
+        spawnRandomMonster(pos.x + Math.sin(ang) * dist, pos.z + Math.cos(ang) * dist);
+      }
+      if (e.code === 'KeyM' && !e.repeat) {
+        castFreeze();
+      }
+    });
+    window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+    window.addEventListener('mousemove', function (e) {
+      mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      if (freeLook && rightMouseDown) {
+        camYaw -= e.movementX * 0.0035;
+        camPitch = clamp(camPitch - e.movementY * 0.0028, -0.6, 0.6);
+      }
+    });
+    window.addEventListener('mousedown', function (e) {
+      if (e.button === 2) { rightMouseDown = true; return; }
+      if (e.button !== 0) return;
+      mouseDown = true;
+      tryAttack();
+    });
+    window.addEventListener('mouseup', function (e) {
+      if (e.button === 2) { rightMouseDown = false; return; }
+      if (e.button === 0) release();
+    });
+    window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    var raycaster = new THREE.Raycaster();
+    var missFlash = 0;
+
+    function tryAttack() {
+      raycaster.setFromCamera(mouseNDC, camera);
+      raycaster.far = 420;
+
+      if (hulkAlive && webAtkCooldown <= 0) {
+        var hulkHits = raycaster.intersectObject(brute, true);
+        if (hulkHits.length) {
+          var dmg = 7 + Math.round(Math.random());
+          hulkHP = Math.max(0, hulkHP - dmg);
+          webAtkCooldown = 0.35;
+          hitFlash = 0.15;
+          flashHit(hulkHits[0].point, 0xffffff);
+          if (hulkHP <= 0) hulkDefeated();
+          return;
+        }
+      }
+
+      if (webAtkCooldown <= 0) {
+        for (var mi = 0; mi < monsters.length; mi++) {
+          var mo = monsters[mi];
+          if (!mo.alive) continue;
+          var moHits = raycaster.intersectObject(mo.mesh, true);
+          if (moHits.length) {
+            var mDmg = 7 + Math.round(Math.random());
+            mo.hp = Math.max(0, mo.hp - mDmg);
+            webAtkCooldown = 0.35;
+            hitFlash = 0.15;
+            flashHit(moHits[0].point, 0xffffff);
+            if (mo.hp <= 0) killMonster(mo);
+            return;
+          }
+        }
+      }
+
+      if (superMode) { missFlash = 0.3; return; }
+
+      var hits = raycaster.intersectObject(window.__cityMesh, false);
+      if (hits.length) {
+        anchor.copy(hits[0].point);
+        ropeLen = Math.max(6, pos.distanceTo(anchor));
+        attached = true;
+        webLine.visible = true;
+        anchorMark.visible = true;
+        anchorMark.position.copy(anchor);
+        swingPhase = 0;
+      } else {
+        missFlash = 0.5;
+      }
+    }
+    function hulkDefeated() {
+      hulkAlive = false;
+      brute.visible = false;
+    }
+    function fireLaser() {
+      var dir = new THREE.Vector3(-Math.sin(facing), -0.05, -Math.cos(facing));
+      var origin = pos.clone(); origin.y += 0.6;
+      laserBeam.visible = true;
+      laserBeam.position.copy(origin).addScaledVector(dir, 60);
+      laserBeam.scale.set(1, 120, 1);
+      laserBeam.quaternion.setFromUnitVectors(WEB_UP, dir.clone().normalize());
+      laserBeamT = 0.12;
+
+      raycaster.set(origin, dir.normalize());
+      raycaster.far = 500;
+      if (hulkAlive) {
+        var lh = raycaster.intersectObject(brute, true);
+        if (lh.length) {
+          hulkHP = Math.max(0, hulkHP - 20);
+          flashHit(lh[0].point, 0x36e8ff);
+          if (hulkHP <= 0) hulkDefeated();
+          return;
+        }
+      }
+      for (var lmi = 0; lmi < monsters.length; lmi++) {
+        var lmo = monsters[lmi];
+        if (!lmo.alive) continue;
+        var lmHits = raycaster.intersectObject(lmo.mesh, true);
+        if (lmHits.length) {
+          lmo.hp = Math.max(0, lmo.hp - 20);
+          flashHit(lmHits[0].point, 0x36e8ff);
+          if (lmo.hp <= 0) killMonster(lmo);
+          break;
+        }
+      }
+    }
+    // M키: 범위 내 몬스터를 3초간 마비(이동/공격 불가)
+    function castFreeze() {
+      if (freezeCooldownT > 0) return;
+      freezeCooldownT = FREEZE_COOLDOWN;
+      freezeFX = 0.4;
+      for (var fi = 0; fi < monsters.length; fi++) {
+        var fmo = monsters[fi];
+        if (!fmo.alive) continue;
+        if (fmo.mesh.position.distanceTo(pos) <= FREEZE_RANGE) fmo.frozenT = FREEZE_DURATION;
+      }
+      if (hulkAlive && brute.position.distanceTo(pos) <= FREEZE_RANGE) bruteFrozenT = FREEZE_DURATION;
+    }
+    var hitFlashSprites = [];
+    function flashHit(p, hex) {
+      var r = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 16),
+        new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      r.position.copy(p);
+      r.lookAt(camera.position);
+      scene.add(r);
+      hitFlashSprites.push({ m: r, life: 0.35 });
+    }
+    function release() {
+      mouseDown = false;
+      attached = false;
+      webLine.visible = false;
+      anchorMark.visible = false;
+    }
+
+    // ---------------------------------------------- collision
+    function resolveCollisions(dt) {
+      var r = 0.75;
+      grounded = false;
+      if (pos.y - 1.0 <= GH) { pos.y = GH + 1.0; if (vel.y < 0) vel.y = 0; grounded = true; }
+      for (var i = 0; i < buildings.length; i++) {
+        var b = buildings[i];
+        var hx = b.w / 2 + r, hz = b.d / 2 + r;
+        var dx = pos.x - b.x, dz = pos.z - b.z;
+        if (Math.abs(dx) > hx || Math.abs(dz) > hz) continue;
+        if (pos.y < b.y0 - 1.2 || pos.y > b.y0 + b.h + 1.0) continue;
+        var pX = hx - Math.abs(dx);
+        var pZ = hz - Math.abs(dz);
+        var pY = (b.y0 + b.h + 1.0) - pos.y;
+        if (pY <= pX && pY <= pZ) {
+          pos.y = b.y0 + b.h + 1.0;
+          if (vel.y < 0) vel.y = 0;
+          grounded = true;
+        } else if (pX <= pZ) {
+          pos.x = b.x + (dx > 0 ? hx : -hx);
+          vel.x *= -0.15;
+        } else {
+          pos.z = b.z + (dz > 0 ? hz : -hz);
+          vel.z *= -0.15;
+        }
+      }
+    }
+
+    // ---------------------------------------------- post chain
+    var rtScene = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, depthBuffer: true, stencilBuffer: false
+    });
+    var rtA = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false
+    });
+    var rtB = rtA.clone();
+    var POST_VS = 'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
+    var brightMat = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, threshold: { value: 0.72 } },
+      vertexShader: POST_VS,
+      fragmentShader: [
+        'uniform sampler2D tDiffuse;uniform float threshold;varying vec2 vUv;',
+        'void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;',
+        'float l=dot(c,vec3(0.2126,0.7152,0.0722));',
+        'float k=max(l-threshold,0.0)/max(l,0.0001);',
+        'gl_FragColor=vec4(c*k,1.0);}'
+      ].join('\n')
+    });
+    var blurMat = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2() }, res: { value: new THREE.Vector2(1, 1) } },
+      vertexShader: POST_VS,
+      fragmentShader: [
+        'uniform sampler2D tDiffuse;uniform vec2 dir;uniform vec2 res;varying vec2 vUv;',
+        'void main(){vec2 t=dir/res;vec3 s=texture2D(tDiffuse,vUv).rgb*0.227027;',
+        's+=(texture2D(tDiffuse,vUv+t*1.3846).rgb+texture2D(tDiffuse,vUv-t*1.3846).rgb)*0.316216;',
+        's+=(texture2D(tDiffuse,vUv+t*3.2307).rgb+texture2D(tDiffuse,vUv-t*3.2307).rgb)*0.070270;',
+        'gl_FragColor=vec4(s,1.0);}'
+      ].join('\n')
+    });
+    var compMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tScene: { value: null }, tBloom: { value: null },
+        bloomAmt: { value: 0.34 }, vigAmt: { value: 0.42 },
+        grainAmt: { value: 0.018 }, aberrAmt: { value: 0.0022 },
+        speedAmt: { value: 0.0 }, streakAmt: { value: 0.0 },
+        tSeed: { value: 0 }, tFlow: { value: 0 }
+      },
+      vertexShader: POST_VS,
+      fragmentShader: [
+        'uniform sampler2D tScene;uniform sampler2D tBloom;',
+        'uniform float bloomAmt;uniform float vigAmt;uniform float grainAmt;',
+        'uniform float aberrAmt;uniform float speedAmt;uniform float streakAmt;',
+        'uniform float tSeed;uniform float tFlow;',
+        'varying vec2 vUv;',
+        'void main(){',
+        '  vec2 d=vUv-0.5;float r2=dot(d,d);',
+        '  vec2 off=d*aberrAmt*(0.35+r2*3.0);',
+        '  vec3 c;',
+        '  c.r=texture2D(tScene,vUv+off).r;',
+        '  c.g=texture2D(tScene,vUv).g;',
+        '  c.b=texture2D(tScene,vUv-off).b;',
+        // radial speed blur toward the centre
+        '  vec3 rb=vec3(0.0);',
+        '  for(int i=1;i<=4;i++){float f=float(i)/4.0;rb+=texture2D(tScene,vUv-d*f*speedAmt).rgb;}',
+        '  c=mix(c,rb*0.25,clamp(speedAmt*7.0,0.0,0.62));',
+        '  c+=texture2D(tBloom,vUv).rgb*bloomAmt;',
+        '  gl_FragColor=vec4(max(c,0.0),1.0);',
+        '  #include <encodings_fragment>',
+        // poster contrast: crush the blacks, hold the reds
+        '  gl_FragColor.rgb=clamp((gl_FragColor.rgb-0.5)*1.12+0.48,0.0,1.0);',
+        // diagonal crimson speed streaks, cleared away from the centre
+        '  float ca=0.5299,sa=0.8480;',
+        '  float axis=vUv.x*ca-vUv.y*sa;',
+        '  float coord=axis*22.0+tFlow;',
+        '  float cell=floor(coord);',
+        '  float rw=fract(sin(cell*17.13)*4127.7);',
+        '  float rv=fract(sin(cell*39.77)*9187.3);',
+        '  float line=step(fract(coord),0.018+0.075*rw);',
+        '  float edge=smoothstep(0.045,0.30,r2);',
+        '  gl_FragColor.rgb+=vec3(0.90,0.09,0.14)*line*(0.30+0.70*rv)*streakAmt*edge;',
+        '  gl_FragColor.rgb*=1.0-vigAmt*smoothstep(0.09,0.60,r2);',
+        '  float n=fract(sin(dot(vUv*vec2(tSeed+1.3,tSeed+2.7),vec2(12.9898,78.233)))*43758.5453);',
+        '  gl_FragColor.rgb+=(n-0.5)*grainAmt;',
+        '}'
+      ].join('\n')
+    });
+    var postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    var postScene = new THREE.Scene();
+    var postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), brightMat);
+    postQuad.frustumCulled = false;
+    postScene.add(postQuad);
+    function pass(mat, target) {
+      postQuad.material = mat;
+      renderer.setRenderTarget(target);
+      renderer.render(postScene, postCam);
+    }
+
+    // ---------------------------------------------- UI
+    var uiCanvas = document.getElementById('ui');
+    var ux = uiCanvas.getContext('2d');
+    var L = null;
+    function mono(s, w) { return (w || '') + ' ' + s + 'px Consolas,"Courier New",monospace'; }
+
+    function onResize() {
+      var w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var W = Math.round(w * dpr), H = Math.round(h * dpr);
+      var S = Math.max(W / 1600, H / 900);
+      L = { W: W, H: H, S: S, vw: W / S, vh: H / S };
+      L.l = 800 - L.vw / 2; L.r = 800 + L.vw / 2;
+      L.t = 450 - L.vh / 2; L.b = 450 + L.vh / 2;
+      uiCanvas.width = W; uiCanvas.height = H;
+      var pr = renderer.getPixelRatio();
+      var pw = Math.max(2, Math.floor(w * pr)), ph = Math.max(2, Math.floor(h * pr));
+      rtScene.setSize(pw, ph);
+      rtA.setSize(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+      rtB.setSize(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+      blurMat.uniforms.res.value.set(Math.max(2, pw >> 1), Math.max(2, ph >> 1));
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    function setTx(ctx) {
+      ctx.setTransform(L.S, 0, 0, L.S, L.W / 2 - 800 * L.S, L.H / 2 - 450 * L.S);
+    }
+
+    // ---------------------------------------------- loop
+    var last = performance.now();
+    var camPos = new THREE.Vector3(0, 100, 300);
+    var tmpV = new THREE.Vector3();
+    var vProj = new THREE.Vector3();
+    var bootEl = document.getElementById('boot');
+    setTimeout(function () { bootEl.classList.add('done'); }, 700);
+    resetPlayer();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      var now = performance.now();
+      var dt = Math.min((now - last) / 1000, 0.04);
+      last = now;
+
+      if (helpOn && helpTimer > 0) { helpTimer -= dt; if (helpTimer <= 0) helpEl.classList.add('dim'); }
+      if (missFlash > 0) missFlash -= dt;
+      if (hitFlash > 0) hitFlash -= dt;
+      if (laserBeamT > 0) { laserBeamT -= dt; if (laserBeamT <= 0) laserBeam.visible = false; }
+      if (webAtkCooldown > 0) webAtkCooldown -= dt;
+      if (laserCooldown > 0) laserCooldown -= dt;
+      if (freezeCooldownT > 0) freezeCooldownT -= dt;
+      if (freezeFX > 0) freezeFX -= dt;
+      if (playerDead) {
+        deathTimer -= dt;
+        if (deathTimer <= 0) resetPlayer();
+      }
+      for (var hfi = hitFlashSprites.length - 1; hfi >= 0; hfi--) {
+        var hf = hitFlashSprites[hfi];
+        hf.life -= dt;
+        hf.m.scale.multiplyScalar(1 + dt * 6);
+        hf.m.material.opacity = Math.max(0, hf.life / 0.35);
+        hf.m.lookAt(camera.position);
+        if (hf.life <= 0) { scene.remove(hf.m); hitFlashSprites.splice(hfi, 1); }
+      }
+
+      // ---------- movement
+      var camFwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
+      var camRight = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+
+      var inF = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
+      var inR = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+      var boostMul = speedBoost ? 9 : 1;
+      var skipCollide = false;
+
+      if (superMode) {
+        // ---- Q: 슈퍼모드 자유비행 (기본 속도 100 유지, Space=상승, Shift=하강, E=부스트)
+        wallClimb = false;
+        if (attached) { attached = false; webLine.visible = false; anchorMark.visible = false; }
+        var flyDir = new THREE.Vector3(camFwd.x * inF + camRight.x * inR, 0, camFwd.z * inF + camRight.z * inR);
+        var targetHoriz = speedBoost ? BOOST_MS : SUPER_BASE_SPD;
+        if (flyDir.lengthSq() > 0.0001) {
+          flyDir.normalize();
+          vel.x = lerp(vel.x, flyDir.x * targetHoriz, clamp(dt * 3.2, 0, 1));
+          vel.z = lerp(vel.z, flyDir.z * targetHoriz, clamp(dt * 3.2, 0, 1));
+        } else {
+          vel.x *= Math.exp(-2.2 * dt);
+          vel.z *= Math.exp(-2.2 * dt);
+        }
+        var vertTarget = 0;
+        if (keys['Space']) vertTarget = 40 * (speedBoost ? 2 : 1);
+        else if (keys['ShiftLeft'] || keys['ShiftRight']) vertTarget = -40 * (speedBoost ? 2 : 1);
+        vel.y = lerp(vel.y, vertTarget, clamp(dt * 3.2, 0, 1));
+        grounded = false;
+
+        if (keys['KeyG'] && laserCooldown <= 0) {
+          laserCooldown = 0.18;
+          fireLaser();
+        }
+      } else if (wallClimb) {
+        // ---- 벽타기: 손과 발로 건물 벽 등반
+        var climbSpd = 11 * boostMul;
+        vel.set(0, 0, 0);
+        pos.y += ((keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0)) * climbSpd * dt;
+        var wallTan = new THREE.Vector3(-wallNormal.z, 0, wallNormal.x);
+        pos.addScaledVector(wallTan, ((keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0)) * climbSpd * dt);
+        pos.addScaledVector(wallNormal, 0.6);
+        facing = Math.atan2(wallNormal.x, wallNormal.z) + Math.PI;
+        if (keys['Space']) {
+          wallClimb = false;
+          vel.copy(wallNormal).multiplyScalar(15).add(new THREE.Vector3(0, 13, 0));
+        } else {
+          wallRay.set(pos.clone().addScaledVector(wallNormal, 0.3), wallNormal.clone().negate());
+          wallRay.far = 2.0;
+          var wStill = wallRay.intersectObject(window.__cityMesh, false);
+          if (!wStill.length) wallClimb = false;
+        }
+        skipCollide = true;
+      } else {
+        vel.y -= 26 * dt;
+
+        if (grounded) {
+          var runA = 46 * boostMul;
+          vel.x += (camFwd.x * inF + camRight.x * inR) * runA * dt;
+          vel.z += (camFwd.z * inF + camRight.z * inR) * runA * dt;
+          vel.x *= Math.exp(-5.5 * dt);
+          vel.z *= Math.exp(-5.5 * dt);
+          if (keys['Space']) { vel.y = 17; grounded = false; }
+        } else {
+          var airA = (attached ? 13 : 20) * boostMul;
+          vel.x += (camFwd.x * inF + camRight.x * inR) * airA * dt;
+          vel.z += (camFwd.z * inF + camRight.z * inR) * airA * dt;
+          vel.multiplyScalar(Math.exp(-0.16 * dt));
+
+          // 전진 중 벽에 근접하면 자동으로 벽타기 진입
+          if (!attached && inF > 0) {
+            wallRay.set(pos, camFwd);
+            wallRay.far = 1.5;
+            var wHit = wallRay.intersectObject(window.__cityMesh, false);
+            if (wHit.length) {
+              wallClimb = true;
+              wallNormal.copy(wHit[0].face.normal).transformDirection(window.__cityMesh.matrixWorld).normalize();
+              pos.copy(wHit[0].point);
+              vel.set(0, 0, 0);
+            }
+          }
+        }
+
+        if (attached) {
+          if (keys['ShiftLeft'] || keys['ShiftRight']) ropeLen = Math.max(5, ropeLen - 26 * dt);
+          else ropeLen = Math.max(5, ropeLen - 3.5 * dt);
+
+          // tangential boost so the pendulum keeps its rhythm
+          tmpV.copy(pos).sub(anchor);
+          var dist = tmpV.length();
+          if (dist > 0.001) {
+            var radial = tmpV.clone().normalize();
+            var tang = new THREE.Vector3().copy(vel).addScaledVector(radial, -vel.dot(radial));
+            if (tang.lengthSq() > 0.01) vel.addScaledVector(tang.normalize(), 15 * dt);
+          }
+        }
+
+        var speedCap = speedBoost ? BOOST_MS : 90;
+        if (vel.length() > speedCap) vel.setLength(speedCap);
+      }
+
+      pos.addScaledVector(vel, dt);
+
+      // rope constraint
+      if (attached) {
+        tmpV.copy(pos).sub(anchor);
+        var d2 = tmpV.length();
+        if (d2 > ropeLen) {
+          tmpV.multiplyScalar(1 / d2);
+          pos.copy(anchor).addScaledVector(tmpV, ropeLen);
+          var vr = vel.dot(tmpV);
+          if (vr > 0) vel.addScaledVector(tmpV, -vr);
+        }
+        if (mouseDown === false) release();
+      }
+
+      if (!skipCollide) resolveCollisions(dt);
+      if (pos.y < -40) resetPlayer();
+
+      var spd = vel.length();
+      distTravel += spd * dt;
+      if (spd > topSpeed) topSpeed = spd;
+
+      hero.position.copy(pos);
+      if (spd > 2) facing = lerp(facing, Math.atan2(-vel.x, -vel.z), clamp(dt * 5, 0, 1));
+      hero.rotation.set(0, facing, 0);
+      var lean = clamp(spd / 60, 0, 1);
+      hero.rotation.x = -lean * (attached ? 0.85 : 0.5);
+      hero.rotation.z = attached ? clamp(-vel.y * 0.012, -0.55, 0.55) : 0;
+
+      // limb posing
+      swingPhase += dt * (grounded ? spd * 0.6 : 3.0);
+      if (attached) {
+        tmpV.copy(anchor).sub(pos);
+        var up = Math.atan2(tmpV.y, Math.hypot(tmpV.x, tmpV.z));
+        // firing arm reaches the anchor, trailing arm streams back, legs tuck
+        armR.rotation.x = -(Math.PI * 0.88 + up * 0.45);
+        armR.rotation.z = -0.24;
+        armL.rotation.x = 0.55 + Math.sin(swingPhase * 0.7) * 0.1;
+        armL.rotation.z = 0.42;
+        legL.rotation.x = 1.55 + Math.sin(swingPhase) * 0.14;
+        legR.rotation.x = 0.35 - Math.sin(swingPhase) * 0.18;
+        legR.rotation.z = -0.18;
+      } else if (grounded) {
+        armR.rotation.x = Math.sin(swingPhase) * 0.8; armR.rotation.z = 0;
+        armL.rotation.x = -Math.sin(swingPhase) * 0.8; armL.rotation.z = 0;
+        legL.rotation.z = 0; legR.rotation.z = 0;
+        legL.rotation.x = -Math.sin(swingPhase) * 0.7;
+        legR.rotation.x = Math.sin(swingPhase) * 0.7;
+      } else {
+        armR.rotation.x = -1.7 + Math.sin(swingPhase * 0.6) * 0.2; armR.rotation.z = -0.3;
+        armL.rotation.x = -1.4 - Math.sin(swingPhase * 0.6) * 0.2; armL.rotation.z = 0.3;
+        legL.rotation.x = 0.35; legR.rotation.x = -0.2;
+        legL.rotation.z = 0; legR.rotation.z = 0;
+      }
+
+      if (attached) {
+        var handWorld = new THREE.Vector3(0.38, 0.9, 0).applyEuler(hero.rotation).add(pos);
+        var wdir = new THREE.Vector3().copy(anchor).sub(handWorld);
+        var wlen = Math.max(wdir.length(), 0.01);
+        webLine.position.copy(handWorld).addScaledVector(wdir, 0.5);
+        webLine.scale.set(1, wlen, 1);
+        webLine.quaternion.setFromUnitVectors(WEB_UP, wdir.normalize());
+      }
+
+      // ---------- camera
+      if (!freeLook) {
+        var targetYaw = spd > 6 ? Math.atan2(-vel.x, -vel.z) : facing;
+        var dy = ((targetYaw - camYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        camYaw += dy * clamp(dt * 2.6, 0, 1);
+        camPitch = lerp(camPitch, clamp(-0.10 - vel.y * 0.006, -0.5, 0.30), clamp(dt * 3, 0, 1));
+      }
+
+      var back = 8.5 + clamp(spd * 0.09, 0, 5);
+      var desired = new THREE.Vector3(
+        pos.x + Math.sin(camYaw) * back,
+        pos.y + 3.0 - camPitch * 12,
+        pos.z + Math.cos(camYaw) * back
+      );
+      camPos.lerp(desired, clamp(dt * 6.5, 0, 1));
+      shake = Math.max(0, shake - dt * 1.6);
+      camera.position.copy(camPos);
+      camera.position.x += (Math.random() - 0.5) * shake * 1.4;
+      camera.position.y += (Math.random() - 0.5) * shake * 1.4;
+      camera.lookAt(pos.x, pos.y + 1.2, pos.z);
+      camera.fov = lerp(camera.fov, FOV + clamp(spd * 0.30, 0, 22), clamp(dt * 3, 0, 1));
+      camera.updateProjectionMatrix();
+
+      sky.position.copy(pos);
+      sun.position.set(pos.x - 180, 220, pos.z + 120);
+      sun.target.position.set(pos.x, pos.y * 0.4, pos.z);
+      sun.target.updateMatrixWorld();
+
+      // ---------- brute (자유 이동 헐크 AI)
+      bruteT += dt;
+      if (hulkAlive && bruteFrozenT > 0) {
+        bruteFrozenT -= dt;
+      } else if (hulkAlive) {
+        var toPlayer = new THREE.Vector3(pos.x - brute.position.x, 0, pos.z - brute.position.z);
+        var distToPlayer = toPlayer.length();
+        var ATTACK_R = 6.5, CHASE_SPD = 20;
+        if (distToPlayer > ATTACK_R) {
+          toPlayer.normalize();
+          brute.position.x += toPlayer.x * CHASE_SPD * dt;
+          brute.position.z += toPlayer.z * CHASE_SPD * dt;
+          brute.rotation.y = Math.atan2(-toPlayer.x, -toPlayer.z);
+        } else {
+          brute.rotation.y = Math.atan2(-(toPlayer.x || 0.001), -(toPlayer.z || 0.001));
+        }
+        bruteY = GH + 3.7 + Math.abs(Math.sin(bruteT * 3.2)) * (distToPlayer > ATTACK_R ? 0.9 : 0);
+        brute.position.y = bruteY;
+
+        var cyc = bruteT % 2.6;
+        var arm = brute.userData.armR;
+        var inRange = distToPlayer <= ATTACK_R + 1.0;
+        if (inRange) {
+          if (cyc < 0.95) {
+            arm.rotation.x = lerp(-0.5, 1.15, cyc / 0.95);
+          } else if (cyc < 1.15) {
+            var st = (cyc - 0.95) / 0.20;
+            arm.rotation.x = lerp(1.15, -1.55, st);
+            if (st > 0.8 && punchT < bruteT - 1) {
+              punchT = bruteT;
+              var fistPos = brute.position.clone(); fistPos.y += 3.0;
+              spawnDebris(fistPos, { x: toPlayer.x || 0, z: toPlayer.z || 1 }, 0.6);
+              ring.position.copy(fistPos);
+              ring.rotation.set(Math.PI / 2, 0, 0);
+              ring.scale.set(1, 1, 1);
+              ring.visible = true;
+              ringMat.opacity = 0.5;
+              ringT = 0;
+              if (distToPlayer <= ATTACK_R + 2.0) applyPlayerDamage(15, '헐크 펀치');
+              shake = Math.max(shake, 0.7);
+            }
+          } else {
+            arm.rotation.x = lerp(-1.55, -0.5, clamp((cyc - 1.15) / 0.85, 0, 1));
+          }
+          hulkNormalAtkT -= dt;
+          if (hulkNormalAtkT <= 0 && distToPlayer <= ATTACK_R) {
+            hulkNormalAtkT = 1.0;
+            applyPlayerDamage(5, '헐크 공격');
+          }
+        } else {
+          arm.rotation.x = Math.sin(bruteT * 3.2) * 0.4 - 0.3;
+        }
+        brute.userData.armL.rotation.x = -1.9 + Math.sin(bruteT * 0.9) * 0.10;
+      }
+
+      // ---------- 일반 몬스터 (타노스/베놈/좀비) AI
+      for (var mi = 0; mi < monsters.length; mi++) {
+        var mo = monsters[mi];
+        if (!mo.alive) continue;
+        var ud = mo.mesh.userData;
+        if (mo.frozenT > 0) {
+          mo.frozenT -= dt;
+        } else {
+          var toP = new THREE.Vector3(pos.x - mo.mesh.position.x, 0, pos.z - mo.mesh.position.z);
+          var dP = toP.length();
+          if (dP > mo.cfg.atkRange) {
+            toP.normalize();
+            mo.mesh.position.x += toP.x * mo.cfg.speed * dt;
+            mo.mesh.position.z += toP.z * mo.cfg.speed * dt;
+            mo.mesh.rotation.y = Math.atan2(-toP.x, -toP.z);
+          } else {
+            mo.mesh.rotation.y = Math.atan2(-(toP.x || 0.001), -(toP.z || 0.001));
+            mo.atkTimer -= dt;
+            if (mo.atkTimer <= 0) {
+              mo.atkTimer = mo.cfg.atkCooldown;
+              applyPlayerDamage(mo.atk, mo.cfg.name);
+              shake = Math.max(shake, 0.25);
+            }
+          }
+          mo.walkT += dt * (dP > mo.cfg.atkRange ? 6 : 2);
+          ud.armR.rotation.x = Math.sin(mo.walkT) * 0.7;
+          ud.armL.rotation.x = -Math.sin(mo.walkT) * 0.7;
+          ud.legL.rotation.x = -Math.sin(mo.walkT) * 0.6;
+          ud.legR.rotation.x = Math.sin(mo.walkT) * 0.6;
+        }
+      }
+
+      if (ring.visible) {
+        ringT += dt;
+        ring.scale.setScalar(1 + ringT * 17);
+        ringMat.opacity = Math.max(0, 0.5 - ringT * 0.85);
+        if (ringMat.opacity <= 0) ring.visible = false;
+      }
+      for (var pi = debris.length - 1; pi >= 0; pi--) {
+        var pp = debris[pi];
+        pp.v.y -= 22 * dt;
+        pp.m.position.addScaledVector(pp.v, dt);
+        pp.m.rotation.x += pp.spin.x * dt;
+        pp.m.rotation.y += pp.spin.y * dt;
+        pp.life -= dt;
+        if (pp.m.position.y < GH + 0.3) { pp.m.position.y = GH + 0.3; pp.v.set(0, 0, 0); }
+        if (pp.life <= 0) {
+          pp.m.visible = false;
+          debris.splice(pi, 1);
+          debrisPool.push(pp);
+        }
+      }
+
+      // ---------- render
+      renderer.setRenderTarget(postOn ? rtScene : null);
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+      renderer.clear(true, true, false);
+      renderer.render(scene, camera);
+
+      if (postOn) {
+        compMat.uniforms.speedAmt.value = clamp((spd - 20) / 620, 0, 0.055);
+        compMat.uniforms.streakAmt.value = clamp((spd - 13) / 34, 0, 1) * 0.72;
+        compMat.uniforms.tFlow.value = -(now % 100000) / 1000 * 3.2;
+        brightMat.uniforms.tDiffuse.value = rtScene.texture;
+        pass(brightMat, rtA);
+        blurMat.uniforms.tDiffuse.value = rtA.texture;
+        blurMat.uniforms.dir.value.set(1, 0);
+        pass(blurMat, rtB);
+        blurMat.uniforms.tDiffuse.value = rtB.texture;
+        blurMat.uniforms.dir.value.set(0, 1);
+        pass(blurMat, rtA);
+        compMat.uniforms.tScene.value = rtScene.texture;
+        compMat.uniforms.tBloom.value = rtA.texture;
+        compMat.uniforms.tSeed.value = (now % 10000) / 900;
+        pass(compMat, null);
+      }
+
+      // ---------- HUD
+      ux.setTransform(1, 0, 0, 1, 0, 0);
+      ux.clearRect(0, 0, L.W, L.H);
+      setTx(ux);
+
+      // crosshair at the cursor
+      var cxp = 800 + mouseNDC.x * L.vw / 2;
+      var cyp = 450 - mouseNDC.y * L.vh / 2;
+      ux.strokeStyle = missFlash > 0 ? C.warn : (attached ? C.acc : 'rgba(233,244,241,.75)');
+      ux.lineWidth = 1.8;
+      ux.beginPath();
+      ux.arc(cxp, cyp, attached ? 13 : 9, 0, 7);
+      ux.stroke();
+      ux.beginPath();
+      ux.moveTo(cxp - 17, cyp); ux.lineTo(cxp - 6, cyp);
+      ux.moveTo(cxp + 6, cyp); ux.lineTo(cxp + 17, cyp);
+      ux.moveTo(cxp, cyp - 17); ux.lineTo(cxp, cyp - 6);
+      ux.moveTo(cxp, cyp + 6); ux.lineTo(cxp, cyp + 17);
+      ux.stroke();
+
+      // brute marker
+      vProj.set(brute.position.x, brute.position.y + 3, brute.position.z).project(camera);
+      var behind = vProj.z > 1;
+      var bxp = 800 + vProj.x * L.vw / 2, byp = 450 - vProj.y * L.vh / 2;
+      if (!behind && hulkAlive) {
+        ux.strokeStyle = C.warn; ux.lineWidth = 2;
+        ux.beginPath();
+        ux.moveTo(bxp - 12, byp - 12); ux.lineTo(bxp - 12, byp - 4);
+        ux.moveTo(bxp - 12, byp - 12); ux.lineTo(bxp - 4, byp - 12);
+        ux.moveTo(bxp + 12, byp + 12); ux.lineTo(bxp + 12, byp + 4);
+        ux.moveTo(bxp + 12, byp + 12); ux.lineTo(bxp + 4, byp + 12);
+        ux.stroke();
+        ux.fillStyle = C.warn; ux.font = mono(11, 'bold'); ux.textAlign = 'center';
+        ux.fillText(Math.round(pos.distanceTo(brute.position)) + 'm', bxp, byp + 26);
+      }
+
+      // 일반 몬스터 마커 (이름 · 체력 · 마비 상태)
+      for (var hmi = 0; hmi < monsters.length; hmi++) {
+        var hmo = monsters[hmi];
+        if (!hmo.alive) continue;
+        vProj.set(hmo.mesh.position.x, hmo.mesh.position.y + 2.6 * hmo.cfg.scale, hmo.mesh.position.z).project(camera);
+        if (vProj.z > 1) continue;
+        var mxp = 800 + vProj.x * L.vw / 2, myp = 450 - vProj.y * L.vh / 2;
+        var mCol = hmo.frozenT > 0 ? C.dim : C.warn;
+        ux.textAlign = 'center';
+        ux.fillStyle = mCol; ux.font = mono(10, 'bold');
+        ux.fillText(hmo.cfg.name + (hmo.frozenT > 0 ? ' (마비)' : ''), mxp, myp - 10);
+        ux.fillStyle = 'rgba(6,10,14,.6)'; ux.fillRect(mxp - 24, myp, 48, 5);
+        ux.fillStyle = mCol; ux.fillRect(mxp - 24, myp, 48 * clamp(hmo.hp / hmo.maxHp, 0, 1), 5);
+      }
+
+      // readouts
+      var panelX = L.l + 26, panelY = L.b - 132;
+      ux.fillStyle = 'rgba(6,10,14,.55)';
+      ux.fillRect(panelX - 12, panelY - 26, 250, 118);
+      ux.strokeStyle = 'rgba(126,240,208,.28)'; ux.lineWidth = 1;
+      ux.strokeRect(panelX - 12, panelY - 26, 250, 118);
+      ux.textAlign = 'left';
+      ux.fillStyle = C.acc; ux.font = mono(11, 'bold');
+      ux.fillText('TRAVERSAL', panelX, panelY - 10);
+      ux.fillStyle = C.ice; ux.font = mono(30, 'bold');
+      ux.fillText(String(Math.round(spd * 3.6)), panelX, panelY + 26);
+      ux.fillStyle = C.dim; ux.font = mono(11, 'bold');
+      ux.fillText('KM/H', panelX + 92, panelY + 26);
+      ux.fillStyle = C.ice; ux.font = mono(15, 'bold');
+      ux.fillText('ALT  ' + Math.round(pos.y) + ' m', panelX, panelY + 52);
+      ux.fillText('DIST ' + (distTravel / 1000).toFixed(2) + ' km', panelX, panelY + 74);
+
+      ux.textAlign = 'right';
+      ux.fillStyle = attached ? C.acc : C.dim;
+      ux.font = mono(13, 'bold');
+      ux.fillText(attached ? 'LINE ANCHORED  ' + Math.round(ropeLen) + 'm' : 'LINE READY',
+        L.r - 26, L.b - 34);
+      ux.fillStyle = C.dim; ux.font = mono(11, 'bold');
+      ux.fillText('TOP ' + Math.round(topSpeed * 3.6) + ' KM/H', L.r - 26, L.b - 16);
+
+      if (missFlash > 0) {
+        ux.textAlign = 'center';
+        ux.fillStyle = C.warn; ux.font = mono(14, 'bold');
+        ux.fillText('NO ANCHOR', 800, 450 + 60);
+      }
+
+      // ---------- HP bars
+      function hpBar(x, y, w, hpNow, hpMax, label, col) {
+        ux.textAlign = 'left';
+        ux.fillStyle = C.dim; ux.font = mono(10, 'bold');
+        ux.fillText(label + '  ' + Math.max(0, Math.round(hpNow)) + ' / ' + hpMax, x, y - 5);
+        ux.fillStyle = 'rgba(6,10,14,.6)'; ux.fillRect(x, y, w, 12);
+        var pct = clamp(hpNow / hpMax, 0, 1);
+        ux.fillStyle = col; ux.fillRect(x, y, w * pct, 12);
+        ux.strokeStyle = 'rgba(233,244,241,.35)'; ux.lineWidth = 1; ux.strokeRect(x, y, w, 12);
+      }
+      hpBar(L.l + 26, L.t + 30, 220, playerHP, PLAYER_MAX_HP, 'SPIDER', playerHP < 30 ? C.warn : C.acc);
+      if (hulkAlive) hpBar(L.r - 246, L.t + 30, 220, hulkHP, HULK_MAX_HP, 'HULK', C.amber);
+      else { ux.textAlign = 'right'; ux.fillStyle = C.amber; ux.font = mono(12, 'bold'); ux.fillText('HULK DEFEATED', L.r - 26, L.t + 40); }
+
+      // ---------- mode indicators
+      var modeY = L.t + 66, mx = L.l + 26;
+      ux.textAlign = 'left'; ux.font = mono(11, 'bold');
+      if (freezeCooldownT > 0) { ux.fillStyle = C.dim; ux.fillText('[M] 몬스터 마비 재사용대기 ' + freezeCooldownT.toFixed(1) + 's', mx, modeY); modeY += 16; }
+      else { ux.fillStyle = C.acc; ux.fillText('[M] 몬스터 마비 사용 가능', mx, modeY); modeY += 16; }
+      if (speedBoost) { ux.fillStyle = C.warn; ux.fillText('[E] BOOST 1000km/h ON', mx, modeY); modeY += 16; }
+      if (superMode) { ux.fillStyle = C.acc; ux.fillText('[Q] SUPER MODE - SPACE/SHIFT 비행 · G 레이저', mx, modeY); modeY += 16; }
+      if (freeLook) { ux.fillStyle = C.dim; ux.fillText('[SHIFT] 자유시점 (우클릭 드래그)', mx, modeY); modeY += 16; }
+      if (wallClimb) { ux.fillStyle = C.acc; ux.fillText('벽타기 중 - W/S 오르내리기, SPACE 도약', mx, modeY); modeY += 16; }
+
+      if (hitFlash > 0) {
+        ux.fillStyle = 'rgba(255,58,72,' + clamp(hitFlash / 0.28, 0, 0.4) + ')';
+        ux.fillRect(0, 0, 1600, 900);
+      }
+      if (freezeFX > 0) {
+        ux.fillStyle = 'rgba(80,190,255,' + clamp(freezeFX / 0.4, 0, 0.28) + ')';
+        ux.fillRect(0, 0, 1600, 900);
+      }
+      if (playerDead) {
+        ux.textAlign = 'center';
+        ux.fillStyle = C.warn; ux.font = mono(26, 'bold');
+        ux.fillText('YOU DIED - RESPAWNING...', 800, 420);
+      }
+      ux.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    animate();
+  }
+})();
+</script>
+</body>
+</html>
