@@ -2271,7 +2271,7 @@ function shadeOf(d){
 }
 
 // ===================== 3인칭 카메라 =====================
-const TP={enabled:true,distance:1.72,minDistance:.38,height:.86};
+const TP={enabled:true,distance:2.15,minDistance:.52,height:1.03};
 function getThirdPersonView(){
   if(!TP.enabled||!G.lvl)return {x:P.x,y:P.y,dirX:P.dirX,dirY:P.dirY,planeX:P.planeX,planeY:P.planeY,dist:0};
   let d=TP.distance,last=TP.minDistance;
@@ -3459,6 +3459,18 @@ function netJoin(){
   NET.peer.on('open',()=>{const c=NET.peer.connect('br2-'+code.toLowerCase(),{reliable:true,serialization:'json'});netBindConn(c,false);});
   NET.peer.on('error',e=>netStatus('접속 오류: '+(e.type||e.message),true));
 }
+function makeRoundedPart(radius, length, material, radial=10){
+  // Three.js core만 사용: CapsuleGeometry 애드온 의존성을 제거한 둥근 파츠
+  const grp=new THREE.Group();
+  const cylLen=Math.max(.01,length-radius*2);
+  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,cylLen,radial,1,false),material);
+  grp.add(cyl);
+  const top=new THREE.Mesh(new THREE.SphereGeometry(radius,radial,Math.max(6,(radial*.7)|0)),material);
+  const bot=top.clone();
+  top.position.y=cylLen*.5; bot.position.y=-cylLen*.5;
+  grp.add(top,bot);
+  return grp;
+}
 function makeThirdPersonAvatar(kind){
   if(!T3.ok)return null;
   const g=new THREE.Group();g.name=kind==='local'?'LocalThirdPlayer':'NetworkPlayer';
@@ -3469,7 +3481,7 @@ function makeThirdPersonAvatar(kind){
   const accent=new THREE.MeshStandardMaterial({color:glow,emissive:glow,emissiveIntensity:1.45,roughness:.28,metalness:.25});
   const skin=new THREE.MeshStandardMaterial({color:0xc59a78,roughness:.78});
   const body=new THREE.Group();g.add(body);g.userData.body=body;
-  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.18,.37,6,12),suit);torso.position.y=.77;torso.scale.set(1.08,1,0.82);body.add(torso);
+  const torso=makeRoundedPart(.18,.58,suit,12);torso.position.y=.77;torso.scale.set(1.08,1,0.82);body.add(torso);
   const chest=new THREE.Mesh(new THREE.BoxGeometry(.31,.16,.08,2,2,1),suit2);chest.position.set(0,.86,-.145);body.add(chest);
   const headPivot=new THREE.Group();headPivot.position.set(0,1.14,0);body.add(headPivot);g.userData.head=headPivot;
   const head=new THREE.Mesh(new THREE.SphereGeometry(.155,18,12),skin);headPivot.add(head);
@@ -3479,10 +3491,10 @@ function makeThirdPersonAvatar(kind){
   const limbs={arms:[],legs:[]};g.userData.limbs=limbs;
   for(const side of [-1,1]){
     const sp=new THREE.Group();sp.position.set(side*.245,.88,0);body.add(sp);
-    const arm=new THREE.Mesh(new THREE.CapsuleGeometry(.047,.34,5,8),suit);arm.position.y=-.2;sp.add(arm);limbs.arms.push(sp);
+    const arm=makeRoundedPart(.047,.43,suit,8);arm.position.y=-.2;sp.add(arm);limbs.arms.push(sp);
     const hand=new THREE.Mesh(new THREE.SphereGeometry(.06,10,8),skin);hand.scale.set(.8,1,.8);hand.position.set(0,-.43,-.01);sp.add(hand);
     const hip=new THREE.Group();hip.position.set(side*.105,.55,0);body.add(hip);
-    const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.058,.36,5,8),suit2);leg.position.y=-.23;hip.add(leg);limbs.legs.push(hip);
+    const leg=makeRoundedPart(.058,.47,suit2,8);leg.position.y=-.23;hip.add(leg);limbs.legs.push(hip);
     const boot=new THREE.Mesh(new THREE.BoxGeometry(.12,.09,.22),suit2);boot.position.set(0,-.47,-.055);hip.add(boot);
   }
   // 손에 들고 있는 3D 무기. 종류별로 길이/두께/발광부를 갱신한다.
@@ -3491,7 +3503,8 @@ function makeThirdPersonAvatar(kind){
   const barrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.54),gm);barrel.position.z=-.21;gun.add(barrel);g.userData.gunBarrel=barrel;
   const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(.047,.047,.11,10),accent);muzzle.rotation.x=Math.PI/2;muzzle.position.z=-.52;gun.add(muzzle);g.userData.gunMuzzle=muzzle;
   const grip=new THREE.Mesh(new THREE.BoxGeometry(.09,.22,.1),gm);grip.position.set(0,-.12,-.08);grip.rotation.x=-.18;gun.add(grip);
-  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;o.renderOrder=4;}});
+  g.scale.setScalar(1.12);
   return g;
 }
 function updateAvatarWeapon(g,w){
@@ -3516,12 +3529,12 @@ function updateAvatarPose(g,r,isLocal){
   if(g.userData.head){g.userData.head.rotation.x=clamp(-(r.pitch||0)/230,-.38,.38);g.userData.head.rotation.y=Math.sin(phase*.17)*.035;}
   if(g.userData.gun){g.userData.gun.rotation.x=clamp(-(r.pitch||0)/250,-.3,.3);}
   g.position.y=r.dead?-.42:Math.abs(Math.sin(phase))*((moving&&!r.dead)?.012:0);
-  g.rotation.z=r.dead?1.45:0;g.scale.setScalar(r.dead?.9:1);
+  g.rotation.z=r.dead?1.45:0;g.scale.setScalar((r.dead?.9:1)*1.12);
   updateAvatarWeapon(g,r.w||1);
 }
 function ensureLocalThirdAvatar(){
   if(!TP.enabled||!T3.ok)return;
-  if(!T3.localAvatar){T3.localAvatar=makeThirdPersonAvatar('local');if(T3.localAvatar)T3.scene.add(T3.localAvatar);}
+  if(!T3.localAvatar){try{T3.localAvatar=makeThirdPersonAvatar('local');if(T3.localAvatar)T3.scene.add(T3.localAvatar);}catch(err){console.error('Local avatar creation failed',err);}}
 }
 function updateLocalThirdAvatar(){
   if(!T3.ok)return;ensureLocalThirdAvatar();if(!T3.localAvatar)return;
@@ -3532,8 +3545,7 @@ function updateLocalThirdAvatar(){
 
 function netEnsureAvatar(){
   if(!T3.ok||NET.avatar)return;
-  NET.avatar=makeThirdPersonAvatar('remote');
-  if(NET.avatar)T3.scene.add(NET.avatar);
+  try{NET.avatar=makeThirdPersonAvatar('remote');if(NET.avatar)T3.scene.add(NET.avatar);}catch(err){console.error('Remote avatar creation failed',err);NET.avatar=null;}
 }
 function netUpdateAvatar(){
   if(!NET.connected||!NET.remote||!T3.ok)return;
