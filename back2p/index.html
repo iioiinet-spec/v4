@@ -80,7 +80,7 @@ button.sel{background:#d8c86a;color:#141105}
       <div class="row"><span class="lab">해상도</span>
         <button data-q="low">낮음</button><button data-q="med" class="sel">보통</button><button data-q="high">높음</button>
       </div>
-      <div class="btns"><button id="btnStart">시작하기</button><button id="btnNetwork">네트워크 2인 협동</button></div>
+      <div class="btns"><button id="btnStart">시작하기</button><button id="btnNetwork">네트워크 2인 협동 · 1인칭 + 팀원 표시</button></div>
       <div class="btns" style="margin-top:.7em"><button data-ev="5">이벤트 I · 고인 층</button><button data-ev="6">이벤트 II · 끝나지 않는 복도</button><button data-ev="7">이벤트 III · 물에 잠긴 복도</button><button data-ev="8">이벤트 IV · 생각의 복도</button></div>
       <div class="keys">
         <b>WASD</b> 이동 · <b>마우스</b> 시점 · <b>클릭</b> 발사 · <b>1~7</b> 무기 · <b>E</b> 문/스위치<br>
@@ -1980,10 +1980,13 @@ function renderThreeEnemies(hor){
   if(!T3.ok||!G.lvl)return;
   const pr=T3.renderer.getPixelRatio(); if(T3.renderer.domElement.width!==Math.round(RW*pr)||T3.renderer.domElement.height!==Math.round(RH*pr)){T3.renderer.setSize(RW,RH,false);}
   T3.camera.aspect=RW/RH; T3.camera.updateProjectionMatrix();
-  const camY=.55, shift=hor-RH*.5, f=RW/1.32, pitch=Math.atan2(shift,f);
-  T3.camera.position.set(P.x,camY,P.y);
+  const shift=hor-RH*.5, f=RW/1.32, pitch=Math.atan2(shift,f);
+  const V=getThirdPersonView();
+  const camY=TP.enabled?TP.height:.55;
+  T3.camera.position.set(V.x,camY,V.y);
   T3.camera.up.set(0,1,0);
-  T3.camera.lookAt(P.x+P.dirX,camY+Math.tan(pitch),P.y+P.dirY);
+  T3.camera.lookAt(V.x+P.dirX*4,camY+Math.tan(pitch)*4,V.y+P.dirY*4);
+  updateLocalThirdAvatar();
   const bright=LEVELS[G.lv]&&LEVELS[G.lv].brightHall;
   T3.key.position.set(P.x,bright?1.35:1.08,P.y); T3.key.intensity=(bright?6.8:2.35)+(FLASHON?1.25:0)+G.muzzle*5.5;
   T3.flash.position.set(P.x,.74,P.y); T3.flash.target.position.set(P.x+P.dirX*4,.62+Math.tan(pitch)*4,P.y+P.dirY*4); T3.flash.intensity=bright?0:(FLASHON?5.4:1.0);
@@ -2267,11 +2270,28 @@ function shadeOf(d){
   return l<0?0:(l>SHN-1?SHN-1:l);
 }
 
+// ===================== 1인칭 카메라 + 네트워크 팀원 3D 표시 =====================
+// 1인칭 협동 모드: 내 카메라는 플레이어 눈 위치, 팀원만 3D 아바타로 표시
+const TP={enabled:false,distance:2.15,minDistance:.52,height:1.03};
+function getThirdPersonView(){
+  if(!TP.enabled||!G.lvl)return {x:P.x,y:P.y,dirX:P.dirX,dirY:P.dirY,planeX:P.planeX,planeY:P.planeY,dist:0};
+  let d=TP.distance,last=TP.minDistance;
+  // 플레이어 뒤쪽으로 카메라를 보내되 벽/닫힌 문 앞에서 자동으로 당긴다.
+  for(let q=TP.minDistance;q<=TP.distance;q+=.07){
+    const x=P.x-P.dirX*q,y=P.y-P.dirY*q;
+    if(blocked(x,y,.08)){d=Math.max(TP.minDistance,last-.05);break;}
+    last=q;
+  }
+  const x=P.x-P.dirX*d,y=P.y-P.dirY*d;
+  return {x,y,dirX:P.dirX,dirY:P.dirY,planeX:P.planeX,planeY:P.planeY,dist:d};
+}
+
 function render(){
   const L=G.lvl, W=L.W, g=L.g;
   const pitch=P.pitch+P.bob*2.2;
   const hor=RH*.5+pitch;
-  const dirX=P.dirX,dirY=P.dirY,plX=P.planeX,plY=P.planeY;
+  const V=getThirdPersonView();
+  const dirX=V.dirX,dirY=V.dirY,plX=V.planeX,plY=V.planeY;
   const rdx0=dirX-plX, rdy0=dirY-plY, rdx1=dirX+plX, rdy1=dirY+plY;
   const fEnabled=FLASHON;
 
@@ -2283,7 +2303,7 @@ function render(){
     const p=y-hor; if(p<=0)continue;
     const rowD=(.5*RH)/p;
     const sx=rowD*(rdx1-rdx0)/RW, sy=rowD*(rdy1-rdy0)/RW;
-    let fx=P.x+rowD*rdx0, fy=P.y+rowD*rdy0;
+    let fx=V.x+rowD*rdx0, fy=V.y+rowD*rdy0;
     const base=shadeOf(rowD), row=y*RW;
     for(let x=0;x<RW;x++){
       const cx=fx|0, cy=fy|0;
@@ -2308,7 +2328,7 @@ function render(){
     const p=hor-y; if(p<=0)continue;
     const rowD=(.5*RH)/p;
     const sx=rowD*(rdx1-rdx0)/RW, sy=rowD*(rdy1-rdy0)/RW;
-    let fx=P.x+rowD*rdx0, fy=P.y+rowD*rdy0;
+    let fx=V.x+rowD*rdx0, fy=V.y+rowD*rdy0;
     const base=shadeOf(rowD), row=y*RW;
     for(let x=0;x<RW;x++){
       const cx=fx|0, cy=fy|0;
@@ -2330,11 +2350,11 @@ function render(){
   for(let x=0;x<RW;x++){
     const camX=2*x/RW-1;
     const rx=dirX+plX*camX, ry=dirY+plY*camX;
-    let mx=P.x|0, my=P.y|0;
+    let mx=V.x|0, my=V.y|0;
     const ddx=rx===0?1e30:Math.abs(1/rx), ddy=ry===0?1e30:Math.abs(1/ry);
     let stepX,stepY,sdx,sdy;
-    if(rx<0){stepX=-1;sdx=(P.x-mx)*ddx;}else{stepX=1;sdx=(mx+1-P.x)*ddx;}
-    if(ry<0){stepY=-1;sdy=(P.y-my)*ddy;}else{stepY=1;sdy=(my+1-P.y)*ddy;}
+    if(rx<0){stepX=-1;sdx=(V.x-mx)*ddx;}else{stepX=1;sdx=(mx+1-V.x)*ddx;}
+    if(ry<0){stepY=-1;sdy=(V.y-my)*ddy;}else{stepY=1;sdy=(my+1-V.y)*ddy;}
     let side=0,hit=0,code=0,guard=0,pd=0,doorOpen=0;
     while(guard++<220){
       if(sdx<sdy){sdx+=ddx;mx+=stepX;side=0;}else{sdy+=ddy;my+=stepY;side=1;}
@@ -2354,7 +2374,7 @@ function render(){
     if(pd<.0001)pd=.0001;
     ZB[x]=pd;
     const lineH=(RH/pd)|0;
-    let wallX=(side===0)?(P.y+pd*ry):(P.x+pd*rx);
+    let wallX=(side===0)?(V.y+pd*ry):(V.x+pd*rx);
     wallX-=Math.floor(wallX);
     let texX=(wallX*64)|0;
     if(side===0&&rx>0)texX=63-texX;
@@ -2375,16 +2395,17 @@ function render(){
     }
   }
 
-  drawSprites(hor);
+  drawSprites(hor,V);
   ctx3d.putImageData(IMG,0,0);
   renderThreeEnemies(hor);
-  drawWeaponView();
+  if(!TP.enabled)drawWeaponView();
 }
 
 /* --- 스프라이트 --- */
 const SLIST=[];
 function pushSprite(x,y,tex,size,z,bright){ SLIST.push({x,y,tex,size,z,bright:bright||0}); }
-function drawSprites(hor){
+function drawSprites(hor,V){
+  V=V||getThirdPersonView();
   SLIST.length=0;
   if(!T3.ok) for(const e of ENEM){
     let tex;
@@ -2403,14 +2424,14 @@ function drawSprites(hor){
     const i=Math.min(arr.length-1,(f.t/f.life*arr.length)|0);
     pushSprite(f.x,f.y,arr[i],f.size,f.z,1);
   }
-  for(const s of SLIST){ const dx=s.x-P.x,dy=s.y-P.y; s.d=dx*dx+dy*dy; }
+  for(const s of SLIST){ const dx=s.x-V.x,dy=s.y-V.y; s.d=dx*dx+dy*dy; }
   SLIST.sort((a,b)=>b.d-a.d);
 
-  const invDet=1/(P.planeX*P.dirY-P.dirX*P.planeY);
+  const invDet=1/(V.planeX*V.dirY-V.dirX*V.planeY);
   for(const s of SLIST){
-    const sx=s.x-P.x, sy=s.y-P.y;
-    const tX=invDet*(P.dirY*sx-P.dirX*sy);
-    const tY=invDet*(-P.planeY*sx+P.planeX*sy);
+    const sx=s.x-V.x, sy=s.y-V.y;
+    const tX=invDet*(V.dirY*sx-V.dirX*sy);
+    const tY=invDet*(-V.planeY*sx+V.planeX*sy);
     if(tY<.16)continue;
     const hUnit=RH/tY;
     const scrX=((RW/2)*(1+tX/tY))|0;
@@ -3439,27 +3460,100 @@ function netJoin(){
   NET.peer.on('open',()=>{const c=NET.peer.connect('br2-'+code.toLowerCase(),{reliable:true,serialization:'json'});netBindConn(c,false);});
   NET.peer.on('error',e=>netStatus('접속 오류: '+(e.type||e.message),true));
 }
+function makeRoundedPart(radius, length, material, radial=10){
+  // Three.js core만 사용: CapsuleGeometry 애드온 의존성을 제거한 둥근 파츠
+  const grp=new THREE.Group();
+  const cylLen=Math.max(.01,length-radius*2);
+  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,cylLen,radial,1,false),material);
+  grp.add(cyl);
+  const top=new THREE.Mesh(new THREE.SphereGeometry(radius,radial,Math.max(6,(radial*.7)|0)),material);
+  const bot=top.clone();
+  top.position.y=cylLen*.5; bot.position.y=-cylLen*.5;
+  grp.add(top,bot);
+  return grp;
+}
+function makeThirdPersonAvatar(kind){
+  if(!T3.ok)return null;
+  const g=new THREE.Group();g.name=kind==='local'?'LocalThirdPlayer':'NetworkPlayer';
+  const hostSide=(kind==='local'?(NET.mode!=='guest'):(NET.mode==='guest'));
+  const main=hostSide?0x3b5568:0x633d59, glow=hostSide?0x70ddff:0xff8fd9;
+  const suit=new THREE.MeshStandardMaterial({color:main,roughness:.48,metalness:.24});
+  const suit2=new THREE.MeshStandardMaterial({color:hostSide?0x182b38:0x35202f,roughness:.6,metalness:.2});
+  const accent=new THREE.MeshStandardMaterial({color:glow,emissive:glow,emissiveIntensity:1.45,roughness:.28,metalness:.25});
+  const skin=new THREE.MeshStandardMaterial({color:0xc59a78,roughness:.78});
+  const body=new THREE.Group();g.add(body);g.userData.body=body;
+  const torso=makeRoundedPart(.18,.58,suit,12);torso.position.y=.77;torso.scale.set(1.08,1,0.82);body.add(torso);
+  const chest=new THREE.Mesh(new THREE.BoxGeometry(.31,.16,.08,2,2,1),suit2);chest.position.set(0,.86,-.145);body.add(chest);
+  const headPivot=new THREE.Group();headPivot.position.set(0,1.14,0);body.add(headPivot);g.userData.head=headPivot;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.155,18,12),skin);headPivot.add(head);
+  const visor=new THREE.Mesh(new THREE.BoxGeometry(.205,.06,.04),accent);visor.position.set(0,.025,-.145);headPivot.add(visor);
+  const pack=new THREE.Mesh(new THREE.BoxGeometry(.31,.36,.13),suit2);pack.position.set(0,.76,.19);body.add(pack);
+  const strip=new THREE.Mesh(new THREE.BoxGeometry(.19,.045,.018),accent);strip.position.set(0,.79,.261);body.add(strip);
+  const limbs={arms:[],legs:[]};g.userData.limbs=limbs;
+  for(const side of [-1,1]){
+    const sp=new THREE.Group();sp.position.set(side*.245,.88,0);body.add(sp);
+    const arm=makeRoundedPart(.047,.43,suit,8);arm.position.y=-.2;sp.add(arm);limbs.arms.push(sp);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(.06,10,8),skin);hand.scale.set(.8,1,.8);hand.position.set(0,-.43,-.01);sp.add(hand);
+    const hip=new THREE.Group();hip.position.set(side*.105,.55,0);body.add(hip);
+    const leg=makeRoundedPart(.058,.47,suit2,8);leg.position.y=-.23;hip.add(leg);limbs.legs.push(hip);
+    const boot=new THREE.Mesh(new THREE.BoxGeometry(.12,.09,.22),suit2);boot.position.set(0,-.47,-.055);hip.add(boot);
+  }
+  // 손에 들고 있는 3D 무기. 종류별로 길이/두께/발광부를 갱신한다.
+  const gun=new THREE.Group();gun.position.set(.18,.73,-.24);body.add(gun);g.userData.gun=gun;
+  const gm=new THREE.MeshStandardMaterial({color:0x242730,roughness:.34,metalness:.72});
+  const barrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.54),gm);barrel.position.z=-.21;gun.add(barrel);g.userData.gunBarrel=barrel;
+  const muzzle=new THREE.Mesh(new THREE.CylinderGeometry(.047,.047,.11,10),accent);muzzle.rotation.x=Math.PI/2;muzzle.position.z=-.52;gun.add(muzzle);g.userData.gunMuzzle=muzzle;
+  const grip=new THREE.Mesh(new THREE.BoxGeometry(.09,.22,.1),gm);grip.position.set(0,-.12,-.08);grip.rotation.x=-.18;gun.add(grip);
+  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;o.renderOrder=4;}});
+  g.scale.setScalar(1.12);
+  return g;
+}
+function updateAvatarWeapon(g,w){
+  if(!g||!g.userData.gun)return;
+  const id=w|0, melee=id===0;
+  g.userData.gun.visible=!melee;
+  if(melee)return;
+  const long=[4,5,6].includes(id),heavy=[3,4,6].includes(id);
+  g.userData.gun.scale.set(heavy?1.18:.92,heavy?1.08:.92,long?1.25:1);
+  g.userData.gun.position.set(.18,.73,-.24);
+}
+function updateAvatarPose(g,r,isLocal){
+  if(!g||!r)return;
+  g.position.set(r.x,0,r.y);g.rotation.y=-(r.ang||0)-Math.PI/2;
+  const moving=isLocal?Math.hypot(P.vel.x,P.vel.y)>.025:true;
+  const phase=performance.now()*.009;
+  const swing=moving?Math.sin(phase)*.48:Math.sin(phase*.28)*.035;
+  if(g.userData.limbs){
+    g.userData.limbs.arms.forEach((a,i)=>a.rotation.x=(i?1:-1)*swing*.75-.18);
+    g.userData.limbs.legs.forEach((a,i)=>a.rotation.x=(i?-1:1)*swing);
+  }
+  if(g.userData.head){g.userData.head.rotation.x=clamp(-(r.pitch||0)/230,-.38,.38);g.userData.head.rotation.y=Math.sin(phase*.17)*.035;}
+  if(g.userData.gun){g.userData.gun.rotation.x=clamp(-(r.pitch||0)/250,-.3,.3);}
+  g.position.y=r.dead?-.42:Math.abs(Math.sin(phase))*((moving&&!r.dead)?.012:0);
+  g.rotation.z=r.dead?1.45:0;g.scale.setScalar((r.dead?.9:1)*1.12);
+  updateAvatarWeapon(g,r.w||1);
+}
+function ensureLocalThirdAvatar(){
+  if(!TP.enabled||!T3.ok)return;
+  if(!T3.localAvatar){try{T3.localAvatar=makeThirdPersonAvatar('local');if(T3.localAvatar)T3.scene.add(T3.localAvatar);}catch(err){console.error('Local avatar creation failed',err);}}
+}
+function updateLocalThirdAvatar(){
+  // 자기 자신은 항상 1인칭: 로컬 3D 몸체는 렌더링하지 않는다.
+  if(!T3.ok)return;
+  if(T3.localAvatar)T3.localAvatar.visible=false;
+}
+
 function netEnsureAvatar(){
   if(!T3.ok||NET.avatar)return;
-  const g=new THREE.Group(); g.name='NetworkPlayer';
-  const suit=new THREE.MeshStandardMaterial({color:0x23485b,roughness:.55,metalness:.18});
-  const accent=new THREE.MeshStandardMaterial({color:0x8fe8ff,emissive:0x2aa9d0,emissiveIntensity:1.25,roughness:.35});
-  const skin=new THREE.MeshStandardMaterial({color:0xc59a78,roughness:.78});
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(.19,.23,.62,10),suit);body.position.y=.73;body.castShadow=true;g.add(body);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.16,14,10),skin);head.position.y=1.15;head.castShadow=true;g.add(head);g.userData.head=head;
-  const visor=new THREE.Mesh(new THREE.BoxGeometry(.21,.055,.035),accent);visor.position.set(0,1.17,-.14);g.add(visor);
-  for(const side of [-1,1]){const arm=new THREE.Mesh(new THREE.CylinderGeometry(.055,.065,.56,8),suit);arm.position.set(side*.27,.72,0);arm.rotation.z=side*.12;arm.castShadow=true;g.add(arm);const leg=new THREE.Mesh(new THREE.CylinderGeometry(.07,.085,.58,8),suit);leg.position.set(side*.1,.31,0);leg.castShadow=true;g.add(leg);}
-  const pack=new THREE.Mesh(new THREE.BoxGeometry(.32,.38,.12),suit);pack.position.set(0,.77,.18);pack.castShadow=true;g.add(pack);
-  const strip=new THREE.Mesh(new THREE.BoxGeometry(.18,.055,.018),accent);strip.position.set(0,.82,.247);g.add(strip);
-  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}}); T3.scene.add(g);NET.avatar=g;
+  try{NET.avatar=makeThirdPersonAvatar('remote');if(NET.avatar)T3.scene.add(NET.avatar);}catch(err){console.error('Remote avatar creation failed',err);NET.avatar=null;}
 }
 function netUpdateAvatar(){
-  if(!NET.connected||!NET.remote||!T3.ok)return; netEnsureAvatar(); const r=NET.remote,g=NET.avatar;
-  g.visible=G.state==='play'; if(!g.visible)return;
-  g.position.set(r.x,0,r.y);g.rotation.y=-r.ang-Math.PI/2;
-  const walk=performance.now()*.008;g.position.y=r.dead?-.42:Math.abs(Math.sin(walk))*0.015;
-  g.rotation.z=r.dead?1.45:0;g.scale.setScalar(r.dead?.9:1);
-  if(g.userData.head)g.userData.head.rotation.x=clamp(-(r.pitch||0)/220,-.45,.45);
+  if(!NET.connected||!NET.remote||!T3.ok)return;
+  netEnsureAvatar();const r=NET.remote,g=NET.avatar;if(!g)return;
+  g.visible=G.state==='play';if(!g.visible)return;
+  updateAvatarPose(g,r,false);
+  // 1인칭 시야에서 팀원이 쉽게 보이도록 네트워크 캐릭터는 정상 월드 깊이를 유지한다.
+  g.traverse(o=>{if(o.isMesh){o.visible=true;o.frustumCulled=false;}});
 }
 function netPose(){return {t:'pose',x:P.x,y:P.y,ang:P.ang,pitch:P.pitch,hp:P.hp,armor:P.armor,w:P.w,dead:P.dead,name:NET.mode==='host'?'HOST':'GUEST'};}
 function netEnemySnap(){return ENEM.map(e=>({id:e.netId||0,type:e.type,x:e.x,y:e.y,hp:e.hp,maxhp:e.maxhp,state:e.state,t:e.t,cool:e.cool,frame:e.frame,hurtFlash:e.hurtFlash,thoughtVariant:e.thoughtVariant||0}));}
