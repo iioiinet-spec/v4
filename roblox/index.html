@@ -303,20 +303,27 @@ lavaTop.rotation.x = -Math.PI/2;
 scene.add(lavaTop);
 const lavaBase = lavaTop.geometry.attributes.position.array.slice();
 
+const CELL = 1.7;                 // 키캡 한 변 1.7m ≈ 캐릭터보다 약간 큼
+const DESK = 600;                 // 바닥판 한 변
+
 // 평지 맵 원경: 키캡 격자 무늬 바닥판 (실제 발판 생성 반경 밖을 채움)
 const deskTex = (() => {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
   const g = cv.getContext('2d');
-  g.fillStyle = '#0f1030'; g.fillRect(0,0,64,64);
-  g.fillStyle = '#232a5e'; g.fillRect(4,4,56,56);
-  g.fillStyle = '#2f3a78'; g.fillRect(8,8,48,44);
+  g.fillStyle = '#080b26'; g.fillRect(0,0,64,64);            // 키 사이 홈
+  g.fillStyle = '#1a2048'; g.fillRect(6,6,52,52);            // 키캡 옆면
+  g.fillStyle = '#333e78'; g.fillRect(6,6,52,4);             // 위쪽 하이라이트
+  g.fillStyle = '#12173a'; g.fillRect(6,52,52,6);            // 아래쪽 그림자
+  const rg = g.createLinearGradient(0,10,0,52);
+  rg.addColorStop(0,'#333e78'); rg.addColorStop(1,'#262e60');
+  g.fillStyle = rg; g.fillRect(10,10,44,42);                 // 상판
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(353,353);   // 600m / 1.7m 셀
+  t.repeat.set(DESK/CELL, DESK/CELL);   // 한 타일 = 셀 하나
   return t;
 })();
 const desk = new THREE.Mesh(
-  new THREE.PlaneGeometry(600,600),
+  new THREE.PlaneGeometry(DESK,DESK),
   new THREE.MeshStandardMaterial({ map:deskTex, roughness:.8, flatShading:true }));
 desk.rotation.x = -Math.PI/2;
 desk.visible = false;
@@ -485,17 +492,44 @@ const platforms = [], pool = [];
 let theme = 'tower';                       // 'tower' | 'keyboard'
 
 // 키캡 각인 텍스처 (문자당 1회만 생성해 캐시)
-const capGeo = new THREE.BoxGeometry(1,1,1);
+// 키캡 프로파일: 아래가 넓고 위가 좁은 사다리꼴 (윗변 = 아랫변의 80%)
+const capGeo = (() => {
+  const rB = 1/Math.SQRT2;                 // 회전 후 면-대-면 폭이 1이 되는 반지름
+  const g = new THREE.CylinderGeometry(rB*.80, rB, 1, 4, 1);
+  g.rotateY(Math.PI/4);                    // 사각 면을 축에 정렬
+  return g;
+})();
+
+// 키캡 표면 질감: 미세한 사출 그레인 + 가장자리로 갈수록 어두워지는 음영
+const capTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0,0,128,128);
+  const rad = g.createRadialGradient(64,58,10,64,64,74);   // 살짝 오목한 상판 느낌
+  rad.addColorStop(0,'rgba(255,255,255,1)');
+  rad.addColorStop(.62,'rgba(232,238,255,1)');
+  rad.addColorStop(1,'rgba(176,188,220,1)');
+  g.fillStyle = rad; g.fillRect(0,0,128,128);
+  const img = g.getImageData(0,0,128,128), px = img.data;
+  for (let i=0;i<px.length;i+=4){                          // PBT 그레인
+    const n = (Math.random()-.5)*16;
+    px[i] += n; px[i+1] += n; px[i+2] += n;
+  }
+  g.putImageData(img,0,0);
+  const t = new THREE.CanvasTexture(cv);
+  t.anisotropy = 4;
+  return t;
+})();
 const labelGeo = new THREE.PlaneGeometry(1,1);
 const labelCache = new Map();
 function labelTex(ch){
   if (labelCache.has(ch)) return labelCache.get(ch);
   const cv = document.createElement('canvas'); cv.width = cv.height = 128;
   const g = cv.getContext('2d');
-  g.fillStyle = '#eaf6ff';
   g.font = `bold ${ch.length > 1 ? 34 : 68}px "Chakra Petch", monospace`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(ch, 64, 68);
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.fillText(ch, 64, 70.5);   // 음각 그림자
+  g.fillStyle = '#f3f9ff';         g.fillText(ch, 64, 68);
   const t = new THREE.CanvasTexture(cv);
   t.anisotropy = 4;
   labelCache.set(ch, t);
@@ -516,7 +550,8 @@ function createPlatform(){
   g.userData.ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color:C.lime }));
   g.userData.ring.rotation.x = Math.PI/2;
   // 키보드 맵 전용: 키캡 상판(베벨)과 각인
-  g.userData.cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ roughness:.5, flatShading:true, transparent:true }));
+  g.userData.cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({
+    map:capTex, roughness:.44, metalness:.12, flatShading:true, transparent:true }));
   g.userData.label = new THREE.Mesh(labelGeo, new THREE.MeshBasicMaterial({ transparent:true, depthWrite:false }));
   g.userData.label.rotation.x = -Math.PI/2;
   g.add(g.userData.body, g.userData.edge, g.userData.spikes, g.userData.beam, g.userData.ring,
@@ -576,7 +611,7 @@ function configure(p, cfg){
     if (cfg.label){
       d.label.material.map = labelTex(cfg.label);
       d.label.material.needsUpdate = true;
-      d.label.scale.set(cfg.size.x*.72, cfg.size.z*.72, 1);
+      d.label.scale.set(cfg.size.x*.58, cfg.size.z*.58, 1);   // 좁아진 상판 안쪽
       d.label.position.y = cfg.size.y*.5 + .02;
     }
   }
@@ -689,7 +724,7 @@ function nextPlatform(){
 }
 
 /* ---- 3번 맵: 무한 키보드 평지 (끊기지 않는 격자) ---- */
-const CELL = 1.7, GRID_R = 9;   // 키캡 한 변 1.7m ≈ 캐릭터보다 약간 큼
+const GRID_R = 9;
 const grid = new Set();
 const FLATROWS = ['QWERTYUIOP','ASDFGHJKL','ZXCVBNM','1234567890'];
 const BASECAP = 0x2b3566;                    // 기본 키캡 (어두운 네이비)
@@ -1196,7 +1231,9 @@ function frame(now){
     lavaTop.material.emissiveIntensity = .40 + Math.sin(tAcc*2.2)*.10;
   }
   if (mode === 'stroll'){
-    desk.position.set(player.position.x, -.06, player.position.z);
+    desk.position.set(player.position.x, -.10, player.position.z);
+    // 판은 따라오지만 무늬는 월드에 고정 (홈 위치가 실제 키캡과 어긋나지 않도록)
+    deskTex.offset.set(player.position.x / CELL, -player.position.z / CELL);
   } else {
     lavaGlow.position.set(player.position.x, lavaY + 2.5, player.position.z);
     lavaGlow.intensity = 2.0 + Math.sin(tAcc*3)*.4;
