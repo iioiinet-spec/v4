@@ -34,7 +34,8 @@
   #hud{position:fixed;inset:0;z-index:2;pointer-events:none;padding:20px;display:grid;
        grid-template-columns:1fr auto;grid-template-rows:auto 1fr auto;gap:12px}
   #alt{grid-column:1;grid-row:1}
-  #alt .v{font-size:clamp(40px,7vw,68px);color:var(--cyan);text-shadow:0 0 18px rgba(45,226,230,.55)}
+  #alt .v{font-size:clamp(40px,7vw,68px);color:var(--cyan);
+          text-shadow:0 2px 10px rgba(7,10,30,.95),0 0 18px rgba(45,226,230,.55)}
   #alt .v small{font-size:.34em;margin-left:.25em;color:#a99fd0;text-shadow:none}
   #alt .best{font-size:13px;color:#c8bcf0;margin-top:6px;text-shadow:0 1px 6px rgba(13,5,38,.95)}
 
@@ -68,7 +69,7 @@
         background:radial-gradient(120% 90% at 50% 12%,rgba(90,40,170,.55),rgba(13,5,38,.94) 62%);
         backdrop-filter:blur(3px);z-index:5}
   #veil.hide{display:none}
-  .card{width:min(560px,100%);text-align:center}
+  .card{width:min(720px,100%);text-align:center}
   .card h1{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:clamp(44px,10vw,86px);
            line-height:.92;color:var(--cyan);text-shadow:0 0 30px rgba(45,226,230,.5)}
   .card h1 span{display:block;color:var(--magenta);text-shadow:0 0 30px rgba(255,47,185,.5)}
@@ -82,15 +83,16 @@
          background:var(--cyan);box-shadow:0 0 34px rgba(45,226,230,.45);transition:transform .12s,box-shadow .2s}
   button:hover{transform:translateY(-2px);box-shadow:0 0 46px rgba(45,226,230,.7)}
   button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  .stages{margin:26px 0 0;display:flex;gap:12px}
+  .stages{margin:26px 0 0;display:flex;gap:10px}
   .stage{flex:1;padding:16px 16px 18px;border-radius:14px;cursor:pointer;text-align:left;
          border:1px solid #4b3585;background:rgba(28,13,62,.72);transition:border-color .18s,transform .12s}
   .stage:hover{transform:translateY(-3px)}
   .stage:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  .stage h2{font-family:"Chakra Petch",sans-serif;font-size:21px;margin-bottom:7px}
-  .stage p{font-size:12.5px;line-height:1.6;color:#b7a9de}
+  .stage h2{font-family:"Chakra Petch",sans-serif;font-size:19px;margin-bottom:7px}
+  .stage p{font-size:12px;line-height:1.55;color:#b7a9de}
   .stage.tower{border-color:#2de2e6} .stage.tower h2{color:var(--cyan)}
   .stage.keys{border-color:#ffd23f}  .stage.keys h2{color:var(--gold)}
+  .stage.flat{border-color:#8cff3d}  .stage.flat h2{color:var(--lime)}
   .row2{display:flex;gap:12px;justify-content:center}
   .ghost{background:transparent;color:var(--hud);border:1px solid #4b3585;box-shadow:none}
   .ghost:hover{box-shadow:0 0 22px rgba(123,63,228,.5)}
@@ -112,12 +114,13 @@
 <div id="hud" aria-hidden="true">
   <div id="alt">
     <div class="v num"><span id="altV">0</span><small>m</small></div>
-    <div class="best">최고 기록 <span id="bestV" class="num">0</span> m</div>
+    <div class="best"><span id="bestLabel">최고 기록</span>
+      <span id="bestV" class="num">0</span><span id="bestUnit"> m</span></div>
   </div>
 
   <div id="stats">
-    <div class="chip">체크포인트 <span class="v num" id="cpV">0</span></div>
-    <div class="chip">남은 기회 <span class="pips" id="pips"></span></div>
+    <div class="chip"><span id="cpLabel">체크포인트</span> <span class="v num" id="cpV">0</span></div>
+    <div class="chip" id="lifeChip">남은 기회 <span class="pips" id="pips"></span></div>
   </div>
 
   <div id="lava">
@@ -300,6 +303,25 @@ lavaTop.rotation.x = -Math.PI/2;
 scene.add(lavaTop);
 const lavaBase = lavaTop.geometry.attributes.position.array.slice();
 
+// 평지 맵 원경: 키캡 격자 무늬 바닥판 (실제 발판 생성 반경 밖을 채움)
+const deskTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#0f1030'; g.fillRect(0,0,64,64);
+  g.fillStyle = '#232a5e'; g.fillRect(4,4,56,56);
+  g.fillStyle = '#2f3a78'; g.fillRect(8,8,48,44);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(353,353);   // 600m / 1.7m 셀
+  return t;
+})();
+const desk = new THREE.Mesh(
+  new THREE.PlaneGeometry(600,600),
+  new THREE.MeshStandardMaterial({ map:deskTex, roughness:.8, flatShading:true }));
+desk.rotation.x = -Math.PI/2;
+desk.visible = false;
+scene.add(desk);
+
 /* ============================================================
    3. 플레이어
    ============================================================ */
@@ -407,7 +429,7 @@ function animateRig(dt, t){
     const stepIdx = Math.floor(walkPhase / Math.PI);
     if (stepIdx !== lastStep){            // 발이 닿는 순간마다 타건음
       lastStep = stepIdx;
-      if (theme === 'keyboard' && state === 'play') SFX.thock(1700 + Math.random()*900, 84, .38);
+      if (isKeyboard() && state === 'play') SFX.thock(1700 + Math.random()*900, 84, .38);
     }
     const sw = Math.sin(walkPhase), amp = Math.min(.62, sp * .09);
     tLegL = sw*amp;      tLegR = -sw*amp;
@@ -510,7 +532,8 @@ function configure(p, cfg){
     state:'idle', timer:0, fallV:0,
     move:cfg.move || null, phase:Math.random()*Math.PI*2,
     spiked:!!cfg.spiked, taken:false, index:cfg.index,
-    press:0, sq:0, legend:cfg.label || null   // 각인 문자열 (메시 d.label 과 이름 충돌 금지)
+    press:0, sq:0, legend:cfg.label || null,  // 각인 문자열 (메시 d.label 과 이름 충돌 금지)
+    gx:cfg.gx, gz:cfg.gz, gkey:cfg.gkey || null
   });
   p.position.copy(cfg.pos);
   p.visible = true;
@@ -519,7 +542,8 @@ function configure(p, cfg){
   d.body.material.opacity = 1;
   d.edge.material.opacity = .95;
 
-  const tone = cfg.type==='crumble' ? C.magenta
+  const tone = cfg.tone !== undefined ? cfg.tone
+             : cfg.type==='crumble' ? C.magenta
              : cfg.type==='moving'  ? C.gold
              : cfg.type==='gel'     ? C.lime
              : cfg.type==='check'   ? C.lime : C.cyan;
@@ -530,7 +554,8 @@ function configure(p, cfg){
   d.edge.material.color.setHex(0xffffff);
 
   // 키보드 맵: 하우징(어두운 몸체) + 키캡 상판 + 각인
-  const kb = theme === 'keyboard';
+  const kb = isKeyboard();
+  if (!kb){ d.body.visible = true; d.edge.visible = true; }
   d.cap.visible = kb; d.label.visible = kb && !!cfg.label;
   d.body.position.set(0,0,0); d.cap.position.set(0,0,0); d.label.position.set(0,0,0);
   if (kb){
@@ -545,6 +570,9 @@ function configure(p, cfg){
     d.cap.material.opacity = cfg.type==='gel' ? .8 : 1;
   d.press = 0; d.sq = 0;
     d.edge.material.color.setHex(tone === C.cyan ? 0xffffff : tone);
+    if (cfg.flat){                       // 평지 맵: 틈새는 바닥판이 담당
+      d.body.visible = false; d.edge.visible = false;
+    } else { d.body.visible = true; d.edge.visible = true; }
     if (cfg.label){
       d.label.material.map = labelTex(cfg.label);
       d.label.material.needsUpdate = true;
@@ -595,7 +623,9 @@ const R = (a,b)=> a + Math.random()*(b-a);
 
 function resetCourse(){
   while (platforms.length) recycle(0);
+  grid.clear();
   cursor.set(0,0,0); heading = 0; idx = 0; topY = 0;
+  if (mode === 'stroll'){ updateFlatGrid(); return; }   // 평지 맵은 격자로 채움
   spawnPlatform({ type:'start', pos:new THREE.Vector3(0,-0.4,0),
                   size:new THREE.Vector3(8,.8,8), index:0,
                   label: theme==='keyboard' ? 'START' : null });
@@ -658,6 +688,53 @@ function nextPlatform(){
   topY = cursor.y;
 }
 
+/* ---- 3번 맵: 무한 키보드 평지 (끊기지 않는 격자) ---- */
+const CELL = 1.7, GRID_R = 9;   // 키캡 한 변 1.7m ≈ 캐릭터보다 약간 큼
+const grid = new Set();
+const FLATROWS = ['QWERTYUIOP','ASDFGHJKL','ZXCVBNM','1234567890'];
+const BASECAP = 0x2b3566;                    // 기본 키캡 (어두운 네이비)
+const ACCENT = [C.cyan, C.violet, C.gold, C.magenta];
+
+function cellHash(x,z){
+  let h = (x*73856093) ^ (z*19349663);
+  h = (h ^ (h >>> 13)) >>> 0;
+  return h;
+}
+function spawnFlatKey(gx,gz){
+  const h = cellHash(gx,gz), r = (h % 1000) / 1000;
+  const type = r < .13 ? 'gel' : 'normal';
+  const row = FLATROWS[((gz % FLATROWS.length) + FLATROWS.length) % FLATROWS.length];
+  const label = type === 'gel' ? 'JELLY' : row[((gx % row.length) + row.length) % row.length];
+  spawnPlatform({
+    type, index:0, label, gx, gz, gkey:gx+','+gz,
+    tone: type === 'gel' ? C.lime
+        : (h % 100) < 12 ? ACCENT[(h >> 7) % ACCENT.length]   // 액센트 키캡은 소수만
+        : BASECAP,
+    flat:true,
+    pos:new THREE.Vector3(gx*CELL, -0.22, gz*CELL),
+    size:new THREE.Vector3(CELL, .44, CELL)         // 셀 크기와 동일 → 틈 없이 이어짐
+  });
+}
+function updateFlatGrid(){
+  const cx = Math.round(player.position.x / CELL);
+  const cz = Math.round(player.position.z / CELL);
+  for (let i = platforms.length-1; i >= 0; i--){
+    const d = platforms[i].userData;
+    if (Math.abs(d.gx - cx) > GRID_R + 1 || Math.abs(d.gz - cz) > GRID_R + 1){
+      grid.delete(d.gkey); recycle(i);
+    }
+  }
+  let budget = 60;                                   // 프레임당 생성 상한
+  for (let ax = -GRID_R; ax <= GRID_R && budget > 0; ax++){
+    for (let az = -GRID_R; az <= GRID_R && budget > 0; az++){
+      const gx = cx+ax, gz = cz+az, k = gx+','+gz;
+      if (grid.has(k)) continue;
+      grid.add(k); budget--;
+      spawnFlatKey(gx,gz);
+    }
+  }
+}
+
 /* ============================================================
    6. 입력
    ============================================================ */
@@ -685,19 +762,40 @@ addEventListener('pointermove', e=>{
    6-b. 테마 (스테이지별 색·라벨)
    ============================================================ */
 const THEMES = {
-  tower:    { bg:0x160a34, fog:0x2a1156, hazard:0x9e2604, hazardGlow:0xd94a08,
-              label:'용암까지', deathMsg:'용암에 빠짐' },
-  keyboard: { bg:0x0a1430, fog:0x123b52, hazard:0x5a3210, hazardGlow:0xc9761f,
-              label:'커피 수위까지', deathMsg:'쏟아진 커피에 빠짐' }
+  tower:    { bg:0x160a34, fog:0x2a1156, fogNear:20, fogFar:64,
+              hazard:0x9e2604, hazardGlow:0xd94a08,
+              label:'용암까지', deathMsg:'용암에 빠짐', mode:'climb' },
+  keyboard: { bg:0x0a1430, fog:0x123b52, fogNear:20, fogFar:64,
+              hazard:0x5a3210, hazardGlow:0xc9761f,
+              label:'커피 수위까지', deathMsg:'쏟아진 커피에 빠짐', mode:'climb' },
+  flat:     { bg:0x070c22, fog:0x101a44, fogNear:8, fogFar:25,
+              hazard:0x101a44, hazardGlow:0x101a44,
+              label:'', deathMsg:'', mode:'stroll' }
 };
+const isKeyboard = () => theme !== 'tower';
+let mode = 'climb';
 function applyTheme(){
   const T = THEMES[theme];
+  mode = T.mode;
   scene.background.setHex(T.bg);
   scene.fog.color.setHex(T.fog);
+  scene.fog.near = T.fogNear; scene.fog.far = T.fogFar;
   lavaTop.material.color.setHex(T.hazard);
   lavaTop.material.emissive.setHex(T.hazardGlow);
   lavaGlow.color.setHex(T.hazardGlow);
   document.getElementById('lavaLabel').textContent = T.label;
+
+  const stroll = mode === 'stroll';
+  lavaTop.visible = !stroll;                 // 평지 맵에는 차오르는 수면이 없음
+  desk.visible = stroll;
+  lavaGlow.intensity = stroll ? 0 : 2;
+
+  // HUD 를 모드에 맞게 전환
+  document.getElementById('lava').style.display   = stroll ? 'none' : '';
+  document.getElementById('lifeChip').style.display = stroll ? 'none' : '';
+  document.getElementById('cpLabel').textContent  = stroll ? '쫀득 키' : '체크포인트';
+  document.getElementById('bestLabel').textContent = stroll ? '밟은 키' : '최고 기록';
+  document.getElementById('bestUnit').textContent  = stroll ? ' 개' : ' m';
 }
 
 /* ============================================================
@@ -708,6 +806,8 @@ let lavaY = -7, lavaSpeed = .55, lives = LIVES, checks = 0, deaths = 0;
 let best = Number(localStorage.getItem('neonObbyBest') || 0);
 let spawnPoint = new THREE.Vector3(0,1.2,0), spawnLava = -7;
 let invuln = 0, height = 0;
+let keysHit = 0, jellyHit = 0, distance = 0;
+const prevXZ = new THREE.Vector3();
 
 const $ = s => document.querySelector(s);
 const el = { alt:$('#altV'), best:$('#bestV'), cp:$('#cpV'), pips:$('#pips'),
@@ -743,13 +843,14 @@ function menu(){
 
   const stages = document.createElement('div'); stages.className = 'stages';
   [['tower','네온 타워','무너지는 발판과 가시, 이동 발판으로 이루어진 나선형 상승 코스. 아래에서는 용암이 차오릅니다.'],
-   ['keys','키보드 러너','거대한 키캡 위를 달리는 코스. 밟을 때마다 스위치가 눌리는 소리가 나고, 젤리 키를 밟으면 쫀득하게 튀어 오릅니다.']
+   ['keys','키보드 러너','거대한 키캡을 건너뛰는 코스. 젤리 키를 밟으면 쫀득하게 튀어 오릅니다.'],
+   ['flat','타건 산책','끝없이 이어진 평지 키보드. 떨어질 곳도 쫓아오는 것도 없이, 달리면서 타건음과 쫀득한 소리만 즐기는 코스입니다.']
   ].forEach(([cls,title,desc])=>{
     const b = document.createElement('button'); b.className = 'stage ' + cls;
     const t = document.createElement('h2'); t.textContent = title;
     const d = document.createElement('p'); d.textContent = desc;
     b.append(t,d);
-    b.addEventListener('click', ()=> start(cls === 'keys' ? 'keyboard' : 'tower'));
+    b.addEventListener('click', ()=> start(cls === 'keys' ? 'keyboard' : cls === 'flat' ? 'flat' : 'tower'));
     stages.appendChild(b);
   });
 
@@ -795,8 +896,14 @@ function start(nextTheme){
   if (nextTheme) theme = nextTheme;
   applyTheme();
   resetCourse();
-  lavaY = -7; lavaSpeed = .55; lives = LIVES; checks = 0; deaths = 0; height = 0;
-  spawnPoint.set(0,1.6,0); spawnLava = -7;
+  lives = LIVES; checks = 0; deaths = 0; height = 0;
+  keysHit = 0; jellyHit = 0; distance = 0;
+  if (mode === 'stroll'){
+    lavaY = -400; lavaSpeed = 0; spawnPoint.set(0,.75,0); spawnLava = -400;
+  } else {
+    lavaY = -7; lavaSpeed = .55; spawnPoint.set(0,1.6,0); spawnLava = -7;
+  }
+  prevXZ.set(0,0,0);
   camYaw = 0; invuln = .6;
   respawn(false);
   pips();
@@ -885,8 +992,9 @@ function physics(dt){
     if (vel.y <= 0 && wasBottom >= b.maxY - .35){
       const impact = -vel.y;
       pos.y = b.maxY + PH.y; vel.y = 0; onGround = true; groundRef = p;
-      if (land(p, impact)){                 // 젤리 키 반동
-        vel.y = JUMP_V * 1.52; onGround = false; groundRef = null;
+      if (land(p, impact)){                 // 젤리 키 반동 (평지 맵은 약하게)
+        vel.y = JUMP_V * (mode === 'stroll' ? .95 : 1.52);
+        onGround = false; groundRef = null;
       }
     } else if (vel.y > 0){
       pos.y = b.minY - PH.y; vel.y = -1;
@@ -919,12 +1027,13 @@ function land(p, impact = 0){
   const d = p.userData;
   const fresh = lastGround !== p;
 
-  if (theme === 'keyboard'){
+  if (isKeyboard()){
     d.press = 1;                                        // 키캡이 눌리는 시각 효과
     if (fresh || impact > 2){
-      if (d.type === 'gel') SFX.gel();
+      if (d.type === 'gel'){ SFX.gel(); jellyHit++; }
       else if (d.size.x > 5) SFX.thock(1150, 62, 1.15); // 스페이스바는 더 낮고 굵게
       else SFX.thock(1500 + Math.random()*700, 88 + Math.random()*26, .95);
+      if (fresh) keysHit++;
     }
   } else if (fresh || impact > 2) SFX.land();
 
@@ -991,6 +1100,11 @@ function updateWorld(dt, t){
       }
     }
 
+    if (mode === 'stroll'){
+      const near = Math.abs(p.position.x - player.position.x) < 11 &&
+                   Math.abs(p.position.z - player.position.z) < 11;
+      if (d.label.visible !== near && d.legend) d.label.visible = near;
+    }
     // 키캡 눌림 복귀
     if (d.press > 0){
       d.press = Math.max(0, d.press - dt*5.5);
@@ -1020,11 +1134,12 @@ function updateWorld(dt, t){
     }
 
     // 용암에 잠긴 발판만 회수 (낙하 중인 블록은 제자리 복구 대상이므로 제외)
-    if (d.home.y < lavaY - 8) recycle(i);
+    if (mode !== 'stroll' && d.home.y < lavaY - 8) recycle(i);
   }
 
-  // 앞쪽 코스 계속 생성
-  while (topY < player.position.y + 55) nextPlatform();
+  // 코스 확장
+  if (mode === 'stroll') updateFlatGrid();
+  else while (topY < player.position.y + 55) nextPlatform();
 }
 
 /* ============================================================
@@ -1044,26 +1159,34 @@ function frame(now){
     physics(dt/2); physics(dt/2);
     updateWorld(dt, tAcc);
 
-    // 용암 상승: 기본 속도 + 플레이어가 멀어질수록 추격
-    const chase = Math.max(0, (player.position.y - lavaY - 20)) * .3;
-    lavaSpeed = .55 + Math.min(6, height * .006);
-    lavaY += (lavaSpeed + chase) * dt;
+    if (mode === 'stroll'){
+      // 평지 맵: 쫓아오는 것도 떨어질 곳도 없음 — 이동 거리와 타건 수만 집계
+      distance += Math.hypot(player.position.x - prevXZ.x, player.position.z - prevXZ.z);
+      prevXZ.copy(player.position);
+      el.alt.textContent = distance.toFixed(0);
+      el.best.textContent = keysHit;
+      el.cp.textContent = jellyHit;
+    } else {
+      // 용암 상승: 기본 속도 + 플레이어가 멀어질수록 추격
+      const chase = Math.max(0, (player.position.y - lavaY - 20)) * .3;
+      lavaSpeed = .55 + Math.min(6, height * .006);
+      lavaY += (lavaSpeed + chase) * dt;
 
-    height = Math.max(height, player.position.y);
-    if (player.position.y - PH.y < lavaY) die(THEMES[theme].deathMsg);
-    if (player.position.y < lavaY - 25) die('추락');
+      height = Math.max(height, player.position.y);
+      if (player.position.y - PH.y < lavaY) die(THEMES[theme].deathMsg);
+      if (player.position.y < lavaY - 25) die('추락');
 
-    // HUD
-    const gap = Math.max(0, player.position.y - lavaY);
-    el.alt.textContent = height.toFixed(0);
-    el.gap.textContent = gap.toFixed(1);
-    el.fill.style.width = Math.max(0, Math.min(100, 100 - gap/26*100)) + '%';
-    el.lava.classList.toggle('hot', gap < 7);
+      const gap = Math.max(0, player.position.y - lavaY);
+      el.alt.textContent = height.toFixed(0);
+      el.gap.textContent = gap.toFixed(1);
+      el.fill.style.width = Math.max(0, Math.min(100, 100 - gap/26*100)) + '%';
+      el.lava.classList.toggle('hot', gap < 7);
+    }
   }
 
   // 용암 표면 애니메이션
   lavaTop.position.set(player.position.x, lavaY, player.position.z);  // 항상 플레이어 아래를 덮도록
-  {
+  if (mode !== 'stroll'){
     const a = lavaTop.geometry.attributes.position;
     for (let i=0;i<a.count;i++){
       const x = lavaBase[i*3], y = lavaBase[i*3+1];
@@ -1072,8 +1195,12 @@ function frame(now){
     a.needsUpdate = true;
     lavaTop.material.emissiveIntensity = .40 + Math.sin(tAcc*2.2)*.10;
   }
-  lavaGlow.position.set(player.position.x, lavaY + 2.5, player.position.z);
-  lavaGlow.intensity = 2.0 + Math.sin(tAcc*3)*.4;
+  if (mode === 'stroll'){
+    desk.position.set(player.position.x, -.06, player.position.z);
+  } else {
+    lavaGlow.position.set(player.position.x, lavaY + 2.5, player.position.z);
+    lavaGlow.intensity = 2.0 + Math.sin(tAcc*3)*.4;
+  }
 
   animateRig(dt, tAcc);
 
