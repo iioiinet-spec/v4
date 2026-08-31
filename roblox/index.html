@@ -83,7 +83,18 @@
          background:var(--cyan);box-shadow:0 0 34px rgba(45,226,230,.45);transition:transform .12s,box-shadow .2s}
   button:hover{transform:translateY(-2px);box-shadow:0 0 46px rgba(45,226,230,.7)}
   button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  .stages{margin:26px 0 0;display:flex;gap:10px}
+  .pick{margin:24px 0 0}
+  .pick .cap{font-size:12px;color:#9c8fcc;margin-bottom:9px}
+  .chars{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .charBtn{margin:0;padding:9px 13px;border-radius:11px;cursor:pointer;
+           border:1px solid #4b3585;background:rgba(28,13,62,.72);box-shadow:none;
+           font-family:"Pretendard Variable",Pretendard,sans-serif;font-weight:600;
+           font-size:13px;color:#c4b6ee;display:flex;align-items:center;gap:7px;
+           transition:border-color .16s,color .16s,transform .12s}
+  .charBtn:hover{transform:translateY(-2px)}
+  .charBtn .dot{width:11px;height:11px;border-radius:3px}
+  .charBtn.on{color:#fff}
+  .stages{margin:22px 0 0;display:flex;gap:10px}
   .stage{flex:1;padding:16px 16px 18px;border-radius:14px;cursor:pointer;text-align:left;
          border:1px solid #4b3585;background:rgba(28,13,62,.72);transition:border-color .18s,transform .12s}
   .stage:hover{transform:translateY(-3px)}
@@ -333,48 +344,240 @@ scene.add(desk);
    3. 플레이어
    ============================================================ */
 const player = new THREE.Group();
-const rig = {};                       // 애니메이션용 관절 참조
-{
+const rig = {};                       // 애니메이션이 참조하는 관절 (캐릭터가 바뀌어도 키 이름 동일)
+scene.add(player);
+
+const stdMat = (color, emissive, ei, extra) => new THREE.MeshStandardMaterial(
+  Object.assign({ color, emissive, emissiveIntensity:ei, roughness:.4, flatShading:true }, extra || {}));
+
+/* ---- 캐릭터 5종 ----
+   골격(몸통·머리·팔·다리 피벗)은 모두 동일해서 물리·모션이 그대로 유지되고,
+   재질과 머리 장식, 손에 든 물건만 캐릭터마다 다르다. */
+const CHARS = {
+  runner: {
+    name:'네온 러너', tint:'#2de2e6', accent:C.cyan,
+    armor:0xf2fbff, suit:0x16234a, trim:0x9ff8fa, plate:0x63d6e6, line:C.cyan,
+    glow:C.cyan, ei:1.0,
+    head(H, K){
+      const visor = K.box(.36,.16,.07, K.M.visor); visor.position.set(0,.04,.185); visor.rotation.x = -.16;
+      const jaw   = K.box(.30,.09,.34, K.M.suit);  jaw.position.y = -.17;
+      const crest = K.box(.08,.15,.30, K.M.trim);  crest.position.set(0,.24,-.02);
+      const earL  = K.box(.05,.16,.16, K.M.plate); earL.position.set(-.22,0,-.04);
+      const earR  = earL.clone(); earR.position.x = .22;
+      H.add(visor, jaw, crest, earL, earR);
+    },
+    body(P, K){
+      const chest = K.box(.24,.20,.06, K.M.trim); chest.position.set(0,.08,.155);
+      const beltL = K.box(.05,.34,.05, K.M.trim); beltL.position.set(-.23,.02,.13);
+      const beltR = beltL.clone(); beltR.position.x = .23;
+      const back  = K.box(.30,.22,.08, K.M.plate); back.position.set(0,.08,-.17);
+      P.torso.add(chest, beltL, beltR, back);
+      [P.armL, P.armR].forEach(a=>{
+        const guard = K.box(.17,.17,.18, K.M.armor); guard.position.y = -.09;
+        const cuff  = K.box(.17,.06,.18, K.M.trim);  cuff.position.y = -.16;
+        a.add(guard, cuff);
+      });
+      [P.legL, P.legR].forEach(l=>{
+        const thigh = K.box(.22,.16,.24, K.M.plate); thigh.position.y = -.07;
+        const knee  = K.box(.21,.05,.23, K.M.trim);  knee.position.y = -.14;
+        l.add(thigh, knee);
+      });
+    }
+  },
+
+  hero: {
+    name:'모험가', tint:'#f0c040', accent:0xf0c040,
+    armor:0xf0c040, suit:0x2f6fe0, trim:0xff5a3c, plate:0xd9a12c, line:0xfff0b8,
+    glow:0xffcf5a, ei:.40,
+    head(H, K){
+      const face = K.box(.30,.16,.06, K.M.dark); face.position.set(0,-.02,.185);   // 투구 얼굴 틈
+      const eyeL = K.box(.07,.06,.03, K.M.trim); eyeL.position.set(-.08,-.02,.20);
+      const eyeR = eyeL.clone(); eyeR.position.x = .08;
+      const brow = K.box(.42,.07,.40, K.M.plate); brow.position.y = .13;
+      // 작은 뿔 한 쌍
+      const hornL = new THREE.Mesh(new THREE.ConeGeometry(.07,.20,4), K.M.bone);
+      hornL.position.set(-.20,.26,-.02); hornL.rotation.z = .45;
+      const hornR = hornL.clone(); hornR.position.x = .20; hornR.rotation.z = -.45;
+      const crest = K.box(.06,.10,.34, K.M.trim); crest.position.set(0,.22,0);
+      H.add(face, eyeL, eyeR, brow, hornL, hornR, crest);
+    },
+    body(P, K){
+      const emblem = K.box(.18,.18,.05, K.M.trim); emblem.position.set(0,.06,.16);
+      const belt   = K.box(.54,.09,.32, K.M.dark); belt.position.y = -.18;
+      const buckle = K.box(.12,.10,.05, K.M.plate); buckle.position.set(0,-.18,.16);
+      P.torso.add(emblem, belt, buckle);
+
+      // 오른손: 네모난 검
+      const sword = new THREE.Group();
+      sword.position.set(0,-.23,.02); sword.rotation.x = -1.15;
+      const grip  = K.box(.07,.16,.07, K.M.dark);  grip.position.y = .06;
+      const guard = K.box(.26,.06,.09, K.M.plate); guard.position.y = .16;
+      const blade = K.box(.12,.62,.05, K.M.bone);  blade.position.y = .50;
+      const tip   = K.box(.12,.10,.05, K.M.trim);  tip.position.y = .82;
+      sword.add(grip, guard, K.outline(blade,.5), tip);
+      P.armR.add(sword);
+
+      // 왼손: 네모난 방패
+      const shield = new THREE.Group();
+      shield.position.set(-.02,-.16,.15); shield.rotation.x = .12;
+      const plate = K.outline(K.box(.40,.48,.06, K.M.armor), .6);
+      const cross1 = K.box(.08,.36,.03, K.M.trim); cross1.position.z = .04;
+      const cross2 = K.box(.30,.08,.03, K.M.trim); cross2.position.set(0,.06,.04);
+      shield.add(plate, cross1, cross2);
+      P.armL.add(shield);
+
+      [P.legL, P.legR].forEach(l=>{
+        const boot = K.box(.23,.13,.27, K.M.plate); boot.position.set(0,-.30,.02);
+        l.add(boot);
+      });
+    }
+  },
+
+  astro: {
+    name:'우주비행사', tint:'#ff8a3d', accent:0xff8a3d,
+    armor:0xf5f7fb, suit:0xdbe3f2, trim:0xff8a3d, plate:0xeef2fa, line:0xffffff,
+    glow:0x93b4ff, ei:.30,
+    head(H, K){
+      H.children[0].scale.set(1.12,1.1,1.12);                                     // 둥근 헬멧 느낌
+      const visor = K.box(.34,.20,.07, K.M.gold); visor.position.set(0,.01,.20);
+      const rim   = K.box(.40,.05,.40, K.M.trim); rim.position.y = -.17;
+      const lamp  = K.box(.06,.06,.06, K.M.trim); lamp.position.set(-.19,.16,.16);
+      H.add(visor, rim, lamp);
+    },
+    body(P, K){
+      const pack  = K.outline(K.box(.42,.36,.16, K.M.plate), .5); pack.position.set(0,.06,-.22);
+      const tankL = K.box(.10,.30,.10, K.M.trim); tankL.position.set(-.12,.06,-.30);
+      const tankR = tankL.clone(); tankR.position.x = .12;
+      const ctrl  = K.box(.16,.12,.05, K.M.trim); ctrl.position.set(0,.10,.16);
+      P.torso.add(pack, tankL, tankR, ctrl);
+      [P.armL, P.armR].forEach(a=>{
+        const band = K.box(.17,.05,.18, K.M.trim); band.position.y = -.12;
+        const glove = K.box(.17,.11,.18, K.M.suit); glove.position.y = -.23;
+        a.add(band, glove);
+      });
+      [P.legL, P.legR].forEach(l=>{
+        const band = K.box(.22,.05,.24, K.M.trim); band.position.y = -.10;
+        const boot = K.box(.24,.12,.28, K.M.suit); boot.position.set(0,-.30,.02);
+        l.add(band, boot);
+      });
+    }
+  },
+
+  ninja: {
+    name:'닌자', tint:'#ff3b5c', accent:0xff3b5c,
+    armor:0x1c2138, suit:0x0e1120, trim:0xff3b5c, plate:0x2a3152, line:0x8f9ac2,
+    glow:0xff3b5c, ei:.22,
+    head(H, K){
+      const mask = K.box(.38,.16,.37, K.M.plate); mask.position.y = -.10;
+      const eyes = K.box(.32,.06,.05, K.M.trim);  eyes.position.set(0,.04,.185);
+      const band = K.box(.42,.08,.41, K.M.trim);  band.position.y = .12;
+      const tail1 = K.box(.05,.26,.05, K.M.trim); tail1.position.set(-.10,.02,-.22); tail1.rotation.x = .5;
+      const tail2 = tail1.clone(); tail2.position.x = .10; tail2.rotation.x = .8;
+      H.add(mask, eyes, band, tail1, tail2);
+    },
+    body(P, K){
+      const sash  = K.box(.54,.10,.32, K.M.trim); sash.position.y = -.14; sash.rotation.z = .1;
+      const scarf = K.box(.34,.12,.14, K.M.trim); scarf.position.set(0,.24,-.06);
+      const flow  = K.box(.20,.44,.06, K.M.trim); flow.position.set(-.02,.06,-.24); flow.rotation.x = -.35;
+      // 등에 멘 검
+      const katana = new THREE.Group(); katana.position.set(0,.06,-.20); katana.rotation.z = .7;
+      const blade  = K.box(.05,.86,.05, K.M.bone); blade.position.y = .14;
+      const hilt   = K.box(.06,.20,.06, K.M.dark); hilt.position.y = -.38;
+      katana.add(blade, hilt);
+      P.torso.add(sash, scarf, flow, katana);
+      [P.armL, P.armR].forEach(a=>{
+        const wrap = K.box(.16,.14,.17, K.M.plate); wrap.position.y = -.18;
+        a.add(wrap);
+      });
+      [P.legL, P.legR].forEach(l=>{
+        const wrap = K.box(.21,.14,.23, K.M.plate); wrap.position.y = -.20;
+        const boot = K.box(.23,.10,.27, K.M.dark); boot.position.set(0,-.31,.02);
+        l.add(wrap, boot);
+      });
+    }
+  },
+
+  wizard: {
+    name:'마법사', tint:'#b07bff', accent:0xb07bff,
+    armor:0x6b3fd4, suit:0x3a2278, trim:0xffd23f, plate:0x8a5cf0, line:0xd6b8ff,
+    glow:0xb07bff, ei:.55,
+    head(H, K){
+      const hat = new THREE.Mesh(new THREE.ConeGeometry(.30,.52,4), K.M.plate);
+      hat.position.y = .42; hat.rotation.y = Math.PI/4;
+      const brim = K.box(.52,.06,.52, K.M.plate); brim.position.y = .19;
+      const star = K.box(.09,.09,.09, K.M.trim);  star.position.set(0,.40,-.06);
+      const face = K.box(.34,.16,.06, K.M.dark);  face.position.set(0,0,.19);
+      const eyes = K.box(.24,.05,.04, K.M.trim);  eyes.position.set(0,.02,.20);
+      const beard = K.box(.26,.22,.18, K.M.bone); beard.position.set(0,-.22,.10);
+      H.add(hat, brim, star, face, eyes, beard);
+    },
+    body(P, K){
+      const robe  = K.outline(K.box(.56,.30,.36, K.M.armor), .4); robe.position.y = -.34;
+      const sash  = K.box(.56,.08,.33, K.M.trim); sash.position.y = -.16;
+      const star  = K.box(.14,.14,.05, K.M.trim); star.position.set(0,.06,.16); star.rotation.z = .78;
+      P.torso.add(sash, star);
+      P.root.add(robe);
+      // 오른손: 지팡이
+      const staff = new THREE.Group(); staff.position.set(0,-.22,.04); staff.rotation.x = -.30;
+      const rod   = K.box(.06,1.05,.06, K.M.bone); rod.position.y = .34;
+      const orb   = new THREE.Mesh(new THREE.IcosahedronGeometry(.13,0), K.M.trim);
+      orb.position.y = .92;
+      staff.add(rod, orb);
+      P.armR.add(staff);
+      [P.legL, P.legR].forEach(l=>{
+        const boot = K.box(.22,.12,.26, K.M.suit); boot.position.set(0,-.30,.02);
+        l.add(boot);
+      });
+    }
+  }
+};
+const CHAR_IDS = Object.keys(CHARS);
+let charId = localStorage.getItem('neonObbyChar') || 'runner';
+if (!CHARS[charId]) charId = 'runner';
+
+function buildCharacter(id){
+  const S = CHARS[id] || CHARS.runner;
+  // 이전 모델 정리
+  player.traverse(o => {
+    if (o.isMesh || o.isLineSegments){
+      o.geometry.dispose();
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
+    }
+  });
+  player.clear();
+
+  const G = S.glow === undefined ? S.accent : S.glow;      // 발광 색
+  const E = S.ei === undefined ? 1 : S.ei;                 // 발광 세기 배수
   const M = {
-    armor : new THREE.MeshStandardMaterial({ color:0xf2fbff, emissive:C.cyan, emissiveIntensity:.34, roughness:.28, metalness:.30, flatShading:true }),
-    plate : new THREE.MeshStandardMaterial({ color:0x63d6e6, emissive:C.cyan, emissiveIntensity:.48, roughness:.35, metalness:.38, flatShading:true }),
-    suit  : new THREE.MeshStandardMaterial({ color:0x16234a, emissive:0x0e3f66, emissiveIntensity:.35, roughness:.72, flatShading:true }),
-    neon  : new THREE.MeshStandardMaterial({ color:0x9ff8fa, emissive:C.cyan, emissiveIntensity:1.5, roughness:.2, flatShading:true }),
-    visor : new THREE.MeshStandardMaterial({ color:0x0d3a48, emissive:C.cyan, emissiveIntensity:1.8, roughness:.15, flatShading:true })
+    armor: stdMat(S.armor, G, .30*E, { metalness:.28, roughness:.32 }),
+    suit:  stdMat(S.suit,  G, .22*E, { roughness:.72 }),
+    plate: stdMat(S.plate, G, .34*E, { metalness:.3, roughness:.38 }),
+    trim:  stdMat(S.trim,  S.trim,  1.25, { roughness:.2 }),
+    visor: stdMat(0x0d3a48, S.accent, 1.8, { roughness:.15 }),
+    // (bone/dark 는 아래에서 캐릭터 발광색을 약하게만 받음)
+    gold:  stdMat(0xffc247, 0xffa32b, .9,  { metalness:.7, roughness:.2 }),
+    bone:  stdMat(0xe7edf7, G, .18*E, { metalness:.5, roughness:.3 }),
+    dark:  stdMat(0x11142c, 0x000000, 0,   { roughness:.85 })
   };
   const box = (w,h,d,m) => new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
-  const outline = (mesh, op=.75) => {
+  const outline = (mesh, op) => {
     mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),
-      new THREE.LineBasicMaterial({ color:C.cyan, transparent:true, opacity:op })));
+      new THREE.LineBasicMaterial({ color:S.line, transparent:true, opacity:op === undefined ? .6 : op })));
     return mesh;
   };
   // 모델 로컬 +Z 가 정면 (player.rotation.y = atan2(vx, vz) 규약과 일치)
   const root = new THREE.Group();
 
-  // 몸통 — 각진 흉갑 + 네온 스트립
-  const torso = outline(box(.52,.46,.30, M.armor));
-  torso.position.y = .03;
-  const chest = box(.24,.20,.06, M.neon); chest.position.set(0,.08,.155);
-  const beltL = box(.05,.34,.05, M.neon); beltL.position.set(-.23,.02,.13);
-  const beltR = beltL.clone();            beltR.position.x = .22;
-  const back  = box(.30,.22,.08, M.plate); back.position.set(0,.08,-.17);
-  torso.add(chest, beltL, beltR, back);
+  const torso = outline(box(.52,.46,.30, M.armor), .7); torso.position.y = .03;
+  const hips  = outline(box(.46,.12,.28, M.suit), .35); hips.position.y = -.25;
+  const neck  = box(.18,.12,.18, M.dark); neck.position.y = .31;
 
-  const hips = outline(box(.46,.12,.28, M.suit), .35); hips.position.y = -.25;
-
-  // 머리 — 정사각 헬멧 + 각진 바이저 + 크레스트
   const head = new THREE.Group(); head.position.y = .52;
-  const skull = outline(box(.40,.38,.38, M.armor), .7);
-  const visor = box(.36,.16,.07, M.visor); visor.position.set(0,.04,.185);
-  visor.rotation.x = -.16;                                   // 각진 경사
-  const jaw   = box(.30,.09,.34, M.suit);  jaw.position.y = -.17;
-  const crest = box(.08,.15,.30, M.neon);  crest.position.set(0,.24,-.02);
-  const earL  = box(.05,.16,.16, M.plate); earL.position.set(-.22,.0,-.04);
-  const earR  = earL.clone();              earR.position.x = .22;
-  head.add(skull, visor, jaw, crest, earL, earR);
-  const neck = box(.18,.12,.18, M.suit); neck.position.y = .31;
+  head.add(outline(box(.40,.38,.38, M.armor), .7));
 
-  // 사지 — 어깨/고관절 피벗 그룹으로 분리해 회전
+  const padL = outline(box(.16,.15,.28, M.plate), .5); padL.position.set(-.33,.21,0);
+  const padR = padL.clone(); padR.position.x = .33;
+
   const limb = (x, y, w, h, d, mat) => {
     const pivot = new THREE.Group(); pivot.position.set(x, y, 0);
     const seg = outline(box(w,h,d,mat), .45); seg.position.y = -h/2;
@@ -382,35 +585,25 @@ const rig = {};                       // 애니메이션용 관절 참조
   };
   const armL = limb(-.33,.18,.15,.40,.16, M.suit);
   const armR = limb( .33,.18,.15,.40,.16, M.suit);
-  [armL,armR].forEach(a=>{
-    const guard = box(.17,.17,.18, M.armor); guard.position.y = -.09; a.seg.add(guard);
-    const cuff = box(.17,.06,.18, M.neon); cuff.position.y = -.16; a.seg.add(cuff);
-    const fist = box(.15,.11,.15, M.suit); fist.position.y = -.25; a.seg.add(fist);
-  });
-  const padL = box(.16,.15,.28, M.plate); padL.position.set(-.33,.21,0); outline(padL,.5);
-  const padR = padL.clone(); padR.position.x = .33;
-
   const legL = limb(-.13,-.26,.20,.36,.22, M.suit);
   const legR = limb( .13,-.26,.20,.36,.22, M.suit);
-  [legL,legR].forEach(l=>{
-    const thigh = box(.22,.16,.24, M.plate); thigh.position.y = -.07; l.seg.add(thigh);
-    const knee = box(.21,.05,.23, M.neon); knee.position.y = -.14; l.seg.add(knee);
-    const boot = box(.23,.11,.28, M.suit); boot.position.set(0,-.31,.02); l.seg.add(boot);
-  });
 
-  root.add(torso, hips, head, neck, padL, padR,
+  root.add(torso, hips, neck, head, padL, padR,
            armL.pivot, armR.pivot, legL.pivot, legR.pivot);
   player.add(root);
 
+  const K = { M, box, outline };
+  S.head(head, K);
+  S.body({ root, torso, head, armL:armL.seg, armR:armR.seg,
+           legL:legL.seg, legR:legR.seg, padL, padR }, K);
+
   // 발밑 발광 (착지 시 나타나는 홀로 플랫폼)
-  const glow = new THREE.Mesh(
-    new THREE.CircleGeometry(.5, 26),
-    new THREE.MeshBasicMaterial({ color:C.cyan, transparent:true, opacity:.22,
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(.5, 26),
+    new THREE.MeshBasicMaterial({ color:S.accent, transparent:true, opacity:.22,
                                   blending:THREE.AdditiveBlending, depthWrite:false }));
   glow.rotation.x = -Math.PI/2; glow.position.y = -.61;
-  const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(.5,.025,4,22),
-    new THREE.MeshBasicMaterial({ color:C.cyan, transparent:true, opacity:.75, depthWrite:false }));
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(.5,.025,4,22),
+    new THREE.MeshBasicMaterial({ color:S.accent, transparent:true, opacity:.75, depthWrite:false }));
   halo.rotation.x = -Math.PI/2; halo.position.y = -.6;
   player.add(glow, halo);
 
@@ -418,7 +611,7 @@ const rig = {};                       // 애니메이션용 관절 참조
                        base:{ armor:M.armor.emissiveIntensity, suit:M.suit.emissiveIntensity },
                        armL:armL.pivot, armR:armR.pivot, legL:legL.pivot, legR:legR.pivot });
 }
-scene.add(player);
+buildCharacter(charId);
 
 // --- 캐릭터 절차적 모션 (걷기 / 점프 / 대기) ---
 let walkPhase = 0, lastStep = 0;
@@ -874,7 +1067,33 @@ function menu(){
   const h = document.createElement('h1');
   h.append('NEON'); const sp = document.createElement('span'); sp.textContent = 'OBBY'; h.appendChild(sp);
   const p = document.createElement('p'); p.className = 'lead';
-  p.textContent = '발판은 밟는 순간 0.5초 뒤 무너지고, 수면은 쉬지 않고 차오릅니다. 코스를 고르세요.';
+  p.textContent = '캐릭터와 코스를 고르고 시작하세요.';
+
+  // 캐릭터 선택 — 고르면 뒤편 3D 모델이 즉시 바뀜
+  const pick = document.createElement('div'); pick.className = 'pick';
+  const cap = document.createElement('div'); cap.className = 'cap';
+  cap.textContent = '캐릭터를 고르세요';
+  const chars = document.createElement('div'); chars.className = 'chars';
+  const btns = {};
+  CHAR_IDS.forEach(id=>{
+    const S = CHARS[id];
+    const cb = document.createElement('button');
+    cb.className = 'charBtn' + (id === charId ? ' on' : '');
+    cb.style.borderColor = id === charId ? S.tint : '#4b3585';
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = S.tint;
+    cb.append(dot, document.createTextNode(S.name));
+    cb.addEventListener('click', ()=>{
+      charId = id;
+      localStorage.setItem('neonObbyChar', id);
+      buildCharacter(id);
+      CHAR_IDS.forEach(k=>{
+        btns[k].classList.toggle('on', k === charId);
+        btns[k].style.borderColor = k === charId ? CHARS[k].tint : '#4b3585';
+      });
+    });
+    btns[id] = cb; chars.appendChild(cb);
+  });
+  pick.append(cap, chars);
 
   const stages = document.createElement('div'); stages.className = 'stages';
   [['tower','네온 타워','무너지는 발판과 가시, 이동 발판으로 이루어진 나선형 상승 코스. 아래에서는 용암이 차오릅니다.'],
@@ -895,7 +1114,7 @@ function menu(){
     const b = document.createElement('b'); b.textContent = k;
     d.append(b, document.createTextNode(v)); keysBox.appendChild(d);
   });
-  el.card.append(h, p, stages, keysBox);
+  el.card.append(h, p, pick, stages, keysBox);
   el.veil.classList.remove('hide');
   stages.firstChild.focus();
 }
