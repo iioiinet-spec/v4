@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>2D RPG Adventure</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0f1220;color:#fff;font-family:Arial,"Noto Sans KR",sans-serif;overflow:hidden}
+  #app{height:100%;display:flex;flex-direction:column}
+  header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#171b2e;border-bottom:1px solid #313754;z-index:10}
+  .title{font-weight:800;font-size:20px}
+  .hud{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px}
+  .pill{background:#242a44;border:1px solid #39405f;padding:6px 9px;border-radius:999px}
+  #gameWrap{position:relative;flex:1;min-height:0}
+  canvas{width:100%;height:100%;display:block;background:#72b6df}
+  #panel{position:absolute;left:12px;top:12px;width:min(330px,calc(100% - 24px));background:rgba(12,15,28,.88);border:1px solid #4b5479;border-radius:16px;padding:12px;backdrop-filter:blur(8px);z-index:5}
+  #panel h3{margin:0 0 8px;font-size:15px}
+  .bar{height:13px;background:#2c3146;border-radius:99px;overflow:hidden;margin:4px 0 8px}
+  .fill{height:100%;width:50%;transition:.2s}
+  #hpFill{background:linear-gradient(90deg,#ef476f,#ff7b95)}
+  #xpFill{background:linear-gradient(90deg,#4cc9f0,#90e0ef)}
+  .row{display:flex;justify-content:space-between;gap:8px;font-size:12px}
+  #message{margin-top:8px;min-height:42px;padding:8px;border-radius:10px;background:#171b2d;color:#dce3ff;font-size:12px;line-height:1.45}
+  #controls{position:absolute;left:12px;bottom:12px;display:grid;grid-template-columns:58px 58px 58px;grid-template-rows:58px 58px 58px;gap:5px;z-index:6}
+  .ctrl,.action{border:none;border-radius:14px;background:rgba(30,35,58,.9);color:#fff;font-weight:800;box-shadow:0 4px 12px #0005;touch-action:none}
+  .ctrl:active,.action:active{transform:scale(.96)}
+  #up{grid-column:2;grid-row:1} #left{grid-column:1;grid-row:2} #down{grid-column:2;grid-row:2} #right{grid-column:3;grid-row:2}
+  #actions{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(2,72px);gap:7px;z-index:6}
+  .action{height:52px;font-size:11px}
+  .action.cool{opacity:.45}
+  .action.locked{opacity:.25;filter:grayscale(1)}
+  #attack{grid-column:1/3;background:#a62b46}
+  #jobBtn{background:#5846a7}
+  #bossBtn{background:#7a4d16}
+  #topBtns{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:8}
+  .tiny{border:1px solid #4c557b;background:#1d2238;color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
+  #modal{display:none;position:absolute;inset:0;background:#000a;z-index:20;align-items:center;justify-content:center;padding:20px}
+  .modalBox{width:min(620px,100%);max-height:90%;overflow:auto;background:#171b2f;border:1px solid #4d587d;border-radius:18px;padding:18px}
+  .modalBox h2{margin-top:0}
+  .jobCard{padding:12px;border-radius:12px;background:#212742;margin:8px 0;border:1px solid #3e4769}
+  .jobCard button{margin-top:8px;padding:8px 12px;border-radius:9px;border:none;background:#d64e7e;color:#fff;font-weight:700}
+  #miniMap{position:absolute;right:12px;top:58px;width:240px;background:#111629e8;border:1px solid #4c557b;border-radius:12px;padding:8px;z-index:5;font-size:11px}
+  .mapGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .zone{padding:7px 2px;text-align:center;border-radius:6px;background:#29304e;color:#bfc8ef}
+  .zone.active{outline:2px solid #fff;color:#fff;background:#d64e7e}
+  .zone.empty{background:transparent}
+  @media(max-width:800px){
+    #miniMap{display:none}
+    header{height:76px;align-items:flex-start}
+    .hud{font-size:11px;gap:5px}
+    .pill{padding:4px 7px}
+    #panel{top:8px;width:250px}
+    #actions{grid-template-columns:repeat(2,64px)}
+    .action{height:48px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="title">⚔️ 2D RPG Adventure</div>
+  <div class="hud">
+    <span class="pill" id="lvHud">LV 1</span>
+    <span class="pill" id="jobHud">무직</span>
+    <span class="pill" id="atkHud">공격력 10</span>
+    <span class="pill" id="zoneHud">마을</span>
+  </div>
+</header>
+<div id="gameWrap">
+  <canvas id="game"></canvas>
+
+  <div id="panel">
+    <h3>캐릭터 상태</h3>
+    <div class="row"><span>HP</span><span id="hpText">100 / 100</span></div>
+    <div class="bar"><div class="fill" id="hpFill"></div></div>
+    <div class="row"><span>EXP</span><span id="xpText">0 / 10</span></div>
+    <div class="bar"><div class="fill" id="xpFill"></div></div>
+    <div class="row"><span>상태</span><span id="statusText">정상</span></div>
+    <div id="message">마을에서 모험을 시작합니다. ← → 로 지역을 이동하세요.</div>
+  </div>
+
+  <div id="topBtns">
+    <button class="tiny" id="saveBtn">💾 저장</button>
+    <button class="tiny" id="resetBtn">↺ 초기화</button>
+    <button class="tiny" id="fsBtn">⛶</button>
+  </div>
+
+  <div id="miniMap">
+    <b>월드맵</b>
+    <div class="mapGrid" style="margin-top:6px">
+      <div class="zone" data-zone="ruins">무너진도시</div>
+      <div class="zone" data-zone="forest">숲</div>
+      <div class="zone" data-zone="grass">초원</div>
+      <div class="zone" data-zone="village">마을</div>
+      <div class="zone" data-zone="desert">사막</div>
+      <div class="zone" data-zone="snow">눈</div>
+      <div class="zone" data-zone="volcano">화산</div>
+      <div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div>
+      <div class="zone" data-zone="sea">바다</div>
+      <div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div><div class="zone empty"></div>
+      <div class="zone" data-zone="deep">심해</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl" id="up">▲</button>
+    <button class="ctrl" id="left">◀</button>
+    <button class="ctrl" id="down">▼</button>
+    <button class="ctrl" id="right">▶</button>
+  </div>
+
+  <div id="actions">
+    <button class="action" id="attack">⚔ 기본 공격</button>
+    <button class="action" id="s1">1 스킬</button>
+    <button class="action" id="s2">2 스킬</button>
+    <button class="action" id="s3">3 스킬</button>
+    <button class="action" id="s4">4 스킬</button>
+    <button class="action" id="bossBtn">👑 보스</button>
+    <button class="action" id="jobBtn">🧙 전직관</button>
+  </div>
+
+  <div id="modal"><div class="modalBox" id="modalBox"></div></div>
+</div>
+</div>
+
+<script>
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0,keys={},last=performance.now(),enemy=null,particles=[],floating=[],screenBlack=0;
+
+const zones={
+ ruins:{name:'무너진 도시',color:'#665c62',bg:'#332d32',normal:{name:'좀비',hp:250,dmg:100,xp:100,revives:1},boss:{name:'좀비 킹',hp:700,dmg:1000,xp:1500,revives:5}},
+ forest:{name:'숲',color:'#4d8f5a',bg:'#163d27',normal:{name:'사슴',hp:100,dmg:50,xp:50},job:'검사'},
+ grass:{name:'초원',color:'#77b95f',bg:'#355c2e',normal:{name:'토끼',hp:50,dmg:10,xp:10}},
+ village:{name:'마을',color:'#d5aa6d',bg:'#70512f'},
+ desert:{name:'사막',color:'#d9b25b',bg:'#765d21',normal:{name:'낙타',hp:1000,dmg:500,xp:500}},
+ snow:{name:'눈',color:'#bce8ff',bg:'#668ba0',normal:{name:'눈사람',hp:3000,dmg:1000,xp:1000,status:'slow'},boss:{name:'얼음 여왕',hp:10000,dmg:5000,xp:7000,status:'freeze'},job:'마법사'},
+ volcano:{name:'화산',color:'#c44c33',bg:'#4c1f1a',normal:{name:'해골',hp:5000,dmg:3000,xp:3000,revives:1},boss:{name:'파이어 드래곤',hp:50000,dmg:20000,xp:25000,status:'burn'}},
+ sea:{name:'바다',color:'#3096c7',bg:'#174a63',normal:{name:'상어',hp:20000,dmg:7000,xp:7000,status:'bleed'},boss:{name:'크라켄',hp:100000,dmg:20000,xp:50000,status:'bleed'}},
+ deep:{name:'심해',color:'#16436a',bg:'#061d34',normal:{name:'메갈로돈',hp:50000,dmg:20000,xp:20000,status:'bleed'},boss:{name:'심해의 눈',hp:1000000,dmg:100000,xp:100000,status:'bleed'}}
+};
+const order=['ruins','forest','grass','village','desert','snow','volcano','sea'];
+
+const jobs={
+ 검사:[
+  {name:'베기',cd:2,desc:'공격력 ×5',fn:p=>p.atk*5},
+  {name:'발도술',cd:7,desc:'공격력 ×6 +100',fn:p=>p.atk*6+100},
+  {name:'검기',cd:11.5,desc:'공격력 ×10 원거리',fn:p=>p.atk*10},
+  {name:'섬멸',cd:25,desc:'화면 전체 공격력 ×30 +1000',fn:p=>{screenBlack=1;return p.atk*30+1000}}
+ ],
+ 마법사:[
+  {name:'파이어볼',cd:2.5,desc:'공격력 ×3 + 화상',fn:p=>p.atk*3,status:'burn'},
+  {name:'아이스볼',cd:6,desc:'공격력 ×5 + 빙결',fn:p=>p.atk*5,status:'freeze'},
+  {name:'일렉트릭',cd:14,desc:'공격력 ×10 + 감전',fn:p=>p.atk*10,status:'shock'},
+  {name:'트리플매직',cd:30,desc:'강화된 1~3스킬 3연사',fn:p=>((p.atk*3)+(p.atk*5)+(p.atk*10))*2*3,status:'shock'}
+ ],
+ 전사:[
+  {name:'강타',cd:1.5,desc:'공격력 ×15',fn:p=>p.atk*15},
+  {name:'파워업',cd:20,desc:'10초 HP 3배',fn:p=>{buffHP();return 0}},
+  {name:'돌격',cd:15,desc:'공격력 ×30 + 임시 HP 2배',fn:p=>{tempGuard();return p.atk*30}},
+  {name:'전사의 명예',cd:40,desc:'공격력 ×50',fn:p=>p.atk*50}
+ ]
+};
+
+let player={
+ x:W/2,y:H/2,r:18,speed:220,level:1,xp:0,xpNeed:10,maxHp:100,hp:100,atk:10,job:'무직',
+ zone:'village',status:{type:null,until:0},cool:[0,0,0,0],tempHpMult:1
+};
+
+function resize(){W=canvas.width=canvas.clientWidth*devicePixelRatio;H=canvas.height=canvas.clientHeight*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);W=canvas.clientWidth;H=canvas.clientHeight;if(!player.x){player.x=W/2;player.y=H/2}}
+addEventListener('resize',resize); resize();
+
+function msg(t){$('message').textContent=t}
+function updateHud(){
+ $('lvHud').textContent='LV '+player.level;
+ $('jobHud').textContent=player.job;
+ $('atkHud').textContent='공격력 '+Math.floor(player.atk);
+ $('zoneHud').textContent=zones[player.zone].name;
+ $('hpText').textContent=Math.max(0,Math.floor(player.hp))+' / '+Math.floor(player.maxHp*player.tempHpMult);
+ $('xpText').textContent=player.xp+' / '+player.xpNeed;
+ $('hpFill').style.width=Math.max(0,Math.min(100,player.hp/(player.maxHp*player.tempHpMult)*100))+'%';
+ $('xpFill').style.width=Math.min(100,player.xp/player.xpNeed*100)+'%';
+ $('statusText').textContent=statusName(player.status.type);
+ document.querySelectorAll('.zone[data-zone]').forEach(e=>e.classList.toggle('active',e.dataset.zone===player.zone));
+ const unlock=[10,20,30,40];
+ for(let i=0;i<4;i++){
+   const b=$('s'+(i+1));
+   if(player.job==='무직'||player.level<unlock[i]) b.classList.add('locked'); else b.classList.remove('locked');
+   const s=jobs[player.job]?.[i];
+   b.textContent=s?(i+1+' '+s.name):((i+1)+' 스킬');
+ }
+}
+function statusName(t){return {slow:'둔화',bleed:'출혈',burn:'화상',freeze:'빙결',shock:'감전'}[t]||'정상'}
+
+function gainXP(n){
+ player.xp+=n; msg(`경험치 ${n} 획득!`);
+ while(player.xp>=player.xpNeed){
+   player.xp-=player.xpNeed;
+   player.level++;
+   player.xpNeed+=10;
+   player.maxHp+=50; player.hp=player.maxHp;
+   player.atk+=10;
+   msg(`🎉 레벨 업! LV.${player.level} / HP +50 / 공격력 +10`);
+ }
+ updateHud();
+}
+
+function spawn(boss=false){
+ const z=zones[player.zone], base=boss?z.boss:z.normal;
+ if(!base){msg(boss?'이 지역에는 보스가 없습니다.':'마을에서는 몬스터가 나오지 않습니다.');return}
+ enemy={...base,maxHp:base.hp,hp:base.hp,x:W*.72,y:H*.55,r:boss?32:24,boss,reviveLeft:base.revives||0,nextHit:performance.now()+1200,status:null,statusUntil:0,evade:false};
+ msg(`${boss?'👑 보스 ':'👾 '}${enemy.name} 등장!`);
+}
+
+function enemyHit(dmg,status){
+ if(!enemy)return;
+ if(enemy.name==='샌드웜' && Math.random()<.25){msg('샌드웜이 땅속으로 숨어 공격을 피했습니다!');return}
+ enemy.hp-=dmg;
+ floating.push({x:enemy.x,y:enemy.y-20,text:'-'+Math.floor(dmg),life:1});
+ if(status){enemy.status=status;enemy.statusUntil=performance.now()+(status==='freeze'?5000:status==='shock'?3000:5000)}
+ if(enemy.hp<=0){
+   if(enemy.reviveLeft>0){enemy.reviveLeft--;enemy.hp=enemy.maxHp;msg(`${enemy.name} 부활! 남은 부활 ${enemy.reviveLeft}회`)}
+   else {const xp=enemy.xp;msg(`${enemy.name} 처치! 경험치 ${xp} 획득`);enemy=null;gainXP(xp)}
+ }
+}
+
+function basicAttack(){
+ if(!enemy){spawn(false);return}
+ enemyHit(player.atk);
+}
+
+function cast(i){
+ if(player.job==='무직'){msg('아직 무직입니다. 10레벨에 전직관을 찾아가세요.');return}
+ const unlock=[10,20,30,40][i];
+ if(player.level<unlock){msg(`${unlock}레벨에 해금되는 스킬입니다.`);return}
+ const now=performance.now()/1000;
+ if(player.cool[i]>now){msg(`쿨타임 ${(player.cool[i]-now).toFixed(1)}초`);return}
+ if(!enemy){msg('스킬을 사용할 적이 없습니다.');return}
+ const s=jobs[player.job][i]; player.cool[i]=now+s.cd;
+ const dmg=s.fn(player);
+ if(dmg>0) enemyHit(dmg,s.status);
+ msg(`${s.name} 사용! ${dmg?Math.floor(dmg)+' 데미지':''}`);
+}
+
+function applyStatus(type){
+ const now=performance.now();
+ player.status={type,until:now+(type==='freeze'?5000:type==='shock'?3000:5000)};
+ if(type==='bleed'||type==='burn'){
+   let hits=0; const per=player.maxHp*.05;
+   const timer=setInterval(()=>{
+     hits++; player.hp-=per; floating.push({x:player.x,y:player.y-22,text:'-'+Math.floor(per),life:1});
+     if(player.hp<=0) die();
+     updateHud();
+     if(hits>=5)clearInterval(timer);
+   },900);
+ }
+ msg(`상태이상: ${statusName(type)}!`);
+}
+
+function enemyAttack(){
+ if(!enemy)return;
+ const now=performance.now();
+ if(enemy.status==='freeze'&&now<enemy.statusUntil)return;
+ if(enemy.status==='shock'&&now<enemy.statusUntil)return;
+ if(now<enemy.nextHit)return;
+ const dist=Math.hypot(enemy.x-player.x,enemy.y-player.y);
+ if(dist<95){
+   player.hp-=enemy.dmg;
+   floating.push({x:player.x,y:player.y-24,text:'-'+enemy.dmg,life:1});
+   if(enemy.status) applyStatus(enemy.status);
+   enemy.nextHit=now+1700;
+   if(player.hp<=0)die();
+ }
+}
+
+function die(){
+ msg('💀 쓰러졌습니다. 마을에서 부활합니다.');
+ player.zone='village'; player.hp=player.maxHp; player.status={type:null,until:0}; player.tempHpMult=1; enemy=null;
+ player.x=W/2;player.y=H/2;
+}
+
+function buffHP(){
+ const old=player.tempHpMult; player.tempHpMult=3; player.hp=Math.min(player.hp*3,player.maxHp*3);
+ setTimeout(()=>{player.hp=Math.min(player.hp/3,player.maxHp);player.tempHpMult=1;updateHud()},10000);
+}
+function tempGuard(){
+ player.tempHpMult=2; player.hp=Math.min(player.hp*2,player.maxHp*2);
+ setTimeout(()=>{player.hp=Math.min(player.hp/2,player.maxHp);player.tempHpMult=1;updateHud()},3500);
+}
+
+function tryJob(){
+ const z=zones[player.zone];
+ const job=z.job || (player.zone==='ruins'?'전사':null);
+ if(!job){msg('이 지역에는 전직관이 없습니다. 검사=숲, 마법사=눈, 전사=무너진 도시');return}
+ if(player.level<10){msg('전직관: "10레벨이 되고 오도록."');return}
+ if(player.job!=='무직'){msg(`이미 ${player.job}로 전직했습니다.`);return}
+ openJob(job);
+}
+function openJob(job){
+ $('modalBox').innerHTML=`<h2>${job} 전직관</h2>
+ <p>현재 레벨: <b>${player.level}</b></p>
+ <p>${job}로 전직하면 레벨 10/20/30/40에 스킬이 순서대로 해금됩니다.</p>
+ <div class="jobCard"><b>${job}</b><br>${jobs[job].map((s,i)=>`LV.${[10,20,30,40][i]} — ${s.name}: ${s.desc} / 쿨 ${s.cd}초`).join('<br>')}
+ <br><button onclick="chooseJob('${job}')">${job}로 전직</button></div>
+ <button class="tiny" onclick="closeModal()">닫기</button>`;
+ $('modal').style.display='flex';
+}
+window.chooseJob=function(job){player.job=job;closeModal();msg(`✨ ${job}로 전직했습니다! 첫 번째 스킬이 해금되었습니다.`);updateHud()}
+window.closeModal=function(){$('modal').style.display='none'}
+
+function changeZone(dir){
+ let idx=order.indexOf(player.zone);
+ if(player.zone==='deep'&&dir==='up'){player.zone='sea';}
+ else if(player.zone==='sea'&&dir==='down'){player.zone='deep';}
+ else if(dir==='left'&&idx>0)player.zone=order[idx-1];
+ else if(dir==='right'&&idx>=0&&idx<order.length-1)player.zone=order[idx+1];
+ else return false;
+ enemy=null; player.x=W/2;player.y=H/2;msg(`${zones[player.zone].name} 지역에 도착했습니다.`);updateHud();return true;
+}
+
+function move(dt){
+ const now=performance.now();
+ if((player.status.type==='freeze'||player.status.type==='shock')&&now<player.status.until)return;
+ if(player.status.type&&now>player.status.until)player.status={type:null,until:0};
+ let dx=(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0);
+ let dy=(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0);
+ if(dx||dy){
+  const len=Math.hypot(dx,dy);dx/=len;dy/=len;
+  let speed=player.speed*((player.status.type==='slow'&&now<player.status.until)?.5:1);
+  player.x+=dx*speed*dt;player.y+=dy*speed*dt;
+ }
+ if(player.x<12){ if(changeZone('left'))player.x=W-40; else player.x=12}
+ if(player.x>W-12){ if(changeZone('right'))player.x=40; else player.x=W-12}
+ if(player.y>H-12){ if(changeZone('down'))player.y=40; else player.y=H-12}
+ if(player.y<12){ if(changeZone('up'))player.y=H-40; else player.y=12}
+ if(enemy){
+   const vx=player.x-enemy.x,vy=player.y-enemy.y,d=Math.hypot(vx,vy);
+   if(d>72){enemy.x+=vx/d*45*dt;enemy.y+=vy/d*45*dt}
+ }
+}
+
+function draw(){
+ const z=zones[player.zone];
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle=z.bg;ctx.fillRect(0,0,W,H);
+ // terrain
+ ctx.globalAlpha=.25;ctx.fillStyle=z.color;
+ for(let i=0;i<24;i++){let x=(i*137)%W,y=(i*83)%H;ctx.beginPath();ctx.arc(x,y,18+(i%4)*6,0,Math.PI*2);ctx.fill()}
+ ctx.globalAlpha=1;
+ // gates
+ ctx.fillStyle='#ffffff33';ctx.fillRect(0,H/2-65,16,130);ctx.fillRect(W-16,H/2-65,16,130);
+ if(player.zone==='sea')ctx.fillRect(W/2-65,H-16,130,16);
+ if(player.zone==='deep')ctx.fillRect(W/2-65,0,130,16);
+
+ // enemy
+ if(enemy){
+  ctx.fillStyle=enemy.boss?'#ffb703':'#f15b66';
+  ctx.beginPath();ctx.arc(enemy.x,enemy.y,enemy.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='bold 13px Arial';ctx.textAlign='center';ctx.fillText(enemy.name,enemy.x,enemy.y-enemy.r-20);
+  ctx.fillStyle='#29151b';ctx.fillRect(enemy.x-45,enemy.y-enemy.r-13,90,7);
+  ctx.fillStyle='#ff4d6d';ctx.fillRect(enemy.x-45,enemy.y-enemy.r-13,90*Math.max(0,enemy.hp/enemy.maxHp),7);
+  ctx.fillStyle='#fff';ctx.font='10px Arial';ctx.fillText(Math.max(0,Math.floor(enemy.hp))+'/'+enemy.maxHp,enemy.x,enemy.y-enemy.r-4);
+ }
+ // player shadow
+ ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(player.x,player.y+16,20,8,0,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#6ee7ff';ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#18243b';ctx.beginPath();ctx.arc(player.x-5,player.y-3,2.3,0,Math.PI*2);ctx.arc(player.x+5,player.y-3,2.3,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#fff';ctx.font='12px Arial';ctx.textAlign='center';ctx.fillText(player.job+' LV.'+player.level,player.x,player.y-27);
+
+ // floating damage
+ floating.forEach(f=>{ctx.globalAlpha=f.life;ctx.fillStyle='#fff';ctx.font='bold 18px Arial';ctx.fillText(f.text,f.x,f.y);ctx.globalAlpha=1;f.y-=.5;f.life-=.018});
+ floating=floating.filter(f=>f.life>0);
+
+ if(screenBlack>0){ctx.fillStyle=`rgba(0,0,0,${Math.min(1,screenBlack)})`;ctx.fillRect(0,0,W,H);screenBlack-=.025}
+}
+
+function loop(t){
+ const dt=Math.min(.033,(t-last)/1000);last=t;
+ move(dt);enemyAttack();draw();updateHud();
+ requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' ')basicAttack();if(['1','2','3','4'].includes(e.key))cast(+e.key-1)});
+addEventListener('keyup',e=>keys[e.key]=false);
+function bindHold(id,key){
+ const b=$(id); const on=e=>{e.preventDefault();keys[key]=true}, off=e=>{e.preventDefault();keys[key]=false};
+ ['pointerdown','touchstart'].forEach(ev=>b.addEventListener(ev,on,{passive:false}));
+ ['pointerup','pointercancel','pointerleave','touchend'].forEach(ev=>b.addEventListener(ev,off,{passive:false}));
+}
+bindHold('up','ArrowUp');bindHold('down','ArrowDown');bindHold('left','ArrowLeft');bindHold('right','ArrowRight');
+$('attack').onclick=basicAttack;
+for(let i=0;i<4;i++)$('s'+(i+1)).onclick=()=>cast(i);
+$('jobBtn').onclick=tryJob;
+$('bossBtn').onclick=()=>spawn(true);
+
+$('saveBtn').onclick=()=>{localStorage.setItem('rpg_save_v1',JSON.stringify(player));msg('게임을 저장했습니다.')};
+$('resetBtn').onclick=()=>{if(confirm('저장 데이터와 진행 상황을 초기화할까요?')){localStorage.removeItem('rpg_save_v1');location.reload()}};
+$('fsBtn').onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.()};
+$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal()});
+
+const saved=localStorage.getItem('rpg_save_v1');
+if(saved){try{Object.assign(player,JSON.parse(saved));player.status={type:null,until:0};player.cool=[0,0,0,0];msg('저장된 게임을 불러왔습니다.')}catch(e){}}
+updateHud();
+</script>
+</body>
+</html>

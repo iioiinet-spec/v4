@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>포켓몬 키우기 & 들판 턴제 배틀</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      user-select: none;
+    }
+    body {
+      background-color: #0d1117;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 15px;
+      color: #c9d1d9;
+    }
+    .game-container {
+      background-color: #161b22;
+      width: 100%;
+      max-width: 480px;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6);
+      border: 1px solid #30363d;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 포켓몬 계열별 맞춤형 테마 무대 배경 */
+    .pokemon-stage {
+      position: relative;
+      height: 220px;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      overflow: hidden;
+      box-shadow: inset 0 0 25px rgba(0,0,0,0.4);
+      cursor: pointer;
+      transition: background 0.5s ease, border-color 0.5s ease;
+    }
+    
+    /* 계열별 커스텀 테마 */
+    .theme-dratini   { background: linear-gradient(to bottom, #1d3557, #457b9d 60%, #1d3557); border-color: #457b9d; }
+    .theme-gastly    { background: linear-gradient(to bottom, #2b1055, #7597de 60%, #090a0f); border-color: #7597de; }
+    .theme-abra      { background: linear-gradient(to bottom, #4a154b, #6b1170 60%, #2b092b); border-color: #e5ab3c; }
+    .theme-charmander{ background: linear-gradient(to bottom, #7f1d1d, #c2410c 60%, #451a03); border-color: #ea580c; }
+    .theme-pichu     { background: linear-gradient(to bottom, #854d0e, #ca8a04 60%, #422006); border-color: #eab308; }
+    .theme-squirtle  { background: linear-gradient(to bottom, #0c4a6e, #0284c7 60%, #082f49); border-color: #38bdf8; }
+    .theme-bulbasaur { background: linear-gradient(to bottom, #14532d, #16a34a 60%, #052e16); border-color: #4ade80; }
+    .theme-caterpie  { background: linear-gradient(to bottom, #166534, #22c55e 60%, #0f5132); border-color: #86efac; }
+    .theme-weedle    { background: linear-gradient(to bottom, #701a75, #a21caf 60%, #4a044e); border-color: #f0abfc; }
+    .theme-geodude   { background: linear-gradient(to bottom, #44403c, #78716c 60%, #1c1917); border-color: #a8a29e; }
+    .theme-cleffa    { background: linear-gradient(to bottom, #831843, #db2777 60%, #500724); border-color: #f472b6; }
+    .theme-igglybuff { background: linear-gradient(to bottom, #9d174d, #e11d48 60%, #4c0519); border-color: #fb7185; }
+
+    /* 모달 & 오버레이 */
+    .lock-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      border-radius: 20px;
+      background-color: rgba(13, 17, 23, 0.92);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 20px;
+      font-weight: bold;
+      color: #58a6ff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 200;
+    }
+    .lock-overlay.active { opacity: 1; pointer-events: auto; }
+
+    .select-modal {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-color: #161b22;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 100;
+    }
+    .select-modal.hidden { display: none; }
+    .select-title { font-size: 18px; font-weight: bold; color: #f0f6fc; margin-bottom: 15px; }
+    .pokemon-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .option-card {
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 45%;
+      background-color: #21262d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .option-card:hover { border-color: #58a6ff; transform: translateY(-2px); background-color: #2e353f; }
+    .option-card svg { width: 56px; height: 56px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3)); }
+    .option-name { font-size: 12px; font-weight: bold; margin-top: 6px; color: #c9d1d9; }
+
+    /* 들판 턴제 배틀 화면 */
+    .battle-modal {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-color: #0d1117;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      z-index: 150;
+      color: white;
+    }
+    .battle-modal.hidden { display: none; }
+
+    /* 푸른 들판 배경 스태이지 */
+    .battle-field {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      /* 들판/초원 그라데이션 및 원경 구릉 표현 */
+      background: linear-gradient(to bottom, 
+        #a0e0ff 0%, 
+        #d0f0ff 35%, 
+        #82c91e 35%, 
+        #5c940d 65%, 
+        #2f5d13 100%
+      );
+      border-radius: 14px;
+      padding: 12px;
+      border: 2px solid #2f5d13;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+    }
+
+    /* 들판 원경 언덕 & 수풀 데코 */
+    .battle-field::before {
+      content: '';
+      position: absolute;
+      top: 25%; left: -20%; width: 140%; height: 30%;
+      background: #74b816;
+      border-radius: 50%;
+      z-index: 1;
+    }
+    .battle-field::after {
+      content: '';
+      position: absolute;
+      top: 30%; right: -20%; width: 140%; height: 30%;
+      background: #5c940d;
+      border-radius: 50%;
+      z-index: 1;
+    }
+
+    .battle-unit { 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      margin: 4px 0; 
+      z-index: 5; 
+      position: relative;
+    }
+    .battle-info { 
+      background: rgba(15, 23, 42, 0.85); 
+      padding: 8px 12px; 
+      border-radius: 10px; 
+      width: 160px; 
+      text-align: left; 
+      border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(4px);
+    }
+    .battle-name { font-size: 11px; font-weight: bold; color: #f8fafc; }
+    .hp-bar-bg { background: #334155; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+    .hp-bar-fill { background: #22c55e; height: 100%; width: 100%; transition: width 0.3s; }
+    .battle-img { width: 76px; height: 76px; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 6px 6px rgba(0,0,0,0.5)); }
+    
+    .battle-log {
+      height: 48px;
+      background: #161b22;
+      border-radius: 8px;
+      margin: 8px 0;
+      padding: 6px 10px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #30363d;
+      color: #f0f6fc;
+      text-align: center;
+    }
+    .battle-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .move-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #f0f6fc;
+      padding: 8px 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .move-btn:hover { background: #30363d; border-color: #58a6ff; }
+    .move-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .move-btn.run-btn { background: #991b1b; border-color: #dc2626; grid-column: span 2; }
+    .move-btn.run-btn:hover { background: #dc2626; }
+    .move-pp { font-size: 9px; color: #8b949e; display: block; margin-top: 2px; }
+
+    /* 대시보드 상단 정보 */
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .level-title { font-size: 17px; font-weight: bold; color: #f0f6fc; }
+    .top-btns { display: flex; gap: 6px; }
+    .top-btn { color: #ffffff; border: none; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+    .change-btn { background-color: #238636; }
+    .change-btn:hover { background-color: #2ea043; }
+    .reset-btn { background-color: #da3633; }
+    .reset-btn:hover { background-color: #f85149; }
+
+    .exp-container { margin-bottom: 16px; text-align: left; }
+    .exp-label { font-size: 11px; color: #8b949e; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .exp-bar-bg { background-color: #21262d; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid #30363d; }
+    .exp-bar-fill { background-color: #1f6beb; height: 100%; width: 0%; transition: width 0.3s ease; }
+    
+    .speech-bubble {
+      position: absolute;
+      top: 12px;
+      background: #21262d;
+      border: 1px solid #484f58;
+      border-radius: 10px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #f0f6fc;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+      z-index: 10;
+      max-width: 90%;
+    }
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -7px; left: 50%;
+      transform: translateX(-50%);
+      border-width: 7px 7px 0;
+      border-style: solid;
+      border-color: #484f58 transparent;
+      display: block; width: 0;
+    }
+    .pokemon-character-wrap {
+      position: absolute;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+      pointer-events: none;
+    }
+    .pokemon-display {
+      width: 100px; height: 100px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,0.5));
+      transition: filter 0.3s ease;
+    }
+    .pokemon-img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+    .pokemon-svg {
+      width: 100px;
+      height: 100px;
+    }
+    .pokemon-shadow {
+      width: 70px;
+      height: 14px;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 50%;
+      margin-top: -10px;
+      filter: blur(3px);
+      transition: all 0.4s ease;
+    }
+    .sick-filter { filter: grayscale(80%) opacity(0.7) drop-shadow(0 6px 4px rgba(0,0,0,0.25)); }
+    .status-text {
+      position: absolute;
+      bottom: 6px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #f0f6fc;
+      background: rgba(13, 17, 23, 0.7);
+      padding: 2px 8px;
+      border-radius: 8px;
+      z-index: 10;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .stats-container { background-color: #0d1117; padding: 12px; border-radius: 12px; margin-bottom: 16px; border: 1px solid #30363d; }
+    .stat-row { display: flex; align-items: center; margin-bottom: 8px; }
+    .stat-row:last-child { margin-bottom: 0; }
+    .stat-label { width: 65px; font-size: 12px; font-weight: bold; color: #8b949e; text-align: left; }
+    .bar-bg { flex: 1; background-color: #21262d; height: 12px; border-radius: 6px; overflow: hidden; margin-left: 8px; border: 1px solid #30363d; }
+    .bar-fill { height: 100%; width: 70%; border-radius: 6px; transition: width 0.4s ease, background-color 0.4s ease; }
+    
+    .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn { background-color: #21262d; border: 1px solid #30363d; padding: 9px; font-size: 12px; font-weight: bold; color: #c9d1d9; border-radius: 8px; cursor: pointer; }
+    .btn:hover { background-color: #30363d; color: #f0f6fc; }
+    .btn-battle { grid-column: span 2; background-color: #272015; border-color: #9e6a03; color: #f2c94c; }
+    .btn-battle:hover { background-color: #3d3019; }
+    .btn-heal { background-color: #3c1e1e; border-color: #7f1d1d; color: #fca5a5; grid-column: span 2; display: none; }
+    .rsp-panel {
+      grid-column: span 2;
+      background-color: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 4px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+    }
+    .rsp-title { font-size: 11px; font-weight: bold; color: #58a6ff; width: 100%; margin-bottom: 6px; }
+    .rsp-btn { background-color: #21262d; border: 1px solid #30363d; padding: 5px 12px; border-radius: 6px; font-weight: bold; color: #c9d1d9; cursor: pointer; }
+    .rsp-btn:hover { background-color: #30363d; color: #f0f6fc; }
+
+    /* 프리미엄 3D 알 흔들림 애니메이션 */
+    @keyframes ultraEggWobble {
+      0% { transform: rotate(0deg) translateY(0); }
+      15% { transform: rotate(-8deg) translateY(-2px); }
+      30% { transform: rotate(8deg) translateY(-4px); }
+      45% { transform: rotate(-5deg) translateY(-1px); }
+      60% { transform: rotate(5deg) translateY(-2px); }
+      75% { transform: rotate(-2deg) translateY(0); }
+      100% { transform: rotate(0deg) translateY(0); }
+    }
+    .animated-egg {
+      animation: ultraEggWobble 2.2s infinite ease-in-out;
+      transform-origin: bottom center;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div id="lock-overlay" class="lock-overlay"><span>부화하는 중...</span></div>
+    
+    <!-- 스타팅 모달 -->
+    <div id="select-modal" class="select-modal">
+      <div class="select-title">부화시킬 알을 선택하세요!</div>
+      <div class="pokemon-options" id="pokemon-options-container"></div>
+    </div>
+
+    <!-- 대결 턴제 모달 (푸른 들판 배경) -->
+    <div id="battle-modal" class="battle-modal hidden">
+      <div class="battle-field">
+        <div class="battle-unit">
+          <div class="battle-info">
+            <div id="enemy-name" class="battle-name">야생 포켓몬</div>
+            <div class="hp-bar-bg"><div id="enemy-hp-bar" class="hp-bar-fill"></div></div>
+          </div>
+          <img id="enemy-img" class="battle-img" src="" alt="상대">
+        </div>
+        <div class="battle-unit">
+          <div id="player-battle-img-wrap" class="battle-img"></div>
+          <div class="battle-info">
+            <div id="player-battle-name" class="battle-name">내 포켓몬</div>
+            <div class="hp-bar-bg"><div id="player-hp-bar" class="hp-bar-fill"></div></div>
+          </div>
+        </div>
+      </div>
+      <div id="battle-log" class="battle-log">야생 포켓몬이 나타났다!</div>
+      <div class="battle-moves">
+        <button id="btn-move-0" class="move-btn" onclick="useMove(0)">
+          <span id="move-name-0">기본기</span>
+          <span id="move-pp-0" class="move-pp">PP 15/15</span>
+        </button>
+        <button id="btn-move-1" class="move-btn" onclick="useMove(1)">
+          <span id="move-name-1">특수기</span>
+          <span id="move-pp-1" class="move-pp">PP 10/10</span>
+        </button>
+        <button id="btn-move-2" class="move-btn" onclick="useMove(2)">
+          <span id="move-name-2">방어기</span>
+          <span id="move-pp-2" class="move-pp">PP 5/5</span>
+        </button>
+        <button id="btn-move-3" class="move-btn" onclick="useMove(3)">
+          <span id="move-name-3">회복기</span>
+          <span id="move-pp-3" class="move-pp">PP 5/5</span>
+        </button>
+        <button id="btn-run" class="move-btn run-btn" onclick="fleeBattle()">도망치기</button>
+      </div>
+    </div>
+
+    <!-- 상단 정보 -->
+    <div class="top-bar">
+      <div id="stage-title" class="level-title">포켓몬 (Lv.1)</div>
+      <div class="top-btns">
+        <button class="top-btn change-btn" onclick="openChangePokemon()">포켓몬 변경</button>
+        <button class="top-btn reset-btn" onclick="confirmReset()">기록 초기화</button>
+      </div>
+    </div>
+
+    <!-- 경험치 바 -->
+    <div class="exp-container">
+      <div class="exp-label">
+        <span>경험치</span>
+        <span id="exp-text">0 / 100</span>
+      </div>
+      <div class="exp-bar-bg">
+        <div id="exp-bar" class="exp-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- 무대 (포켓몬마다 다르게 변화하는 맞춤 배경) -->
+    <div class="pokemon-stage theme-dratini" id="stage-area" onclick="movePokemonToClick(event)">
+      <div id="speech-bubble" class="speech-bubble">반가워! 잘 부탁해!</div>
+      <div id="pokemon-wrap" class="pokemon-character-wrap">
+        <div id="pokemon-display" class="pokemon-display"></div>
+        <div id="pokemon-shadow" class="pokemon-shadow"></div>
+      </div>
+      <div id="status-text" class="status-text">상태: 좋음</div>
+    </div>
+
+    <!-- 스탯 게이지 -->
+    <div class="stats-container">
+      <div class="stat-row"><span class="stat-label">포만감</span><div class="bar-bg"><div id="fullness-bar" class="bar-fill"></div></div></div>
+      <div class="stat-row"><span class="stat-label">행복도</span><div class="bar-bg"><div id="happiness-bar" class="bar-fill"></div></div></div>
+      <div class="stat-row"><span class="stat-label">청결도</span><div class="bar-bg"><div id="cleanliness-bar" class="bar-fill"></div></div></div>
+      <div class="stat-row"><span class="stat-label">에너지</span><div class="bar-bg"><div id="energy-bar" class="bar-fill"></div></div></div>
+    </div>
+
+    <!-- 액션 버튼 -->
+    <div class="actions-grid">
+      <button class="btn" onclick="feed()">밥 주기</button>
+      <button class="btn" onclick="play()">놀아주기</button>
+      <button class="btn" onclick="clean()">씻기기</button>
+      <button class="btn" onclick="sleep()">휴식하기</button>
+      <button class="btn btn-battle" onclick="startBattle()">⚔️ 들판에서 야생 대결</button>
+      <button id="heal-btn" class="btn btn-heal" onclick="heal()">치료하기</button>
+      <div class="rsp-panel">
+        <div style="width: 100%;">
+          <div class="rsp-title">가위바위보 미니게임 (행복도/경험치)</div>
+          <button class="rsp-btn" onclick="playRSP('가위')">가위</button>
+          <button class="rsp-btn" onclick="playRSP('바위')">바위</button>
+          <button class="rsp-btn" onclick="playRSP('보')">보</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new AudioCtx();
+    }
+
+    function playSound(type) {
+      initAudio();
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+
+      if (type === 'click') {
+        osc.frequency.setValueAtTime(400, now);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        osc.start(now); osc.stop(now + 0.05);
+      } else if (type === 'feed') {
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.15);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now); osc.stop(now + 0.15);
+      } else if (type === 'win') {
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.1);
+        osc.frequency.setValueAtTime(783.99, now + 0.2);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.start(now); osc.stop(now + 0.35);
+      } else if (type === 'lose') {
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(150, now + 0.25);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now); osc.stop(now + 0.25);
+      } else if (type === 'levelup') {
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(554.37, now + 0.1);
+        osc.frequency.setValueAtTime(659.25, now + 0.2);
+        osc.frequency.setValueAtTime(880, now + 0.3);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now); osc.stop(now + 0.5);
+      } else if (type === 'heal') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(900, now + 0.2);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+      }
+    }
+
+    // 초고품질 3D 셰이딩 SVG 포켓몬 알 디자이너
+    function generateEggSVG(eggType) {
+      const themes = {
+        dratini:   { base1: '#3b82f6', base2: '#93c5fd', spots: '#ffffff', detail: '#1d4ed8', ring: '#bfdbfe' },
+        gastly:    { base1: '#581c87', base2: '#a855f7', spots: '#c084fc', detail: '#3b0764', ring: '#e9d5ff' },
+        abra:      { base1: '#d97706', base2: '#fde047', spots: '#78350f', detail: '#92400e', ring: '#fef08a' },
+        charmander:{ base1: '#ea580c', base2: '#fdba74', spots: '#facc15', detail: '#9a3412', ring: '#fed7aa' },
+        pichu:     { base1: '#eab308', base2: '#fef08a', spots: '#1c1917', detail: '#ca8a04', ring: '#fef9c3' },
+        squirtle:  { base1: '#0284c7', base2: '#7dd3fc', spots: '#78350f', detail: '#0369a1', ring: '#bae6fd' },
+        bulbasaur: { base1: '#16a34a', base2: '#86efac', spots: '#14532d', detail: '#15803d', ring: '#bbf7d0' },
+        caterpie:  { base1: '#65a30d', base2: '#bef264', spots: '#dc2626', detail: '#4d7c0f', ring: '#d9f99d' },
+        weedle:    { base1: '#c026d3', base2: '#f5d0fe', spots: '#ea580c', detail: '#86198f', ring: '#fae8ff' },
+        geodude:   { base1: '#57534e', base2: '#d6d3d1', spots: '#292524', detail: '#44403c', ring: '#e7e5e4' },
+        cleffa:    { base1: '#db2777', base2: '#fbcfe8', spots: '#be185d', detail: '#9d174d', ring: '#fce7f3' },
+        igglybuff: { base1: '#e11d48', base2: '#fecdd3', spots: '#fb7185', detail: '#9f1239', ring: '#ffe4e6' }
+      };
+
+      const c = themes[eggType] || themes.dratini;
+      const uid = 'egg_' + eggType + '_' + Math.random().toString(36).substr(2, 4);
+
+      return `
+        <svg class="pokemon-svg animated-egg" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="gradMain_${uid}" cx="30%" cy="25%" r="75%">
+              <stop offset="0%" stop-color="${c.base2}" />
+              <stop offset="55%" stop-color="${c.base1}" />
+              <stop offset="100%" stop-color="${c.detail}" />
+            </radialGradient>
+            <radialGradient id="gradHighlight_${uid}" cx="35%" cy="20%" r="35%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85" />
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+            </radialGradient>
+            <filter id="shadow_${uid}" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="10" stdDeviation="5" flood-color="#000000" flood-opacity="0.45"/>
+            </filter>
+            <clipPath id="eggClip_${uid}">
+              <path d="M 50 8 C 22 8 8 45 8 76 C 8 102 27 116 50 116 C 73 116 92 102 92 76 C 92 45 78 8 50 8 Z" />
+            </clipPath>
+          </defs>
+
+          <!-- 알 그림자 및 베이스 -->
+          <g filter="url(#shadow_${uid})">
+            <path d="M 50 8 C 22 8 8 45 8 76 C 8 102 27 116 50 116 C 73 116 92 102 92 76 C 92 45 78 8 50 8 Z"
+                  fill="url(#gradMain_${uid})" stroke="${c.detail}" stroke-width="2"/>
+          </g>
+
+          <!-- 내부 정교한 무늬 -->
+          <g clip-path="url(#eggClip_${uid})">
+            <ellipse cx="30" cy="48" rx="15" ry="20" fill="${c.spots}" opacity="0.9" transform="rotate(-18 30 48)"/>
+            <ellipse cx="72" cy="62" rx="14" ry="18" fill="${c.spots}" opacity="0.9" transform="rotate(22 72 62)"/>
+            <ellipse cx="46" cy="94" rx="18" ry="12" fill="${c.spots}" opacity="0.9" transform="rotate(4 46 94)"/>
+            <circle cx="58" cy="26" r="9" fill="${c.spots}" opacity="0.85"/>
+            
+            <!-- 입체 하이라이트 층 -->
+            <path d="M 50 8 C 22 8 8 45 8 76 C 8 102 27 116 50 116 C 73 116 92 102 92 76 C 92 45 78 8 50 8 Z"
+                  fill="url(#gradHighlight_${uid})" />
+          </g>
+
+          <!-- 입체 광택 림라이트 -->
+          <path d="M 50 10 C 28 10 12 45 11 74 C 18 42 36 16 50 10 Z" fill="#ffffff" opacity="0.45"/>
+        </svg>
+      `;
+    }
+
+    const TYPE_CHART = {
+      "노말": { "바위": 0.5, "고스트": 0, "강철": 0.5 },
+      "불꽃": { "불꽃": 0.5, "물": 0.5, "풀": 2, "얼음": 2, "벌레": 2, "바위": 0.5, "드래곤": 0.5, "강철": 2 },
+      "물": { "불꽃": 2, "물": 0.5, "풀": 0.5, "땅": 2, "바위": 2, "드래곤": 0.5 },
+      "풀": { "불꽃": 0.5, "물": 2, "풀": 0.5, "독": 0.5, "땅": 2, "비행": 0.5, "벌레": 0.5, "바위": 2, "드래곤": 0.5, "강철": 0.5 },
+      "전기": { "물": 2, "풀": 0.5, "전기": 0.5, "땅": 0, "비행": 2, "드래곤": 0.5 },
+      "얼음": { "불꽃": 0.5, "물": 0.5, "풀": 2, "얼음": 0.5, "땅": 2, "비행": 2, "드래곤": 2, "강철": 0.5 },
+      "격투": { "노말": 2, "얼음": 2, "독": 0.5, "비행": 0.5, "에스퍼": 0.5, "벌레": 0.5, "바위": 2, "고스트": 0, "악": 2, "강철": 2, "페어리": 0.5 },
+      "독": { "풀": 2, "독": 0.5, "땅": 0.5, "바위": 0.5, "고스트": 0.5, "강철": 0, "페어리": 2 },
+      "땅": { "불꽃": 2, "풀": 0.5, "전기": 2, "독": 2, "비행": 0, "벌레": 0.5, "바위": 2, "강철": 2 },
+      "비행": { "풀": 2, "전기": 0.5, "격투": 2, "벌레": 2, "바위": 0.5, "강철": 0.5 },
+      "에스퍼": { "격투": 2, "독": 2, "에스퍼": 0.5, "악": 0, "강철": 0.5 },
+      "벌레": { "불꽃": 0.5, "풀": 2, "격투": 0.5, "독": 0.5, "비행": 0.5, "에스퍼": 2, "고스트": 0.5, "악": 2, "강철": 0.5, "페어리": 0.5 },
+      "바위": { "불꽃": 2, "얼음": 2, "격투": 0.5, "땅": 0.5, "비행": 2, "벌레": 2, "강철": 0.5 },
+      "고스트": { "노말": 0, "에스퍼": 2, "고스트": 2, "악": 0.5 },
+      "드래곤": { "드래곤": 2, "강철": 0.5, "페어리": 0 },
+      "악": { "격투": 0.5, "에스퍼": 2, "고스트": 2, "악": 0.5, "페어리": 0.5 },
+      "강철": { "불꽃": 0.5, "물": 0.5, "전기": 0.5, "얼음": 2, "바위": 2, "강철": 0.5, "페어리": 2 },
+      "페어리": { "불꽃": 0.5, "격투": 2, "독": 0.5, "드래곤": 2, "악": 2, "강철": 0.5 }
+    };
+
+    function getTypeEffectiveness(moveType, defenderTypes) {
+      let multiplier = 1.0;
+      for (const dType of defenderTypes) {
+        if (TYPE_CHART[moveType] && TYPE_CHART[moveType][dType] !== undefined) {
+          multiplier *= TYPE_CHART[moveType][dType];
+        }
+      }
+      return multiplier;
+    }
+
+    const POKEMON_TREES = [
+      [
+        { name: "알", eggKey: "dratini", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "미뇽", sprite: "https://play.pokemonshowdown.com/sprites/ani/dratini.gif", type: ["드래곤"], move: "용의파동", moveType: "드래곤" },
+        { name: "신뇽", sprite: "https://play.pokemonshowdown.com/sprites/ani/dragonair.gif", type: ["드래곤"], move: "드래곤다이브", moveType: "드래곤" },
+        { name: "망나뇽", sprite: "https://play.pokemonshowdown.com/sprites/ani/dragonite.gif", type: ["드래곤", "비행"], move: "역린", moveType: "드래곤" }
+      ],
+      [
+        { name: "알", eggKey: "gastly", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "고오스", sprite: "https://play.pokemonshowdown.com/sprites/ani/gastly.gif", type: ["고스트", "독"], move: "섀도볼", moveType: "고스트" },
+        { name: "고우스트", sprite: "https://play.pokemonshowdown.com/sprites/ani/haunter.gif", type: ["고스트", "독"], move: "악몽", moveType: "고스트" },
+        { name: "팬텀", sprite: "https://play.pokemonshowdown.com/sprites/ani/gengar.gif", type: ["고스트", "독"], move: "병상첨병", moveType: "고스트" }
+      ],
+      [
+        { name: "알", eggKey: "abra", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "케이시", sprite: "https://play.pokemonshowdown.com/sprites/ani/abra.gif", type: ["에스퍼"], move: "환상빔", moveType: "에스퍼" },
+        { name: "윤겔라", sprite: "https://play.pokemonshowdown.com/sprites/ani/kadabra.gif", type: ["에스퍼"], move: "사이코키네시스", moveType: "에스퍼" },
+        { name: "후딘",   sprite: "https://play.pokemonshowdown.com/sprites/ani/alakazam.gif", type: ["에스퍼"], move: "미래예지", moveType: "에스퍼" }
+      ],
+      [
+        { name: "알", eggKey: "charmander", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "파이리", sprite: "https://play.pokemonshowdown.com/sprites/ani/charmander.gif", type: ["불꽃"], move: "불꽃세례", moveType: "불꽃" },
+        { name: "리자드", sprite: "https://play.pokemonshowdown.com/sprites/ani/charmeleon.gif", type: ["불꽃"], move: "화염방사", moveType: "불꽃" },
+        { name: "리자몽", sprite: "https://play.pokemonshowdown.com/sprites/ani/charizard.gif", type: ["불꽃", "비행"], move: "불대문자", moveType: "불꽃" }
+      ],
+      [
+        { name: "알", eggKey: "pichu", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "피츄",   sprite: "https://play.pokemonshowdown.com/sprites/ani/pichu.gif", type: ["전기"], move: "전기쇼크", moveType: "전기" },
+        { name: "피카츄", sprite: "https://play.pokemonshowdown.com/sprites/ani/pikachu.gif", type: ["전기"], move: "10만볼트", moveType: "전기" },
+        { name: "라이츄", sprite: "https://play.pokemonshowdown.com/sprites/ani/raichu.gif", type: ["전기"], move: "번개", moveType: "전기" }
+      ],
+      [
+        { name: "알", eggKey: "squirtle", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "꼬부기", sprite: "https://play.pokemonshowdown.com/sprites/ani/squirtle.gif", type: ["물"], move: "물대포", moveType: "물" },
+        { name: "어니부기", sprite: "https://play.pokemonshowdown.com/sprites/ani/wartortle.gif", type: ["물"], move: "파도타기", moveType: "물" },
+        { name: "거북왕", sprite: "https://play.pokemonshowdown.com/sprites/ani/blastoise.gif", type: ["물"], move: "하이드로펌프", moveType: "물" }
+      ],
+      [
+        { name: "알", eggKey: "bulbasaur", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "이상해씨", sprite: "https://play.pokemonshowdown.com/sprites/ani/bulbasaur.gif", type: ["풀", "독"], move: "덩굴채찍", moveType: "풀" },
+        { name: "이상해풀", sprite: "https://play.pokemonshowdown.com/sprites/ani/ivysaur.gif", type: ["풀", "독"], move: "잎날가르기", moveType: "풀" },
+        { name: "이상해꽃", sprite: "https://play.pokemonshowdown.com/sprites/ani/venusaur.gif", type: ["풀", "독"], move: "솔라빔", moveType: "풀" }
+      ],
+      [
+        { name: "알", eggKey: "caterpie", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "캐터피", sprite: "https://play.pokemonshowdown.com/sprites/ani/caterpie.gif", type: ["벌레"], move: "벌레먹기", moveType: "벌레" },
+        { name: "단데기", sprite: "https://play.pokemonshowdown.com/sprites/ani/metapod.gif", type: ["벌레"], move: "벌레먹기", moveType: "벌레" },
+        { name: "버터플", sprite: "https://play.pokemonshowdown.com/sprites/ani/butterfree.gif", type: ["벌레", "비행"], move: "바람일으키기", moveType: "비행" }
+      ],
+      [
+        { name: "알", eggKey: "weedle", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "뿔충이", sprite: "https://play.pokemonshowdown.com/sprites/ani/weedle.gif", type: ["벌레", "독"], move: "독침", moveType: "독" },
+        { name: "딱충이", sprite: "https://play.pokemonshowdown.com/sprites/ani/kakuna.gif", type: ["벌레", "독"], move: "벌레먹기", moveType: "벌레" },
+        { name: "독침붕", sprite: "https://play.pokemonshowdown.com/sprites/ani/beedrill.gif", type: ["벌레", "독"], move: "바늘미사일", moveType: "벌레" }
+      ],
+      [
+        { name: "알", eggKey: "geodude", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "꼬마돌", sprite: "https://play.pokemonshowdown.com/sprites/ani/geodude.gif", type: ["바위", "땅"], move: "돌날리기", moveType: "바위" },
+        { name: "데구리", sprite: "https://play.pokemonshowdown.com/sprites/ani/graveler.gif", type: ["바위", "땅"], move: "락블라스트", moveType: "바위" },
+        { name: "딱구리", sprite: "https://play.pokemonshowdown.com/sprites/ani/golem.gif", type: ["바위", "땅"], move: "스톤샤워", moveType: "바위" }
+      ],
+      [
+        { name: "알", eggKey: "cleffa", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "삐",     sprite: "https://play.pokemonshowdown.com/sprites/ani/cleffa.gif", type: ["페어리"], move: "막치기", moveType: "노말" },
+        { name: "삐삐",   sprite: "https://play.pokemonshowdown.com/sprites/ani/clefairy.gif", type: ["페어리"], move: "연속뺨치기", moveType: "노말" },
+        { name: "픽시",   sprite: "https://play.pokemonshowdown.com/sprites/ani/clefable.gif", type: ["페어리"], move: "달의불빛", moveType: "페어리" }
+      ],
+      [
+        { name: "알", eggKey: "igglybuff", type: ["노말"], move: "몸통박치기", moveType: "노말" },
+        { name: "푸푸린", sprite: "https://play.pokemonshowdown.com/sprites/ani/igglybuff.gif", type: ["노말", "페어리"], move: "막치기", moveType: "노말" },
+        { name: "푸린",   sprite: "https://play.pokemonshowdown.com/sprites/ani/jigglypuff.gif", type: ["노말", "페어리"], move: "하이퍼보이스", moveType: "노말" },
+        { name: "푸크린", sprite: "https://play.pokemonshowdown.com/sprites/ani/wigglytuff.gif", type: ["노말", "페어리"], move: "이중치기", moveType: "노말" }
+      ]
+    ];
+
+    const OPTION_NAMES = [
+      "미뇽 계열 (드래곤)", "고오스 계열 (고스트/독)", "케이시 계열 (에스퍼)",
+      "파이리 계열 (불꽃)", "피츄 계열 (전기)", "꼬부기 계열 (물)",
+      "이상해씨 계열 (풀/독)", "캐터피 계열 (벌레/비행)", "뿔충이 계열 (벌레/독)",
+      "꼬마돌 계열 (바위/땅)", "삐 계열 (페어리)", "푸푸린 계열 (노말/페어리)"
+    ];
+
+    function initSelectionModalUI() {
+      const container = document.getElementById("pokemon-options-container");
+      container.innerHTML = "";
+      POKEMON_TREES.forEach((tree, idx) => {
+        const eggKey = tree[0].eggKey;
+        const card = document.createElement("div");
+        card.className = "option-card";
+        card.onclick = () => selectPokemon(idx);
+        card.innerHTML = `${generateEggSVG(eggKey)}<div class="option-name">${OPTION_NAMES[idx]}</div>`;
+        container.appendChild(card);
+      });
+    }
+
+    const WILD_POKEMON_LIST = [
+      { name: "고오스", sprite: "https://play.pokemonshowdown.com/sprites/ani/gastly.gif", type: ["고스트", "독"], attackType: "고스트" },
+      { name: "팬텀", sprite: "https://play.pokemonshowdown.com/sprites/ani/gengar.gif", type: ["고스트", "독"], attackType: "고스트" },
+      { name: "케이시", sprite: "https://play.pokemonshowdown.com/sprites/ani/abra.gif", type: ["에스퍼"], attackType: "에스퍼" },
+      { name: "윤겔라", sprite: "https://play.pokemonshowdown.com/sprites/ani/kadabra.gif", type: ["에스퍼"], attackType: "에스퍼" },
+      { name: "후딘", sprite: "https://play.pokemonshowdown.com/sprites/ani/alakazam.gif", type: ["에스퍼"], attackType: "에스퍼" },
+      { name: "파이리", sprite: "https://play.pokemonshowdown.com/sprites/ani/charmander.gif", type: ["불꽃"], attackType: "불꽃" },
+      { name: "리자몽", sprite: "https://play.pokemonshowdown.com/sprites/ani/charizard.gif", type: ["불꽃", "비행"], attackType: "불꽃" },
+      { name: "피츄", sprite: "https://play.pokemonshowdown.com/sprites/ani/pichu.gif", type: ["전기"], attackType: "전기" },
+      { name: "피카츄", sprite: "https://play.pokemonshowdown.com/sprites/ani/pikachu.gif", type: ["전기"], attackType: "전기" },
+      { name: "꼬부기", sprite: "https://play.pokemonshowdown.com/sprites/ani/squirtle.gif", type: ["물"], attackType: "물" },
+      { name: "거북왕", sprite: "https://play.pokemonshowdown.com/sprites/ani/blastoise.gif", type: ["물"], attackType: "물" },
+      { name: "이상해씨", sprite: "https://play.pokemonshowdown.com/sprites/ani/bulbasaur.gif", type: ["풀", "독"], attackType: "풀" },
+      { name: "이상해꽃", sprite: "https://play.pokemonshowdown.com/sprites/ani/venusaur.gif", type: ["풀", "독"], attackType: "풀" },
+      { name: "캐터피", sprite: "https://play.pokemonshowdown.com/sprites/ani/caterpie.gif", type: ["벌레"], attackType: "벌레" },
+      { name: "버터플", sprite: "https://play.pokemonshowdown.com/sprites/ani/butterfree.gif", type: ["벌레", "비행"], attackType: "비행" },
+      { name: "꼬렛", sprite: "https://play.pokemonshowdown.com/sprites/ani/rattata.gif", type: ["노말"], attackType: "노말" },
+      { name: "구구", sprite: "https://play.pokemonshowdown.com/sprites/ani/pidgey.gif", type: ["노말", "비행"], attackType: "비행" },
+      { name: "아보", sprite: "https://play.pokemonshowdown.com/sprites/ani/ekans.gif", type: ["독"], attackType: "독" },
+      { name: "고라파덕", sprite: "https://play.pokemonshowdown.com/sprites/ani/psyduck.gif", type: ["물"], attackType: "물" },
+      { name: "꼬마돌", sprite: "https://play.pokemonshowdown.com/sprites/ani/geodude.gif", type: ["바위", "땅"], attackType: "바위" },
+      { name: "잠만보", sprite: "https://play.pokemonshowdown.com/sprites/ani/snorlax.gif", type: ["노말"], attackType: "노말" }
+    ];
+
+    const DEFAULT_DATA = {
+      typeIndex: null,
+      fullness: 70,
+      happiness: 70,
+      cleanliness: 70,
+      energy: 70,
+      exp: 0,
+      level: 1,
+      isSick: false
+    };
+
+    let gameState = { ...DEFAULT_DATA };
+    let isEvolving = false;
+
+    let battleState = {
+      active: false,
+      playerHp: 100,
+      playerMaxHp: 100,
+      enemyHp: 100,
+      enemyMaxHp: 100,
+      enemy: null,
+      moves: [],
+      isGuarding: false,
+      turnLocked: false
+    };
+
+    function getMaxExp() { return 100 + (gameState.level - 1) * 200; }
+    
+    const SAVE_KEY = 'pokemon_game_deluxe_v3_save';
+    
+    function saveData() {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+      } catch (e) {
+        console.warn("저장을 완료하지 못했습니다.", e);
+      }
+    }
+
+    function loadData() {
+      try {
+        const saved = localStorage.getItem(SAVE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            gameState = { ...DEFAULT_DATA, ...parsed };
+          }
+        }
+      } catch (e) {
+        console.warn("데이터 로드 실패:", e);
+        gameState = { ...DEFAULT_DATA };
+      }
+    }
+
+    function confirmReset() {
+      if (isEvolving || battleState.active) return;
+      playSound('click');
+      if (confirm("모든 저장 기록을 삭제하고 처음부터 다시 시작하시겠습니까?")) {
+        try {
+          localStorage.removeItem(SAVE_KEY);
+        } catch(e) {}
+        gameState = { ...DEFAULT_DATA };
+        document.getElementById("select-modal").classList.remove("hidden");
+        showSpeech("기록이 성공적으로 초기화되었습니다.");
+        updateUI();
+      }
+    }
+
+    function openChangePokemon() {
+      if (isEvolving || battleState.active) return;
+      playSound('click');
+      document.getElementById("select-modal").classList.remove("hidden");
+    }
+
+    function selectPokemon(idx) {
+      playSound('click');
+      gameState.typeIndex = idx;
+      gameState.level = 1;
+      gameState.exp = 0;
+      document.getElementById("select-modal").classList.add("hidden");
+      showSpeech("새로운 알을 선택했습니다! 정성껏 키워보세요.");
+      updateUI();
+    }
+
+    function clamp(val) { return Math.min(100, Math.max(0, val)); }
+
+    function getStatusText() {
+      if (gameState.isSick) return "상태: 아픔 (치료 필요)";
+      const avg = (gameState.fullness + gameState.happiness + gameState.cleanliness + gameState.energy) / 4;
+      if (avg >= 70) return "상태: 좋음";
+      if (avg >= 30) return "상태: 보통";
+      return "상태: 나쁨";
+    }
+
+    function getBarColor(val) {
+      if (val > 50) return "#22c55e";
+      if (val > 20) return "#eab308";
+      return "#ef4444";
+    }
+
+    function renderPokemonDisplay(targetElem, stageData) {
+      if (stageData.eggKey) {
+        targetElem.innerHTML = generateEggSVG(stageData.eggKey);
+      } else {
+        targetElem.innerHTML = `<img class="pokemon-img" src="${stageData.sprite}" alt="${stageData.name}">`;
+      }
+    }
+
+    function updateUI() {
+      if (gameState.typeIndex === null) {
+        document.getElementById("select-modal").classList.remove("hidden");
+        return;
+      }
+
+      updateBar("fullness-bar", gameState.fullness);
+      updateBar("happiness-bar", gameState.happiness);
+      updateBar("cleanliness-bar", gameState.cleanliness);
+      updateBar("energy-bar", gameState.energy);
+
+      const maxExp = getMaxExp();
+      const expPercent = Math.min(100, (gameState.exp / maxExp) * 100);
+      document.getElementById("exp-bar").style.width = expPercent + "%";
+      document.getElementById("exp-text").innerText = `${gameState.exp} / ${maxExp}`;
+
+      const tree = POKEMON_TREES[gameState.typeIndex];
+      const stageIdx = Math.min(gameState.level - 1, tree.length - 1);
+      const currentStage = tree[stageIdx];
+
+      document.getElementById("stage-title").innerText = `${currentStage.name} (Lv.${gameState.level})`;
+      
+      const displayWrap = document.getElementById("pokemon-display");
+      renderPokemonDisplay(displayWrap, currentStage);
+
+      // 포켓몬 계열에 따른 고유 배경 테마 클래스 자동 적용
+      const stageArea = document.getElementById("stage-area");
+      stageArea.className = "pokemon-stage theme-" + tree[0].eggKey;
+
+      document.getElementById("status-text").innerText = getStatusText();
+
+      const healBtn = document.getElementById("heal-btn");
+      if (gameState.isSick) {
+        displayWrap.classList.add("sick-filter");
+        healBtn.style.display = "block";
+      } else {
+        displayWrap.classList.remove("sick-filter");
+        healBtn.style.display = "none";
+      }
+
+      saveData();
+    }
+
+    function updateBar(id, val) {
+      const bar = document.getElementById(id);
+      bar.style.width = val + "%";
+      bar.style.backgroundColor = getBarColor(val);
+    }
+
+    function showSpeech(text) {
+      document.getElementById("speech-bubble").innerText = text;
+    }
+
+    function movePokemonToClick(e) {
+      if (isEvolving || battleState.active) return;
+      const stage = document.getElementById("stage-area");
+      const wrap = document.getElementById("pokemon-wrap");
+      const shadow = document.getElementById("pokemon-shadow");
+      const rect = stage.getBoundingClientRect();
+
+      const relX = (e.clientX - rect.left) / rect.width;
+      const relY = (e.clientY - rect.top) / rect.height;
+
+      const normX = (relX - 0.5) * 2;
+      const normY = (relY - 0.5) * 2;
+
+      const distFromCenter = Math.min(1, Math.sqrt(normX * normX + normY * normY));
+      const hillHeight = Math.cos(distFromCenter * (Math.PI / 2));
+
+      const posX = relX * 100;
+      const posY = 15 + hillHeight * 40;
+      const scale = 0.75 + hillHeight * 0.45;
+
+      wrap.style.left = `${posX}%`;
+      wrap.style.bottom = `${posY}px`;
+      wrap.style.transform = `translateX(-50%) scale(${scale})`;
+
+      shadow.style.width = `${60 * scale}px`;
+      shadow.style.opacity = `${0.2 + hillHeight * 0.3}`;
+      playSound('click');
+    }
+
+    function addExp(amount) {
+      gameState.exp += amount;
+      const maxExp = getMaxExp();
+      if (gameState.exp >= maxExp) {
+        gameState.exp -= maxExp;
+        gameState.level += 1;
+        playSound('levelup');
+        showSpeech(`축하합니다! Lv.${gameState.level}로 레벨업했습니다!`);
+        checkEvolution();
+      }
+    }
+
+    function checkEvolution() {
+      const tree = POKEMON_TREES[gameState.typeIndex];
+      if (gameState.level === 2 && tree.length > 1) {
+        triggerEvolution(tree[1]);
+      } else if (gameState.level === 3 && tree.length > 2) {
+        triggerEvolution(tree[2]);
+      } else if (gameState.level === 4 && tree.length > 3) {
+        triggerEvolution(tree[3]);
+      }
+    }
+
+    function triggerEvolution(nextStage) {
+      isEvolving = true;
+      const overlay = document.getElementById("lock-overlay");
+      overlay.classList.add("active");
+      
+      const isHatching = (gameState.level === 2);
+      overlay.querySelector("span").innerText = isHatching ? `...!? 알이 부화하고 있다!` : `...!? ${nextStage.name}(으)로 진화 중!`;
+
+      setTimeout(() => {
+        overlay.classList.remove("active");
+        isEvolving = false;
+        showSpeech(isHatching ? `축하합니다! ${nextStage.name}(이)가 알에서 태어났습니다!` : `짠! ${nextStage.name}(으)로 진화했습니다!`);
+        updateUI();
+      }, 2500);
+    }
+
+    function feed() {
+      if (isEvolving || battleState.active) return;
+      playSound('feed');
+      gameState.fullness = clamp(gameState.fullness + 25);
+      gameState.energy = clamp(gameState.energy + 5);
+      showSpeech("맛있게 먹었습니다! (포만감 +25)");
+      updateUI();
+    }
+
+    function play() {
+      if (isEvolving || battleState.active) return;
+      if (gameState.energy < 15) return showSpeech("너무 지쳐서 놀 수 없습니다.");
+      playSound('click');
+      gameState.happiness = clamp(gameState.happiness + 20);
+      gameState.energy = clamp(gameState.energy - 15);
+      gameState.cleanliness = clamp(gameState.cleanliness - 10);
+      addExp(15);
+      showSpeech("신나게 놀았습니다! (행복도 +20, 경험치 +15)");
+      updateUI();
+    }
+
+    function clean() {
+      if (isEvolving || battleState.active) return;
+      playSound('click');
+      gameState.cleanliness = 100;
+      showSpeech("깨끗하게 씻었습니다! (청결도 100%)");
+      updateUI();
+    }
+
+    function sleep() {
+      if (isEvolving || battleState.active) return;
+      playSound('click');
+      gameState.energy = 100;
+      gameState.fullness = clamp(gameState.fullness - 15);
+      showSpeech("푹 쉬고 기력을 되찾았습니다! (에너지 100%)");
+      updateUI();
+    }
+
+    function heal() {
+      if (isEvolving || battleState.active) return;
+      playSound('heal');
+      gameState.isSick = false;
+      showSpeech("치료 완료! 다시 기운을 되찾았습니다.");
+      updateUI();
+    }
+
+    function playRSP(playerChoice) {
+      if (isEvolving || battleState.active) return;
+      const choices = ['가위', '바위', '보'];
+      const enemyChoice = choices[Math.floor(Math.random() * 3)];
+
+      if (playerChoice === enemyChoice) {
+        playSound('click');
+        showSpeech(`가위바위보: 비겼습니다! (나: ${playerChoice}, 상대: ${enemyChoice})`);
+      } else if (
+        (playerChoice === '가위' && enemyChoice === '보') ||
+        (playerChoice === '바위' && enemyChoice === '가위') ||
+        (playerChoice === '보' && enemyChoice === '바위')
+      ) {
+        playSound('win');
+        gameState.happiness = clamp(gameState.happiness + 15);
+        addExp(20);
+        showSpeech(`가위바위보 승리! (행복도 +15, 경험치 +20)`);
+      } else {
+        playSound('lose');
+        gameState.happiness = clamp(gameState.happiness - 5);
+        showSpeech(`가위바위보 패배... (행복도 -5)`);
+      }
+      updateUI();
+    }
+
+    // 들판 턴제 배틀 로직
+    function startBattle() {
+      if (isEvolving || gameState.typeIndex === null) return;
+      if (gameState.energy < 20) {
+        return showSpeech("에너지가 부족하여 대결을 할 수 없습니다! (20 필요)");
+      }
+      if (gameState.isSick) {
+        return showSpeech("아픈 상태에서는 대결에 나갈 수 없습니다! 치료해주세요.");
+      }
+
+      playSound('click');
+      const tree = POKEMON_TREES[gameState.typeIndex];
+      const stageIdx = Math.min(gameState.level - 1, tree.length - 1);
+      const playerStage = tree[stageIdx];
+
+      const enemyData = WILD_POKEMON_LIST[Math.floor(Math.random() * WILD_POKEMON_LIST.length)];
+
+      battleState = {
+        active: true,
+        playerHp: 80 + gameState.level * 20,
+        playerMaxHp: 80 + gameState.level * 20,
+        enemyHp: 60 + gameState.level * 18,
+        enemyMaxHp: 60 + gameState.level * 18,
+        enemy: enemyData,
+        moves: [
+          { name: "몸통박치기", type: "attack", moveType: "노말", power: 20, pp: 15, maxPp: 15 },
+          { name: playerStage.move, type: "special", moveType: playerStage.moveType, power: 35, pp: 10, maxPp: 10 },
+          { name: "방어", type: "guard", moveType: "노말", power: 0, pp: 5, maxPp: 5 },
+          { name: "HP 회복", type: "heal", moveType: "노말", power: 30, pp: 5, maxPp: 5 }
+        ],
+        isGuarding: false,
+        turnLocked: false
+      };
+
+      document.getElementById("player-battle-name").innerText = `${playerStage.name} (Lv.${gameState.level})`;
+      renderPokemonDisplay(document.getElementById("player-battle-img-wrap"), playerStage);
+
+      document.getElementById("enemy-name").innerText = `야생 ${enemyData.name}`;
+      document.getElementById("enemy-img").src = enemyData.sprite;
+
+      document.getElementById("battle-log").innerText = `푸른 들판에서 야생 ${enemyData.name}(이)가 나타났다!`;
+      
+      updateBattleUI();
+      document.getElementById("battle-modal").classList.remove("hidden");
+    }
+
+    function updateBattleUI() {
+      const pPercent = Math.max(0, (battleState.playerHp / battleState.playerMaxHp) * 100);
+      const ePercent = Math.max(0, (battleState.enemyHp / battleState.enemyMaxHp) * 100);
+
+      const pBar = document.getElementById("player-hp-bar");
+      pBar.style.width = pPercent + "%";
+      pBar.style.backgroundColor = getBarColor(pPercent);
+
+      const eBar = document.getElementById("enemy-hp-bar");
+      eBar.style.width = ePercent + "%";
+      eBar.style.backgroundColor = getBarColor(ePercent);
+
+      for (let i = 0; i < 4; i++) {
+        const move = battleState.moves[i];
+        document.getElementById(`move-name-${i}`).innerText = move.name;
+        document.getElementById(`move-pp-${i}`).innerText = `PP ${move.pp}/${move.maxPp}`;
+        document.getElementById(`btn-move-${i}`).disabled = (move.pp <= 0 || battleState.turnLocked);
+      }
+      document.getElementById("btn-run").disabled = battleState.turnLocked;
+    }
+
+    function setBattleLog(text) {
+      document.getElementById("battle-log").innerText = text;
+    }
+
+    function useMove(idx) {
+      if (battleState.turnLocked || !battleState.active) return;
+      const move = battleState.moves[idx];
+      if (move.pp <= 0) return;
+
+      move.pp--;
+      battleState.turnLocked = true;
+      battleState.isGuarding = false;
+
+      const tree = POKEMON_TREES[gameState.typeIndex];
+      const stageIdx = Math.min(gameState.level - 1, tree.length - 1);
+      const pName = tree[stageIdx].name;
+
+      if (move.type === 'attack' || move.type === 'special') {
+        playSound('click');
+        const mult = getTypeEffectiveness(move.moveType, battleState.enemy.type);
+        const rawDmg = Math.floor(move.power * (1 + gameState.level * 0.1) * (0.9 + Math.random() * 0.2));
+        const dmg = Math.floor(rawDmg * mult);
+
+        battleState.enemyHp -= dmg;
+
+        let effText = "";
+        if (mult === 0) effText = " 효과가 없는 듯하다...";
+        else if (mult > 1) effText = " 효과가 뛰어났다!";
+        else if (mult < 1) effText = " 효과가 별로인 듯하다...";
+
+        setBattleLog(`${pName}의 ${move.name}! ${dmg}의 데미지!${effText}`);
+      } else if (move.type === 'guard') {
+        playSound('click');
+        battleState.isGuarding = true;
+        setBattleLog(`${pName}(은)는 방어 태세를 취했다!`);
+      } else if (move.type === 'heal') {
+        playSound('heal');
+        const healAmt = Math.floor(battleState.playerMaxHp * 0.4);
+        battleState.playerHp = Math.min(battleState.playerMaxHp, battleState.playerHp + healAmt);
+        setBattleLog(`${pName}(은)는 체력을 회복했다! (+${healAmt})`);
+      }
+
+      updateBattleUI();
+
+      if (battleState.enemyHp <= 0) {
+        setTimeout(() => winBattle(), 1000);
+      } else {
+        setTimeout(() => enemyTurn(), 1200);
+      }
+    }
+
+    function enemyTurn() {
+      if (!battleState.active) return;
+      const eName = battleState.enemy.name;
+      const tree = POKEMON_TREES[gameState.typeIndex];
+      const stageIdx = Math.min(gameState.level - 1, tree.length - 1);
+      const pTypes = tree[stageIdx].type;
+
+      const mult = getTypeEffectiveness(battleState.enemy.attackType || "노말", pTypes);
+      const baseDmg = Math.floor((15 + gameState.level * 3) * (0.8 + Math.random() * 0.4));
+      
+      let finalDmg = Math.floor(baseDmg * mult);
+      if (battleState.isGuarding) {
+        finalDmg = Math.floor(finalDmg * 0.3);
+      }
+
+      battleState.playerHp -= finalDmg;
+      playSound('lose');
+
+      let effText = "";
+      if (mult === 0) effText = " (효과가 없다!)";
+      else if (mult > 1) effText = " (효과가 뛰어났다!)";
+      else if (mult < 1) effText = " (효과가 별로다...)";
+      
+      if (battleState.isGuarding) {
+        setBattleLog(`야생 ${eName}의 공격! 방어하여 ${finalDmg}의 데미지만 입었다!${effText}`);
+      } else {
+        setBattleLog(`야생 ${eName}의 공격! ${finalDmg}의 데미지를 입었다!${effText}`);
+      }
+
+      updateBattleUI();
+
+      if (battleState.playerHp <= 0) {
+        setTimeout(() => loseBattle(), 1000);
+      } else {
+        battleState.turnLocked = false;
+        updateBattleUI();
+      }
+    }
+
+    function winBattle() {
+      playSound('win');
+      setBattleLog(`승리했다! 야생 ${battleState.enemy.name}(을)를 쓰러뜨렸다!`);
+      gameState.energy = clamp(gameState.energy - 20);
+      gameState.happiness = clamp(gameState.happiness + 15);
+      
+      setTimeout(() => {
+        endBattle();
+        addExp(40 + gameState.level * 10);
+        showSpeech(`배틀에서 승리했습니다! (경험치 +${40 + gameState.level * 10})`);
+      }, 1200);
+    }
+
+    function loseBattle() {
+      playSound('lose');
+      setBattleLog(`패배했다... 눈앞이 캄캄해졌다!`);
+      gameState.energy = clamp(gameState.energy - 30);
+      gameState.happiness = clamp(gameState.happiness - 20);
+      gameState.isSick = true;
+
+      setTimeout(() => {
+        endBattle();
+        showSpeech(`배틀에서 패배하여 상처를 입었습니다. (치료 필요)`);
+      }, 1200);
+    }
+
+    function fleeBattle() {
+      if (battleState.turnLocked || !battleState.active) return;
+      playSound('click');
+      setBattleLog("무사히 도망쳤다!");
+      gameState.energy = clamp(gameState.energy - 10);
+      setTimeout(() => {
+        endBattle();
+        showSpeech("야생 대결에서 도망쳤습니다.");
+      }, 800);
+    }
+
+    function endBattle() {
+      battleState.active = false;
+      document.getElementById("battle-modal").classList.add("hidden");
+      updateUI();
+    }
+
+    window.onload = function() {
+      initSelectionModalUI();
+      loadData();
+      updateUI();
+    };
+  </script>
+</body>
+</html>

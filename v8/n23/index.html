@@ -1,0 +1,391 @@
+<!DOCTYPE html><html lang="ko"><head>    <meta charset="UTF-8">    <title>2D Backrooms: True Nightmare</title>    <style>        body {            background-color: #0b0b0b;            color: white;            font-family: 'Malgun Gothic', sans-serif;            text-align: center;            margin: 0;            padding: 15px;        }        h1 { margin: 5px 0; font-size: 24px; color: #ffe600; }        .info { margin-bottom: 10px; font-size: 14px; color: #aaa; }        canvas {            border: 4px solid #444;            background-color: #000;            box-shadow: 0 0 20px rgba(0,0,0,0.8);            outline: none;        }    </style></head><body>
+    <h1>2D Backrooms: Trapped</h1>    <div class="info">조작법: 화면 클릭 후 방향키 또는 W,A,S,D | 숨겨진 EXIT를 찾아 악몽 속을 탈출하세요!</div>        <canvas id="gameCanvas" width="900" height="650" tabindex="1"></canvas>
+    <script>        const canvas = document.getElementById("gameCanvas");        const ctx = canvas.getContext("2d");
+
+        // Web Audio API를 활용한 공포 BGM 시스템
+        let audioCtx = null;
+        let isBgmPlaying = false;
+
+        function startBGM() {
+            if (isBgmPlaying) return;
+            
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            isBgmPlaying = true;
+
+            // 음산한 드론(저음 지속음) 생성 루프
+            setInterval(() => {
+                if (!audioCtx) return;
+                try {
+                    let osc = audioCtx.createOscillator();
+                    let gainNode = audioCtx.createGain();
+
+                    // 불협화음과 공포스러운 분위기를 위한 낮은 주파수 설정
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(55, audioCtx.currentTime); // A1 음
+                    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 3);
+
+                    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 4);
+
+                    osc.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 4);
+                } catch (e) {
+                    // 브라우저 정책 관련 예외 처리
+                }
+            }, 3500);
+        }
+
+        window.onload = () => { canvas.focus(); };
+        canvas.addEventListener("click", () => { 
+            canvas.focus(); 
+            startBGM(); // 화면을 클릭하면 BGM이 음산하게 울려 퍼집니다.
+        });
+
+        let WORLD_WIDTH = 2400;
+        let WORLD_HEIGHT = 1800;
+
+        let player = {            x: 100,            y: 100,            width: 32,            height: 44,            speed: 5        };
+
+        let entities = [];
+        let endingNpc = null;
+
+        let currentLevel = 0;
+        let portal = { x: 0, y: 0, width: 45, height: 45 };
+        let walls = [];
+
+        function initLevel() {
+            walls = [];                    
+            entities = []; 
+            endingNpc = null;
+
+            if (currentLevel === 0) {
+                WORLD_WIDTH = 2400;
+                WORLD_HEIGHT = 1800;
+                portal.x = 2200; portal.y = 1600;
+                portal.width = 45; portal.height = 45;
+                player.x = 80; player.y = 80;
+
+                let pillarMaze = [
+                    {x: 300, y: 200, w: 120, h: 120},
+                    {x: 300, y: 600, w: 120, h: 120},
+                    {x: 300, y: 1000, w: 120, h: 120},
+                    {x: 300, y: 1400, w: 120, h: 120},
+                    {x: 700, y: 100, w: 120, h: 120},
+                    {x: 700, y: 500, w: 120, h: 120},
+                    {x: 700, y: 900, w: 120, h: 120},
+                    {x: 700, y: 1300, w: 120, h: 120},
+                    {x: 1100, y: 300, w: 120, h: 120},
+                    {x: 1100, y: 700, w: 120, h: 120},
+                    {x: 1100, y: 1100, w: 120, h: 120},
+                    {x: 1100, y: 1500, w: 120, h: 120},
+                    {x: 1500, y: 150, w: 120, h: 120},
+                    {x: 1500, y: 550, w: 120, h: 120},
+                    {x: 1500, y: 950, w: 120, h: 120},
+                    {x: 1500, y: 1400, w: 120, h: 120},
+                    {x: 1900, y: 200, w: 120, h: 120},
+                    {x: 1900, y: 700, w: 120, h: 120},
+                    {x: 1900, y: 1200, w: 120, h: 120}
+                ];
+                walls = pillarMaze;
+
+                entities.push({ x: 400, y: 400, width: 30, height: 44, speed: 2.0, canClip: false });
+                entities.push({ x: 1200, y: 1000, width: 30, height: 44, speed: 2.0, canClip: false });
+                entities.push({ x: 2200, y: 400, width: 30, height: 44, speed: 2.0, canClip: false });
+
+            } else if (currentLevel === 2) {
+                WORLD_WIDTH = 2400;
+                WORLD_HEIGHT = 1800;
+                portal.x = 2100; portal.y = 1500;
+                portal.width = 45; portal.height = 45;
+                player.x = 150; player.y = 150; 
+
+                let pipeCage = [
+                    {x: 0, y: 500, w: 600, h: 40},
+                    {x: 750, y: 0, w: 40, h: 600},
+                    {x: 400, y: 800, w: 500, h: 40},
+                    {x: 1100, y: 300, w: 40, h: 700},
+                    {x: 200, y: 1100, w: 700, h: 40},
+                    {x: 1200, y: 900, w: 800, h: 40},
+                    {x: 1500, y: 200, w: 40, h: 500},
+                    {x: 1800, y: 600, w: 40, h: 800},
+                    {x: 300, y: 1400, w: 900, h: 40},
+                    {x: 1300, y: 1400, w: 700, h: 40}
+                ];
+                walls = pipeCage;
+
+                entities.push({ x: 2200, y: 1600, width: 30, height: 44, speed: 1.6, canClip: true });
+
+            } else if (currentLevel === 99) {
+                WORLD_WIDTH = 900;
+                WORLD_HEIGHT = 650;
+                player.x = 50; 
+                player.y = 300;
+                walls = []; 
+                entities.push({ x: 400, y: 300, width: 30, height: 44, speed: 2.2, canClip: true });
+
+            } else if (currentLevel === 37) {
+                WORLD_WIDTH = 2400;
+                WORLD_HEIGHT = 1800;
+                portal.x = 2200; portal.y = 1600;
+                portal.width = 45; portal.height = 45;
+                player.x = 100; player.y = 100;
+
+                let poolMaze = [
+                    {x: 300, y: 0, w: 50, h: 1400},
+                    {x: 700, y: 400, w: 50, h: 1400},
+                    {x: 1100, y: 0, w: 50, h: 1400},
+                    {x: 1500, y: 400, w: 50, h: 1400},
+                    {x: 1900, y: 0, w: 50, h: 1400},
+                    {x: 100, y: 600, w: 400, h: 40},
+                    {x: 500, y: 1100, w: 400, h: 40},
+                    {x: 900, y: 600, w: 400, h: 40},
+                    {x: 1300, y: 1100, w: 400, h: 40}
+                ];
+                walls = poolMaze;
+
+                entities.push({ x: 1200, y: 800, width: 30, height: 44, speed: 1.8, canClip: false });
+
+            } else if (currentLevel === 40) {
+                WORLD_WIDTH = 900;
+                WORLD_HEIGHT = 650;
+                portal.x = -100; portal.y = -100; 
+                player.x = 100; player.y = 300;
+                walls = [];
+                endingNpc = { x: 500, y: 300, width: 32, height: 44, shocked: false };
+            }
+        }
+
+        let keys = {};                
+        window.addEventListener("keydown", (e) => {
+            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].indexOf(e.key) > -1) {
+                e.preventDefault();
+            }
+            keys[e.key] = true;
+            startBGM(); // 키를 눌러도 BGM이 시작됩니다.
+        });                
+        window.addEventListener("keyup", (e) => {
+            keys[e.key] = false;
+        });
+
+        function checkCollision(nx, ny, obj) {
+            let tempRect = { x: nx, y: ny, width: obj.width, height: obj.height };
+            for (let wall of walls) {
+                if (tempRect.x < wall.x + wall.w &&
+                    tempRect.x + tempRect.width > wall.x &&
+                    tempRect.y < wall.y + wall.h &&
+                    tempRect.y + tempRect.height > wall.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function update() {
+            let nextX = player.x;
+            let nextY = player.y;
+
+            if (keys["ArrowLeft"] || keys["a"] || keys["A"]) nextX -= player.speed;
+            if (keys["ArrowRight"] || keys["d"] || keys["D"]) nextX += player.speed;
+            if (nextX >= 0 && nextX <= WORLD_WIDTH - player.width && !checkCollision(nextX, player.y, player)) {
+                player.x = nextX;
+            }
+
+            if (keys["ArrowUp"] || keys["w"] || keys["W"]) nextY -= player.speed;
+            if (keys["ArrowDown"] || keys["s"] || keys["S"]) nextY += player.speed;
+            if (nextY >= 0 && nextY <= WORLD_HEIGHT - player.height && !checkCollision(player.x, nextY, player)) {
+                player.y = nextY;
+            }
+
+            if (currentLevel === 40 && endingNpc) {
+                let dist = Math.hypot((player.x + player.width/2) - (endingNpc.x + endingNpc.width/2), (player.y + player.height/2) - (endingNpc.y + endingNpc.height/2));
+                if (dist < 200) {
+                    endingNpc.shocked = true;
+                }
+            }
+
+            for (let ent of entities) {
+                let angle = Math.atan2(player.y - ent.y, player.x - ent.x);
+                let enX = ent.x + Math.cos(angle) * ent.speed;
+                let enY = ent.y + Math.sin(angle) * ent.speed;                
+
+                if (ent.canClip) {
+                    ent.x = enX;
+                    ent.y = enY;
+                } else {
+                    if (!checkCollision(enX, ent.y, ent)) ent.x = enX;
+                    if (!checkCollision(ent.x, enY, ent)) ent.y = enY;
+                }
+
+                if (player.x < ent.x + ent.width && player.x + player.width > ent.x &&
+                    player.y < ent.y + ent.height && player.y + player.height > ent.y) {
+                    alert("엔티티에게 잡혔습니다! 처음 레벨 0으로 돌아갑니다.");
+                    currentLevel = 0;
+                    initLevel();
+                    return;
+                }
+            }
+
+            let cleared = false;
+            if (currentLevel === 99) {
+                if (player.x + player.width >= WORLD_WIDTH - 10) {
+                    cleared = true;
+                }
+            } else if (currentLevel < 40) {
+                if (player.x < portal.x + portal.width && player.x + player.width > portal.x &&
+                    player.y < portal.y + portal.height && player.y + player.height > portal.y) {
+                    cleared = true;
+                }
+            }
+
+            if (cleared) {
+                if (currentLevel === 0) currentLevel = 2;
+                else if (currentLevel === 2) currentLevel = 99;
+                else if (currentLevel === 99) currentLevel = 37;
+                else if (currentLevel === 37) currentLevel = 40;
+                
+                initLevel();
+            }
+        }
+
+        function drawPlayer(x, y) {
+            if (currentLevel === 40) {
+                drawEntityAsPlayer(x, y);
+            } else {
+                ctx.fillStyle = "#ffcc00";
+                ctx.beginPath(); ctx.arc(x + 16, y + 8, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#e6b800";
+                ctx.fillRect(x + 6, y + 16, 20, 18);
+                ctx.fillStyle = "#443300";
+                ctx.fillRect(x + 2, y + 18, 4, 12);
+                ctx.fillRect(x + 26, y + 18, 4, 12);
+                ctx.fillRect(x + 7, y + 34, 6, 10);
+                ctx.fillRect(x + 19, y + 34, 6, 10);
+            }
+        }
+
+        function drawEntity(x, y) {
+            ctx.save();
+            ctx.strokeStyle = "#000000"; 
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#ff0000";
+            ctx.shadowBlur = 10;
+
+            ctx.fillStyle = "#000000";
+            ctx.beginPath(); ctx.arc(x + 15, y + 8, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 15, y + 15); ctx.lineTo(x + 15, y + 30); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 6, y + 20); ctx.lineTo(x + 24, y + 20); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 15, y + 30); ctx.lineTo(x + 6, y + 42); ctx.moveTo(x + 15, y + 30); ctx.lineTo(x + 24, y + 42); ctx.stroke();
+
+            ctx.fillStyle = "#ff0000";
+            ctx.fillRect(x + 12, y + 6, 2, 2);
+            ctx.fillRect(x + 16, y + 6, 2, 2);
+            ctx.restore();
+        }
+
+        function drawEntityAsPlayer(x, y) {
+            drawEntity(x - 2, y);
+        }
+
+        function drawNpc(npc) {
+            ctx.fillStyle = "#00ccff";
+            ctx.beginPath(); ctx.arc(npc.x + 16, npc.y + 8, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#0088cc";
+            ctx.fillRect(npc.x + 6, npc.y + 16, 20, 18);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(npc.x + 7, npc.y + 34, 6, 10);
+            ctx.fillRect(npc.x + 19, npc.y + 34, 6, 10);
+
+            if (npc.shocked) {
+                ctx.fillStyle = "#ff0000";
+                ctx.font = "bold 16px sans-serif";
+                ctx.fillText("?! 으아악 괴물이다!!", npc.x - 40, npc.y - 15);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let cameraX = 0;
+            let cameraY = 0;
+            
+            if (currentLevel !== 99 && currentLevel !== 40) {
+                cameraX = player.x - canvas.width / 2;
+                cameraY = player.y - canvas.height / 2;
+                cameraX = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, cameraX));
+                cameraY = Math.max(0, Math.min(WORLD_HEIGHT - canvas.height, cameraY));
+            }
+
+            ctx.save();
+            ctx.translate(-cameraX, -cameraY);
+
+            if (currentLevel === 0) ctx.fillStyle = "#EEDD82";
+            else if (currentLevel === 2) ctx.fillStyle = "#2c2c2c";
+            else if (currentLevel === 99) ctx.fillStyle = "#1a0000";
+            else if (currentLevel === 37) ctx.fillStyle = "#87CEEB";
+            else if (currentLevel === 40) ctx.fillStyle = "#111111";
+            ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+            for (let wall of walls) {
+                if (currentLevel === 0) ctx.fillStyle = "#C8B464";
+                else if (currentLevel === 2) ctx.fillStyle = "#708090";
+                else if (currentLevel === 37) ctx.fillStyle = "#ffffff";
+                ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+            }
+
+            if (currentLevel !== 99 && currentLevel < 40) {
+                ctx.fillStyle = "#00FF66";
+                ctx.fillRect(portal.x, portal.y, portal.width, portal.height);
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 16px sans-serif";
+                ctx.fillText("EXIT", portal.x + 8, portal.y - 10);
+            }
+
+            if (currentLevel === 99) {
+                ctx.fillStyle = "#00FF66";
+                ctx.font = "bold 30px sans-serif";
+                ctx.fillText("➡ RIGHT EXIT!", WORLD_WIDTH - 250, WORLD_HEIGHT / 2);
+            }
+
+            for (let ent of entities) {
+                drawEntity(ent.x, ent.y);
+            }
+
+            if (currentLevel === 40 && endingNpc) {
+                drawNpc(endingNpc);
+            }
+
+            drawPlayer(player.x, player.y);
+
+            ctx.restore();
+
+            ctx.font = "18px 'Malgun Gothic'";
+            if (currentLevel === 0) {
+                ctx.fillStyle = "black";
+                ctx.fillText("Level 0: 모노옐로우 기둥 미로 (엔티티 3마리 등장)", 20, 30);
+            } else if (currentLevel === 2) {
+                ctx.fillStyle = "white";
+                ctx.fillText("Level 2: 엔티티가 벽을 뚫고 쫓아옵니다!", 20, 30);
+            } else if (currentLevel === 99) {
+                ctx.fillStyle = "#ff4d4d";
+                ctx.fillText("Level !: 엔티티를 피해 화면 오른쪽 끝까지 전력 질주하세요!", 20, 30);
+            } else if (currentLevel === 37) {
+                ctx.fillStyle = "#003366";
+                ctx.fillText("Level 37: The Poolrooms (잔잔한 수영장 미로)", 20, 30);
+            } else if (currentLevel === 40) {
+                ctx.fillStyle = "#FF007F";
+                ctx.fillText("진실: 탈출한 줄 알았던 당신은... 사실 가장 위험한 엔티티였습니다.", 20, 30);
+            }
+        }
+
+        initLevel();
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script></body></html>
