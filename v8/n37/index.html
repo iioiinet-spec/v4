@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>강준이 엄마 시뮬레이터 (Kangjun's Mom Simulator)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { overflow: hidden; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; user-select: none; background: #000; }
+        
+        /* Intro Overlay */
+        #story-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a1a2e 0%, #0f0f1b 100%);
+            color: #ffffff; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+            text-align: center; padding: 40px;
+        }
+        #story-overlay h1 { font-size: 3rem; margin-bottom: 25px; color: #ffca28; text-shadow: 0 0 10px rgba(255,202,40,0.5); }
+        #story-overlay .story-text { font-size: 1.4rem; max-width: 750px; line-height: 1.8; margin-bottom: 40px; color: #e0e0e0; word-break: keep-all; }
+        #start-btn {
+            padding: 16px 48px; font-size: 1.3rem; background: linear-gradient(45deg, #ff9800, #f57c00);
+            border: none; color: white; border-radius: 30px; cursor: pointer; font-weight: bold;
+            box-shadow: 0 4px 15px rgba(245, 124, 0, 0.4); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #start-btn:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(245, 124, 0, 0.6); }
+
+        /* HUD & UI */
+        #hud {
+            position: absolute; top: 25px; left: 25px; color: white;
+            background: rgba(15, 15, 25, 0.75); padding: 18px 24px; border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px);
+            z-index: 10; display: none; min-width: 320px;
+        }
+        #hud h2 { font-size: 1.1rem; color: #4caf50; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        #hud #objective-text { font-size: 1.2rem; font-weight: bold; color: #fff; }
+
+        /* Controls HUD */
+        #controls-panel {
+            position: absolute; bottom: 25px; left: 25px; color: #e0e0e0;
+            background: rgba(15, 15, 25, 0.75); padding: 16px 20px; border-radius: 10px;
+            font-size: 0.9rem; border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px); z-index: 10; display: none; line-height: 1.6;
+        }
+        #controls-panel strong { color: #ffca28; display: block; margin-bottom: 6px; }
+
+        /* Center Crosshair */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 6px; height: 6px;
+            background: rgba(255, 255, 255, 0.9); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 10; display: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.8);
+        }
+
+        /* Interaction Prompt */
+        #interaction-prompt {
+            position: absolute; top: 58%; left: 50%; transform: translate(-50%, 0);
+            color: #ffeb3b; background: rgba(0,0,0,0.8); padding: 10px 20px;
+            border-radius: 20px; font-size: 1rem; font-weight: bold; display: none;
+            pointer-events: none; z-index: 10; border: 1px solid rgba(255,235,59,0.3);
+        }
+
+        /* Shout Screen Effect */
+        #shout-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 0, 0.15); display: none; pointer-events: none; z-index: 80;
+        }
+
+        /* Pause / Unlocked Screen overlay */
+        #pause-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); color: white; display: none;
+            justify-content: center; align-items: center; z-index: 90;
+            font-size: 1.5rem; text-align: center; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="story-overlay">
+        <h1>강준이 엄마 시뮬레이터</h1>
+        <p class="story-text">"옛날옛날엔 강준이라는 한 소년이 살았는데 그는 엄마 말을 안듣기로 유명했답니다."</p>
+        <button id="start-btn">엄마의 하루 시작하기 (Enter)</button>
+    </div>
+
+    <div id="shout-overlay"></div>
+
+    <div id="pause-overlay">
+        <div>화면을 클릭하거나 Enter를 누르면 마우스가 게임에 고정됩니다.</div>
+    </div>
+
+    <div id="hud">
+        <h2>📋 오늘의 엄마 목표</h2>
+        <div id="objective-text">1. 강준이 방으로 가서 잠자는 강준이 깨우기</div>
+    </div>
+
+    <div id="controls-panel">
+        <strong>🎮 STEAM 조작 안내</strong>
+        • 이동: W, A, S, D (빠른 속도)<br>
+        • 시점 회전: 마우스 이동<br>
+        • 상호작용 / 소리 지르기: [E] 또는 [Enter] 키<br>
+        • 마우스 커서 해제: ESC
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="interaction-prompt">[E] / [Enter] 상호작용</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+
+    <script>
+        // --- Game Logic Engine ---
+        let scene, camera, renderer, controls;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let prevTime = performance.now();
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+
+        // Game Quests & States
+        let currentStep = 0;
+        let wakeUpAttempts = 0;
+
+        const objectives = [
+            "1. 강준이 방으로 가서 잠자는 14세 강준이 깨우기",
+            "2. 욕실 문을 열어 강준이 씻으라고 하기",
+            "3. 주방 요리대에서 아침 식사(계란후라이) 준비하기",
+            "4. 식탁에 음식을 놓고 강준이 밥 먹이기",
+            "5. 현관문으로 이동하여 강준이 학교 보내기",
+            "6. 밖으로 나가 학원 건물 입구로 강준이 바래다주기",
+            "🎉 미션 완료! 오늘의 엄마 역할을 성공적으로 완수했습니다."
+        ];
+
+        // Interactive Objects
+        const raycaster = new THREE.Raycaster();
+        let interactiveObjects = [];
+        let activeInteractObject = null;
+
+        // Models Reference
+        let kangjunGroup, glassesMesh;
+        let bedMesh, bathroomDoor, stoveMesh, tableMesh, frontDoorMesh, academyDoorMesh;
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 6);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfffaed, 0.9);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            buildHouseAndOutside();
+
+            controls = new THREE.PointerLockControls(camera, document.body);
+
+            const startBtn = document.getElementById('start-btn');
+            const storyOverlay = document.getElementById('story-overlay');
+            const pauseOverlay = document.getElementById('pause-overlay');
+
+            const startGame = () => {
+                storyOverlay.style.display = 'none';
+                document.getElementById('hud').style.display = 'block';
+                document.getElementById('controls-panel').style.display = 'block';
+                document.getElementById('crosshair').style.display = 'block';
+                controls.lock();
+            };
+
+            startBtn.addEventListener('click', startGame);
+
+            controls.addEventListener('lock', () => {
+                pauseOverlay.style.display = 'none';
+            });
+
+            controls.addEventListener('unlock', () => {
+                if (storyOverlay.style.display === 'none') {
+                    pauseOverlay.style.display = 'flex';
+                }
+            });
+
+            scene.add(controls.getObject());
+
+            const onKeyDown = (e) => {
+                switch (e.code) {
+                    case 'KeyW': case 'ArrowUp': moveForward = true; break;
+                    case 'KeyS': case 'ArrowDown': moveBackward = true; break;
+                    case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
+                    case 'KeyD': case 'ArrowRight': moveRight = true; break;
+                    case 'KeyE': 
+                    case 'Enter':
+                    case 'NumpadEnter':
+                        if (storyOverlay.style.display !== 'none') {
+                            startGame();
+                        } else if (!controls.isLocked) {
+                            controls.lock();
+                        } else {
+                            interact();
+                        }
+                        break;
+                }
+            };
+
+            const onKeyUp = (e) => {
+                switch (e.code) {
+                    case 'KeyW': case 'ArrowUp': moveForward = false; break;
+                    case 'KeyS': case 'ArrowDown': moveBackward = false; break;
+                    case 'KeyA': case 'ArrowLeft': moveLeft = false; break;
+                    case 'KeyD': case 'ArrowRight': moveRight = false; break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('click', () => {
+                if (!controls.isLocked && storyOverlay.style.display === 'none') {
+                    controls.lock();
+                } else if (controls.isLocked) {
+                    interact();
+                }
+            });
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function buildHouseAndOutside() {
+            // Floor (Brown Wood Interior)
+            const floorGeo = new THREE.PlaneGeometry(30, 60);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.5 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.z = 10;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Brown Walls
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x8d5b4c, roughness: 0.6 });
+            createWall(0, 2.5, -10, 20, 5, 0.4, wallMat);
+            createWall(-10, 2.5, 0, 0.4, 5, 20, wallMat);
+            createWall(10, 2.5, 0, 0.4, 5, 20, wallMat);
+            createWall(-3, 2.5, -4, 0.4, 5, 12, wallMat);
+            createWall(4, 2.5, -4, 0.4, 5, 12, wallMat);
+
+            // Bed
+            const bedGroup = new THREE.Group();
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, 3.2), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+            frame.position.y = 0.2;
+            const mattress = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 3), new THREE.MeshStandardMaterial({ color: 0xfff8e1 }));
+            mattress.position.y = 0.5;
+            bedGroup.add(frame, mattress);
+            bedGroup.position.set(-6.5, 0, -6.5);
+            scene.add(bedGroup);
+            bedMesh = mattress;
+            bedMesh.userData = { name: "강준이 침대", questStep: 0 };
+            interactiveObjects.push(bedMesh);
+
+            // Kangjun Character
+            kangjunGroup = new THREE.Group();
+            const bodyGeo = new THREE.CylinderGeometry(0.35, 0.35, 1.1, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e88e5 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.55;
+            body.castShadow = true;
+            kangjunGroup.add(body);
+
+            const headGeo = new THREE.SphereGeometry(0.28, 32, 32);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.25;
+            head.castShadow = true;
+            kangjunGroup.add(head);
+
+            const hairGeo = new THREE.SphereGeometry(0.3, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            const hair = new THREE.Mesh(hairGeo, hairMat);
+            hair.position.set(0, 1.3, 0);
+            hair.scale.set(1.02, 1, 1.02);
+            kangjunGroup.add(hair);
+
+            glassesMesh = new THREE.Group();
+            const rimGeo = new THREE.TorusGeometry(0.07, 0.015, 8, 16);
+            const glassesMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const leftEye = new THREE.Mesh(rimGeo, glassesMat);
+            leftEye.position.set(-0.1, 0, 0);
+            const rightEye = new THREE.Mesh(rimGeo, glassesMat);
+            rightEye.position.set(0.1, 0, 0);
+            const bridgeGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.08);
+            const bridge = new THREE.Mesh(bridgeGeo, glassesMat);
+            bridge.rotation.z = Math.PI / 2;
+
+            glassesMesh.add(leftEye, rightEye, bridge);
+            glassesMesh.position.set(0, 1.25, 0.25);
+            kangjunGroup.add(glassesMesh);
+
+            kangjunGroup.position.set(-6.5, 0.7, -6.5);
+            kangjunGroup.rotation.z = Math.PI / 2;
+            scene.add(kangjunGroup);
+
+            // Bathroom Door
+            const doorGeo = new THREE.BoxGeometry(1.6, 3.2, 0.1);
+            const doorMat = new THREE.MeshStandardMaterial({ color: 0x4e342e });
+            bathroomDoor = new THREE.Mesh(doorGeo, doorMat);
+            bathroomDoor.position.set(4, 1.6, -2);
+            bathroomDoor.userData = { name: "욕실 문", questStep: 1 };
+            scene.add(bathroomDoor);
+            interactiveObjects.push(bathroomDoor);
+
+            // Kitchen Stove & Table
+            const stoveGeo = new THREE.BoxGeometry(2, 1.2, 1.5);
+            const stoveMat = new THREE.MeshStandardMaterial({ color: 0x37474f });
+            stoveMesh = new THREE.Mesh(stoveGeo, stoveMat);
+            stoveMesh.position.set(7.5, 0.6, -6.5);
+            stoveMesh.userData = { name: "주방 가스레인지", questStep: 2 };
+            scene.add(stoveMesh);
+            interactiveObjects.push(stoveMesh);
+
+            const tableGeo = new THREE.BoxGeometry(3, 1.1, 2);
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x4e342e });
+            tableMesh = new THREE.Mesh(tableGeo, tableMat);
+            tableMesh.position.set(6, 0.55, 1);
+            tableMesh.userData = { name: "식탁", questStep: 3 };
+            scene.add(tableMesh);
+            interactiveObjects.push(tableMesh);
+
+            // Front Door
+            const frontDoorGeo = new THREE.BoxGeometry(2, 3.8, 0.2);
+            const frontDoorMat = new THREE.MeshStandardMaterial({ color: 0x263238 });
+            frontDoorMesh = new THREE.Mesh(frontDoorGeo, frontDoorMat);
+            frontDoorMesh.position.set(0, 1.9, 9.8);
+            frontDoorMesh.userData = { name: "현관문 (외부로 이동)", questStep: 4 };
+            scene.add(frontDoorMesh);
+            interactiveObjects.push(frontDoorMesh);
+
+            // Academy Building
+            const academyGeo = new THREE.BoxGeometry(12, 8, 8);
+            const academyMat = new THREE.MeshStandardMaterial({ color: 0xd32f2f });
+            const academyBuilding = new THREE.Mesh(academyGeo, academyMat);
+            academyBuilding.position.set(0, 4, 25);
+            scene.add(academyBuilding);
+
+            const signGeo = new THREE.BoxGeometry(8, 1.5, 0.3);
+            const signMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b });
+            const sign = new THREE.Mesh(signGeo, signMat);
+            sign.position.set(0, 7, 20.9);
+            scene.add(sign);
+
+            const academyDoorGeo = new THREE.BoxGeometry(2.5, 3.5, 0.2);
+            const academyDoorMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 });
+            academyDoorMesh = new THREE.Mesh(academyDoorGeo, academyDoorMat);
+            academyDoorMesh.position.set(0, 1.75, 20.9);
+            academyDoorMesh.userData = { name: "강준이 보습학원 입구", questStep: 5 };
+            scene.add(academyDoorMesh);
+            interactiveObjects.push(academyDoorMesh);
+        }
+
+        function createWall(x, y, z, w, h, d, material) {
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+            wall.position.set(x, y, z);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            scene.add(wall);
+        }
+
+        function triggerShoutEffect() {
+            const shoutOverlay = document.getElementById('shout-overlay');
+            shoutOverlay.style.display = 'block';
+            
+            // Screen Shake Logic
+            let shakeCount = 0;
+            const originalCamY = camera.position.y;
+            const shakeInterval = setInterval(() => {
+                camera.position.y = originalCamY + (Math.random() - 0.5) * 0.3;
+                shakeCount++;
+                if (shakeCount > 10) {
+                    clearInterval(shakeInterval);
+                    camera.position.y = originalCamY;
+                    shoutOverlay.style.display = 'none';
+                }
+            }, 30);
+        }
+
+        function interact() {
+            if (!activeInteractObject) return;
+
+            const targetStep = activeInteractObject.userData.questStep;
+            if (targetStep === currentStep) {
+                advanceQuest();
+            }
+        }
+
+        function advanceQuest() {
+            const prompt = document.getElementById('interaction-prompt');
+
+            if (currentStep === 0) {
+                if (wakeUpAttempts === 0) {
+                    wakeUpAttempts++;
+                    alert("엄마: \"강준아! 7시다, 얼른 일어나라!\"\n강준: \"음냐... 5분만 더요... (이불을 뒤집어쓰고 계속 자는 중)\"");
+                    document.getElementById('objective-text').innerText = "1. 안 일어나는 강준이에게 큰 소리로 소리 지르기! [Enter]";
+                } else {
+                    triggerShoutEffect();
+                    alert("엄마: \"강준아아아악! 당장 안 일어나!!! 학교 늦는다!!\"\n\n(엄마의 샤우팅에 강준이가 깜짝 놀라 벌떡 일어납니다!)");
+                    kangjunGroup.rotation.z = 0;
+                    kangjunGroup.position.set(-5.5, 0, -5.5);
+                    currentStep = 1;
+                    document.getElementById('objective-text').innerText = objectives[currentStep];
+                }
+            } else if (currentStep === 1) {
+                kangjunGroup.position.set(2.5, 0, -2);
+                alert("엄마: \"얼른 세수하고 이 닦아! 학원 늦으면 어쩌려고 그러니?\"\n강준: \"알았어요 씻으면 되잖아요!\"");
+                currentStep = 2;
+                document.getElementById('objective-text').innerText = objectives[currentStep];
+            } else if (currentStep === 2) {
+                alert("엄마가 맛있는 계란후라이와 토스트를 준비했습니다.");
+                const foodMesh = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.3, 0.05),
+                    new THREE.MeshStandardMaterial({ color: 0xffb300 })
+                );
+                foodMesh.position.set(6, 1.15, 1);
+                scene.add(foodMesh);
+                currentStep = 3;
+                document.getElementById('objective-text').innerText = objectives[currentStep];
+            } else if (currentStep === 3) {
+                kangjunGroup.position.set(6, 0, 2.3);
+                alert("강준이가 투덜대며 아침 식사를 마쳤습니다.\n엄마: \"가방 챙기고 단정하게 입고 나가!\"");
+                currentStep = 4;
+                document.getElementById('objective-text').innerText = objectives[currentStep];
+            } else if (currentStep === 4) {
+                frontDoorMesh.position.y = 5;
+                kangjunGroup.position.set(0, 0, 13);
+                alert("엄마: \"학교 끝나고 바로 학원 가야 해! 알겠지?\"\n강준: \"네네~ 학원 건물 앞에서 만나기로 했잖아요!\"");
+                currentStep = 5;
+                document.getElementById('objective-text').innerText = objectives[currentStep];
+            } else if (currentStep === 5) {
+                kangjunGroup.position.set(0, 0, 20);
+                alert("강준: \"엄마 나 학원 들어갈게요! 저녁에 봐요~\"\n엄마: \"수업 집중해서 잘 듣고 끝나고 바로 집에 와!\"");
+                currentStep = 6;
+                document.getElementById('objective-text').innerText = objectives[currentStep];
+            }
+
+            prompt.style.display = 'none';
+        }
+
+        function checkInteractions() {
+            if (!controls.isLocked) return;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(interactiveObjects, true);
+
+            const prompt = document.getElementById('interaction-prompt');
+
+            if (intersects.length > 0 && intersects[0].distance < 3.8) {
+                let obj = intersects[0].object;
+                while (obj.parent && !obj.userData.name && obj.parent.type !== "Scene") {
+                    obj = obj.parent;
+                }
+
+                if (obj.userData.questStep === currentStep) {
+                    activeInteractObject = obj;
+                    if (currentStep === 0 && wakeUpAttempts > 0) {
+                        prompt.innerText = `[E] / [Enter] 소리 지르기!`;
+                    } else {
+                        prompt.innerText = `[E] / [Enter] ${obj.userData.name} 상호작용`;
+                    }
+                    prompt.style.display = 'block';
+                    return;
+                }
+            }
+
+            activeInteractObject = null;
+            prompt.style.display = 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            if (controls.isLocked) {
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * 45.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * 45.0 * delta;
+
+                controls.moveRight(-velocity.x * delta);
+                controls.moveForward(-velocity.z * delta);
+
+                if (kangjunGroup && currentStep > 0) {
+                    kangjunGroup.position.y = Math.sin(time * 0.005) * 0.03;
+                }
+
+                checkInteractions();
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>

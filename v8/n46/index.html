@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>공수교대 패널티킥 게임</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --accent: #00ff87;
+      --gold: #ffd700;
+      --danger: #ff4757;
+      --blue: #00d2ff;
+    }
+
+    * { box-sizing: border-box; user-select: none; }
+
+    body {
+      font-family: 'Pretendard', sans-serif;
+      background-color: var(--bg);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .game-container {
+      width: 380px;
+      height: 680px;
+      background: linear-gradient(180deg, #151b26 0%, #0b0e14 100%);
+      border-radius: 20px;
+      border: 2px solid #2a3245;
+      box-shadow: 0 0 30px rgba(0, 255, 135, 0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scoreboard {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 12px;
+      padding: 10px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid #2a3245;
+    }
+
+    .team-score { text-align: center; }
+    .score-title { font-size: 0.75rem; color: #8b949e; font-weight: bold; }
+    .score-num { font-size: 1.6rem; font-weight: 900; color: var(--gold); }
+
+    .round-badge {
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: var(--accent);
+      background: rgba(0, 255, 135, 0.1);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--accent);
+    }
+
+    .field-area {
+      position: relative;
+      width: 350px;
+      height: 520px;
+      margin-top: 15px;
+      border-radius: 14px;
+      border: 2px solid #38761d;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    canvas { display: block; background: linear-gradient(180deg, #1b4320 0%, #2e7d32 100%); }
+
+    .guide-text {
+      position: absolute;
+      bottom: 18px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: #ffffff;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+    }
+
+    .modal {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    .btn-restart {
+      background: var(--accent);
+      border: none;
+      color: #000;
+      font-weight: bold;
+      font-size: 1rem;
+      padding: 12px 24px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-container">
+    <div class="scoreboard">
+      <div class="team-score">
+        <div class="score-title">PLAYER</div>
+        <div class="score-num" id="player-score">0</div>
+      </div>
+      <div style="text-align: center;">
+        <div class="round-badge" id="round-text">ROUND 1/5</div>
+        <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;" id="mode-text">공격 턴</div>
+      </div>
+      <div class="team-score">
+        <div class="score-title">AI</div>
+        <div class="score-num" id="ai-score">0</div>
+      </div>
+    </div>
+
+    <div class="field-area">
+      <canvas id="pitch" width="350" height="520"></canvas>
+      <div class="guide-text" id="guide-msg">⚽ 공을 잡고 골대 쪽으로 밀어서 차세요!</div>
+    </div>
+
+    <div class="modal" id="resultModal">
+      <h1 id="result-title" style="margin-bottom: 5px;">경기 종료!</h1>
+      <p style="font-size: 1.3rem; font-weight: bold;" id="result-text">3 - 2</p>
+      <button class="btn-restart" onclick="resetGame()">다시 경기하기</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('pitch');
+    const ctx = canvas.getContext('2d');
+
+    // 경기 상태
+    let round = 1;
+    let isPlayerAttack = true; // true: 유저 공격 / false: 유저 수비
+    let playerScore = 0;
+    let aiScore = 0;
+
+    let isDragging = false;
+    let isFlying = false;
+
+    // 오브젝트 초기화
+    const ballHome = { x: 175, y: 420 };
+    let ball = { x: ballHome.x, y: ballHome.y, vx: 0, vy: 0, radius: 12 };
+    let dragPos = { x: ballHome.x, y: ballHome.y };
+    let gk = { x: 175, y: 130, targetX: 175, radius: 25, emoji: '🧤' };
+
+    let startPos = { x: 0, y: 0 };
+    let startTime = 0;
+
+    function getEventPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    function onStart(e) {
+      if (isFlying) return;
+      const pos = getEventPos(e);
+
+      if (isPlayerAttack) {
+        // [공격 턴] 공 선택
+        if (Math.hypot(pos.x - ball.x, pos.y - ball.y) < 35) {
+          isDragging = true;
+          dragPos = pos;
+          startPos = pos;
+          startTime = Date.now();
+        }
+      } else {
+        // [수비 턴] 골키퍼 선택 후 드래그 준비
+        if (Math.hypot(pos.x - gk.x, pos.y - gk.y) < 40) {
+          isDragging = true;
+        }
+      }
+    }
+
+    function onMove(e) {
+      if (!isDragging) return;
+      const pos = getEventPos(e);
+
+      if (isPlayerAttack) {
+        dragPos = pos;
+      } else {
+        // 수비 턴: 유저가 골키퍼 좌우/위아래 위치 이동 (골대 주변 제한)
+        gk.x = Math.max(70, Math.min(280, pos.x));
+        gk.y = Math.max(60, Math.min(150, pos.y));
+      }
+    }
+
+    function onEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      if (isPlayerAttack) {
+        const duration = (Date.now() - startTime) / 1000;
+        const dx = dragPos.x - startPos.x;
+        const dy = dragPos.y - startPos.y;
+
+        if (dy < -20) {
+          isFlying = true;
+          const speed = Math.hypot(dx, dy) / Math.max(duration, 0.08);
+          const power = Math.min(Math.max(speed * 0.012, 6), 14);
+          const angle = Math.atan2(dy, dx);
+
+          ball.vx = Math.cos(angle) * power;
+          ball.vy = Math.sin(angle) * power;
+
+          // AI 키퍼 자동 방어 움직임
+          gk.targetX = 80 + Math.random() * 190;
+        } else {
+          ball.x = ballHome.x; ball.y = ballHome.y;
+        }
+      }
+    }
+
+    // AI가 슛을 쏘는 함수 (수비 턴 전용)
+    function triggerAIShoot() {
+      if (isFlying || isPlayerAttack) return;
+      isFlying = true;
+
+      document.getElementById('guide-msg').innerText = '🚨 상대 AI가 슛을 차올립니다! 장갑을 움직여 막으세요!';
+
+      // 무작위 코스로 AI 슛 발사
+      const targetX = 80 + Math.random() * 190;
+      const targetY = 60 + Math.random() * 70;
+
+      const dx = targetX - ballHome.x;
+      const dy = targetY - ballHome.y;
+      const power = 8 + Math.random() * 4;
+      const angle = Math.atan2(dy, dx);
+
+      ball.vx = Math.cos(angle) * power;
+      ball.vy = Math.sin(angle) * power;
+    }
+
+    canvas.addEventListener('mousedown', onStart);
+    canvas.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    canvas.addEventListener('touchstart', onStart);
+    canvas.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
+
+    function update() {
+      if (isFlying) {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.radius = Math.max(6, 12 * (ball.y / ballHome.y));
+
+        // 공격 턴: AI 키퍼 자동 이동
+        if (isPlayerAttack) {
+          gk.x += (gk.targetX - gk.x) * 0.12;
+        }
+
+        // 공과 키퍼 간의 충돌 검사 (선방)
+        const distToGk = Math.hypot(ball.x - gk.x, ball.y - gk.y);
+        if (distToGk < gk.radius + ball.radius && ball.y < 160) {
+          if (isPlayerAttack) {
+            handleTurnResult(false, '❌ AI 키퍼 선방! (득점 실패)');
+          } else {
+            handleTurnResult(true, '🛡️ 나이스 선방! AI의 슛을 막았습니다!');
+          }
+          return;
+        }
+
+        // 골대 도달 판정 (y <= 130)
+        if (ball.y <= 130) {
+          if (ball.x >= 60 && ball.x <= 290 && ball.y >= 50) {
+            if (isPlayerAttack) {
+              playerScore++;
+              handleTurnResult(true, '🎉 GOAL! 득점에 성공했습니다!');
+            } else {
+              aiScore++;
+              handleTurnResult(false, '🚨 실점... AI가 골을 넣었습니다.');
+            }
+          } else {
+            if (isPlayerAttack) {
+              handleTurnResult(false, 'OUT! 슛이 골대를 벗어났습니다.');
+            } else {
+              handleTurnResult(true, '👍 AI의 슛이 골대를 벗어났습니다!');
+            }
+          }
+        }
+      }
+    }
+
+    function handleTurnResult(isSuccess, msg) {
+      isFlying = false;
+      document.getElementById('player-score').innerText = playerScore;
+      document.getElementById('ai-score').innerText = aiScore;
+      document.getElementById('guide-msg').innerText = msg;
+
+      setTimeout(() => {
+        // 공수 교대 처리
+        if (!isPlayerAttack) round++; // 수비까지 끝나면 라운드 증가
+
+        if (round > 5 && isPlayerAttack === false && playerScore !== aiScore) {
+          endGame();
+          return;
+        }
+
+        isPlayerAttack = !isPlayerAttack;
+        resetPitch();
+
+        // 수비 턴 시작 시 1초 뒤 AI 자동 슛
+        if (!isPlayerAttack) {
+          setTimeout(() => { triggerAIShoot(); }, 1200);
+        }
+      }, 1500);
+    }
+
+    function resetPitch() {
+      ball.x = ballHome.x; ball.y = ballHome.y;
+      ball.vx = 0; ball.vy = 0; ball.radius = 12;
+      gk.x = 175; gk.y = 110; gk.targetX = 175;
+
+      document.getElementById('round-text').innerText = `ROUND ${Math.min(round, 5)}/5`;
+
+      if (isPlayerAttack) {
+        document.getElementById('mode-text').innerText = '공격 턴 (슛)';
+        document.getElementById('mode-text').style.color = 'var(--accent)';
+        document.getElementById('guide-msg').innerText = '⚽ 공을 잡고 골대 쪽으로 밀어서 차세요!';
+      } else {
+        document.getElementById('mode-text').innerText = '수비 턴 (막기)';
+        document.getElementById('mode-text').style.color = 'var(--blue)';
+        document.getElementById('guide-msg').innerText = '🧤 장갑을 잡고 미리 위치를 잡아 신속히 막으세요!';
+      }
+    }
+
+    function endGame() {
+      const modal = document.getElementById('resultModal');
+      const title = document.getElementById('result-title');
+      const scoreText = document.getElementById('result-text');
+
+      scoreText.innerText = `최종 스코어 ${playerScore} - ${aiScore}`;
+
+      if (playerScore > aiScore) {
+        title.innerText = '🏆 승리!';
+        title.style.color = 'var(--accent)';
+      } else {
+        title.innerText = '💔 패배...';
+        title.style.color = 'var(--danger)';
+      }
+
+      modal.style.display = 'flex';
+    }
+
+    function resetGame() {
+      round = 1;
+      isPlayerAttack = true;
+      playerScore = 0;
+      aiScore = 0;
+      document.getElementById('player-score').innerText = '0';
+      document.getElementById('ai-score').innerText = '0';
+      document.getElementById('resultModal').style.display = 'none';
+      resetPitch();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 골대
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(60, 50, 230, 100);
+
+      // 그물
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      for (let x = 60; x <= 290; x += 15) {
+        ctx.beginPath(); ctx.moveTo(x, 50); ctx.lineTo(x, 150); ctx.stroke();
+      }
+      for (let y = 50; y <= 150; y += 15) {
+        ctx.beginPath(); ctx.moveTo(60, y); ctx.lineTo(290, y); ctx.stroke();
+      }
+
+      // 공격 턴 드래그 궤적
+      if (isDragging && isPlayerAttack) {
+        ctx.strokeStyle = 'rgba(0, 255, 135, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(ballHome.x, ballHome.y);
+        ctx.lineTo(dragPos.x, dragPos.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // 수비 턴 골키퍼 이동 반경 가이드링
+      if (!isPlayerAttack) {
+        ctx.strokeStyle = 'rgba(0, 210, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(gk.x, gk.y, gk.radius + 5, 0, Math.PI * 2); ctx.stroke();
+      }
+
+      // 골키퍼 렌더링
+      ctx.font = '36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(gk.emoji, gk.x, gk.y);
+
+      // 공 렌더링
+      const drawX = (isDragging && isPlayerAttack) ? dragPos.x : ball.x;
+      const drawY = (isDragging && isPlayerAttack) ? dragPos.y : ball.y;
+
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>

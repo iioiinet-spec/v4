@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIVAL ARENA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1b1f27;
+    --panel-line: #2a2f3a;
+    --player: #ff6b35;
+    --player-dim: #7a3a1f;
+    --rival: #00d9ff;
+    --rival-dim: #0a5b6b;
+    --danger: #ff3b57;
+    --text: #e8e6e1;
+    --muted: #767c88;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage {
+    position: relative;
+    width: min(96vw, 1000px);
+    aspect-ratio: 16 / 10;
+  }
+  canvas {
+    width: 100%; height: 100%;
+    display: block;
+    background:
+      radial-gradient(ellipse at center, #1a1e26 0%, #0f1114 100%);
+    border: 1px solid var(--panel-line);
+    border-radius: 4px;
+    cursor: crosshair;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 14px 18px;
+    pointer-events: none;
+    font-family: 'Rajdhani', sans-serif;
+  }
+  .hp-block { width: 34%; }
+  .hp-block.rival { text-align: right; }
+  .hp-name {
+    font-size: 13px; letter-spacing: 3px; font-weight: 700;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 5px;
+  }
+  .hp-name.player-name { color: var(--player); }
+  .hp-name.rival-name { color: var(--rival); }
+  .hp-bar-track {
+    height: 12px; background: #0c0d10; border: 1px solid var(--panel-line);
+    position: relative; overflow: hidden;
+  }
+  .hp-bar-fill {
+    height: 100%; transition: width 0.15s ease-out;
+  }
+  .hp-bar-fill.player { background: linear-gradient(90deg, var(--player-dim), var(--player)); }
+  .hp-bar-fill.rival { background: linear-gradient(270deg, var(--rival-dim), var(--rival)); float: right; }
+
+  #centerHud {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 200px;
+  }
+  #roundLabel {
+    font-size: 12px; letter-spacing: 4px; color: var(--muted);
+  }
+  #duelMeter {
+    width: 180px; height: 8px; background: var(--panel-line);
+    position: relative; border-radius: 2px; overflow: hidden;
+  }
+  #duelFill {
+    position: absolute; top: 0; bottom: 0; left: 50%;
+    background: var(--player);
+    transition: left 0.2s ease-out, width 0.2s ease-out, background 0.2s;
+  }
+  #roundDots { display: flex; gap: 6px; margin-top: 2px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--panel-line); border: 1px solid var(--muted); }
+  .dot.player-win { background: var(--player); border-color: var(--player); }
+  .dot.rival-win { background: var(--rival); border-color: var(--rival); }
+
+  #dashWrap {
+    position: absolute; bottom: 14px; left: 18px;
+    font-size: 11px; color: var(--muted); letter-spacing: 2px;
+  }
+  #dashTrack {
+    width: 90px; height: 5px; background: #0c0d10; border: 1px solid var(--panel-line); margin-top: 4px;
+  }
+  #dashFill { height: 100%; background: var(--player); width: 100%; }
+
+  #controls {
+    position: absolute; bottom: 14px; right: 18px;
+    font-size: 10px; color: var(--muted); text-align: right; line-height: 1.6;
+    letter-spacing: 1px;
+  }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0;
+    background: rgba(15, 17, 20, 0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 20px;
+    font-family: 'Rajdhani', sans-serif;
+  }
+  .eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; letter-spacing: 6px; color: var(--rival);
+    margin-bottom: 10px;
+  }
+  .title {
+    font-size: clamp(38px, 7vw, 64px);
+    font-weight: 700; letter-spacing: 2px; line-height: 1;
+    margin: 0 0 6px 0;
+    color: var(--text);
+  }
+  .title span { color: var(--player); }
+  .subtitle {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; color: var(--muted); letter-spacing: 1px;
+    max-width: 420px; margin-bottom: 26px; line-height: 1.7;
+  }
+  .btn {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700; font-size: 18px; letter-spacing: 3px;
+    background: transparent; color: var(--player);
+    border: 2px solid var(--player);
+    padding: 12px 36px;
+    cursor: pointer;
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+    transition: all 0.15s;
+    pointer-events: all;
+  }
+  .btn:hover { background: var(--player); color: #14171c; }
+  .result-title { font-size: clamp(32px, 6vw, 52px); font-weight: 700; margin-bottom: 4px; }
+  .result-title.win { color: var(--player); }
+  .result-title.lose { color: var(--rival); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <div class="hp-block">
+        <div class="hp-name player-name">YOU</div>
+        <div class="hp-bar-track"><div class="hp-bar-fill player" id="playerHpFill" style="width:100%"></div></div>
+      </div>
+
+      <div id="centerHud">
+        <div id="roundLabel">ROUND 1</div>
+        <div id="duelMeter"><div id="duelFill" style="left:50%; width:0%;"></div></div>
+        <div id="roundDots">
+          <div class="dot" data-slot="0"></div>
+          <div class="dot" data-slot="1"></div>
+          <div class="dot" data-slot="2"></div>
+        </div>
+      </div>
+
+      <div class="hp-block rival">
+        <div class="hp-name rival-name">RIVAL</div>
+        <div class="hp-bar-track"><div class="hp-bar-fill rival" id="rivalHpFill" style="width:100%"></div></div>
+      </div>
+    </div>
+
+    <div id="dashWrap">
+      DASH
+      <div id="dashTrack"><div id="dashFill"></div></div>
+    </div>
+
+    <div id="controls">
+      WASD 이동 · SHIFT 대시<br>
+      마우스 조준 · 클릭 발사
+    </div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="eyebrow">TACTICAL DUEL</div>
+      <h1 class="title">RIVAL <span>ARENA</span></h1>
+      <p class="subtitle">
+        3판 2선승. 라이벌보다 먼저 상대의 체력을 0으로 만드세요.<br>
+        엄폐물 뒤에 숨고, 대시로 탄막을 피하세요.
+      </p>
+      <button class="btn" id="startBtn">ENTER ARENA</button>
+    </div>
+
+    <div class="overlay hidden" id="endOverlay">
+      <div class="eyebrow" id="endEyebrow">ROUND OVER</div>
+      <h1 class="result-title" id="resultTitle">WIN</h1>
+      <p class="subtitle" id="endSubtitle">다음 라운드를 준비하세요.</p>
+      <button class="btn" id="nextBtn">CONTINUE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+
+  const W = 1000, H = 625; // internal resolution
+  canvas.width = W; canvas.height = H;
+
+  const playerHpFill = document.getElementById('playerHpFill');
+  const rivalHpFill = document.getElementById('rivalHpFill');
+  const duelFill = document.getElementById('duelFill');
+  const roundLabel = document.getElementById('roundLabel');
+  const dashFill = document.getElementById('dashFill');
+  const dots = document.querySelectorAll('.dot');
+  const startOverlay = document.getElementById('startOverlay');
+  const endOverlay = document.getElementById('endOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const resultTitle = document.getElementById('resultTitle');
+  const endEyebrow = document.getElementById('endEyebrow');
+  const endSubtitle = document.getElementById('endSubtitle');
+
+  // ---------- Obstacles (cover) ----------
+  const obstacles = [
+    {x: 460, y: 60, w: 80, h: 120},
+    {x: 460, y: 445, w: 80, h: 120},
+    {x: 180, y: 260, w: 140, h: 30},
+    {x: 680, y: 260, w: 140, h: 30},
+    {x: 60, y: 60, w: 30, h: 140},
+    {x: 910, y: 60, w: 30, h: 140},
+    {x: 60, y: 425, w: 30, h: 140},
+    {x: 910, y: 425, w: 30, h: 140},
+  ];
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function circleRectCollide(cx, cy, r, rect) {
+    const nearestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    const nearestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+    const dx = cx - nearestX, dy = cy - nearestY;
+    return (dx * dx + dy * dy) < r * r;
+  }
+  function segmentIntersectsRect(x1, y1, x2, y2, rect) {
+    // simple sampling-based check (cheap, arena is small)
+    const steps = 20;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = x1 + (x2 - x1) * t;
+      const y = y1 + (y2 - y1) * t;
+      if (x > rect.x && x < rect.x + rect.w && y > rect.y && y < rect.y + rect.h) return true;
+    }
+    return false;
+  }
+  function hasLineOfSight(x1, y1, x2, y2) {
+    for (const o of obstacles) {
+      if (segmentIntersectsRect(x1, y1, x2, y2, o)) return false;
+    }
+    return true;
+  }
+
+  // ---------- Entities ----------
+  const R = 16;
+  const MAX_HP = 100;
+  const SPEED = 3.4;
+  const DASH_SPEED = 9;
+  const DASH_TIME = 10;
+  const DASH_COOLDOWN = 70;
+  const BULLET_SPEED = 9.5;
+  const BULLET_DMG = 9;
+  const FIRE_COOLDOWN = 14;
+
+  let player, rival, bullets, keys, mouse, wins, round, gameOver, roundActive;
+
+  function resetEntities() {
+    player = {
+      x: 150, y: H / 2, hp: MAX_HP, color: 'player',
+      dashCd: 0, dashT: 0, fireCd: 0, angle: 0
+    };
+    rival = {
+      x: W - 150, y: H / 2, hp: MAX_HP, color: 'rival',
+      fireCd: 0, dashCd: 0, dashT: 0,
+      strafeDir: Math.random() < 0.5 ? 1 : -1, strafeTimer: 0,
+      targetOffset: {x:0, y:0}
+    };
+    bullets = [];
+  }
+
+  function resetMatch() {
+    wins = { player: 0, rival: 0 };
+    round = 1;
+    updateDots();
+  }
+
+  keys = {};
+  mouse = { x: W - 200, y: H / 2, down: false };
+
+  window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ') e.preventDefault();
+  });
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * (W / rect.width);
+    mouse.y = (e.clientY - rect.top) * (H / rect.height);
+  });
+  canvas.addEventListener('mousedown', () => mouse.down = true);
+  window.addEventListener('mouseup', () => mouse.down = false);
+
+  function clampToArena(pos, r) {
+    pos.x = Math.max(r, Math.min(W - r, pos.x));
+    pos.y = Math.max(r, Math.min(H - r, pos.y));
+  }
+
+  function resolveObstacleCollision(entity) {
+    for (const o of obstacles) {
+      if (circleRectCollide(entity.x, entity.y, R, o)) {
+        // push out along smallest axis
+        const cx = Math.max(o.x, Math.min(entity.x, o.x + o.w));
+        const cy = Math.max(o.y, Math.min(entity.y, o.y + o.h));
+        let dx = entity.x - cx, dy = entity.y - cy;
+        const dist = Math.hypot(dx, dy) || 0.001;
+        dx /= dist; dy /= dist;
+        const overlap = R - dist;
+        if (overlap > 0) {
+          entity.x += dx * overlap;
+          entity.y += dy * overlap;
+        }
+      }
+    }
+  }
+
+  function spawnBullet(owner, x, y, angle) {
+    bullets.push({
+      x, y,
+      vx: Math.cos(angle) * BULLET_SPEED,
+      vy: Math.sin(angle) * BULLET_SPEED,
+      owner
+    });
+  }
+
+  function updatePlayer() {
+    if (!roundActive) return;
+    let dx = 0, dy = 0;
+    if (keys['w']) dy -= 1;
+    if (keys['s']) dy += 1;
+    if (keys['a']) dx -= 1;
+    if (keys['d']) dx += 1;
+    const mag = Math.hypot(dx, dy) || 1;
+    dx /= mag; dy /= mag;
+
+    let speed = SPEED;
+    if (player.dashT > 0) {
+      speed = DASH_SPEED;
+      player.dashT--;
+    } else if ((keys['shift']) && player.dashCd <= 0 && (dx !== 0 || dy !== 0)) {
+      player.dashT = DASH_TIME;
+      player.dashCd = DASH_COOLDOWN;
+      speed = DASH_SPEED;
+    }
+    if (player.dashCd > 0) player.dashCd--;
+
+    player.x += dx * speed;
+    player.y += dy * speed;
+    clampToArena(player, R);
+    resolveObstacleCollision(player);
+
+    player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+    if (player.fireCd > 0) player.fireCd--;
+    if (mouse.down && player.fireCd <= 0) {
+      player.fireCd = FIRE_COOLDOWN;
+      const spread = (Math.random() - 0.5) * 0.05;
+      spawnBullet('player', player.x + Math.cos(player.angle) * (R + 6), player.y + Math.sin(player.angle) * (R + 6), player.angle + spread);
+    }
+
+    dashFill.style.width = (player.dashCd > 0 ? (100 - (player.dashCd / DASH_COOLDOWN) * 100) : 100) + '%';
+  }
+
+  function updateRival() {
+    if (!roundActive) return;
+    const distToPlayer = Math.hypot(player.x - rival.x, player.y - rival.y);
+    const sees = hasLineOfSight(rival.x, rival.y, player.x, player.y);
+
+    // movement: keep mid-range, strafe, occasionally reposition behind cover
+    rival.strafeTimer--;
+    if (rival.strafeTimer <= 0) {
+      rival.strafeDir *= (Math.random() < 0.35 ? -1 : 1);
+      rival.strafeTimer = 40 + Math.random() * 40;
+    }
+
+    let dx = 0, dy = 0;
+    const desiredDist = 260;
+    const toPlayer = { x: player.x - rival.x, y: player.y - rival.y };
+    const away = distToPlayer < desiredDist - 40;
+    const closeIn = distToPlayer > desiredDist + 60;
+
+    if (away) { dx -= toPlayer.x; dy -= toPlayer.y; }
+    else if (closeIn) { dx += toPlayer.x; dy += toPlayer.y; }
+
+    // strafe perpendicular
+    const perpX = -toPlayer.y, perpY = toPlayer.x;
+    const perpMag = Math.hypot(perpX, perpY) || 1;
+    dx += (perpX / perpMag) * 120 * rival.strafeDir;
+    dy += (perpY / perpMag) * 120 * rival.strafeDir;
+
+    const mag = Math.hypot(dx, dy) || 1;
+    dx /= mag; dy /= mag;
+
+    let speed = SPEED * 0.95;
+    if (rival.dashT > 0) { speed = DASH_SPEED; rival.dashT--; }
+    else if (rival.dashCd <= 0 && distToPlayer < 150 && Math.random() < 0.02) {
+      rival.dashT = DASH_TIME; rival.dashCd = DASH_COOLDOWN;
+    }
+    if (rival.dashCd > 0) rival.dashCd--;
+
+    rival.x += dx * speed;
+    rival.y += dy * speed;
+    clampToArena(rival, R);
+    resolveObstacleCollision(rival);
+
+    if (rival.fireCd > 0) rival.fireCd--;
+    if (sees && rival.fireCd <= 0) {
+      rival.fireCd = FIRE_COOLDOWN + Math.random() * 10;
+      const angle = Math.atan2(player.y - rival.y, player.x - rival.x) + (Math.random() - 0.5) * 0.12;
+      spawnBullet('rival', rival.x + Math.cos(angle) * (R + 6), rival.y + Math.sin(angle) * (R + 6), angle);
+    }
+  }
+
+  function updateBullets() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx; b.y += b.vy;
+
+      if (b.x < -10 || b.x > W + 10 || b.y < -10 || b.y > H + 10) {
+        bullets.splice(i, 1); continue;
+      }
+      let hitObstacle = false;
+      for (const o of obstacles) {
+        if (b.x > o.x && b.x < o.x + o.w && b.y > o.y && b.y < o.y + o.h) { hitObstacle = true; break; }
+      }
+      if (hitObstacle) { bullets.splice(i, 1); continue; }
+
+      const target = b.owner === 'player' ? rival : player;
+      const dist = Math.hypot(b.x - target.x, b.y - target.y);
+      if (dist < R) {
+        target.hp = Math.max(0, target.hp - BULLET_DMG);
+        bullets.splice(i, 1);
+        if (target.hp <= 0 && roundActive) endRound(b.owner === 'player' ? 'player' : 'rival');
+      }
+    }
+  }
+
+  function updateHud() {
+    playerHpFill.style.width = (player.hp) + '%';
+    rivalHpFill.style.width = (rival.hp) + '%';
+
+    const diff = player.hp - rival.hp; // -100..100
+    const half = Math.abs(diff) / 2;
+    if (diff >= 0) {
+      duelFill.style.left = (50 - half) + '%';
+      duelFill.style.width = half + '%';
+      duelFill.style.background = 'var(--player)';
+    } else {
+      duelFill.style.left = '50%';
+      duelFill.style.width = half + '%';
+      duelFill.style.background = 'var(--rival)';
+    }
+  }
+
+  function updateDots() {
+    dots.forEach((d, i) => {
+      d.className = 'dot';
+      if (i < wins.player) d.classList.add('player-win');
+      else if (i < wins.rival) d.classList.add('rival-win');
+    });
+    // proper mapping: show player wins from left, rival from right conceptually,
+    // simplest: just fill dots by total games played with winner color
+  }
+
+  function renderRoundLabel() {
+    roundLabel.textContent = `ROUND ${round}`;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // grid floor
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0; y < H; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // center line
+    ctx.strokeStyle = 'rgba(0,217,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+
+    // obstacles
+    ctx.fillStyle = '#2a2f3a';
+    ctx.strokeStyle = '#3a4150';
+    obstacles.forEach(o => {
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      ctx.strokeRect(o.x, o.y, o.w, o.h);
+    });
+
+    // bullets
+    bullets.forEach(b => {
+      ctx.fillStyle = b.owner === 'player' ? '#ffb28a' : '#8ff2ff';
+      ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // player
+    drawFighter(player, '#ff6b35', player.angle);
+    // rival
+    const rAngle = Math.atan2(player.y - rival.y, player.x - rival.x);
+    drawFighter(rival, '#00d9ff', rAngle);
+  }
+
+  function drawFighter(entity, color, angle) {
+    if (entity.hp <= 0) return;
+    ctx.save();
+    ctx.translate(entity.x, entity.y);
+
+    // glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // direction indicator
+    ctx.rotate(angle);
+    ctx.fillStyle = '#14171c';
+    ctx.beginPath();
+    ctx.moveTo(R - 4, 0);
+    ctx.lineTo(R - 12, -6);
+    ctx.lineTo(R - 12, 6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function endRound(winner) {
+    roundActive = false;
+    if (winner === 'player') wins.player++; else wins.rival++;
+    updateDots();
+
+    const matchOver = wins.player >= 2 || wins.rival >= 2;
+    endEyebrow.textContent = matchOver ? 'MATCH RESULT' : 'ROUND OVER';
+    resultTitle.textContent = winner === 'player' ? 'ROUND WON' : 'ROUND LOST';
+    resultTitle.className = 'result-title ' + (winner === 'player' ? 'win' : 'lose');
+
+    if (matchOver) {
+      resultTitle.textContent = wins.player > wins.rival ? 'VICTORY' : 'DEFEAT';
+      endSubtitle.textContent = `최종 스코어 ${wins.player} : ${wins.rival} — 라이벌과 다시 붙어보세요.`;
+      nextBtn.textContent = 'REMATCH';
+    } else {
+      endSubtitle.textContent = `${wins.player} : ${wins.rival} — 다음 라운드로 이동합니다.`;
+      nextBtn.textContent = 'CONTINUE';
+    }
+    endOverlay.classList.remove('hidden');
+  }
+
+  nextBtn.addEventListener('click', () => {
+    endOverlay.classList.add('hidden');
+    const matchOver = wins.player >= 2 || wins.rival >= 2;
+    if (matchOver) {
+      resetMatch();
+    } else {
+      round++;
+    }
+    renderRoundLabel();
+    resetEntities();
+    roundActive = true;
+  });
+
+  startBtn.addEventListener('click', () => {
+    startOverlay.classList.add('hidden');
+    resetMatch();
+    renderRoundLabel();
+    resetEntities();
+    roundActive = true;
+  });
+
+  function loop() {
+    updatePlayer();
+    updateRival();
+    updateBullets();
+    updateHud();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  resetEntities();
+  roundActive = false;
+  loop();
+})();
+</script>
+</body>
+</html>

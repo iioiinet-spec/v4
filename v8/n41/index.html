@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BLACKSITE: RUINS — 3D</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#020306;color:#eee;font-family:Arial,sans-serif}canvas{display:block}
+#ui{position:fixed;inset:0;pointer-events:none}.hud{position:absolute;background:#071018cc;border:1px solid #66717b;border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.55}
+#stats{left:14px;top:14px}#mission{left:50%;top:14px;transform:translateX(-50%);text-align:center}
+#help{right:14px;bottom:14px;color:#bcc6ce}#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;text-shadow:0 0 6px #fff}
+#menu{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,#26353c,#020306 72%);display:flex;align-items:center;justify-content:center;z-index:5}
+.card{max-width:720px;margin:20px;padding:40px;background:#060a0ee8;border:1px solid #64707b;border-radius:16px;box-shadow:0 30px 100px #000}.title{font-size:60px;letter-spacing:7px;font-weight:800}.sub{color:#91dced;letter-spacing:4px;margin-top:4px}p{color:#bac4cc;line-height:1.7}button{padding:14px 26px;border:0;border-radius:8px;background:#d5b16b;font-weight:bold;font-size:16px;cursor:pointer}
+#loading{color:#9ba8b2}
+</style></head><body>
+<div id="menu"><div class="card"><div class="title">BLACKSITE</div><div class="sub">RUINS — BODY EXPERIMENT</div>
+<p>A large underground biotechnology complex has been abandoned for 17 years. Explore freely, restore power, recover the black drive, and discover what happened below Sublevel Zero.</p>
+<p id="loading">Loading 3D engine…</p><button id="start" disabled>ENTER THE RUINS</button></div></div>
+<div id="ui"><div id="stats" class="hud"></div><div id="mission" class="hud"></div><div id="help" class="hud">WASD move · Shift sprint · Mouse look · E interact · Click fire · R reload</div><div id="cross">+</div></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
+import {PointerLockControls} from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/PointerLockControls.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x070a0d);
+scene.fog=new THREE.FogExp2(0x0a0d10,0.012);
+const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,250);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.appendChild(renderer.domElement);
+
+const hemi=new THREE.HemisphereLight(0x9fb8c8,0x16120e,1.15);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xd8e2e7,1.4);sun.position.set(30,45,15);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-100;sun.shadow.camera.right=100;sun.shadow.camera.top=100;sun.shadow.camera.bottom=-100;scene.add(sun);
+
+const mats={
+ floor:new THREE.MeshStandardMaterial({color:0x343a3d,roughness:.95}),
+ wall:new THREE.MeshStandardMaterial({color:0x4a4e4e,roughness:.88}),
+ dark:new THREE.MeshStandardMaterial({color:0x171b1d,roughness:.9}),
+ metal:new THREE.MeshStandardMaterial({color:0x50585a,metalness:.7,roughness:.42}),
+ glass:new THREE.MeshPhysicalMaterial({color:0x9ec7d2,transparent:true,opacity:.18,roughness:.1,metalness:.1}),
+ organic:new THREE.MeshStandardMaterial({color:0x25483f,roughness:.8,emissive:0x071c16,emissiveIntensity:.6}),
+ red:new THREE.MeshStandardMaterial({color:0x5a1e24,roughness:.8,emissive:0x24070a,emissiveIntensity:.5})
+};
+function box(w,h,d,mat,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m}
+function room(cx,cz,w,d,name){
+ box(w,.25,d,mats.floor,cx,0,cz);
+ box(w,5,.35,mats.wall,cx,2.5,cz-d/2);box(w,5,.35,mats.wall,cx,2.5,cz+d/2);
+ box(.35,5,d,mats.wall,cx-w/2,2.5,cz);box(.35,5,d,mats.wall,cx+w/2,2.5,cz);
+ for(let i=-1;i<=1;i++)box(2.5,.12,.8,mats.metal,cx+i*12,4.86,cz);
+}
+room(0,0,28,22,"ARRIVAL");room(38,0,32,22,"BIO LAB");room(-38,0,32,22,"MEDICAL");
+room(0,-34,28,24,"EXPERIMENT");room(38,-34,32,24,"ARCHIVE");room(-38,-34,32,24,"OBSERVATION");
+room(0,34,28,24,"POWER");room(38,34,32,24,"CONTAINMENT");room(-38,34,32,24,"GENE LAB");
+room(0,66,28,24,"SUBLEVEL ZERO");
+function corridor(x,z,w,d){box(w,.25,d,mats.floor,x,0,z)}
+corridor(0,17,8,12);corridor(0,-17,8,12);corridor(17,0,12,8);corridor(-17,0,12,8);
+corridor(17,-34,12,8);corridor(-17,-34,12,8);corridor(17,34,12,8);corridor(-17,34,12,8);corridor(0,50,8,12);
+
+for(let i=0;i<75;i++){const x=(Math.random()-.5)*105,z=(Math.random()-.5)*80;if(Math.abs(x)<50&&Math.abs(z)<50)box(THREE.MathUtils.randFloat(1,3),THREE.MathUtils.randFloat(.4,1.4),THREE.MathUtils.randFloat(1,3),i%3?mats.dark:mats.metal,x,.35,z)}
+for(let i=0;i<20;i++){const x=THREE.MathUtils.randFloatSpread(90),z=THREE.MathUtils.randFloatSpread(75);const o=box(THREE.MathUtils.randFloat(2,6),THREE.MathUtils.randFloat(1,4),.15,mats.organic,x,THREE.MathUtils.randFloat(1,3),z);o.rotation.z=Math.random()*2}
+
+function light(x,y,z,color=0xbdeaff,intensity=4,dist=18){const l=new THREE.PointLight(color,intensity,dist);l.position.set(x,y,z);l.castShadow=true;scene.add(l);box(.5,.12,.5,new THREE.MeshStandardMaterial({color:0xdcebf0,emissive:color,emissiveIntensity:2}),x,y-.08,z)}
+for(const p of [[0,4.5,0],[38,4.5,0],[-38,4.5,0],[0,4.5,-34],[38,4.5,-34],[-38,4.5,-34],[0,4.5,34],[38,4.5,34],[-38,4.5,34],[0,4.5,66]])light(...p);
+
+const player=new THREE.Group();player.position.set(0,0.1,8);scene.add(player);
+const body=box(1.05,1.8,.7,new THREE.MeshStandardMaterial({color:0x8b9294,roughness:.7}),0,1,0);body.parent=player;body.position.set(0,1,0);
+const head=box(.62,.62,.62,new THREE.MeshStandardMaterial({color:0xc4c8c7,roughness:.65}),0,2.22,0);head.parent=player;head.position.set(0,2.22,0);
+const visor=box(.38,.12,.08,new THREE.MeshStandardMaterial({color:0x8cecff,emissive:0x1b7f98,emissiveIntensity:2}),0,2.23,-.31);visor.parent=player;visor.position.set(0,2.23,-.31);
+const controls=new PointerLockControls(camera,renderer.domElement);camera.position.set(0,4.5,8);controls.getObject().position.copy(player.position);scene.add(controls.getObject());
+const keys={};addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE')interact();if(e.code==='KeyR')ammo=8});addEventListener('keyup',e=>keys[e.code]=false);
+renderer.domElement.addEventListener('click',()=>{if(started)controls.lock();});
+let started=false,ammo=8,hp=100,st=100,score=0,shotCooldown=0,power=false,card=false,core=false,drive=false;
+const items=[{p:new THREE.Vector3(0,34,0),t:"POWER",got:false},{p:new THREE.Vector3(38,-34,0),t:"CARD",got:false},{p:new THREE.Vector3(-38,-34,0),t:"CORE",got:false},{p:new THREE.Vector3(38,34,0),t:"DRIVE",got:false}];
+for(const q of items){const g=new THREE.Mesh(new THREE.OctahedronGeometry(.65),new THREE.MeshStandardMaterial({color:0x72d7ff,emissive:0x174e6a,emissiveIntensity:2}));g.position.copy(q.p);g.y=1.2;g.userData=q;scene.add(g);q.mesh=g}
+
+const enemies=[];
+function enemy(x,z,type="hunter"){const g=new THREE.Group();const s=type==="brute"?2.4:1.15;const m=new THREE.MeshStandardMaterial({color:type==="brute"?0x4a2330:0x263238,roughness:.75,emissive:type==="brute"?0x17060a:0x071014,emissiveIntensity:.8});const b=new THREE.Mesh(new THREE.CapsuleGeometry(.45*s,.9*s,5,8),m);b.castShadow=true;b.position.y=.9*s;g.add(b);const eye=new THREE.Mesh(new THREE.BoxGeometry(.55*s,.09*s,.08*s),new THREE.MeshStandardMaterial({color:0xff3344,emissive:0x990016,emissiveIntensity:3}));eye.position.set(0,1.15*s,-.42*s);g.add(eye);g.position.set(x,0,z);scene.add(g);enemies.push({g,type,hp:type==="brute"?12:4,spd:type==="brute"?1.3:2.1,hit:0})}
+enemy(8,1);enemy(-8,-2);enemy(38,-7);enemy(-38,-7);enemy(4,-34);enemy(-4,34);enemy(34,30,"brute");enemy(-32,-32,"brute");
+
+function interact(){let best=null,bd=3;for(const q of items)if(!q.got&&q.mesh.position.distanceTo(player.position)<bd){bd=q.mesh.position.distanceTo(player.position);best=q}if(!best)return;
+best.got=true;best.mesh.visible=false;if(best.t==="POWER")power=true;if(best.t==="CARD")card=true;if(best.t==="CORE")core=true;if(best.t==="DRIVE")drive=true;
+flash(best.t==="POWER"?"POWER RESTORED":best.t==="CARD"?"HIGH SECURITY CARD FOUND":best.t==="CORE"?"ALIEN CORE RECOVERED":"BLACK DRIVE RECOVERED");
+}
+let message="",msgTime=0;function flash(t){message=t;msgTime=2.8}
+function shoot(){if(!started||shotCooldown>0||ammo<=0)return;ammo--;shotCooldown=.32;
+const ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2(0,0),camera);const hits=ray.intersectObjects(scene.children,true);
+for(const h of hits){let e=enemies.find(q=>h.object===q.g.children[0]||q.g.children.includes(h.object)||h.object.parent===q.g);if(e){e.hp--;score+=e.hp<=0?300:40;if(e.hp<=0)e.g.visible=false;break}}
+}
+addEventListener('mousedown',e=>{if(e.button===0)shoot()});
+function objective(){if(!power)return"Find the POWER STATION";if(!card)return"Find the HIGH SECURITY KEYCARD";if(!core)return"Investigate the ALIEN CORE";if(!drive)return"Recover the BLACK DRIVE";return"Reach SUBLEVEL ZERO"}
+let prev=performance.now();
+function animate(now){requestAnimationFrame(animate);const dt=Math.min(.05,(now-prev)/1000);prev=now;shotCooldown=Math.max(0,shotCooldown-dt);
+if(started&&controls.isLocked){
+ let v=new THREE.Vector3((keys.KeyD?1:0)-(keys.KeyA?1:0),0,(keys.KeyS?1:0)-(keys.KeyW?1:0));if(v.lengthSq())v.normalize();
+ let speed=keys.ShiftLeft&&st>0?7:4;if(keys.ShiftLeft&&v.lengthSq())st=Math.max(0,st-30*dt);else st=Math.min(100,st+18*dt);
+ controls.moveRight(v.x*speed*dt);controls.moveForward(v.z*speed*dt);
+ player.position.copy(controls.getObject().position);player.position.y=.1;
+ // keep player in facility
+ player.position.x=THREE.MathUtils.clamp(player.position.x,-53,53);player.position.z=THREE.MathUtils.clamp(player.position.z,-48,78);controls.getObject().position.copy(player.position);
+ // third-person follow: camera trails behind player, with smooth spring
+ const desired=new THREE.Vector3(player.position.x,player.position.y+5.1,player.position.z+8.5);camera.position.lerp(desired,.12);camera.lookAt(player.position.x,1.1,player.position.z);
+ for(const e of enemies)if(e.g.visible){const d=e.g.position.distanceTo(player.position);if(d<18){e.g.lookAt(player.position.x,0,player.position.z);if(d>2)e.g.position.lerp(player.position,.003*e.spd*60*dt);else hp-=e.type==="brute"?18*dt:9*dt}}
+ if(drive&&player.position.z>58)end();
+}
+document.getElementById("stats").innerHTML=`HP ${Math.ceil(hp)}<br>STAMINA ${Math.floor(st)} · AMMO ${ammo}/8<br>POWER ${power?'✓':'—'} · CARD ${card?'✓':'—'} · CORE ${core?'✓':'—'} · DRIVE ${drive?'✓':'—'}<br>SCORE ${score}`;
+document.getElementById("mission").textContent=objective();
+if(msgTime>0){msgTime-=dt;document.getElementById("mission").textContent=message}
+renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+function end(){started=false;controls.unlock();document.getElementById("menu").style.display="flex";document.querySelector(".title").textContent="EXTRACTION";document.querySelector(".sub").textContent="MISSION COMPLETE";document.querySelector(".card p").innerHTML=`You escaped the ruins with the BLACK DRIVE.<br><br>Score: <b>${score}</b>`;document.getElementById("start").textContent="RESTART";document.getElementById("start").disabled=false}
+document.getElementById("start").onclick=()=>{started=true;document.getElementById("menu").style.display="none";controls.lock();flash("ENTERING THE RUINS")};
+document.getElementById("loading").textContent="3D engine ready — WebGL required";
+document.getElementById("start").disabled=false;
+addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script></body></html>

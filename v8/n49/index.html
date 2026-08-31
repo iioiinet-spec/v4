@@ -1,0 +1,626 @@
+무기와 손이 화면에 큼직하고 시원하게(FPS 게임처럼) 잘 보이도록 **캔버스의 크기를 키우고, 위치를 화면 중앙 쪽으로 당기며, 렌더링 스케일(비율)을 약 1.8배 확대**했습니다.
+
+아래 코드를 복사해서 기존 파일에 덮어쓰기 하시면 바로 적용됩니다.
+
+### 💻 수정된 게임 코드 (HTML 파일)
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Backrooms Survival - 3D</title>
+    <style>
+        body {
+            margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px; color: #fff; z-index: 10; pointer-events: none;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+        .hud { font-size: 24px; margin-bottom: 10px; font-weight: bold; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 12px; height: 12px;
+            background: transparent; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
+        }
+        #damage-overlay {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: radial-gradient(circle, rgba(255,0,0,0) 40%, rgba(255,0,0,0.5) 100%);
+            opacity: 0; pointer-events: none; z-index: 5; transition: opacity 0.2s;
+        }
+        /* 수정됨: 캔버스 크기를 키우고 위치를 중앙 쪽에 더 가깝게 배치 */
+        #weapon-layer {
+            position: absolute; bottom: -2vh; right: 15vw; width: 600px; height: 600px;
+            z-index: 8; pointer-events: none;
+        }
+        #blocker {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.8); z-index: 20;
+            display: flex; align-items: center; justify-content: center; flex-direction: column;
+            color: white; cursor: pointer; text-align: center;
+        }
+        #instructions { font-size: 18px; line-height: 1.6; max-width: 600px; }
+        h1 { font-size: 48px; color: #ffcc00; margin-bottom: 10px; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui-layer">
+        <div id="hud-level" class="hud">Level: 0 (The Backrooms)</div>
+        <div id="hud-time" class="hud">Time Left: 07:00</div>
+        <div id="hud-hp" class="hud">HP: 100</div>
+        <div id="hud-weapon" class="hud">Weapon: [1] 권총</div>
+        <div id="hud-almond" class="hud">Almond Water: 5개</div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="damage-overlay"></div>
+    
+    <!-- 수정됨: 무기 드로잉용 캔버스 해상도 대폭 증가 -->
+    <canvas id="weapon-layer" width="600" height="600"></canvas>
+
+    <div id="blocker">
+        <h1>BACKROOMS SURVIVAL</h1>
+        <div id="instructions">
+            <strong>게임 목표:</strong> 각 레벨에서 7분(420초)씩 생존하세요.<br>
+            Level 0 -> Level 1 (Poolrooms) -> Level FUN (엔딩)<br><br>
+            <strong>조작법:</strong><br>
+            [W, A, S, D] - 이동 | [마우스] - 시점 전환 | [좌클릭] - 무기 사용<br>
+            [1] 권총 | [2] 소총 | [3] 산탄총 | [4] 빠루 | [5] 아몬드 워터 (회복)<br><br>
+            화면을 클릭하여 시작 (ESC로 일시정지)
+        </div>
+    </div>
+
+    <script>
+        let camera, scene, renderer;
+        let controlsEnabled = false;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        let prevTime = performance.now();
+        
+        let mapGroup = new THREE.Group();
+        let monsters = [];
+        
+        const LEVEL_TIME = 420; 
+        let currentLevel = 0; 
+        let timeLeft = LEVEL_TIME;
+        let playerHP = 100;
+        let almondWaterCount = 5;
+        let isGameOver = false;
+
+        let currentWeapon = 1;
+        let lastFireTime = 0;
+        const WEAPONS = {
+            1: { name: "권총", damage: 30, cooldown: 500, range: 100 },
+            2: { name: "소총", damage: 15, cooldown: 120, range: 150 },
+            3: { name: "산탄총", damage: 20, cooldown: 1000, range: 30, spread: true },
+            4: { name: "빠루", damage: 50, cooldown: 600, range: 3 }, 
+            5: { name: "아몬드 워터", cooldown: 1000 } 
+        };
+
+        const MAP_SIZE = 40;
+        const CELL_SIZE = 5;
+        let mapGrid = [];
+
+        init();
+        animate();
+        updateWeaponView(); 
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x000000, 2, 40); 
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const blocker = document.getElementById('blocker');
+            blocker.addEventListener('click', function () { document.body.requestPointerLock(); });
+
+            document.addEventListener('pointerlockchange', function () {
+                if (document.pointerLockElement === document.body) {
+                    controlsEnabled = true;
+                    blocker.style.display = 'none';
+                    if (isGameOver) restartGame();
+                } else {
+                    controlsEnabled = false;
+                    if (!isGameOver) blocker.style.display = 'flex';
+                }
+            });
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('resize', onWindowResize);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            const flashLight = new THREE.PointLight(0xffffff, 1, 30);
+            flashLight.position.set(0, 0, 0);
+            camera.add(flashLight);
+            scene.add(camera);
+
+            loadLevel(currentLevel);
+            
+            setInterval(() => {
+                if(controlsEnabled && !isGameOver) {
+                    timeLeft--;
+                    updateHUD();
+                    if(timeLeft <= 0) levelComplete();
+                }
+            }, 1000);
+        }
+
+        // ==========================================
+        // 수정됨: 무기와 손의 크기를 1.8배 키우고 중앙 지향적으로 수정
+        // ==========================================
+        function updateWeaponView(isFiring = false) {
+            const canvas = document.getElementById('weapon-layer');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            
+            // 위치 중앙화 및 크기 설정
+            let offsetX = 280; 
+            let offsetY = 550; 
+            if (isFiring && currentWeapon !== 5) {
+                offsetX += (Math.random() - 0.5) * 20; 
+                offsetY += 50; 
+            } else if (isFiring && currentWeapon === 5) {
+                offsetY -= 80; 
+            }
+            
+            ctx.translate(offsetX, offsetY);
+            ctx.rotate(-Math.PI / 10); // 중앙(크로스헤어)을 향하도록 각도 미세 조정
+            ctx.scale(1.8, 1.8); // 1.8배 확대 렌더링하여 화면을 시원하게 채움
+
+            const drawHand = (x, y) => {
+                ctx.fillStyle = '#e8b890'; 
+                ctx.beginPath();
+                if(ctx.roundRect) ctx.roundRect(x, y, 70, 90, 15);
+                else ctx.rect(x, y, 70, 90);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#c79165';
+                ctx.lineWidth = 3;
+                for(let i=1; i<=3; i++) {
+                    ctx.beginPath(); ctx.moveTo(x + 15, y + i*22); ctx.lineTo(x + 55, y + i*22); ctx.stroke();
+                }
+            };
+
+            const drawMuzzleFlash = (x, y, radius) => {
+                const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                grad.addColorStop(0.2, 'rgba(255, 200, 0, 0.9)');
+                grad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            };
+
+            if (currentWeapon === 1) { 
+                ctx.fillStyle = '#444'; ctx.fillRect(-20, -120, 40, 120); 
+                ctx.fillStyle = '#222'; ctx.fillRect(-20, 0, 40, 80); 
+                drawHand(-35, 20);
+                if (isFiring) drawMuzzleFlash(0, -130, 60);
+                
+            } else if (currentWeapon === 2) { 
+                ctx.fillStyle = '#333'; ctx.fillRect(-15, -200, 30, 200); 
+                ctx.fillStyle = '#111'; ctx.fillRect(-25, -50, 50, 100); 
+                ctx.fillStyle = '#5c3a21'; ctx.fillRect(-25, 50, 50, 100); 
+                drawHand(-35, 30);
+                if (isFiring) drawMuzzleFlash(0, -210, 80);
+                
+            } else if (currentWeapon === 3) { 
+                ctx.fillStyle = '#222'; ctx.fillRect(-22, -150, 20, 150); ctx.fillRect(2, -150, 20, 150); 
+                ctx.fillStyle = '#4a2f19'; ctx.fillRect(-30, 0, 60, 120); 
+                drawHand(-35, 40);
+                if (isFiring) { drawMuzzleFlash(-12, -160, 60); drawMuzzleFlash(12, -160, 60); }
+                
+            } else if (currentWeapon === 4) { 
+                ctx.fillStyle = '#b30000'; ctx.fillRect(-15, -180, 30, 250); 
+                
+                ctx.beginPath(); ctx.arc(20, -180, 35, Math.PI, 1.5 * Math.PI);
+                ctx.lineWidth = 30; ctx.strokeStyle = '#b30000'; ctx.stroke();
+                
+                ctx.fillStyle = '#ddd';
+                ctx.beginPath(); ctx.moveTo(20, -215); ctx.lineTo(40, -190); ctx.lineTo(0, -190); ctx.fill();
+                
+                drawHand(-35, 20);
+                if (isFiring) { 
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; ctx.lineWidth = 15;
+                    ctx.beginPath(); ctx.arc(-50, -50, 150, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke();
+                }
+                
+            } else if (currentWeapon === 5) { 
+                ctx.fillStyle = '#3a8ebf'; ctx.beginPath(); 
+                if(ctx.roundRect) ctx.roundRect(-40, -120, 80, 160, 20); else ctx.rect(-40, -120, 80, 160);
+                ctx.fill(); 
+                ctx.fillStyle = '#ddd'; ctx.fillRect(-20, -150, 40, 30); 
+                ctx.fillStyle = '#e8d48b'; ctx.fillRect(-45, -60, 90, 60);
+                ctx.fillStyle = '#000'; ctx.font = 'bold 16px Courier New';
+                ctx.fillText("ALMOND", -30, -35); ctx.fillText("WATER", -25, -15);
+                drawHand(-35, 20);
+            }
+            ctx.restore();
+        }
+
+        // ==========================================
+        // 이하 맵 렌더 및 물리 관련 코드는 동일합니다
+        // ==========================================
+        function createTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            if (type === 'backrooms_wall') {
+                ctx.fillStyle = '#C8B568'; ctx.fillRect(0, 0, 256, 256);
+                ctx.strokeStyle = '#A89548'; ctx.lineWidth = 2;
+                for(let i=0; i<256; i+=32) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke(); }
+                for(let i=0; i<5000; i++) {
+                    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+                    ctx.fillRect(Math.random()*256, Math.random()*256, 2, 2);
+                }
+            } else if (type === 'backrooms_floor') {
+                ctx.fillStyle = '#7C7452'; ctx.fillRect(0, 0, 256, 256);
+                for(let i=0; i<10000; i++) {
+                    ctx.fillStyle = `rgba(0,0,0,${Math.random()*0.1})`;
+                    ctx.fillRect(Math.random()*256, Math.random()*256, 3, 3);
+                }
+            } else if (type === 'poolrooms_wall') {
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 256, 256);
+                ctx.strokeStyle = '#88ccff'; ctx.lineWidth = 4;
+                for(let i=0; i<=256; i+=32) { 
+                    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
+                }
+            } else if (type === 'poolrooms_floor') {
+                ctx.fillStyle = '#44aaff'; ctx.fillRect(0, 0, 256, 256); 
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                for(let i=0; i<10; i++) {
+                    ctx.beginPath(); ctx.arc(Math.random()*256, Math.random()*256, Math.random()*50, 0, Math.PI*2); ctx.fill();
+                }
+            } else if (type === 'fun_wall') {
+                ctx.fillStyle = '#F5E49F'; ctx.fillRect(0, 0, 256, 256);
+                const colors = ['red', 'blue', 'green', 'yellow', 'purple'];
+                for(let i=0; i<30; i++) {
+                    ctx.fillStyle = colors[Math.floor(Math.random()*colors.length)];
+                    ctx.beginPath(); ctx.arc(Math.random()*256, Math.random()*256, 10, 0, Math.PI*2); ctx.fill();
+                }
+            } else if (type === 'fun_floor') {
+                ctx.fillStyle = '#aa2222'; ctx.fillRect(0, 0, 256, 256); 
+                for(let i=0; i<50; i++) {
+                    ctx.fillStyle = ['#fff','#ff0','#0ff'][Math.floor(Math.random()*3)];
+                    ctx.fillRect(Math.random()*256, Math.random()*256, 5, 5); 
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        function generateMap(level) {
+            scene.remove(mapGroup);
+            mapGroup = new THREE.Group();
+            mapGrid = [];
+            monsters.forEach(m => scene.remove(m.sprite));
+            monsters = [];
+
+            let wallTex, floorTex, ceilingTex;
+            if (level === 0) {
+                scene.fog.color.setHex(0xaaaa55); scene.background = new THREE.Color(0xaaaa55);
+                wallTex = createTexture('backrooms_wall'); floorTex = createTexture('backrooms_floor');
+                document.getElementById('hud-level').innerText = "Level: 0 (The Backrooms)";
+            } else if (level === 1) {
+                scene.fog.color.setHex(0x2288cc); scene.background = new THREE.Color(0x2288cc);
+                wallTex = createTexture('poolrooms_wall'); floorTex = createTexture('poolrooms_floor');
+                document.getElementById('hud-level').innerText = "Level: 1 (Poolrooms)";
+            } else if (level === 2) {
+                scene.fog.color.setHex(0x330000); scene.background = new THREE.Color(0x330000);
+                wallTex = createTexture('fun_wall'); floorTex = createTexture('fun_floor');
+                document.getElementById('hud-level').innerText = "Level: 3 (Level FUN =) )";
+            }
+
+            const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
+            const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
+            
+            const planeGeo = new THREE.PlaneGeometry(MAP_SIZE * CELL_SIZE, MAP_SIZE * CELL_SIZE);
+            floorTex.repeat.set(MAP_SIZE, MAP_SIZE);
+            const floor = new THREE.Mesh(planeGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            mapGroup.add(floor);
+
+            const ceiling = new THREE.Mesh(planeGeo, wallMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = CELL_SIZE;
+            mapGroup.add(ceiling);
+
+            const boxGeo = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            
+            for (let i = 0; i < MAP_SIZE; i++) {
+                mapGrid[i] = [];
+                for (let j = 0; j < MAP_SIZE; j++) {
+                    let isWall = (i===0 || j===0 || i===MAP_SIZE-1 || j===MAP_SIZE-1 || Math.random() < 0.25);
+                    if (i > MAP_SIZE/2 - 2 && i < MAP_SIZE/2 + 2 && j > MAP_SIZE/2 - 2 && j < MAP_SIZE/2 + 2) isWall = false;
+
+                    mapGrid[i][j] = isWall ? 1 : 0;
+
+                    if (isWall) {
+                        let wall = new THREE.Mesh(boxGeo, wallMat);
+                        wall.position.set((i - MAP_SIZE/2) * CELL_SIZE + CELL_SIZE/2, CELL_SIZE/2, (j - MAP_SIZE/2) * CELL_SIZE + CELL_SIZE/2);
+                        mapGroup.add(wall);
+                    } else {
+                        let spawnRate = 0.05 + (level * 0.03); 
+                        if (Math.random() < spawnRate && (i < MAP_SIZE/2-3 || i > MAP_SIZE/2+3)) {
+                            spawnMonster((i - MAP_SIZE/2) * CELL_SIZE + CELL_SIZE/2, (j - MAP_SIZE/2) * CELL_SIZE + CELL_SIZE/2, level);
+                        }
+                    }
+                }
+            }
+            scene.add(mapGroup);
+            camera.position.set(0, CELL_SIZE * 0.4, 0);
+            camera.rotation.set(0, 0, 0);
+        }
+
+        function loadLevel(levelIndex) {
+            timeLeft = LEVEL_TIME;
+            currentLevel = levelIndex;
+            generateMap(levelIndex);
+            updateHUD();
+        }
+
+        function levelComplete() {
+            if (currentLevel < 2) { loadLevel(currentLevel + 1); } 
+            else {
+                controlsEnabled = false; document.exitPointerLock(); isGameOver = true;
+                const blocker = document.getElementById('blocker');
+                blocker.style.display = 'flex';
+                blocker.innerHTML = `<h1>YOU ESCAPED</h1><div id="instructions">모든 레벨에서 생존했습니다.<br>당신은 백룸을 탈출했습니다.</div>`;
+            }
+        }
+
+        function gameOver() {
+            controlsEnabled = false; document.exitPointerLock(); isGameOver = true;
+            const blocker = document.getElementById('blocker');
+            blocker.style.display = 'flex';
+            blocker.innerHTML = `<h1>YOU DIED</h1><div id="instructions">괴물에게 당했습니다.<br>화면을 클릭하여 처음부터 다시 시작하세요.</div>`;
+        }
+
+        function restartGame() {
+            isGameOver = false; playerHP = 100; almondWaterCount = 5; currentWeapon = 1;
+            updateWeaponView(); loadLevel(0);
+        }
+
+        function createHighQualityMonsterTexture(level) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 512, 512);
+
+            if (level === 0) { 
+                let grad = ctx.createRadialGradient(256, 300, 10, 256, 300, 200);
+                grad.addColorStop(0, 'rgba(10,10,10,1)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 512);
+
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.moveTo(256, 100); ctx.bezierCurveTo(150, 200, 100, 400, 200, 500);
+                ctx.bezierCurveTo(300, 480, 400, 400, 256, 100); ctx.fill();
+
+                ctx.shadowColor = '#fff'; ctx.shadowBlur = 20;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.ellipse(220, 250, 15, 8, Math.PI/6, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(290, 250, 15, 8, -Math.PI/6, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 0; 
+            } else if (level === 1) { 
+                ctx.fillStyle = '#0a2a3a';
+                ctx.beginPath(); ctx.arc(256, 200, 80, 0, Math.PI*2); 
+                if(ctx.roundRect) ctx.roundRect(196, 250, 120, 250, 30); else ctx.rect(196, 250, 120, 250);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 3;
+                for(let i=0; i<10; i++) {
+                    ctx.beginPath(); ctx.moveTo(256, 250 + i*20); ctx.lineTo(256 + (Math.random()-0.5)*100, 250 + i*25); ctx.stroke();
+                }
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.ellipse(256, 240, 30, 40, 0, 0, Math.PI*2); ctx.fill();
+            } else if (level === 2) { 
+                ctx.fillStyle = '#d4bc1c';
+                ctx.beginPath(); ctx.moveTo(256, 50); ctx.quadraticCurveTo(100, 150, 150, 450);
+                ctx.lineTo(362, 450); ctx.quadraticCurveTo(412, 150, 256, 50); ctx.fill();
+
+                ctx.fillStyle = '#a00'; ctx.font = 'bold 80px Courier'; ctx.fillText("= )", 190, 200);
+
+                ctx.fillStyle = '#800';
+                for(let i=0; i<30; i++) {
+                    ctx.beginPath(); ctx.arc(150 + Math.random()*200, 100 + Math.random()*350, Math.random()*15, 0, Math.PI*2); ctx.fill();
+                }
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function spawnMonster(x, z, level) {
+            const texture = createHighQualityMonsterTexture(level);
+            const material = new THREE.SpriteMaterial({ map: texture, color: 0xffffff });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(3, 3, 1);
+            sprite.position.set(x, CELL_SIZE/2, z);
+            scene.add(sprite);
+            monsters.push({ sprite: sprite, hp: 100, speed: 3 + level * 1.5 });
+        }
+
+        let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const PI_2 = Math.PI / 2;
+
+        function onMouseMove(event) {
+            if (!controlsEnabled) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+
+            euler.setFromQuaternion(camera.quaternion);
+            euler.y -= movementX * 0.002; euler.x -= movementY * 0.002;
+            euler.x = Math.max(-PI_2, Math.min(PI_2, euler.x));
+            camera.quaternion.setFromEuler(euler);
+        }
+
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'ArrowUp': case 'KeyW': moveForward = true; break;
+                case 'ArrowLeft': case 'KeyA': moveLeft = true; break;
+                case 'ArrowDown': case 'KeyS': moveBackward = true; break;
+                case 'ArrowRight': case 'KeyD': moveRight = true; break;
+                case 'Digit1': currentWeapon = 1; updateHUD(); updateWeaponView(); break;
+                case 'Digit2': currentWeapon = 2; updateHUD(); updateWeaponView(); break;
+                case 'Digit3': currentWeapon = 3; updateHUD(); updateWeaponView(); break;
+                case 'Digit4': currentWeapon = 4; updateHUD(); updateWeaponView(); break;
+                case 'Digit5': currentWeapon = 5; updateHUD(); updateWeaponView(); useAlmondWater(); break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'ArrowUp': case 'KeyW': moveForward = false; break;
+                case 'ArrowLeft': case 'KeyA': moveLeft = false; break;
+                case 'ArrowDown': case 'KeyS': moveBackward = false; break;
+                case 'ArrowRight': case 'KeyD': moveRight = false; break;
+            }
+        }
+
+        function onMouseDown(event) { if (controlsEnabled && event.button === 0) fireWeapon(); }
+
+        function fireWeapon() {
+            const now = performance.now();
+            const weapon = WEAPONS[currentWeapon];
+            if (currentWeapon === 5) return; 
+            if (now - lastFireTime < weapon.cooldown) return; 
+            lastFireTime = now;
+            
+            updateWeaponView(true); setTimeout(() => { updateWeaponView(false); }, 100);
+            camera.rotation.x += (Math.random() - 0.5) * 0.05;
+
+            const raycaster = new THREE.Raycaster();
+            if (weapon.spread) {
+                for(let i=0; i<5; i++) {
+                    const jitterX = (Math.random() - 0.5) * 0.1; const jitterY = (Math.random() - 0.5) * 0.1;
+                    raycaster.setFromCamera(new THREE.Vector2(jitterX, jitterY), camera);
+                    processHit(raycaster, weapon);
+                }
+            } else {
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                processHit(raycaster, weapon);
+            }
+        }
+
+        function processHit(raycaster, weapon) {
+            const intersects = raycaster.intersectObjects(monsters.map(m => m.sprite));
+            if (intersects.length > 0) {
+                const hitSprite = intersects[0].object;
+                const distance = intersects[0].distance;
+                if (distance <= weapon.range) {
+                    const mIndex = monsters.findIndex(m => m.sprite === hitSprite);
+                    if (mIndex !== -1) {
+                        monsters[mIndex].hp -= weapon.damage;
+                        hitSprite.material.color.setHex(0xff0000);
+                        setTimeout(() => { if(hitSprite.material) hitSprite.material.color.setHex(0xffffff); }, 100);
+                        if (monsters[mIndex].hp <= 0) { scene.remove(hitSprite); monsters.splice(mIndex, 1); }
+                    }
+                }
+            }
+        }
+
+        function useAlmondWater() {
+            if (almondWaterCount > 0 && playerHP < 100) {
+                almondWaterCount--; playerHP = Math.min(100, playerHP + 50);
+                updateWeaponView(true); setTimeout(() => { updateWeaponView(false); }, 300);
+
+                const overlay = document.getElementById('damage-overlay');
+                overlay.style.background = 'radial-gradient(circle, rgba(0,255,0,0) 40%, rgba(0,255,0,0.5) 100%)';
+                overlay.style.opacity = '1';
+                setTimeout(() => { overlay.style.opacity = '0'; }, 300);
+                setTimeout(() => { overlay.style.background = 'radial-gradient(circle, rgba(255,0,0,0) 40%, rgba(255,0,0,0.5) 100%)'; }, 400);
+                updateHUD();
+            }
+        }
+
+        function checkCollision(x, z) {
+            let gridX = Math.floor(x / CELL_SIZE + MAP_SIZE / 2);
+            let gridZ = Math.floor(z / CELL_SIZE + MAP_SIZE / 2);
+            if (gridX < 0 || gridX >= MAP_SIZE || gridZ < 0 || gridZ >= MAP_SIZE) return true;
+            return mapGrid[gridX][gridZ] === 1; 
+        }
+
+        function updateHUD() {
+            let min = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+            let sec = (timeLeft % 60).toString().padStart(2, '0');
+            document.getElementById('hud-time').innerText = `Time Left: ${min}:${sec}`;
+            document.getElementById('hud-hp').innerText = `HP: ${Math.floor(playerHP)}`;
+            document.getElementById('hud-weapon').innerText = `Weapon: [${currentWeapon}] ${WEAPONS[currentWeapon].name}`;
+            document.getElementById('hud-almond').innerText = `Almond Water: ${almondWaterCount}개`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controlsEnabled && !isGameOver) {
+                const time = performance.now(); const delta = (time - prevTime) / 1000;
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                
+                direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize();
+
+                const speed = 120.0;
+                if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
+
+                const cameraDir = new THREE.Vector3(); camera.getWorldDirection(cameraDir); cameraDir.y = 0; cameraDir.normalize();
+                const cameraRight = new THREE.Vector3(); cameraRight.crossVectors(cameraDir, new THREE.Vector3(0, 1, 0)).normalize();
+
+                const moveVector = new THREE.Vector3();
+                moveVector.addScaledVector(cameraRight, -velocity.x * delta);
+                moveVector.addScaledVector(cameraDir, -velocity.z * delta);
+
+                const nextX = camera.position.x + moveVector.x; const nextZ = camera.position.z + moveVector.z;
+                if (!checkCollision(nextX, camera.position.z)) { camera.position.x = nextX; }
+                if (!checkCollision(camera.position.x, nextZ)) { camera.position.z = nextZ; }
+
+                if (moveForward || moveBackward || moveLeft || moveRight) {
+                    camera.position.y = (CELL_SIZE * 0.4) + Math.sin(time * 0.015) * 0.15; 
+                }
+
+                for (let i = 0; i < monsters.length; i++) {
+                    let m = monsters[i];
+                    const dx = camera.position.x - m.sprite.position.x; const dz = camera.position.z - m.sprite.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (dist < 40) { 
+                        const mNextX = m.sprite.position.x + (dx/dist) * m.speed * delta;
+                        const mNextZ = m.sprite.position.z + (dz/dist) * m.speed * delta;
+                        
+                        if (!checkCollision(mNextX, m.sprite.position.z)) m.sprite.position.x = mNextX;
+                        if (!checkCollision(m.sprite.position.x, mNextZ)) m.sprite.position.z = mNextZ;
+                        
+                        if (dist < 2.5) {
+                            playerHP -= 20 * delta; updateHUD();
+                            document.getElementById('damage-overlay').style.opacity = 0.5 + Math.random()*0.5;
+                            setTimeout(() => { document.getElementById('damage-overlay').style.opacity = 0; }, 100);
+                            if (playerHP <= 0) gameOver();
+                        }
+                    }
+                }
+                prevTime = time;
+            } else { prevTime = performance.now(); }
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
+
+```

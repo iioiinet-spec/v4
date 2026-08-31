@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 포켓몬 키우기: 박스 & 다이맥스</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+
+        body {
+            font-family: 'Jua', sans-serif;
+            background: linear-gradient(135deg, #a8c0ff 0%, #3f2b96 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #game-container {
+            background: #ffffff;
+            width: 420px;
+            padding: 20px;
+            border-radius: 30px;
+            box-shadow: 0 25px 40px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel {
+            background: linear-gradient(180deg, #fdfbfb 0%, #ebedee 100%);
+            padding: 12px;
+            border-radius: 15px;
+            box-shadow: inset 0 4px 6px rgba(255,255,255,0.8), 0 4px 8px rgba(0,0,0,0.1);
+            text-align: center;
+            margin-bottom: 15px;
+            border: 2px solid #e2e2e2;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 22px; color: #333; }
+
+        .bar-container { background-color: #d2d6da; border-radius: 10px; width: 100%; overflow: hidden; border: 2px solid #bdc3c7; }
+        .bar-fill { height: 100%; width: 0%; transition: width 0.3s; }
+        .exp-fill { background: linear-gradient(180deg, #f1c40f, #f39c12); height: 16px;}
+        .hp-fill { background: linear-gradient(180deg, #2ed573, #27ae60); }
+
+        .active-view { display: flex !important; }
+        #view-pet, #view-battle { display: none; flex-direction: column; animation: fadeIn 0.4s; }
+
+        /* === 펫 화면 === */
+        #pet-area {
+            position: relative; height: 180px; display: flex; justify-content: center; align-items: center; margin-bottom: 10px;
+        }
+        .pedestal {
+            position: absolute; bottom: 20px; width: 180px; height: 40px;
+            background: radial-gradient(ellipse, #74b9ff, #0984e3);
+            border-radius: 50%; transform: rotateX(65deg); border: 3px solid #fff;
+        }
+        #pet { position: relative; z-index: 2; height: 120px; display: flex; align-items: flex-end; animation: bounce 1.5s infinite alternate ease-in-out; }
+        #pet img { height: 100px; filter: drop-shadow(0 15px 10px rgba(0,0,0,0.2)); }
+        #emotion { position: absolute; top: 10px; right: 80px; font-size: 28px; z-index: 3; }
+        #speech-bubble {
+            position: absolute; top: -10px; background: #fff; border: 3px solid #ff7675; padding: 5px 15px;
+            border-radius: 20px; font-size: 14px; opacity: 0; z-index: 4; transition: 0.3s;
+        }
+
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f8f9fa; padding: 12px; border-radius: 15px; margin-bottom: 10px; }
+        .stat-item { font-size: 13px; font-weight: bold; }
+
+        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .btn-3d {
+            font-family: 'Jua'; background: linear-gradient(180deg, #70a1ff, #1e90ff); color: white; border: none;
+            padding: 10px 0; border-radius: 12px; font-size: 15px; cursor: pointer; box-shadow: 0 5px 0 #0984e3;
+        }
+        .btn-3d:active { transform: translateY(5px); box-shadow: 0 0 0 #0984e3; }
+        .btn-box { background: linear-gradient(180deg, #ff9f43, #ee5253); box-shadow: 0 5px 0 #c8d6e5; grid-column: span 3;}
+
+        /* === 배틀 화면 === */
+        #battle-arena {
+            height: 220px; background: linear-gradient(to bottom, #74b9ff, #dfe6e9); border-radius: 15px;
+            position: relative; margin-bottom: 10px; border: 3px solid #b2bec3;
+        }
+        .pokemon-sprite { position: absolute; filter: drop-shadow(0 10px 5px rgba(0,0,0,0.3)); transition: all 0.3s; }
+        #opp-box { top: 10px; right: 10px; width: 150px; text-align: right; }
+        #opp-sprite { height: 80px; right: 20px; top: 60px; }
+        #my-box { bottom: 10px; left: 10px; width: 160px; text-align: left; }
+        #my-sprite { height: 90px; left: 20px; bottom: 20px; }
+
+        .battle-hp-box { background: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 10px; border: 2px solid #333; font-size: 13px; }
+        .hp-text-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px; }
+
+        #battle-msg { background: #2d3436; color: white; padding: 10px; border-radius: 10px; font-size: 14px; min-height: 40px; margin-bottom: 10px; }
+        .battle-menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        /* 특별 진화 이펙트 */
+        .mega-glow { filter: drop-shadow(0 0 15px #f1c40f) !important; animation: pulse 1s infinite alternate; }
+        .dynamax-glow { filter: drop-shadow(0 0 20px #ff4757) !important; transform: scale(1.6) translateY(-10px); animation: float 2s infinite; }
+
+        /* === 박스 (보관함) 모달 === */
+        #box-modal {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 100; flex-direction: column; align-items: center; padding-top: 20px;
+        }
+        .box-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 90%; max-height: 300px; overflow-y: auto; }
+        .box-item { background: #fff; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; border: 2px solid #ddd; }
+        .box-item:hover { border-color: #ff9f43; background: #fff3e0; }
+        .box-item img { height: 50px; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes bounce { 0% { transform: translateY(0); } 100% { transform: translateY(-8px); } }
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+        @keyframes float { 0%, 100% { transform: scale(1.6) translateY(-10px); } 50% { transform: scale(1.6) translateY(-15px); } }
+        @keyframes attackShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(10px); } 75% { transform: translateX(-10px); } }
+        @keyframes damageBlink { 50% { opacity: 0.3; filter: brightness(2) sepia(1) hue-rotate(-50deg) saturate(5); } }
+        @keyframes ballThrow { 50% { transform: translate(0px, -20px) rotate(180deg); } 100% { transform: translate(60px, 30px) rotate(360deg); opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    
+    <!-- 1. 펫 키우기 뷰 -->
+    <div id="view-pet" class="active-view">
+        <div class="panel">
+            <h1 id="title-text">말랑이 (Lv.1)</h1>
+            <div class="bar-container"><div id="exp-bar" class="bar-fill exp-fill"></div></div>
+            <div style="font-size: 12px; margin-top: 5px;">EXP: <span id="exp-text">0</span> / 100</div>
+        </div>
+
+        <div id="pet-area">
+            <div class="pedestal"></div>
+            <div id="speech-bubble">안녕!</div>
+            <div id="pet"><div style="font-size:70px;">🥚</div></div>
+            <div id="emotion">😊</div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">포만감 <div class="bar-container" style="height:10px;"><div id="bar-fullness" class="bar-fill hp-fill"></div></div></div>
+            <div class="stat-item">에너지 <div class="bar-container" style="height:10px;"><div id="bar-energy" class="bar-fill hp-fill"></div></div></div>
+            <div class="stat-item">행복도 <div class="bar-container" style="height:10px;"><div id="bar-happiness" class="bar-fill hp-fill"></div></div></div>
+            <div class="stat-item">청결도 <div class="bar-container" style="height:10px;"><div id="bar-cleanliness" class="bar-fill hp-fill"></div></div></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-3d" onclick="action('feed')">🍚 밥</button>
+            <button class="btn-3d" onclick="action('play')">🎾 놀기</button>
+            <button class="btn-3d" onclick="action('wash')">🧼 씻기</button>
+            <button class="btn-3d btn-box" onclick="openBox()">📦 포켓몬 박스 열기 (교체)</button>
+        </div>
+        <div style="text-align:center; font-size:12px; margin-top:10px; color:#555;">⚔️ 'x' 키: 배틀 / 'r' 키: 메가진화&다이맥스(Lv.50)</div>
+    </div>
+
+    <!-- 2. 배틀 뷰 -->
+    <div id="view-battle">
+        <div class="panel"><h1 style="font-size: 18px;">야생 배틀!</h1></div>
+
+        <div id="battle-arena">
+            <div id="throw-ball" style="position:absolute; display:none; z-index:10; font-size:30px;">🔴</div>
+            
+            <div id="opp-box" class="pokemon-sprite">
+                <div class="battle-hp-box">
+                    <b id="opp-name">야생 포켓몬</b>
+                    <div class="hp-text-row"><span>HP</span> <span id="opp-hp-txt">100/100</span></div>
+                    <div class="bar-container" style="height:10px;"><div id="opp-hp-bar" class="bar-fill hp-fill" style="width:100%"></div></div>
+                </div>
+            </div>
+            <img id="opp-sprite" class="pokemon-sprite" src="">
+
+            <div id="my-box" class="pokemon-sprite">
+                <div class="battle-hp-box">
+                    <b id="my-battle-name">내 포켓몬</b> <span id="mega-indicator" style="color:#d35400; font-size:11px; display:none;"></span>
+                    <div class="hp-text-row"><span>HP</span> <span id="my-hp-txt">100/100</span></div>
+                    <div class="bar-container" style="height:10px;"><div id="my-hp-bar" class="bar-fill hp-fill" style="width:100%"></div></div>
+                </div>
+            </div>
+            <img id="my-sprite" class="pokemon-sprite" src="">
+        </div>
+
+        <div id="battle-msg">야생 포켓몬이 나타났다!</div>
+
+        <div id="menu-main" class="battle-menu-grid">
+            <button class="btn-3d" style="background:linear-gradient(180deg, #ff9f43, #ee5253);" onclick="battleAttack()">⚔️ 공격</button>
+            <button class="btn-3d" style="background:linear-gradient(180deg, #ff6b6b, #c0392b);" onclick="useBall()">🔴 잡기(볼)</button>
+            <button class="btn-3d" style="background:linear-gradient(180deg, #1dd1a1, #10ac84);" onclick="useItem()">💊 상처약</button>
+            <button class="btn-3d" style="background:linear-gradient(180deg, #a4b0be, #747d8c);" onclick="battleRun()">🏃 도망</button>
+        </div>
+    </div>
+
+    <!-- 3. 박스(보관함) 모달 -->
+    <div id="box-modal">
+        <h2 style="color:white; margin-bottom:15px;">📦 내 포켓몬 박스</h2>
+        <div class="box-grid" id="box-grid-container"></div>
+        <button class="btn-3d" style="margin-top:20px; width:80%;" onclick="closeBox()">닫기</button>
+    </div>
+
+</div>
+
+<script>
+    const pokedex = [
+        { name: "파이리", evos: ["알", "파이리", "리자드", "리자몽", "메가리자몽X"], sprites: ["egg", "charmander", "charmeleon", "charizard", "charizard-megax"], special: "mega" },
+        { name: "이상해씨", evos: ["알", "이상해씨", "이상해풀", "이상해꽃", "메가이상해꽃"], sprites: ["egg", "bulbasaur", "ivysaur", "venusaur", "venusaur-mega"], special: "mega" },
+        { name: "꼬부기", evos: ["알", "꼬부기", "어니부기", "거북왕", "메가거북왕"], sprites: ["egg", "squirtle", "wartortle", "blastoise", "blastoise-mega"], special: "mega" },
+        { name: "피카츄", evos: ["알", "피츄", "피카츄", "라이츄"], sprites: ["egg", "pichu", "pikachu", "raichu"], special: "dynamax" },
+        { name: "팬텀", evos: ["알", "고오스", "고우스트", "팬텀", "메가팬텀"], sprites: ["egg", "gastly", "haunter", "gengar", "gengar-mega"], special: "mega" },
+        { name: "망나뇽", evos: ["알", "미뇽", "신뇽", "망나뇽"], sprites: ["egg", "dratini", "dragonair", "dragonite"], special: "dynamax" },
+        { name: "한카리아스", evos: ["알", "딥상어동", "한바이트", "한카리아스", "메가한카리아스"], sprites: ["egg", "gible", "gabite", "garchomp", "garchomp-mega"], special: "mega" },
+        { name: "잠만보", evos: ["알", "먹고자", "잠만보"], sprites: ["egg", "munchlax", "snorlax"], special: "dynamax" },
+        { name: "갸라도스", evos: ["알", "잉어킹", "갸라도스", "메가갸라도스"], sprites: ["egg", "magikarp", "gyarados", "gyarados-mega"], special: "mega" }
+    ];
+
+    // 내 포켓몬 박스 데이터
+    let myBox = [
+        {
+            dex: pokedex[Math.floor(Math.random() * 3)], // 초기 스타팅
+            level: 1, exp: 0, stage: 0,
+            stats: { fullness: 70, energy: 70, happiness: 70, cleanliness: 70 }
+        }
+    ];
+    let activePetIdx = 0;
+
+    // 배틀 변수
+    let inBattle = false;
+    let myHp = 100, myMaxHp = 100;
+    let oppHp = 100, oppMaxHp = 100;
+    let isSpecialState = false; let specialTurns = 0;
+    let currentOpp = null;
+
+    function getActive() { return myBox[activePetIdx]; }
+
+    function init() { updateUI(); setInterval(decreaseStats, 3000); }
+
+    function getStage(level, dex) {
+        if (level >= 30 && dex.evos.length > 3) return 3;
+        if (level >= 20 && dex.evos.length > 2) return 2;
+        if (level >= 10 && dex.evos.length > 1) return 1;
+        return 0;
+    }
+
+    function decreaseStats() {
+        if (inBattle) return;
+        let p = getActive();
+        p.stats.fullness = Math.max(0, p.stats.fullness - 3);
+        p.stats.energy = Math.max(0, p.stats.energy - 3);
+        p.stats.happiness = Math.max(0, p.stats.happiness - 3);
+        p.stats.cleanliness = Math.max(0, p.stats.cleanliness - 3);
+        updateUI();
+    }
+
+    function action(type) {
+        let p = getActive();
+        if (type === 'feed') { p.stats.fullness = Math.min(100, p.stats.fullness + 25); p.stats.happiness += 5; showBubble("냠냠! 🍚"); }
+        else if (type === 'play') { p.stats.happiness = Math.min(100, p.stats.happiness + 25); p.stats.energy -= 15; p.stats.fullness -= 10; showBubble("신나! 🎾"); }
+        else if (type === 'wash') { p.stats.cleanliness = Math.min(100, p.stats.cleanliness + 35); showBubble("시원해 🧼"); }
+        addExp(10); updateUI();
+    }
+
+    function addExp(amount) {
+        let p = getActive();
+        p.exp += amount;
+        if (p.exp >= 100) {
+            p.level++; p.exp -= 100;
+            showBubble(`레벨업! (Lv.${p.level}) 🎉`);
+            let newStage = getStage(p.level, p.dex);
+            if (newStage > p.stage) {
+                p.stage = newStage;
+                alert(`✨ 앗! [${p.dex.evos[newStage-1]}]의 상태가 이상하다..!\n축하합니다! [${p.dex.evos[newStage]}]로 진화했습니다! ✨`);
+            }
+        }
+    }
+
+    function showBubble(txt) {
+        const el = document.getElementById('speech-bubble');
+        el.innerText = txt; el.style.opacity = 1;
+        setTimeout(() => el.style.opacity = 0, 2000);
+    }
+
+    function updateUI() {
+        let p = getActive();
+        document.getElementById('title-text').innerText = `${p.dex.evos[p.stage]} (Lv.${p.level})`;
+        document.getElementById('exp-bar').style.width = `${p.exp}%`;
+        document.getElementById('exp-text').innerText = p.exp;
+
+        const elPet = document.getElementById('pet');
+        if (p.stage === 0) elPet.innerHTML = '<div style="font-size:70px;">🥚</div>';
+        else elPet.innerHTML = `<img src="https://play.pokemonshowdown.com/sprites/xyani/${p.dex.sprites[p.stage]}.gif">`;
+
+        ['fullness', 'energy', 'happiness', 'cleanliness'].forEach(s => {
+            const bar = document.getElementById(`bar-${s}`);
+            bar.style.width = `${p.stats[s]}%`;
+            bar.style.background = p.stats[s] > 30 ? 'linear-gradient(180deg, #2ed573, #27ae60)' : 'linear-gradient(180deg, #ff4757, #c0392b)';
+        });
+    }
+
+    /* === 박스 로직 === */
+    function openBox() {
+        const grid = document.getElementById('box-grid-container');
+        grid.innerHTML = '';
+        myBox.forEach((pet, idx) => {
+            let spriteUrl = pet.stage === 0 ? 'https://play.pokemonshowdown.com/sprites/items/poke-ball.png' : `https://play.pokemonshowdown.com/sprites/xyani/${pet.dex.sprites[pet.stage]}.gif`;
+            let div = document.createElement('div');
+            div.className = 'box-item';
+            div.innerHTML = `<img src="${spriteUrl}"><br><b style="font-size:12px;">Lv.${pet.level} ${pet.dex.evos[pet.stage]}</b>`;
+            if(idx === activePetIdx) div.style.borderColor = '#2ed573';
+            div.onclick = () => { activePetIdx = idx; closeBox(); updateUI(); showBubble("파트너 교체!"); };
+            grid.appendChild(div);
+        });
+        document.getElementById('box-modal').style.display = 'flex';
+    }
+    function closeBox() { document.getElementById('box-modal').style.display = 'none'; }
+
+    /* === 배틀 로직 === */
+    document.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'x' && !inBattle) startBattle();
+        if (e.key.toLowerCase() === 'r' && inBattle && getActive().level >= 50 && !isSpecialState) triggerSpecial();
+    });
+
+    function startBattle() {
+        let p = getActive();
+        if (p.stage === 0) { alert("알 상태라 배틀 불가!"); return; }
+        
+        inBattle = true; isSpecialState = false; specialTurns = 0;
+        document.getElementById('view-pet').classList.remove('active-view');
+        document.getElementById('view-battle').classList.add('active-view');
+
+        myMaxHp = 50 + (p.level * 5); myHp = myMaxHp;
+        
+        // 야생 포켓몬 생성
+        let randDex = pokedex[Math.floor(Math.random() * pokedex.length)];
+        let oppLevel = Math.max(1, p.level + Math.floor(Math.random()*10 - 5));
+        let oStage = getStage(oppLevel, randDex);
+        if(oStage === 0) oStage = 1; // 야생은 알이 아님
+        oppMaxHp = 40 + (oppLevel * 5); oppHp = oppMaxHp;
+        currentOpp = { dex: randDex, level: oppLevel, stage: oStage };
+
+        document.getElementById('opp-name').innerText = `야생 ${randDex.evos[oStage]}`;
+        document.getElementById('opp-sprite').src = `https://play.pokemonshowdown.com/sprites/xyani/${randDex.sprites[oStage]}.gif`;
+        
+        document.getElementById('my-battle-name').innerText = `Lv.${p.level} ${p.dex.evos[p.stage]}`;
+        setMyBattleSprite();
+        document.getElementById('mega-indicator').style.display = 'none';
+
+        updateBattleHP();
+        writeMsg(`야생의 ${randDex.evos[oStage]}(이)가 나타났다!`);
+    }
+
+    function setMyBattleSprite() {
+        let p = getActive();
+        const el = document.getElementById('my-sprite');
+        
+        if (isSpecialState && p.dex.special === 'mega') {
+            el.src = `https://play.pokemonshowdown.com/sprites/xyani-back/${p.dex.sprites[p.dex.sprites.length - 1]}.gif`;
+            el.className = 'pokemon-sprite mega-glow';
+        } else {
+            el.src = `https://play.pokemonshowdown.com/sprites/xyani-back/${p.dex.sprites[p.stage]}.gif`;
+            el.className = 'pokemon-sprite' + (isSpecialState && p.dex.special === 'dynamax' ? ' dynamax-glow' : '');
+        }
+    }
+
+    function triggerSpecial() {
+        let p = getActive();
+        // 최대 진화 상태인지 확인
+        let maxStage = p.dex.sprites.length - (p.dex.special === 'mega' ? 2 : 1);
+        if (p.stage < maxStage) {
+            writeMsg("아직 최종 진화 형태가 아니라서 발동 불가!");
+            return;
+        }
+
+        isSpecialState = true; specialTurns = 3;
+        setMyBattleSprite();
+        let indicator = document.getElementById('mega-indicator');
+        indicator.style.display = 'inline';
+        if (p.dex.special === 'mega') {
+            indicator.innerText = "(메가진화!)";
+            indicator.style.color = "#8e44ad";
+            writeMsg(`🔥 ${p.dex.evos[p.stage]}(이)가 메가진화했다!`);
+        } else {
+            indicator.innerText = "(다이맥스!)";
+            indicator.style.color = "#c0392b";
+            writeMsg(`💥 거대화! ${p.dex.evos[p.stage]}(이)가 다이맥스했다!`);
+        }
+    }
+
+    function writeMsg(msg) { document.getElementById('battle-msg').innerText = msg; }
+    function updateBattleHP() {
+        document.getElementById('my-hp-txt').innerText = `${Math.floor(Math.max(0, myHp))} / ${myMaxHp}`;
+        document.getElementById('my-hp-bar').style.width = `${Math.max(0, (myHp/myMaxHp)*100)}%`;
+        document.getElementById('opp-hp-txt').innerText = `${Math.floor(Math.max(0, oppHp))} / ${oppMaxHp}`;
+        document.getElementById('opp-hp-bar').style.width = `${Math.max(0, (oppHp/oppMaxHp)*100)}%`;
+    }
+
+    function useItem() {
+        myHp = Math.min(myMaxHp, myHp + 50);
+        updateBattleHP();
+        writeMsg("상처약 사용! 체력이 회복되었다.");
+        setTimeout(oppAttack, 1000);
+    }
+
+    function useBall() {
+        writeMsg("몬스터볼을 던졌다!");
+        const ball = document.getElementById('throw-ball');
+        ball.style.display = 'block'; ball.style.animation = 'none'; ball.offsetHeight;
+        ball.style.animation = 'ballThrow 1s forwards';
+        
+        setTimeout(() => {
+            ball.style.display = 'none';
+            let catchRate = ((oppMaxHp - oppHp) / oppMaxHp) * 0.7 + 0.1; 
+            if (Math.random() < catchRate) {
+                writeMsg(`신난다! ${currentOpp.dex.evos[currentOpp.stage]}를(을) 잡았다!\n(박스로 전송되었습니다)`);
+                myBox.push({
+                    dex: currentOpp.dex, level: currentOpp.level, stage: currentOpp.stage, exp: 0,
+                    stats: { fullness: 50, energy: 50, happiness: 50, cleanliness: 50 }
+                });
+                setTimeout(() => exitBattle(), 2000);
+            } else {
+                writeMsg(`아앗! 빠져나왔다!`);
+                setTimeout(oppAttack, 1000);
+            }
+        }, 1000);
+    }
+
+    function battleAttack() {
+        if (myHp <= 0 || oppHp <= 0) return;
+        
+        let p = getActive();
+        if (isSpecialState) {
+            specialTurns--;
+            if (specialTurns <= 0) {
+                isSpecialState = false; setMyBattleSprite();
+                document.getElementById('mega-indicator').style.display = 'none';
+                writeMsg("특수 상태가 풀렸다!");
+            }
+        }
+
+        let myDmg = Math.floor(Math.random()*15) + 10 + (p.level/2);
+        if (isSpecialState) myDmg *= 1.8;
+        
+        animPlay('my-sprite', 'attackShake');
+        setTimeout(() => {
+            oppHp -= myDmg;
+            animPlay('opp-sprite', 'damageBlink'); updateBattleHP();
+            writeMsg(`공격! 적에게 ${Math.floor(myDmg)}의 데미지!`);
+            if (oppHp <= 0) setTimeout(() => endBattle(true), 1500);
+            else setTimeout(oppAttack, 1200);
+        }, 300);
+    }
+
+    function oppAttack() {
+        if(oppHp <= 0 || !inBattle) return;
+        let oppDmg = Math.floor(Math.random() * 15) + 5 + (currentOpp.level/2);
+        animPlay('opp-sprite', 'attackShake');
+        
+        setTimeout(() => {
+            myHp -= oppDmg;
+            animPlay('my-sprite', 'damageBlink'); updateBattleHP();
+            writeMsg(`적의 반격! ${Math.floor(oppDmg)} 데미지를 입었다.`);
+            if (myHp <= 0) setTimeout(() => endBattle(false), 1500);
+        }, 300);
+    }
+
+    function battleRun() { writeMsg("무사히 도망쳤다!"); setTimeout(() => exitBattle(), 1000); }
+
+    function endBattle(isWin) {
+        let p = getActive();
+        if (isWin) {
+            writeMsg(`승리! (경험치 30 획득)`);
+            p.stats.energy = Math.max(0, p.stats.energy - 10);
+            addExp(30);
+        } else {
+            writeMsg(`눈앞이 깜깜해졌다...`);
+            p.stats.energy = 0;
+        }
+        setTimeout(() => exitBattle(), 2000);
+    }
+
+    function exitBattle() {
+        inBattle = false;
+        document.getElementById('view-battle').classList.remove('active-view');
+        document.getElementById('view-pet').classList.add('active-view');
+        updateUI();
+    }
+
+    function animPlay(id, animName) {
+        const el = document.getElementById(id);
+        el.style.animation = 'none'; el.offsetHeight; 
+        el.style.animation = `${animName} 0.4s`;
+    }
+
+    init();
+</script>
+</body>
+</html>
