@@ -846,13 +846,13 @@ function recycle(i){
 /* ============================================================
    5. 코스 생성 (나선형 상승 타워)
    ============================================================ */
-let cursor = new THREE.Vector3(), heading = 0, idx = 0, topY = 0;
+let cursor = new THREE.Vector3(), heading = 0, idx = 0, topY = 0, lastCheckIdx = 0;
 const R = (a,b)=> a + Math.random()*(b-a);
 
 function resetCourse(){
   while (platforms.length) recycle(0);
   grid.clear();
-  cursor.set(0,0,0); heading = 0; idx = 0; topY = 0;
+  cursor.set(0,0,0); heading = 0; idx = 0; topY = 0; lastCheckIdx = 0;
   if (mode === 'stroll'){ updateFlatGrid(); return; }   // 평지 맵은 격자로 채움
   spawnPlatform({ type:'start', pos:new THREE.Vector3(0,-0.4,0),
                   size:new THREE.Vector3(8,.8,8), index:0,
@@ -860,42 +860,64 @@ function resetCourse(){
   for (let i=0;i<26;i++) nextPlatform();
 }
 
+/* 난이도 곡선: 처음 몇 발판은 거의 평지에 가깝고, 약 60발판에 걸쳐 서서히 최대치로.
+   D = 0(가장 쉬움) → 1(최대). L(a,b) 는 D 에 따라 a 에서 b 로 보간. */
+function difficulty(){ return Math.max(0, Math.min(1, (idx - 4) / 56)); }
+
 function nextPlatform(){
   idx++;
-  const isCheck = idx % 9 === 0;
-  heading += R(-0.55, 0.55);
+  const D = difficulty();
+  const L = (a,b) => a + (b - a) * D;
+  const ramp = (from) => Math.max(0, (D - from) / (1 - from));   // from 이후에 서서히 등장
+
+  // 체크포인트: 초반에는 자주, 후반으로 갈수록 뜸하게
+  const period = D < .35 ? 6 : D < .7 ? 8 : 10;
+  const isCheck = (idx - lastCheckIdx) >= period;
+  if (isCheck) lastCheckIdx = idx;
+
+  heading += R(-L(.28,.55), L(.28,.55));
   const dir = new THREE.Vector3(Math.sin(heading), 0, -Math.cos(heading));
 
-  let type = 'normal', move = null, spiked = false, label = null;
+  // 기믹 등장 확률도 단계적으로 열림
+  const pCrumble = L(0, theme === 'keyboard' ? .26 : .34);
+  const pMoving  = (theme === 'keyboard' ? .18 : .20) * ramp(.22);
+  const pSpike   = (theme === 'keyboard' ? .16 : .28) * ramp(.40);
+  const pGel     = L(.30, .16);                       // 젤리는 초반에 더 후하게
   const r = Math.random();
 
-  if (theme === 'keyboard'){
-    // 키보드 맵: 젤리 키가 추가되고 가시는 줄어듦
-    if (isCheck) type = 'check';
-    else if (r < .26) type = 'crumble';
-    else if (r < .44) type = 'gel';
-    else if (r < .58) type = 'moving';
-    spiked = type === 'normal' && Math.random() < .16;
+  let type = 'normal', move = null, spiked = false, label = null;
+  if (isCheck) type = 'check';
+  else if (theme === 'keyboard'){
+    if (r < pCrumble) type = 'crumble';
+    else if (r < pCrumble + pGel) type = 'gel';
+    else if (r < pCrumble + pGel + pMoving) type = 'moving';
   } else {
-    if (isCheck) type = 'check';
-    else if (r < .34) type = 'crumble';
-    else if (r < .52) type = 'moving';
-    spiked = type === 'normal' && Math.random() < .28;
+    if (r < pCrumble) type = 'crumble';
+    else if (r < pCrumble + pMoving) type = 'moving';
   }
+  if (type === 'normal') spiked = Math.random() < pSpike;
 
-  const wide = theme === 'keyboard' && type === 'normal' && !spiked && Math.random() < .18;
-  const step = type==='moving' ? R(3.0,3.8) : R(3.2,4.5);
-  const rise = isCheck ? R(.4,1.0) : R(.3,1.7);
+  // 스페이스바(넓은 발판)는 초반에 자주 나와 발판 역할을 해줌
+  const wide = theme === 'keyboard' && type === 'normal' && !spiked && Math.random() < L(.30,.12);
+
+  // 간격과 높이차: 짧고 낮게 시작해 점점 멀고 높아짐
+  const step = type === 'moving' ? R(L(2.5,3.0), L(3.1,3.8))
+                                 : R(L(2.6,3.4), L(3.2,4.5));
+  const rise = isCheck ? R(L(.15,.4), L(.5,1.0)) : R(L(.15,.3), L(.7,1.7));
   cursor.addScaledVector(dir, step);
   cursor.y += rise;
 
+  // 발판 크기: 넉넉하게 시작해 서서히 좁아짐
   let size;
-  if (isCheck)               size = new THREE.Vector3(4.4,.7,4.4);
-  else if (wide)             size = new THREE.Vector3(6.2,.6,2.3);
-  else if (type==='crumble') size = new THREE.Vector3(2.5,.55,2.5);
-  else if (type==='gel')     size = new THREE.Vector3(2.7,.55,2.7);
-  else if (type==='moving')  size = new THREE.Vector3(2.8,.55,2.8);
-  else                       size = new THREE.Vector3(R(2.8,3.8),.6,spiked?3.6:R(2.8,3.8));
+  if (isCheck)               size = new THREE.Vector3(L(5.0,4.2),.7,L(5.0,4.2));
+  else if (wide)             size = new THREE.Vector3(6.2,.6,L(2.8,2.2));
+  else if (type==='crumble') size = new THREE.Vector3(L(3.3,2.4),.55,L(3.3,2.4));
+  else if (type==='gel')     size = new THREE.Vector3(L(3.4,2.6),.55,L(3.4,2.6));
+  else if (type==='moving')  size = new THREE.Vector3(L(3.5,2.7),.55,L(3.5,2.7));
+  else {
+    const w = R(L(3.6,2.8), L(4.6,3.8));
+    size = new THREE.Vector3(w,.6, spiked ? L(4.2,3.5) : R(L(3.6,2.8), L(4.6,3.8)));
+  }
 
   if (theme === 'keyboard'){
     label = isCheck ? 'ENTER'
@@ -906,11 +928,11 @@ function nextPlatform(){
           : KEYPOOL[idx % KEYPOOL.length];
   }
 
-  if (type==='moving'){
+  if (type === 'moving'){
     const perp = new THREE.Vector3(dir.z,0,-dir.x);
-    move = Math.random()<.75
-      ? { axis:perp, amp:R(1.4,2.6), speed:R(.40,.72) }
-      : { axis:new THREE.Vector3(0,1,0), amp:R(.8,1.5), speed:R(.42,.70) };
+    move = Math.random() < .75
+      ? { axis:perp, amp:R(L(.9,1.4), L(1.6,2.6)), speed:R(L(.30,.40), L(.50,.72)) }
+      : { axis:new THREE.Vector3(0,1,0), amp:R(L(.5,.8), L(.9,1.5)), speed:R(L(.32,.42), L(.52,.70)) };
   }
   spawnPlatform({ type, pos:cursor.clone(), size, move, spiked, index:idx, label });
   topY = cursor.y;
@@ -1155,7 +1177,7 @@ function start(nextTheme){
   if (mode === 'stroll'){
     lavaY = -400; lavaSpeed = 0; spawnPoint.set(0,.75,0); spawnLava = -400;
   } else {
-    lavaY = -7; lavaSpeed = .55; spawnPoint.set(0,1.6,0); spawnLava = -7;
+    lavaY = -12; lavaSpeed = .30; spawnPoint.set(0,1.6,0); spawnLava = -12;
   }
   prevXZ.set(0,0,0);
   camYaw = 0; invuln = .6;
@@ -1423,7 +1445,7 @@ function frame(now){
     } else {
       // 용암 상승: 기본 속도 + 플레이어가 멀어질수록 추격
       const chase = Math.max(0, (player.position.y - lavaY - 20)) * .3;
-      lavaSpeed = .55 + Math.min(6, height * .006);
+      lavaSpeed = .30 + Math.min(5.5, height * .0075);   // 고도가 오를수록 빨라짐
       lavaY += (lavaSpeed + chase) * dt;
 
       height = Math.max(height, player.position.y);
