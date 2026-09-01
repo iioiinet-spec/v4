@@ -760,7 +760,7 @@ function configure(p, cfg){
     state:'idle', timer:0, fallV:0,
     move:cfg.move || null, phase:Math.random()*Math.PI*2,
     spiked:!!cfg.spiked, taken:false, index:cfg.index,
-    press:0, sq:0, legend:cfg.label || null,  // 각인 문자열 (메시 d.label 과 이름 충돌 금지)
+    press:0, sq:0, warn:cfg.warn || CRUMBLE_WARN, legend:cfg.label || null,  // 각인 문자열 (메시 d.label 과 이름 충돌 금지)
     gx:cfg.gx, gz:cfg.gz, gkey:cfg.gkey || null
   });
   p.position.copy(cfg.pos);
@@ -813,12 +813,17 @@ function configure(p, cfg){
   d.spikes.visible = d.spiked;
   d.hazard = null;
   if (d.spiked){
-    const side = Math.random()<.5 ? 1 : -1;
-    const zc = side * (cfg.size.z/2 - .45);
-    d.spikes.children.forEach((s,i)=>{
-      s.position.set((i-1.5)*(cfg.size.x/4.3), cfg.size.y/2+.4, zc);
-    });
-    d.hazard = { hx:cfg.size.x/2, hz:.55, cz:zc, top:cfg.size.y/2+.85 };
+    const side = cfg.spikeSide || (Math.random() < .5 ? 1 : -1);
+    const top = cfg.size.y/2 + .4;
+    if ((cfg.spikeAxis || 'z') === 'z'){          // 이동축이 X → 가시는 Z변에
+      const zc = side * (cfg.size.z/2 - .45);
+      d.spikes.children.forEach((sp,i)=> sp.position.set((i-1.5)*(cfg.size.x/4.3), top, zc));
+      d.hazard = { cx:0, cz:zc, hx:cfg.size.x/2, hz:.55, top:cfg.size.y/2 + .85 };
+    } else {                                      // 이동축이 Z → 가시는 X변에
+      const xc = side * (cfg.size.x/2 - .45);
+      d.spikes.children.forEach((sp,i)=> sp.position.set(xc, top, (i-1.5)*(cfg.size.z/4.3)));
+      d.hazard = { cx:xc, cz:0, hx:.55, hz:cfg.size.z/2, top:cfg.size.y/2 + .85 };
+    }
   }
   const isCheck = cfg.type==='check';
   d.beam.visible = isCheck; d.ring.visible = isCheck;
@@ -846,13 +851,13 @@ function recycle(i){
 /* ============================================================
    5. 코스 생성 (나선형 상승 타워)
    ============================================================ */
-let cursor = new THREE.Vector3(), heading = 0, idx = 0, topY = 0, lastCheckIdx = 0;
+let cursor = new THREE.Vector3(), heading = 0, idx = 0, topY = 0, lastCheckIdx = 0, lastType = 'start';
 const R = (a,b)=> a + Math.random()*(b-a);
 
 function resetCourse(){
   while (platforms.length) recycle(0);
   grid.clear();
-  cursor.set(0,0,0); heading = 0; idx = 0; topY = 0; lastCheckIdx = 0;
+  cursor.set(0,0,0); heading = 0; idx = 0; topY = 0; lastCheckIdx = 0; lastType = 'start';
   if (mode === 'stroll'){ updateFlatGrid(); return; }   // 평지 맵은 격자로 채움
   spawnPlatform({ type:'start', pos:new THREE.Vector3(0,-0.4,0),
                   size:new THREE.Vector3(8,.8,8), index:0,
@@ -886,16 +891,20 @@ function nextPlatform(){
   const r = Math.random();
 
   let type = 'normal', move = null, spiked = false, label = null;
+  const noCrumble = lastType === 'crumble';        // 무너지는 발판이 연달아 나오지 않도록
   if (isCheck) type = 'check';
   else if (theme === 'keyboard'){
-    if (r < pCrumble) type = 'crumble';
+    if (r < pCrumble && !noCrumble) type = 'crumble';
     else if (r < pCrumble + pGel) type = 'gel';
     else if (r < pCrumble + pGel + pMoving) type = 'moving';
   } else {
-    if (r < pCrumble) type = 'crumble';
+    if (r < pCrumble && !noCrumble) type = 'crumble';
     else if (r < pCrumble + pMoving) type = 'moving';
   }
   if (type === 'normal') spiked = Math.random() < pSpike;
+  lastType = type;
+  // 가시는 진행 방향과 수직인 변에 (이동축이 X 면 Z변, 이동축이 Z 면 X변)
+  const spikeAxis = Math.abs(dir.x) > Math.abs(dir.z) ? 'z' : 'x';
 
   // 스페이스바(넓은 발판)는 초반에 자주 나와 발판 역할을 해줌
   const wide = theme === 'keyboard' && type === 'normal' && !spiked && Math.random() < L(.30,.12);
@@ -916,7 +925,26 @@ function nextPlatform(){
   else if (type==='moving')  size = new THREE.Vector3(L(3.5,2.7),.55,L(3.5,2.7));
   else {
     const w = R(L(3.6,2.8), L(4.6,3.8));
-    size = new THREE.Vector3(w,.6, spiked ? L(4.2,3.5) : R(L(3.6,2.8), L(4.6,3.8)));
+    const long = L(4.4,3.6);                       // 가시가 놓인 축은 더 길게
+    size = spiked
+      ? (spikeAxis === 'z' ? new THREE.Vector3(w,.6,long) : new THREE.Vector3(long,.6,w))
+      : new THREE.Vector3(w,.6, R(L(3.6,2.8), L(4.6,3.8)));
+  }
+
+  // 가시를 놓을 변 결정: 뛰어 들어오는 지점과 다음 발판으로 나가는 지점이 모두 비어야 함
+  let spikeSide = 0;
+  if (spiked){
+    const entry = { x:-dir.x * (size.x/2 - .5), z:-dir.z * (size.z/2 - .5) };
+    const exit  = { x: dir.x * (size.x/2 - .5), z: dir.z * (size.z/2 - .5) };
+    for (const sd of (Math.random() < .5 ? [1,-1] : [-1,1])){
+      const cx = spikeAxis === 'x' ? sd*(size.x/2 - .45) : 0;
+      const cz = spikeAxis === 'z' ? sd*(size.z/2 - .45) : 0;
+      const hx = spikeAxis === 'x' ? .55 : size.x/2;
+      const hz = spikeAxis === 'z' ? .55 : size.z/2;
+      const clear = q => Math.abs(q.x - cx) > hx + .55 || Math.abs(q.z - cz) > hz + .55;
+      if (clear(entry) && clear(exit)){ spikeSide = sd; break; }
+    }
+    if (spikeSide === 0) spiked = false;            // 안전한 자리가 없으면 가시 없는 발판으로
   }
 
   if (theme === 'keyboard'){
@@ -934,7 +962,9 @@ function nextPlatform(){
       ? { axis:perp, amp:R(L(.9,1.4), L(1.6,2.6)), speed:R(L(.30,.40), L(.50,.72)) }
       : { axis:new THREE.Vector3(0,1,0), amp:R(L(.5,.8), L(.9,1.5)), speed:R(L(.32,.42), L(.52,.70)) };
   }
-  spawnPlatform({ type, pos:cursor.clone(), size, move, spiked, index:idx, label });
+  spawnPlatform({ type, pos:cursor.clone(), size, move, spiked, index:idx, label,
+                  spikeAxis, spikeSide,
+                  warn: L(.85, CRUMBLE_WARN) });   // 초반에는 붕괴까지 시간이 더 여유롭게
   topY = cursor.y;
 }
 
@@ -1316,7 +1346,7 @@ function land(p, impact = 0){
   if (d.type === 'gel'){ d.sq = 1; return true; }
 
   if (d.type === 'crumble' && d.state === 'idle'){
-    d.state = 'warn'; d.timer = CRUMBLE_WARN;
+    d.state = 'warn'; d.timer = d.warn;
   }
   if (d.type === 'check' && !d.taken){
     d.taken = true; checks++;
@@ -1353,7 +1383,7 @@ function updateWorld(dt, t){
     // 붕괴 진행
     if (d.state === 'warn'){
       d.timer -= dt;
-      const k = 1 - Math.max(0, d.timer) / CRUMBLE_WARN;
+      const k = 1 - Math.max(0, d.timer) / d.warn;
       d.body.material.color.lerpColors(new THREE.Color(C.magenta), new THREE.Color(C.danger), k);
       d.body.material.emissive.copy(d.body.material.color);
       d.body.material.emissiveIntensity = .3 + k*.9;
@@ -1402,7 +1432,7 @@ function updateWorld(dt, t){
     // 가시 충돌
     if (d.spiked && d.hazard && invuln <= 0){
       const q = player.position, hz = d.hazard;
-      if (Math.abs(q.x - p.position.x) < hz.hx + PH.x*.6 &&
+      if (Math.abs(q.x - (p.position.x + hz.cx)) < hz.hx + PH.x*.6 &&
           Math.abs(q.z - (p.position.z + hz.cz)) < hz.hz + PH.z*.6 &&
           q.y - PH.y < p.position.y + hz.top && q.y + PH.y > p.position.y){
         die('가시에 찔림');
@@ -1519,7 +1549,9 @@ window.__obby = {
   get info(){ return { height, lives, checks, deaths, count:platforms.length,
                        ground:!!groundRef, onLava:player.position.y - PH.y < lavaY }; },
   list(){ return platforms.map(p=>({ t:p.userData.type, s:p.userData.state, i:p.userData.index,
-                                     x:p.position.x, y:p.position.y, z:p.position.z })); },
+                                     x:p.position.x, y:p.position.y, z:p.position.z,
+                                     sp:!!p.userData.spiked, w:p.userData.size.x, d:p.userData.size.z,
+                                     hz:p.userData.hazard || null })); },
   keys, start, setYaw(v){ camYaw = v; }, jump(){ jumpBuf = .13; },
   tp(x,y,z){ player.position.set(x,y,z); vel.set(0,0,0); }
 };
