@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>박스맨 대소동 — BOX GUY BRAWL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#20140c; --paper:#fff6e0; --banana:#ffd93b; --duck:#ff9f1c;
+    --bubble:#ff5d8f; --mint:#3ddc97; --sky:#6ec6ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--sky);
+    font-family:'Jua',"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--ink);
+    -webkit-user-select:none;user-select:none;}
+  canvas{display:block;}
+
+  #hud{position:fixed;inset:0;pointer-events:none;padding:18px;display:flex;flex-direction:column;}
+  .panel{background:var(--paper);border:4px solid var(--ink);border-radius:16px;
+    box-shadow:6px 6px 0 var(--ink);padding:10px 16px;}
+  #topbar{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
+  #timer{font-family:'Black Han Sans',sans-serif;font-size:30px;line-height:1;letter-spacing:1px;}
+  #timer small{display:block;font-family:'Jua',sans-serif;font-size:13px;opacity:.7;letter-spacing:0;}
+  #lives{display:flex;gap:7px;align-items:center;}
+  .box-life{width:26px;height:26px;background:#e0a96d;border:4px solid var(--ink);border-radius:5px;
+    position:relative;transition:.2s;}
+  .box-life::after{content:"";position:absolute;left:2px;right:2px;top:7px;height:3px;background:rgba(0,0,0,.35);}
+  .box-life.gone{background:#c9c2b8;opacity:.35;transform:rotate(24deg) scale(.8);}
+  #style{font-size:19px;}
+  #style b{font-family:'Black Han Sans',sans-serif;font-size:26px;color:var(--bubble);}
+
+  #event{margin:0 auto;margin-top:12vh;text-align:center;font-family:'Black Han Sans',sans-serif;
+    font-size:clamp(26px,5vw,52px);color:#fff;letter-spacing:2px;
+    text-shadow:5px 5px 0 var(--ink),-3px -3px 0 var(--ink),3px -3px 0 var(--ink),-3px 3px 0 var(--ink);
+    opacity:0;transform:scale(.6) rotate(-6deg);}
+  #event.pop{animation:pop 2.6s ease-out forwards;}
+  @keyframes pop{
+    0%{opacity:0;transform:scale(.4) rotate(-14deg);}
+    12%{opacity:1;transform:scale(1.12) rotate(3deg);}
+    22%{transform:scale(1) rotate(-2deg);}
+    78%{opacity:1;transform:scale(1) rotate(-2deg);}
+    100%{opacity:0;transform:scale(.9) translateY(-30px);}}
+
+  #toast{position:absolute;left:50%;bottom:16%;transform:translateX(-50%);display:flex;
+    flex-direction:column;align-items:center;gap:8px;}
+  .yell{font-family:'Black Han Sans',sans-serif;font-size:clamp(20px,3vw,34px);color:var(--banana);
+    text-shadow:4px 4px 0 var(--ink);animation:yell 1.3s ease-out forwards;}
+  @keyframes yell{
+    0%{opacity:0;transform:translateY(20px) rotate(-8deg) scale(.7);}
+    20%{opacity:1;transform:translateY(0) rotate(4deg) scale(1.1);}
+    100%{opacity:0;transform:translateY(-70px) rotate(-3deg) scale(1);}}
+
+  #keys{position:absolute;left:18px;bottom:18px;font-size:15px;line-height:1.8;}
+  #keys kbd{display:inline-block;min-width:26px;text-align:center;background:#fff;
+    border:3px solid var(--ink);border-radius:6px;box-shadow:3px 3px 0 var(--ink);
+    padding:1px 6px;font-family:'Jua',sans-serif;margin-right:3px;}
+  #compass{position:absolute;right:18px;bottom:18px;width:132px;height:132px;padding:0;
+    border-radius:50%;overflow:hidden;}
+  #compass canvas{width:100%;height:100%;}
+
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:22px;text-align:center;padding:24px;
+    background:radial-gradient(circle at 50% 35%, #ffe9a8 0%, #ffb4d1 45%, #8fd0ff 100%);}
+  .screen.hidden{display:none;}
+  .title{font-family:'Black Han Sans',sans-serif;line-height:.95;color:#fff;
+    font-size:clamp(46px,10vw,110px);letter-spacing:2px;
+    text-shadow:8px 8px 0 var(--ink),-4px -4px 0 var(--ink),4px -4px 0 var(--ink),-4px 4px 0 var(--ink);
+    transform:rotate(-3deg);}
+  .title em{display:block;font-style:normal;font-size:.42em;color:var(--banana);transform:rotate(2deg);}
+  .desc{max-width:600px;font-size:18px;line-height:1.65;}
+  .btn{pointer-events:auto;cursor:pointer;font-family:'Black Han Sans',sans-serif;font-size:26px;
+    padding:14px 42px;border:5px solid var(--ink);border-radius:999px;background:var(--banana);
+    box-shadow:8px 8px 0 var(--ink);transition:transform .08s, box-shadow .08s;}
+  .btn:hover{transform:translate(3px,3px);box-shadow:4px 4px 0 var(--ink);}
+  .btn:active{transform:translate(8px,8px);box-shadow:0 0 0 var(--ink);}
+  .btn:focus-visible{outline:4px dashed var(--bubble);outline-offset:6px;}
+  .stat{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;}
+  .stat .panel{min-width:150px;}
+  .stat b{display:block;font-family:'Black Han Sans',sans-serif;font-size:38px;line-height:1.1;}
+  #overTitle{font-family:'Black Han Sans',sans-serif;font-size:clamp(38px,8vw,84px);color:#fff;
+    text-shadow:7px 7px 0 var(--ink);transform:rotate(-2deg);}
+  #rank{font-size:22px;background:#fff;border:4px solid var(--ink);border-radius:14px;
+    box-shadow:6px 6px 0 var(--ink);padding:10px 22px;}
+  @media (prefers-reduced-motion: reduce){ #event.pop,.yell{animation-duration:.01ms;} }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="topbar">
+    <div class="panel" id="timer">0.0초<small>버틴 시간</small></div>
+    <div class="panel"><div id="lives"></div></div>
+    <div class="panel" id="style">굴욕 점수 <b id="styleVal">0</b></div>
+  </div>
+  <div id="event"></div>
+  <div id="toast"></div>
+  <div id="keys" class="panel">
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 전력질주</div>
+    <div><kbd>Space</kbd> 점프 · 공중에서 한 번 더 누르면 <b>엉뚱한 포즈</b></div>
+    <div><kbd>마우스 드래그</kbd> 또는 <kbd>←</kbd><kbd>→</kbd> 카메라</div>
+  </div>
+  <div id="compass" class="panel"><canvas id="mapCanvas" width="264" height="264"></canvas></div>
+</div>
+
+<div class="screen" id="startScreen">
+  <h1 class="title">박스맨 대소동<em>BOX GUY BRAWL</em></h1>
+  <p class="desc">골판지 상자를 뒤집어쓴 흐느적 인간이 되어 넓은 원형 경기장을 뛰어다니세요. 거대 바나나 팔, 고무 오리 회전판, 스프링 발판, 언덕 위 섬까지 — 부딪히면 몸이 완전히 풀려버립니다.</p>
+  <button class="btn" id="startBtn">상자 뒤집어쓰기</button>
+</div>
+
+<div class="screen hidden" id="overScreen">
+  <div id="overTitle">떨어졌다!</div>
+  <div class="stat">
+    <div class="panel">버틴 시간<b id="finalTime">0.0</b>초</div>
+    <div class="panel">굴욕 점수<b id="finalStyle">0</b>점</div>
+    <div class="panel">최고 기록<b id="bestTime">0.0</b>초</div>
+  </div>
+  <div id="rank">평가 준비 중</div>
+  <button class="btn" id="retryBtn">한 번 더 굴러보기</button>
+</div>
+
+<script>
+// 무슨 일이 생겼는지 화면에서 바로 볼 수 있게 하는 안전장치
+window.addEventListener('error', function(e){
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99;background:#20140c;'+
+    'color:#ffd93b;font:14px/1.6 monospace;padding:14px;white-space:pre-wrap;';
+  d.textContent = '문제가 생겼습니다\n' + (e.message || e.type) +
+    '\n' + (e.filename || '') + (e.lineno ? ' : ' + e.lineno + '행' : '');
+  document.body.appendChild(d);
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script>
+/* =========================================================================
+   박스맨 대소동 v2
+   1) 셋업  2) 넓은 아레나  3) 흐느적 캐릭터  4) 장애물  5) 래그돌  6) 루프
+   ========================================================================= */
+
+if(typeof THREE === 'undefined' || typeof CANNON === 'undefined'){
+  document.getElementById('startScreen').innerHTML =
+    '<h1 class="title">라이브러리를 못 불러왔습니다</h1>' +
+    '<p class="desc">Three.js와 Cannon.js를 CDN에서 받아오지 못했습니다. ' +
+    '인터넷 연결을 확인하거나, 두 파일을 내려받아 같은 폴더에 두고 script 경로를 바꿔주세요.</p>';
+  throw new Error('THREE 또는 CANNON 로딩 실패');
+}
+
+const V3 = THREE.Vector3;
+const clamp = (v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rand  = (a,b)=>a+Math.random()*(b-a);
+
+const COL = {banana:0xffd93b, bananaTip:0x8d6a3f, duck:0xffa62b, beak:0xff5d3b,
+             skin:0xffd9b8, shirt:0xff5d8f, shoe:0x3d3d5c, ring:0x3ddc97, ink:0x20140c};
+
+// ---------------------------------------------------------------- 1) 셋업
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fd8ff);
+scene.fog = new THREE.Fog(0xb8e8ff, 90, 260);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 700);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xffc7e0, 0.9));
+const sun = new THREE.DirectionalLight(0xfff3d0, 1.05);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+const sc = sun.shadow.camera;
+sc.left=-38; sc.right=38; sc.top=38; sc.bottom=-38; sc.near=1; sc.far=160;
+const sunTarget = new THREE.Object3D(); scene.add(sunTarget);
+sun.target = sunTarget; scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff, 0.28));
+
+(function clouds(){
+  const m = new THREE.MeshBasicMaterial({color:0xffffff});
+  for(let i=0;i<26;i++){
+    const g = new THREE.Group();
+    for(let j=0;j<4;j++){
+      const s = new THREE.Mesh(new THREE.SphereGeometry(rand(4,8),8,7), m);
+      s.position.set(rand(-9,9), rand(-1,1), rand(-4,4)); g.add(s);
+    }
+    const a = Math.random()*Math.PI*2, r = rand(95,190);
+    g.position.set(Math.cos(a)*r, rand(24,60), Math.sin(a)*r);
+    scene.add(g);
+  }
+})();
+
+const world = new CANNON.World();
+world.gravity.set(0,-34,0);
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = false;
+world.solver.iterations = 12;
+world.defaultContactMaterial.friction = 0.2;
+world.defaultContactMaterial.restitution = 0.2;
+
+const matGround = new CANNON.Material('ground');
+const matPlayer = new CANNON.Material('player');
+const matBouncy = new CANNON.Material('bouncy');
+world.addContactMaterial(new CANNON.ContactMaterial(matGround, matPlayer, {friction:0.05, restitution:0.02}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBouncy, matPlayer, {friction:0.02, restitution:1.3}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBouncy, matGround, {friction:0.1, restitution:0.75}));
+
+const G_WORLD = 1, G_DOLL = 2;
+
+let actx = null;
+function audioReady(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); }
+function boing(f0=520, f1=90, dur=0.28, type='sine', vol=0.16){
+  if(!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, actx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(Math.max(30,f1), actx.currentTime+dur);
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+  o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+dur+0.02);
+}
+
+// --------------------------------------------------------- 2) 넓은 아레나
+const ARENA_R = 46;               // 이전 22 → 46, 면적 4배 이상
+const plateaus = [];              // 미니맵 표시용
+
+function checkerTexture(rep){
+  const c = document.createElement('canvas'); c.width=c.height=512;
+  const x = c.getContext('2d'); const n=8, s=512/n;
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+    x.fillStyle = (i+j)%2 ? '#fff1c9' : '#ffd0e4'; x.fillRect(i*s,j*s,s,s);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep,rep);
+  return t;
+}
+
+const padTop = new THREE.Mesh(
+  new THREE.CylinderGeometry(ARENA_R, ARENA_R, 1.0, 64),
+  [ new THREE.MeshStandardMaterial({color:0xffc8de, roughness:.9}),
+    new THREE.MeshStandardMaterial({map:checkerTexture(7), roughness:.85}),
+    new THREE.MeshStandardMaterial({color:0xffe6c2, roughness:.9}) ]);
+padTop.position.y = -0.5; padTop.receiveShadow = true; scene.add(padTop);
+
+const pillar = new THREE.Mesh(
+  new THREE.CylinderGeometry(ARENA_R*0.94, ARENA_R*0.3, 40, 40),
+  new THREE.MeshStandardMaterial({color:0xff9ec4, roughness:1}));
+pillar.position.y = -21; scene.add(pillar);
+
+const ring = new THREE.Mesh(new THREE.TorusGeometry(ARENA_R, 0.5, 8, 90),
+  new THREE.MeshStandardMaterial({color:COL.ring, emissive:0x1a7a52, roughness:.5}));
+ring.rotation.x = Math.PI/2; ring.position.y = 0.05; scene.add(ring);
+
+const groundBody = new CANNON.Body({mass:0, material:matGround});
+{
+  const shape = new CANNON.Cylinder(ARENA_R, ARENA_R, 1.0, 32);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  groundBody.addShape(shape, new CANNON.Vec3(0,-0.5,0), q);
+}
+world.addBody(groundBody);
+
+// 바닥 위 넓은 안내 링(구역 표시)
+[16, 30].forEach((r,i)=>{
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.16, 6, 80),
+    new THREE.MeshStandardMaterial({color: i? 0xffb3d1 : 0x9be7ff, roughness:.8}));
+  m.rotation.x = Math.PI/2; m.position.y = 0.03; scene.add(m);
+});
+
+// 언덕 섬 (스프링 발판으로 올라감)
+function makePlateau(x, z, r, h, color){
+  const body = new CANNON.Body({mass:0, material:matGround});
+  const shape = new CANNON.Cylinder(r, r, h, 20);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  body.addShape(shape, new CANNON.Vec3(0,0,0), q);
+  body.position.set(x, h/2 - 0.5, z);
+  world.addBody(body);
+
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(r, r*1.05, h, 32),
+    [ new THREE.MeshStandardMaterial({color, roughness:.9}),
+      new THREE.MeshStandardMaterial({map:checkerTexture(2), roughness:.85}),
+      new THREE.MeshStandardMaterial({color, roughness:.9}) ]);
+  top.receiveShadow = true; top.castShadow = true; g.add(top);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(r, 0.28, 6, 44),
+    new THREE.MeshStandardMaterial({color:0xffd93b}));
+  lip.rotation.x = Math.PI/2; lip.position.y = h/2; g.add(lip);
+  g.position.copy(body.position); scene.add(g);
+  plateaus.push({x, z, r, top: body.position.y + h/2});
+  return body.position.y + h/2;   // 윗면 높이
+}
+const PL = [];
+[[30,30],[-30,30],[30,-30],[-30,-30]].forEach((p,i)=>{
+  PL.push({x:p[0], z:p[1], y:makePlateau(p[0], p[1], 8, 7, i%2?0xa8e6cf:0xffd3b6)});
+});
+
+// 스프링 발판
+const pads = [];
+function makePad(x,z,y,power){
+  const body = new CANNON.Body({mass:0, material:matGround,
+    shape:new CANNON.Box(new CANNON.Vec3(1.9,0.35,1.9)),
+    position:new CANNON.Vec3(x, y+0.35, z)});
+  body.isPad = true; body.padPower = power || 27;
+  world.addBody(body);
+  const g = new THREE.Group(); g.position.set(x, y+0.35, z);
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(3.8,0.7,3.8),
+    new THREE.MeshStandardMaterial({color:0x3ddc97, roughness:.4, emissive:0x0d4a31}));
+  plate.castShadow = true; g.add(plate);
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.8,1.5,8),
+    new THREE.MeshStandardMaterial({color:0xffd93b}));
+  arrow.position.y = 1.3; g.add(arrow);
+  scene.add(g);
+  pads.push({body, mesh:g, t:Math.random()*5, arrow});
+}
+PL.forEach(p=>{
+  const dx = -Math.sign(p.x)*11, dz = -Math.sign(p.z)*11;
+  makePad(p.x+dx, p.z+dz, 0, 30);          // 섬 아래쪽 발판 → 섬 위로
+});
+makePad(0, 20, 0, 24); makePad(0, -20, 0, 24);
+makePad(20, 0, 0, 24); makePad(-20, 0, 0, 24);
+
+// ------------------------------------------------------- 3) 흐느적 캐릭터
+function cardboardCanvas(withFace){
+  const c = document.createElement('canvas'); c.width=c.height=256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#e5b077'; x.fillRect(0,0,256,256);
+  x.strokeStyle = 'rgba(150,95,45,.25)'; x.lineWidth = 2;
+  for(let i=0;i<256;i+=9){ x.beginPath(); x.moveTo(i,0); x.lineTo(i,256); x.stroke(); }
+  x.fillStyle = 'rgba(160,110,60,.16)';
+  for(let i=0;i<9;i++) x.fillRect(rand(0,220), rand(0,220), rand(14,44), rand(8,26));
+  x.fillStyle = 'rgba(255,255,255,.45)'; x.fillRect(0,112,256,30);
+  x.strokeStyle='rgba(180,140,90,.5)'; x.lineWidth=2; x.strokeRect(0,112,256,30);
+  if(withFace){
+    x.strokeStyle = '#2a1a10'; x.fillStyle = '#2a1a10';
+    x.lineWidth = 8; x.lineCap='round'; x.lineJoin='round';
+    x.beginPath(); x.ellipse(88, 96, 22, 26, .12, 0, 7); x.stroke();
+    x.beginPath(); x.ellipse(170, 92, 25, 22, -.2, 0, 7); x.stroke();
+    x.beginPath(); x.arc(94, 102, 9, 0, 7); x.fill();
+    x.beginPath(); x.arc(163, 96, 9, 0, 7); x.fill();
+    x.lineWidth=7;
+    x.beginPath(); x.moveTo(64,58); x.lineTo(108,50); x.stroke();
+    x.beginPath(); x.moveTo(150,48); x.lineTo(196,62); x.stroke();
+    x.beginPath(); x.ellipse(128, 182, 34, 26, 0, 0, 7); x.stroke();
+    x.fillStyle='#c0392b'; x.beginPath(); x.ellipse(128,182,27,19,0,0,7); x.fill();
+    x.fillStyle='#fff'; x.fillRect(112,164,32,9);
+    x.fillStyle='#2a1a10'; x.font='bold 26px sans-serif'; x.textAlign='center';
+    x.save(); x.translate(210,214); x.rotate(-.22); x.fillText('살려줘', 0, 0); x.restore();
+  }
+  return new THREE.CanvasTexture(c);
+}
+const boxSideTex = cardboardCanvas(false), boxFaceTex = cardboardCanvas(true);
+const sideMat = ()=>new THREE.MeshStandardMaterial({map:boxSideTex, roughness:.95});
+const boxMats = [sideMat(),sideMat(),sideMat(),sideMat(),
+  new THREE.MeshStandardMaterial({map:boxFaceTex, roughness:.95}), sideMat()];
+const outlineMat = new THREE.MeshBasicMaterial({color:COL.ink, side:THREE.BackSide});
+function addOutline(mesh, s=1.06){
+  const o = new THREE.Mesh(mesh.geometry, outlineMat); o.scale.setScalar(s); mesh.add(o);
+}
+
+/* 스프링 값: 목표를 향해 탄성 추적 → 흐느적거림의 핵심 */
+function Spring(k, d){ return {x:0, v:0, k, d}; }
+function springStep(s, target, dt){
+  s.v += (target - s.x) * s.k * dt;
+  s.v *= Math.exp(-s.d * dt);
+  s.x += s.v * dt;
+  return s.x;
+}
+
+/* 2단 관절 고무 팔다리: pivot → upper → lowerPivot → lower */
+function makeNoodleLimb(color, L1, L2, rad, withShoe){
+  const mat = new THREE.MeshStandardMaterial({color, roughness:.55});
+  const pivot = new THREE.Group();
+  const upper = new THREE.Group(); pivot.add(upper);
+  const segU = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad*0.88, L1, 12), mat);
+  segU.position.y = -L1/2; segU.castShadow = true; upper.add(segU);
+  const capU = new THREE.Mesh(new THREE.SphereGeometry(rad,12,10), mat); upper.add(capU);
+
+  const lowerPivot = new THREE.Group(); lowerPivot.position.y = -L1; upper.add(lowerPivot);
+  const segL = new THREE.Mesh(new THREE.CylinderGeometry(rad*0.88, rad*0.8, L2, 12), mat);
+  segL.position.y = -L2/2; segL.castShadow = true; lowerPivot.add(segL);
+  const knee = new THREE.Mesh(new THREE.SphereGeometry(rad*0.9,12,10), mat); lowerPivot.add(knee);
+  const endCap = new THREE.Mesh(new THREE.SphereGeometry(rad*0.85,12,10), mat);
+  endCap.position.y = -L2; lowerPivot.add(endCap);
+  if(withShoe){
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(rad*2.5, rad*1.3, rad*3.4),
+      new THREE.MeshStandardMaterial({color:COL.shoe, roughness:.7}));
+    shoe.position.set(0, -L2-rad*0.35, rad*0.8); shoe.castShadow = true; lowerPivot.add(shoe);
+  }
+  scene.add(pivot);
+  return {pivot, upper, lowerPivot, len:L1+L2, L1,
+    sx:Spring(120,15), sz:Spring(120,15),          // 윗마디
+    lx:Spring(38,7),  lz:Spring(38,7)};            // 아랫마디(느리게 따라옴 = 흐느적)
+}
+
+const CH = {};
+CH.torso = new THREE.Group(); scene.add(CH.torso);
+const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(1.05,1.15,0.95), boxMats);
+boxMesh.castShadow = true; CH.torso.add(boxMesh); addOutline(boxMesh, 1.05);
+const hem = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.25,0.72),
+  new THREE.MeshStandardMaterial({color:COL.shirt, roughness:.8}));
+hem.position.y = -0.62; CH.torso.add(hem);
+
+CH.head = new THREE.Group(); scene.add(CH.head);
+const headInner = new THREE.Group(); CH.head.add(headInner);
+const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3,16,14),
+  new THREE.MeshStandardMaterial({color:COL.skin, roughness:.7}));
+headMesh.castShadow = true; headInner.add(headMesh); addOutline(headMesh, 1.08);
+const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.09,0.32,7),
+  new THREE.MeshStandardMaterial({color:0x4a2c1a}));
+tuft.position.y = 0.34; tuft.rotation.z = 0.4; headInner.add(tuft);
+const headSpring = {x:Spring(50,6), z:Spring(50,6)};
+
+CH.armL = makeNoodleLimb(COL.skin, 0.34, 0.34, 0.115, false);
+CH.armR = makeNoodleLimb(COL.skin, 0.34, 0.34, 0.115, false);
+CH.legL = makeNoodleLimb(0x5b8def, 0.30, 0.30, 0.135, true);
+CH.legR = makeNoodleLimb(0x5b8def, 0.30, 0.30, 0.135, true);
+
+const JOINT = {
+  head:new V3(0, 0.86, 0),
+  armL:new V3(-0.58, 0.44, 0), armR:new V3(0.58, 0.44, 0),
+  legL:new V3(-0.26,-0.55, 0), legR:new V3(0.26,-0.55, 0)
+};
+const TORSO_OFF = 0.52;
+
+const playerBody = new CANNON.Body({
+  mass:6, material:matPlayer, shape:new CANNON.Sphere(0.55),
+  linearDamping:0.0, angularDamping:0.9,
+  collisionFilterGroup:G_WORLD, collisionFilterMask:-1});
+playerBody.fixedRotation = true; playerBody.updateMassProperties();
+playerBody.position.set(0, 3, 14);
+world.addBody(playerBody);
+
+// -------------------------------------------------------- 4) 장애물
+const hazards = [];
+function markHazard(b, name, power){ b.isHazard = true; b.hazardName = name; b.hazardPower = power||1; }
+
+function bananaMesh(len){
+  const g = new THREE.Group();
+  const matY = new THREE.MeshStandardMaterial({color:COL.banana, roughness:.45});
+  const matT = new THREE.MeshStandardMaterial({color:COL.bananaTip, roughness:.8});
+  const N = 20;
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const r = 0.32 + 0.95*Math.sin(Math.PI*t)**0.7;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r,14,12), (t<0.05||t>0.95)?matT:matY);
+    m.position.set(4 + t*len, 2.4*Math.sin(Math.PI*t) - 0.8, 0);
+    m.scale.set(1.15,1,1); m.castShadow = true; g.add(m);
+  }
+  return g;
+}
+function makeBananaArm(angleOffset, speed, height, len){
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  for(let i=0;i<7;i++){
+    const t = (i+0.5)/7;
+    body.addShape(new CANNON.Box(new CANNON.Vec3(len/14, 0.95, 0.95)),
+      new CANNON.Vec3(4 + t*len, 2.4*Math.sin(Math.PI*t) - 0.8, 0));
+  }
+  body.position.set(0, height, 0);
+  body.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0), angleOffset);
+  markHazard(body, '바나나', 1.25); world.addBody(body);
+  const mesh = bananaMesh(len); mesh.position.y = height; scene.add(mesh);
+  const h = {body, mesh, baseSpeed:speed, dir:1, kind:'banana'};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    mesh.position.copy(body.position); mesh.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+
+function duckMesh(s){
+  const g = new THREE.Group();
+  const matD = new THREE.MeshStandardMaterial({color:COL.duck, roughness:.35});
+  const matB = new THREE.MeshStandardMaterial({color:COL.beak, roughness:.5});
+  const b = new THREE.Mesh(new THREE.SphereGeometry(1.1,18,14), matD);
+  b.scale.set(1.35,1,1.1); b.castShadow = true; g.add(b);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.6,1.1,10), matD);
+  tail.position.set(-1.5,0.5,0); tail.rotation.z = -1.0; g.add(tail);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.72,16,13), matD);
+  head.position.set(0.95,1.25,0); head.castShadow = true; g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.32,0.85,10), matB);
+  beak.position.set(1.7,1.1,0); beak.rotation.z = -Math.PI/2; g.add(beak);
+  const eyeM = new THREE.MeshStandardMaterial({color:0x20140c});
+  [-0.42,0.42].forEach(z=>{
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.13,10,9), eyeM);
+    e.position.set(1.35,1.45,z); g.add(e);
+  });
+  g.scale.setScalar(s); return g;
+}
+function makeDuckSpinner(x, z, radius, speed, ds, baseY){
+  baseY = baseY || 0;
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  const disc = new CANNON.Cylinder(radius, radius, 0.5, 16);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  body.addShape(disc, new CANNON.Vec3(0,0,0), q);
+  body.addShape(new CANNON.Sphere(1.35*ds), new CANNON.Vec3(0, 1.5*ds, 0));
+  body.addShape(new CANNON.Sphere(0.8*ds),  new CANNON.Vec3(1.0*ds, 2.6*ds, 0));
+  body.position.set(x, baseY + 1.1, z);
+  markHazard(body, '고무 오리', 1.5); world.addBody(body);
+
+  const g = new THREE.Group(); scene.add(g);
+  const discMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 30),
+    new THREE.MeshStandardMaterial({color:0x8ee5ff, roughness:.4}));
+  discMesh.castShadow = discMesh.receiveShadow = true; g.add(discMesh);
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(radius*0.62, 0.12, 6, 32),
+    new THREE.MeshStandardMaterial({color:0xff5d8f}));
+  stripe.rotation.x = Math.PI/2; stripe.position.y = 0.26; g.add(stripe);
+  const dk = duckMesh(ds); dk.position.set(0, 0.9*ds, 0); g.add(dk);
+
+  const h = {body, mesh:g, baseSpeed:speed, dir:1, kind:'duck', x, z};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    g.position.copy(body.position); g.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+
+// 넓은 맵을 휩쓰는 오리 회전팔
+function makeDuckArm(cx, cz, len, speed, height){
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  for(let i=0;i<5;i++){
+    const t = (i+0.5)/5;
+    body.addShape(new CANNON.Box(new CANNON.Vec3(len/10, 0.4, 0.6)), new CANNON.Vec3(t*len, 0, 0));
+  }
+  body.addShape(new CANNON.Sphere(1.6), new CANNON.Vec3(len, 1.1, 0));
+  body.position.set(cx, height, cz);
+  markHazard(body, '오리 팔', 1.4); world.addBody(body);
+
+  const g = new THREE.Group(); scene.add(g);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.7, 1.1),
+    new THREE.MeshStandardMaterial({color:0xff5d8f, roughness:.5}));
+  bar.position.x = len/2; bar.castShadow = true; g.add(bar);
+  const d = duckMesh(1.15); d.position.set(len, 1.0, 0); g.add(d);
+  g.position.copy(body.position);
+
+  const h = {body, mesh:g, baseSpeed:speed, dir:1, kind:'arm', x:cx, z:cz};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    g.position.copy(body.position); g.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+
+function makeBumper(x,z,y){
+  y = y||0;
+  const body = new CANNON.Body({mass:0, material:matBouncy,
+    shape:new CANNON.Sphere(1.3), position:new CANNON.Vec3(x, y+1.0, z)});
+  markHazard(body, '젤리 범퍼', 1.0); world.addBody(body);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1.3,16,13),
+    new THREE.MeshStandardMaterial({color:0xb388ff, roughness:.3, emissive:0x2a1050}));
+  m.position.set(x, y+1.0, z); m.castShadow = true; scene.add(m);
+  const h = {body, mesh:m, t:Math.random()*6, kind:'bump', x, z};
+  h.update = (dt)=>{ h.t+=dt; const s = 1+Math.sin(h.t*4)*0.1; m.scale.set(s,2-s,s); };
+  hazards.push(h);
+}
+
+const bananaArms = [
+  makeBananaArm(0,           0.95, 1.2,  16),
+  makeBananaArm(Math.PI,     0.95, 1.2,  16),
+  makeBananaArm(Math.PI/2,  -0.65, 3.4,  22),
+  makeBananaArm(-Math.PI/2, -0.65, 3.4,  22)
+];
+const spinners = [
+  makeDuckSpinner(-18, -14, 4.2, 1.35, 1.05),
+  makeDuckSpinner( 19,  12, 4.4,-1.25, 1.1),
+  makeDuckSpinner(-14,  20, 3.8, 1.6,  0.9),
+  makeDuckSpinner( 13, -21, 3.8,-1.5,  0.9),
+  makeDuckSpinner( 36,   0, 4.0, 1.2,  1.0),
+  makeDuckSpinner(-36,   0, 4.0,-1.2,  1.0),
+  makeDuckSpinner(  0,  36, 4.0, 1.4,  1.0),
+  makeDuckSpinner(  0, -36, 4.0,-1.4,  1.0)
+];
+const duckArms = [
+  makeDuckArm( 26,  26, 9, -0.8, 1.2),
+  makeDuckArm(-26, -26, 9,  0.8, 1.2)
+];
+PL.forEach(p=>{ makeBumper(p.x, p.z, p.y); });   // 섬 위 범퍼
+[[24,-6],[-24,6],[6,24],[-6,-24],[40,-12],[-40,12],[12,40],[-12,-40],[32,18],[-32,-18]]
+  .forEach(p=>makeBumper(p[0],p[1]));
+
+const balls = [];
+for(let i=0;i<7;i++){
+  const r = rand(0.9,1.3);
+  const b = new CANNON.Body({mass:4, material:matBouncy, shape:new CANNON.Sphere(r),
+    linearDamping:0.04, angularDamping:0.1});
+  b.position.set(rand(-30,30), 6, rand(-30,30));
+  markHazard(b, '수박', 0.9); world.addBody(b);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r,16,13),
+    new THREE.MeshStandardMaterial({color:i%2?0x5cd65c:0xff6b9d, roughness:.5}));
+  m.castShadow = true; scene.add(m);
+  balls.push({body:b, mesh:m});
+}
+
+const debris = [];
+function spawnDebris(kind){
+  const r = kind==='duck' ? 0.85 : 0.65;
+  const b = new CANNON.Body({mass:3, material:matBouncy, shape:new CANNON.Sphere(r)});
+  const a = Math.random()*Math.PI*2, d = rand(0, ARENA_R-4);
+  b.position.set(Math.cos(a)*d, rand(28,38), Math.sin(a)*d);
+  b.velocity.set(rand(-3,3), 0, rand(-3,3));
+  b.angularVelocity.set(rand(-6,6), rand(-6,6), rand(-6,6));
+  markHazard(b, kind==='duck' ? '오리 폭격' : '바나나 폭풍', 1.1);
+  world.addBody(b);
+  let g;
+  if(kind==='duck') g = duckMesh(0.55);
+  else { g = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.66,12,10),
+      new THREE.MeshStandardMaterial({color:COL.banana, roughness:.45}));
+    m.scale.set(1.5,0.85,0.85); m.castShadow = true; g.add(m); }
+  scene.add(g);
+  debris.push({body:b, mesh:g, life:16});
+}
+
+// --------------------------------------------------------- 5) 래그돌
+let ragdoll = null, ragdollCooldown = 0;
+function makePart(mass, shape, pos, vel){
+  const b = new CANNON.Body({mass, shape, material:matPlayer,
+    linearDamping:0.01, angularDamping:0.04,
+    collisionFilterGroup:G_DOLL, collisionFilterMask:G_WORLD});
+  b.position.copy(pos);
+  b.velocity.set(vel.x, vel.y, vel.z);
+  b.angularVelocity.set(rand(-9,9), rand(-9,9), rand(-9,9));
+  world.addBody(b); return b;
+}
+function goRagdoll(impulse){
+  if(ragdoll) return;
+  const p = playerBody.position, v = playerBody.velocity;
+  const c = new CANNON.Vec3(p.x, p.y + TORSO_OFF, p.z);
+  const off = (o)=> new CANNON.Vec3(c.x+o.x, c.y+o.y, c.z+o.z);
+  const P = {};
+  P.torso = makePart(4.0, new CANNON.Box(new CANNON.Vec3(0.52,0.57,0.47)), c, v);
+  P.head  = makePart(1.0, new CANNON.Sphere(0.3), off(JOINT.head), v);
+  P.armL  = makePart(0.6, new CANNON.Box(new CANNON.Vec3(0.12,0.31,0.12)), off({x:JOINT.armL.x,y:JOINT.armL.y-0.31,z:0}), v);
+  P.armR  = makePart(0.6, new CANNON.Box(new CANNON.Vec3(0.12,0.31,0.12)), off({x:JOINT.armR.x,y:JOINT.armR.y-0.31,z:0}), v);
+  P.legL  = makePart(0.8, new CANNON.Box(new CANNON.Vec3(0.14,0.29,0.14)), off({x:JOINT.legL.x,y:JOINT.legL.y-0.29,z:0}), v);
+  P.legR  = makePart(0.8, new CANNON.Box(new CANNON.Vec3(0.14,0.29,0.14)), off({x:JOINT.legR.x,y:JOINT.legR.y-0.29,z:0}), v);
+  const cons = [];
+  const link = (a,pa,b,pb)=>{
+    const ct = new CANNON.PointToPointConstraint(a, new CANNON.Vec3(pa.x,pa.y,pa.z),
+                                                 b, new CANNON.Vec3(pb.x,pb.y,pb.z), 1e5);
+    world.addConstraint(ct); cons.push(ct);
+  };
+  link(P.torso, {x:0,y:0.57,z:0}, P.head, {x:0,y:-0.3,z:0});
+  link(P.torso, JOINT.armL, P.armL, {x:0,y:0.31,z:0});
+  link(P.torso, JOINT.armR, P.armR, {x:0,y:0.31,z:0});
+  link(P.torso, JOINT.legL, P.legL, {x:0,y:0.29,z:0});
+  link(P.torso, JOINT.legR, P.legR, {x:0,y:0.29,z:0});
+  if(impulse) P.torso.applyImpulse(impulse, new CANNON.Vec3(0,0.2,0));
+  world.remove(playerBody);
+  ragdoll = {parts:P, cons, timer:0};
+}
+function clearRagdoll(){
+  ragdoll.cons.forEach(c=>world.removeConstraint(c));
+  Object.values(ragdoll.parts).forEach(b=>world.remove(b));
+  ragdoll = null;
+}
+function endRagdoll(){
+  const t = ragdoll.parts.torso.position.clone ? ragdoll.parts.torso.position :
+            new CANNON.Vec3(ragdoll.parts.torso.position.x, ragdoll.parts.torso.position.y, ragdoll.parts.torso.position.z);
+  const tx = t.x, ty = t.y, tz = t.z;
+  clearRagdoll();
+  playerBody.position.set(tx, Math.max(ty, 0.6) + 0.4, tz);
+  playerBody.velocity.set(0,0,0); playerBody.angularVelocity.set(0,0,0);
+  world.addBody(playerBody);
+  ragdollCooldown = 0.8; squash = 1;
+}
+
+playerBody.addEventListener('collide', (e)=>{
+  const other = e.body;
+  if(!playing || !other) return;
+
+  if(other.isPad){                       // 스프링 발판
+    if(playerBody.velocity.y < 2){
+      playerBody.velocity.y = other.padPower;
+      style += 5; boing(300, 1200, 0.25, 'square', 0.12);
+      confetti(playerBody.position, 10);
+    }
+    return;
+  }
+  if(ragdoll || ragdollCooldown>0 || !other.isHazard) return;
+  const rel = Math.abs(e.contact.getImpactVelocityAlongNormal());
+  if(rel < 4.5) return;
+
+  const dir = new CANNON.Vec3(playerBody.position.x - other.position.x, 0,
+                              playerBody.position.z - other.position.z);
+  if(dir.norm() < 0.1) dir.set(rand(-1,1), 0, rand(-1,1));
+  dir.normalize();
+  const pw = other.hazardPower || 1;
+  const power = clamp(rel, 5, 22) * 3.2 * pw;
+  knockdowns++; style += 50;
+  goRagdoll(new CANNON.Vec3(dir.x*power, 26*pw, dir.z*power));
+  confetti(playerBody.position, 26);
+  boing(760, 70, 0.42, 'sawtooth', 0.2);
+  const cries = ['으아악!','꺄악!','몸이 풀렸다!','안 돼애애', other.hazardName + '에 맞았다!'];
+  yell(cries[Math.floor(Math.random()*cries.length)]);
+});
+
+const confettiPool = [];
+const confGeo = new THREE.BoxGeometry(0.18,0.18,0.03);
+function confetti(pos, n){
+  const palette = [0xff5d8f,0xffd93b,0x3ddc97,0x6ec6ff,0xb388ff];
+  for(let i=0;i<n;i++){
+    const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({
+      color:palette[i%palette.length], side:THREE.DoubleSide}));
+    m.position.set(pos.x, pos.y+0.6, pos.z); scene.add(m);
+    confettiPool.push({m, v:new V3(rand(-7,7), rand(5,12), rand(-7,7)),
+      rv:new V3(rand(-9,9),rand(-9,9),rand(-9,9)), life:1.6});
+  }
+}
+
+// -------------------------------------------------------- 입력 / 카메라
+const keys = {};
+addEventListener('keydown', e=>{
+  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
+  if(e.code === 'Space' && !keys['Space']) jumpPressed = true;
+  keys[e.code] = true; audioReady();
+});
+addEventListener('keyup', e=>{ keys[e.code] = false; });
+addEventListener('blur', ()=>{ for(const k in keys) keys[k] = false; });
+let jumpPressed = false;
+
+let camYaw = 0, camTargetYaw = 0, dragging = false, lastX = 0;
+renderer.domElement.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; audioReady();});
+addEventListener('pointerup', ()=>dragging=false);
+addEventListener('pointermove', e=>{ if(dragging){ camTargetYaw -= (e.clientX-lastX)*0.006; lastX = e.clientX; } });
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// -------------------------------------------------------- 게임 상태
+let playing = false, gameTime = 0, lives = 3, style = 0, knockdowns = 0, best = 0;
+let poseTimer = 0, posedThisJump = false, grounded = false, coyote = 0, squash = 1;
+let wobble = 0, eventTimer = 8, eventActive = null, eventLeft = 0, faceAngle = 0;
+let lastVel = new V3();
+const leanX = Spring(70,11), leanZ = Spring(70,11);
+
+const elTimer = document.getElementById('timer');
+const elLives = document.getElementById('lives');
+const elStyle = document.getElementById('styleVal');
+const elEvent = document.getElementById('event');
+const elToast = document.getElementById('toast');
+const mapCtx  = document.getElementById('mapCanvas').getContext('2d');
+
+function difficulty(){ return 1 + Math.min(gameTime/45, 1.2); }
+function drawLives(){
+  elLives.innerHTML = '';
+  for(let i=0;i<3;i++){
+    const d = document.createElement('div');
+    d.className = 'box-life' + (i<lives ? '' : ' gone');
+    elLives.appendChild(d);
+  }
+}
+function yell(text){
+  const d = document.createElement('div'); d.className = 'yell'; d.textContent = text;
+  elToast.appendChild(d); setTimeout(()=>d.remove(), 1400);
+}
+function banner(text){
+  elEvent.textContent = text;
+  elEvent.classList.remove('pop'); void elEvent.offsetWidth; elEvent.classList.add('pop');
+}
+function respawn(){
+  if(ragdoll){ clearRagdoll(); world.addBody(playerBody); }
+  const a = Math.random()*Math.PI*2;
+  playerBody.position.set(Math.cos(a)*16, 8, Math.sin(a)*16);
+  playerBody.velocity.set(0,0,0);
+  ragdollCooldown = 1.0;
+}
+function loseLife(){
+  lives--; drawLives(); boing(200, 60, 0.5, 'square', 0.2);
+  if(lives <= 0) gameOver(); else { respawn(); yell('한 번 더!'); }
+}
+
+const EVENTS = [
+  {name:'저중력 파티!', dur:7, on(){ world.gravity.y = -13; }, off(){ world.gravity.y = -34; }},
+  {name:'바나나 폭풍!', dur:7, on(){ this.t=0; }, tick(dt){ this.t+=dt; if(this.t>0.3){this.t=0; spawnDebris('banana');} }, off(){}},
+  {name:'오리 폭격!',   dur:7, on(){ this.t=0; }, tick(dt){ this.t+=dt; if(this.t>0.5){this.t=0; spawnDebris('duck');} }, off(){}},
+  {name:'전부 역주행!', dur:8, on(){ [...bananaArms,...spinners,...duckArms].forEach(h=>h.dir*=-1); },
+      off(){ [...bananaArms,...spinners,...duckArms].forEach(h=>h.dir*=-1); }},
+];
+function triggerEvent(){
+  const ev = EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  eventActive = ev; eventLeft = ev.dur; ev.on();
+  banner(ev.name); boing(300, 900, 0.35, 'triangle', 0.14);
+}
+
+// ------------------------------------------------- 캐릭터 포즈(흐느적)
+function poseNormal(dt, speed){
+  const p = playerBody.position, v = playerBody.velocity;
+  wobble += dt * (2.4 + speed*0.75);
+  squash = lerp(squash, 1, dt*6);
+  const posing = poseTimer > 0;
+
+  // 가속도로 몸통이 뒤늦게 휘청 (관성)
+  const ax = (v.x - lastVel.x)/Math.max(dt,1e-3), az = (v.z - lastVel.z)/Math.max(dt,1e-3);
+  lastVel.set(v.x, v.y, v.z);
+  springStep(leanX, clamp(az*0.012, -0.5, 0.5), dt);
+  springStep(leanZ, clamp(-ax*0.012, -0.5, 0.5), dt);
+
+  const bob = Math.sin(wobble*1.7)*0.07;
+  CH.torso.position.set(p.x, p.y + TORSO_OFF + bob, p.z);
+  if(speed > 0.8) faceAngle = lerp(faceAngle, Math.atan2(v.x, v.z), 1-Math.pow(0.0015, dt));
+
+  // 몸통 자체가 계속 출렁임
+  const sway = Math.sin(wobble*1.25)*0.13 + Math.sin(wobble*2.7)*0.05;
+  CH.torso.rotation.set(0,0,0);
+  CH.torso.rotateY(faceAngle);
+  CH.torso.rotateX(leanX.x + Math.sin(wobble*2.1)*0.07);
+  CH.torso.rotateZ(leanZ.x + sway + (posing?Math.sin(poseTimer*24)*0.35:0));
+  const sq = squash;
+  CH.torso.scale.set(2-sq, sq*(1+Math.sin(wobble*3.2)*0.04), 2-sq);
+
+  const q = CH.torso.quaternion;
+  const place = (obj, joint)=> obj.position.copy(joint.clone().applyQuaternion(q).add(CH.torso.position));
+
+  // 머리: 목이 스프링이라 늦게 따라옴
+  place(CH.head, JOINT.head);
+  CH.head.quaternion.copy(q);
+  headInner.rotation.set(
+    springStep(headSpring.x, Math.sin(wobble*1.4)*0.22 - leanX.x*0.8, dt), 0,
+    springStep(headSpring.z, Math.sin(wobble*0.9)*0.3 - leanZ.x*0.9, dt));
+  CH.head.position.y += Math.sin(wobble*2.6)*0.05;
+
+  // 팔다리: 윗마디는 목표 각도, 아랫마디는 한 박자 늦게 따라옴 = 국수 같은 흐느적
+  const air = grounded ? 0 : 1;
+  const amp = clamp(0.35 + speed*0.11, 0.35, 1.5);
+  const s = Math.sin(wobble*2.3), s2 = Math.cos(wobble*2.3);
+  const limbs = [
+    {L:CH.armL, j:JOINT.armL, tx: s*amp + air*1.5 + (posing? 2.6:0), tz: 0.5 + sway*1.4 + (posing?1.0:0)},
+    {L:CH.armR, j:JOINT.armR, tx:-s*amp + air*1.5 + (posing? 2.6:0), tz:-0.5 + sway*1.4 - (posing?1.0:0)},
+    {L:CH.legL, j:JOINT.legL, tx:-s2*amp*0.8 - air*0.5 + (posing?-0.9:0), tz: 0.16 + sway*0.6 + (posing?0.7:0)},
+    {L:CH.legR, j:JOINT.legR, tx: s2*amp*0.8 - air*0.5 + (posing?-0.9:0), tz:-0.16 + sway*0.6 - (posing?0.7:0)}
+  ];
+  limbs.forEach(({L,j,tx,tz})=>{
+    place(L.pivot, j);
+    L.pivot.quaternion.copy(q);
+    const ux = springStep(L.sx, tx, dt), uz = springStep(L.sz, tz, dt);
+    L.upper.rotation.set(ux, 0, uz);
+    // 아랫마디는 윗마디 각도를 뒤늦게 과장해서 따라감
+    const lx = springStep(L.lx, ux*1.15 + Math.sin(wobble*3.4)*0.18, dt);
+    const lz = springStep(L.lz, uz*0.85 + Math.sin(wobble*2.6)*0.2, dt);
+    L.lowerPivot.rotation.set(lx - ux*0.35, 0, lz - uz*0.3);
+    L.pivot.scale.set(1, 1 + Math.sin(wobble*4 + j.x)*0.07, 1);
+  });
+}
+function poseRagdoll(){
+  const P = ragdoll.parts;
+  CH.torso.position.copy(P.torso.position);
+  CH.torso.quaternion.copy(P.torso.quaternion);
+  CH.torso.scale.set(1,1,1);
+  CH.head.position.copy(P.head.position);
+  CH.head.quaternion.copy(P.head.quaternion);
+  headInner.rotation.set(0,0,0);
+  const hangs = [[CH.armL,P.armL,0.31],[CH.armR,P.armR,0.31],[CH.legL,P.legL,0.29],[CH.legR,P.legR,0.29]];
+  hangs.forEach(([L, body, half])=>{
+    L.pivot.quaternion.copy(body.quaternion);
+    const up = new V3(0, half, 0).applyQuaternion(L.pivot.quaternion);
+    L.pivot.position.copy(body.position).add(up);
+    L.pivot.scale.set(1,1,1);
+    L.upper.rotation.set(0,0,0);
+    L.lowerPivot.rotation.set(0,0,0);
+  });
+}
+
+// ------------------------------------------------------- 미니맵
+function drawMap(){
+  const S = 264, half = S/2, k = half/(ARENA_R+4);
+  mapCtx.clearRect(0,0,S,S);
+  mapCtx.fillStyle = '#fff6e0'; mapCtx.fillRect(0,0,S,S);
+  mapCtx.strokeStyle = '#20140c'; mapCtx.lineWidth = 6;
+  mapCtx.beginPath(); mapCtx.arc(half, half, ARENA_R*k, 0, 7); mapCtx.stroke();
+  const put = (x,z,r,color)=>{
+    mapCtx.fillStyle = color; mapCtx.beginPath();
+    mapCtx.arc(half + x*k, half + z*k, r, 0, 7); mapCtx.fill();
+  };
+  plateaus.forEach(p=>{ 
+    mapCtx.fillStyle = 'rgba(61,220,151,.45)'; mapCtx.beginPath();
+    mapCtx.arc(half+p.x*k, half+p.z*k, p.r*k, 0, 7); mapCtx.fill(); });
+  hazards.forEach(h=>{
+    if(h.kind==='duck') put(h.x, h.z, 5, '#ff9f1c');
+    else if(h.kind==='bump') put(h.x, h.z, 3, '#b388ff');
+    else if(h.kind==='arm') put(h.x, h.z, 4, '#ff5d8f');
+  });
+  // 회전 바나나(중앙)
+  put(0,0,5,'#ffd93b');
+  const t = ragdoll ? ragdoll.parts.torso.position : playerBody.position;
+  put(t.x, t.z, 6, '#20140c'); put(t.x, t.z, 3.5, '#ffffff');
+}
+
+// ------------------------------------------------------- 메인 루프
+const clock = new THREE.Clock();
+const camPos = new V3(0, 12, 24), camLook = new V3();
+
+function updateGrounded(){
+  grounded = false;
+  for(let i=0;i<world.contacts.length;i++){
+    const c = world.contacts[i];
+    // ri / rj = 바디 중심 → 접촉점 벡터. 발밑에 접촉점이 있으면 착지 상태
+    if(c.bi === playerBody && c.ri.y < -0.3) { grounded = true; break; }
+    if(c.bj === playerBody && c.rj.y < -0.3) { grounded = true; break; }
+  }
+}
+
+function step(dt){
+  gameTime += dt;
+  ragdollCooldown = Math.max(0, ragdollCooldown - dt);
+  poseTimer = Math.max(0, poseTimer - dt);
+
+  if(eventActive){
+    eventLeft -= dt;
+    if(eventActive.tick) eventActive.tick(dt);
+    if(eventLeft <= 0){ eventActive.off(); eventActive = null; eventTimer = rand(9,15); }
+  } else {
+    eventTimer -= dt;
+    if(eventTimer <= 0) triggerEvent();
+  }
+
+  if(keys['ArrowLeft'])  camTargetYaw += dt*2.0;
+  if(keys['ArrowRight']) camTargetYaw -= dt*2.0;
+  camYaw = lerp(camYaw, camTargetYaw, 1-Math.pow(0.0001, dt));
+
+  if(!ragdoll){
+    updateGrounded();
+    if(grounded){ coyote = 0.14; posedThisJump = false; }
+    else coyote = Math.max(0, coyote - dt);
+
+    let ix = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+    let iz = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
+    const len = Math.hypot(ix, iz);
+    if(len > 0){ ix/=len; iz/=len; }
+    const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
+    const dx = ix*cos - iz*sin, dz = ix*sin + iz*cos;
+
+    const sprint = (keys['ShiftLeft']||keys['ShiftRight']) ? 1.45 : 1;
+    const SPEED = 15 * sprint;
+    const accel = grounded ? 16 : 8;         // 지상/공중 모두 확실히 반응
+    const v = playerBody.velocity;
+    const f = 1-Math.exp(-accel*dt);
+    v.x = lerp(v.x, dx*SPEED, f);
+    v.z = lerp(v.z, dz*SPEED, f);
+
+    if(jumpPressed){
+      if(coyote > 0){
+        v.y = 16; coyote = 0; squash = 0.72;
+        boing(420, 900, 0.14, 'square', 0.1);
+      } else if(!posedThisJump){
+        posedThisJump = true; poseTimer = 0.6;
+        v.y += 5; style += 15;
+        confetti(playerBody.position, 8);
+        boing(900, 300, 0.2, 'triangle', 0.09);
+        yell('멋진 포즈!');
+      }
+    }
+  } else {
+    ragdoll.timer += dt;
+    if(ragdoll.timer > 2.4 && ragdoll.parts.torso.position.y > -3) endRagdoll();
+  }
+  jumpPressed = false;
+
+  hazards.forEach(h=>h.update && h.update(dt));
+  world.step(1/60, dt, 4);
+
+  pads.forEach(p=>{ p.t += dt; p.arrow.position.y = 1.3 + Math.sin(p.t*3)*0.25; });
+  balls.forEach(b=>{
+    if(b.body.position.y < -40){
+      b.body.position.set(rand(-25,25), 25, rand(-25,25)); b.body.velocity.set(0,0,0);
+    }
+    b.mesh.position.copy(b.body.position); b.mesh.quaternion.copy(b.body.quaternion);
+  });
+  for(let i=debris.length-1;i>=0;i--){
+    const d = debris[i]; d.life -= dt;
+    d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion);
+    if(d.life <= 0 || d.body.position.y < -40){
+      scene.remove(d.mesh); world.remove(d.body); debris.splice(i,1);
+    }
+  }
+
+  const speed = Math.hypot(playerBody.velocity.x, playerBody.velocity.z);
+  if(ragdoll) poseRagdoll(); else poseNormal(dt, speed);
+
+  const py = ragdoll ? ragdoll.parts.torso.position.y : playerBody.position.y;
+  if(py < -12) loseLife();
+
+  for(let i=confettiPool.length-1;i>=0;i--){
+    const c = confettiPool[i];
+    c.life -= dt; c.v.y -= 22*dt;
+    c.m.position.addScaledVector(c.v, dt);
+    c.m.rotation.x += c.rv.x*dt; c.m.rotation.y += c.rv.y*dt; c.m.rotation.z += c.rv.z*dt;
+    if(c.life <= 0){ scene.remove(c.m); c.m.material.dispose(); confettiPool.splice(i,1); }
+  }
+
+  style += dt * 8;
+  elTimer.innerHTML = gameTime.toFixed(1) + '초<small>버틴 시간</small>';
+  elStyle.textContent = Math.floor(style);
+  drawMap();
+}
+
+function updateCamera(dt){
+  const t = ragdoll ? ragdoll.parts.torso.position : playerBody.position;
+  const desired = new V3(t.x - Math.sin(camYaw)*16, t.y + 9.5, t.z - Math.cos(camYaw)*16);
+  camPos.lerp(desired, 1-Math.pow(0.002, dt));
+  camera.position.copy(camPos);
+  camLook.lerp(new V3(t.x, t.y+1.4, t.z), 1-Math.pow(0.0005, dt));
+  camera.lookAt(camLook);
+  // 그림자를 플레이어 주변으로 이동 (넓은 맵 대응)
+  sunTarget.position.set(t.x, 0, t.z);
+  sun.position.set(t.x + 26, 46, t.z + 20);
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 1/25);
+  if(playing) step(dt);
+  else {
+    hazards.forEach(h=>h.update && h.update(dt));
+    world.step(1/60, dt, 3);
+    balls.forEach(b=>{ b.mesh.position.copy(b.body.position); b.mesh.quaternion.copy(b.body.quaternion); });
+    poseNormal(dt, 0);
+  }
+  updateCamera(dt);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ------------------------------------------------------- 화면 전환
+const startScreen = document.getElementById('startScreen');
+const overScreen  = document.getElementById('overScreen');
+function startGame(){
+  audioReady();
+  playing = true; gameTime = 0; lives = 3; style = 0; knockdowns = 0;
+  eventTimer = 8;
+  if(eventActive){ eventActive.off(); eventActive = null; }
+  world.gravity.y = -34;
+  debris.forEach(d=>{ scene.remove(d.mesh); world.remove(d.body); }); debris.length = 0;
+  respawn(); drawLives();
+  startScreen.classList.add('hidden');
+  overScreen.classList.add('hidden');
+  banner('살아남아라!');
+}
+function gameOver(){
+  playing = false;
+  best = Math.max(best, gameTime);
+  document.getElementById('finalTime').textContent = gameTime.toFixed(1);
+  document.getElementById('finalStyle').textContent = Math.floor(style);
+  document.getElementById('bestTime').textContent = best.toFixed(1);
+  const t = gameTime;
+  const rank = t < 15 ? '상자만도 못한 실력' : t < 35 ? '그럭저럭 흐느적' :
+               t < 60 ? '바나나 회피 중급자' : t < 90 ? '고무 오리의 친구' : '전설의 박스맨';
+  document.getElementById('rank').textContent = `${rank} · 넘어진 횟수 ${knockdowns}번`;
+  document.getElementById('overTitle').textContent =
+    knockdowns > 6 ? '너무 많이 굴렀다!' : '떨어졌다!';
+  overScreen.classList.remove('hidden');
+  boing(300, 80, 0.8, 'sawtooth', 0.2);
+}
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', startGame);
+drawLives(); drawMap();
+</script>
+</body>
+</html>
