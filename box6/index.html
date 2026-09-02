@@ -139,7 +139,7 @@
     <div class="panel" id="timer">0.0초<small>버틴 시간</small></div>
     <div class="panel"><div id="lives"></div></div>
     <div class="panel" id="style">굴욕 점수 <b id="styleVal">0</b></div>
-    <div class="panel" id="mapinfo">내 층 <b id="myLayer">4</b> · 남은 발판 <b id="tileLeft">0</b></div>
+    <div class="panel" id="mapinfo"><span id="layerWrap">내 층 <b id="myLayer">4</b> · </span>남은 발판 <b id="tileLeft">0</b></div>
   </div>
   <div class="panel" id="board"><h4>찰흙 5인방</h4><div id="boardRows"></div></div>
   <div id="event"></div>
@@ -585,69 +585,79 @@ const HEX_R = 2.45, HEX_RINGS = 4, HEX_LAYERS = 5, LAYER_H = 4.4;
 const HEX_TOP = (HEX_LAYERS-1)*LAYER_H;
 const HEX_SPAN = HEX_RINGS*Math.sqrt(3)*HEX_R + HEX_R;
 const LAYER_COLORS = [0x5aa8d8, 0x2fae7a, 0xd99903, 0xd44a76, 0x9670d9];   // 아래→위
-let hexGeo = null, hexDangerMat = null, hexLayerMats = null;
+let hexGeo = null, hexDangerMat = null, hexSafeMat = null, hexLayerMats = null;
 
-function hexCells(){
-  const list = [], N = HEX_RINGS;
+function hexCells(rings){
+  const list = [], N = rings === undefined ? HEX_RINGS : rings;
   for(let q=-N;q<=N;q++){
-    for(let r=Math.max(-N,-q-N); r<=Math.min(N,-q+N); r++){
-      list.push({x: HEX_R*Math.sqrt(3)*(q + r/2), z: HEX_R*1.5*r});
-    }
+    for(let r=Math.max(-N,-q-N); r<=Math.min(N,-q+N); r++) list.push({q, r});
   }
   return list;
 }
-function makeTile(cx, cz, layer){
-  const vr = HEX_R - 0.09;                       // 보이는 크기
+function axialXZ(q, r, R){ return {x: R*Math.sqrt(3)*(q + r/2), z: R*1.5*r}; }
+const HDIR = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+
+function ensureTileAssets(){
+  if(hexGeo) return;
+  hexGeo = new THREE.CylinderGeometry(1, 1, 0.5, 6);
+  hexDangerMat = new THREE.MeshStandardMaterial({color:0xd94f33, roughness:.6, emissive:0x3a1008});
+  hexSafeMat = new THREE.MeshStandardMaterial({color:0x7ff0e0, roughness:.25,
+    emissive:0x2ba79a, emissiveIntensity:1.1});
+  hexLayerMats = LAYER_COLORS.map(c=>new THREE.MeshStandardMaterial({color:c, roughness:.85}));
+}
+/* 발판 하나. opts: {R 반경, colorIdx 색, layer 층, safe 사라지지 않는 안전 발판,
+   regrow 무너진 뒤 다시 자라기까지의 초} */
+function makeTile(cx, cz, y, opts){
+  opts = opts || {};
+  ensureTileAssets();
+  const R = opts.R || HEX_R, vr = R - 0.09;
   const body = new CANNON.Body({mass:0, material:matGround});
-  const sh = new CANNON.Cylinder(vr*0.93, vr*0.93, 0.5, 6);   // 물리는 살짝 작게
+  const sh = new CANNON.Cylinder(vr*0.93, vr*0.93, 0.5, 6);
   const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
   body.addShape(sh, new CANNON.Vec3(0,0,0), q);
-  body.position.set(cx, layer*LAYER_H, cz);
-  const t = {body, mesh:null, x:cx, z:cz, layer, alive:true, timer:0, dying:false};
+  body.position.set(cx, y, cz);
+  const t = {body, mesh:null, x:cx, y, z:cz, vr,
+    layer: opts.layer || 0, colorIdx: opts.colorIdx || 0,
+    safe: !!opts.safe, regrow: opts.regrow || 0,
+    alive:true, dying:false, timer:0, deadTimer:0, pop:0, phase:rand(0,6.3)};
   body.tile = t;
   aBody(body);
-  const mesh = new THREE.Mesh(hexGeo, hexLayerMats[layer % hexLayerMats.length]);
-  mesh.scale.set(vr, 1, vr);
-  mesh.position.set(cx, layer*LAYER_H, cz);
+  const mesh = new THREE.Mesh(hexGeo, t.safe ? hexSafeMat : hexLayerMats[t.colorIdx % hexLayerMats.length]);
+  mesh.scale.set(vr, t.safe ? 1.5 : 1, vr);
+  mesh.position.set(cx, y, cz);
   mesh.castShadow = true; mesh.receiveShadow = true;
   aMesh(mesh); t.mesh = mesh;
+  if(t.safe){
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(vr*0.55, 0.09, 6, 18),
+      new THREE.MeshStandardMaterial({color:0x8ffff0, emissive:0x3fd8c4, emissiveIntensity:1.4, roughness:.3}));
+    halo.rotation.x = Math.PI/2; halo.position.set(cx, y + 1.5, cz);
+    aMesh(halo); t.halo = halo;
+  }
   tiles.push(t);
   return t;
 }
-function buildHexMap(){
-  if(!hexGeo){
-    hexGeo = new THREE.CylinderGeometry(1, 1, 0.5, 6);
-    hexDangerMat = new THREE.MeshStandardMaterial({color:0xd94f33, roughness:.6, emissive:0x3a1008});
-    hexLayerMats = LAYER_COLORS.map(c=>new THREE.MeshStandardMaterial({color:c, roughness:.85}));
+function reviveTile(t){
+  t.dying = false; t.timer = 0; t.deadTimer = 0;
+  if(!t.alive){
+    t.alive = true;
+    t.body.collisionFilterMask = -1;
+    if(world.bodies.indexOf(t.body) < 0) world.addBody(t.body);
+    if(arenaBodies.indexOf(t.body) < 0) arenaBodies.push(t.body);
   }
-  const cells = hexCells();
-  for(let L=0; L<HEX_LAYERS; L++) cells.forEach(c=>makeTile(c.x, c.z, L));
-
-  // 층마다 가장자리 테두리 링 (경계가 보이도록)
-  for(let L=0; L<HEX_LAYERS; L++){
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(HEX_SPAN+0.5, 0.14, 6, 64),
-      new THREE.MeshStandardMaterial({color:0x2a1a12, roughness:.9}));
-    ring.rotation.x = Math.PI/2; ring.position.y = L*LAYER_H - 0.3; aMesh(ring);
-  }
-  // 아래 심연
-  const abyss = new THREE.Mesh(new THREE.CylinderGeometry(HEX_SPAN*2.2, HEX_SPAN*0.6, 30, 28),
-    new THREE.MeshStandardMaterial({color:0x2b3b4a, roughness:1}));
-  abyss.position.y = -22; aMesh(abyss);
+  t.mesh.position.set(t.x, t.y, t.z);
+  t.mesh.rotation.set(0,0,0);
+  t.mesh.material = t.safe ? hexSafeMat : hexLayerMats[t.colorIdx % hexLayerMats.length];
+  if(!t.mesh.parent) scene.add(t.mesh);
+  if(arenaMeshes.indexOf(t.mesh) < 0) arenaMeshes.push(t.mesh);
+  for(let i=fallingTiles.length-1;i>=0;i--) if(fallingTiles[i].t === t) fallingTiles.splice(i,1);
+  t.pop = 0.4;
 }
-function hexRegen(){
-  // 발판이 거의 다 사라지면 통째로 다시 깔아 계속 놀 수 있게 한다
-  tiles.forEach(t=>{
-    if(t.body && world.bodies.indexOf(t.body) >= 0) world.remove(t.body);
-    const bi = arenaBodies.indexOf(t.body); if(bi >= 0) arenaBodies.splice(bi, 1);
-    scene.remove(t.mesh);
-    const mi = arenaMeshes.indexOf(t.mesh); if(mi >= 0) arenaMeshes.splice(mi, 1);
-  });
-  tiles.length = 0;
-  fallingTiles.forEach(f=>scene.remove(f.mesh)); fallingTiles.length = 0;
-  const cells = hexCells();
-  for(let L=0; L<HEX_LAYERS; L++) cells.forEach(c=>makeTile(c.x, c.z, L));
-  banner('육각 발판 재생성!');
-  boing(240, 900, 0.5, 'triangle', 0.16);
+function killTile(t){
+  t.alive = false;
+  if(world.bodies.indexOf(t.body) >= 0) world.remove(t.body);
+  const bi = arenaBodies.indexOf(t.body); if(bi >= 0) arenaBodies.splice(bi, 1);
+  fallingTiles.push({mesh:t.mesh, t, vy:0, sx:rand(-2,2), sz:rand(-2,2), life:3.0});
+  t.deadTimer = t.regrow;
 }
 function aliveTiles(layer){
   const out = [];
@@ -657,23 +667,55 @@ function aliveTiles(layer){
   }
   return out;
 }
+function nearestTile(x, z, y){
+  let best = null, bd = 1e9;
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(!t.alive || (y !== undefined && Math.abs(t.y - y) > 4)) continue;
+    const d = (t.x-x)*(t.x-x) + (t.z-z)*(t.z-z);
+    if(d < bd){ bd = d; best = t; }
+  }
+  return best ? {tile:best, dist:Math.sqrt(bd)} : null;
+}
 function startTileFall(t){
-  if(!t.alive || t.dying) return;
+  if(!t.alive || t.dying || t.safe) return;     // 빛나는 안전 발판은 무너지지 않는다
   t.dying = true; t.timer = 1.15;
   t.mesh.material = hexDangerMat;
 }
+let tileClock = 0;
 function updateTiles(dt){
+  tileClock += dt;
   for(let i=0;i<tiles.length;i++){
     const t = tiles[i];
-    if(!t.dying || !t.alive) continue;
-    t.timer -= dt;
-    t.mesh.position.x = t.x + Math.sin(t.timer*38)*0.05;
-    t.mesh.position.z = t.z + Math.cos(t.timer*33)*0.05;
-    if(t.timer <= 0){
-      t.alive = false;
-      if(world.bodies.indexOf(t.body) >= 0) world.remove(t.body);
-      const bi = arenaBodies.indexOf(t.body); if(bi >= 0) arenaBodies.splice(bi, 1);
-      fallingTiles.push({mesh:t.mesh, vy:0, sx:rand(-2,2), sz:rand(-2,2), life:3.2});
+    if(t.pop > 0){       // 다시 자라날 때 뿅 하고 커지는 연출
+      t.pop = Math.max(0, t.pop - dt);
+      const k = 1 - t.pop/0.4;
+      t.mesh.scale.set(t.vr*k, (t.safe?1.5:1)*Math.max(0.05,k), t.vr*k);
+    }
+    if(t.safe){
+      t.mesh.position.y = t.y + Math.sin(tileClock*2 + t.phase)*0.07;
+      if(t.halo){
+        t.halo.position.y = t.y + 1.5 + Math.sin(tileClock*1.6 + t.phase)*0.22;
+        t.halo.rotation.z += dt*1.4;
+      }
+      continue;
+    }
+    if(t.alive && t.dying){
+      t.timer -= dt;
+      t.mesh.position.x = t.x + Math.sin(t.timer*38)*0.05;
+      t.mesh.position.z = t.z + Math.cos(t.timer*33)*0.05;
+      if(t.timer <= 0) killTile(t);
+    } else if(!t.alive && t.regrow > 0){
+      t.deadTimer -= dt;
+      if(t.deadTimer <= 0){
+        // 누가 그 자리에 서 있으면 조금 더 기다린다
+        let blocked = false;
+        for(let j=0;j<guys.length;j++){
+          const q = guys[j].D.pelvis.position;
+          if(Math.abs(q.y - t.y) < 3 && Math.hypot(q.x-t.x, q.z-t.z) < 1.7){ blocked = true; break; }
+        }
+        if(blocked) t.deadTimer = 1.0; else reviveTile(t);
+      }
     }
   }
   for(let i=fallingTiles.length-1;i>=0;i--){
@@ -683,11 +725,60 @@ function updateTiles(dt){
     f.mesh.rotation.x += f.sx*dt; f.mesh.rotation.z += f.sz*dt;
     if(f.life <= 0){
       scene.remove(f.mesh);
-      const mi = arenaMeshes.indexOf(f.mesh); if(mi >= 0) arenaMeshes.splice(mi, 1);
+      if(!(f.t && f.t.regrow)){
+        const mi = arenaMeshes.indexOf(f.mesh); if(mi >= 0) arenaMeshes.splice(mi, 1);
+      }
       fallingTiles.splice(i,1);
     }
   }
-  if(playing && aliveTiles().length < 26) hexRegen();
+  if(playing && currentMap.regenAt && aliveTiles().length < currentMap.regenAt) currentMap.reset(true);
+}
+/* 발판 고르기: filter를 통과한 살아있는 발판 중 이웃이 많은(=길이 이어지는) 곳 */
+function pickTileNear(g, filter, minD, maxD, fwdBias){
+  const p = g.ctrl.position;
+  const vx = Math.sin(g.faceAngle), vz = Math.cos(g.faceAngle);
+  let best = null, bs = -1e9;
+  for(let i=0;i<14;i++){
+    const t = tiles[Math.floor(Math.random()*tiles.length)];
+    if(!t.alive || t.dying || !filter(t)) continue;
+    const dx = t.x-p.x, dz = t.z-p.z, d = Math.hypot(dx, dz);
+    if(d < minD || d > maxD) continue;
+    let neigh = 0;
+    for(let j=0;j<tiles.length;j++){
+      const o = tiles[j];
+      if(o.alive && !o.dying && Math.abs(o.y-t.y) < 2 &&
+         Math.hypot(o.x-t.x, o.z-t.z) < t.vr*2.3) neigh++;
+    }
+    const score = neigh*1.3 + (fwdBias ? (dx*vx+dz*vz)/d*fwdBias : 0)
+                  + (t.safe ? 2.2 : 0) - d*0.14;
+    if(score > bs){ bs = score; best = t; }
+  }
+  return best;
+}
+
+/* ---------------------------------------------------------------- 맵 B: 육각형 붕괴 */
+function buildHexMap(){
+  ensureTileAssets();
+  const cells = hexCells();
+  for(let L=0; L<HEX_LAYERS; L++){
+    cells.forEach(c=>{
+      const w = axialXZ(c.q, c.r, HEX_R);
+      makeTile(w.x, w.z, L*LAYER_H, {layer:L, colorIdx:L});
+    });
+  }
+  for(let L=0; L<HEX_LAYERS; L++){
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(HEX_SPAN+0.5, 0.14, 6, 64),
+      new THREE.MeshStandardMaterial({color:0x2a1a12, roughness:.9}));
+    ring.rotation.x = Math.PI/2; ring.position.y = L*LAYER_H - 0.3; aMesh(ring);
+  }
+  const abyss = new THREE.Mesh(new THREE.CylinderGeometry(HEX_SPAN*2.2, HEX_SPAN*0.6, 30, 28),
+    new THREE.MeshStandardMaterial({color:0x2b3b4a, roughness:1}));
+  abyss.position.y = -22; aMesh(abyss);
+}
+function hexReset(announce){
+  tiles.forEach(t=>reviveTile(t));
+  fallingTiles.forEach(f=>scene.remove(f.mesh)); fallingTiles.length = 0;
+  if(announce){ banner('육각 발판 재생성!'); boing(240, 900, 0.5, 'triangle', 0.16); }
 }
 function hexSpawn(){
   for(let L=HEX_LAYERS-1; L>=0; L--){
@@ -700,48 +791,25 @@ function hexSpawn(){
   return {x:0, y:HEX_TOP+3, z:0};
 }
 function tileLayerOf(y){ return clamp(Math.round(y/LAYER_H), 0, HEX_LAYERS-1); }
-/* AI: 같은 층에서 아직 튼튼한 발판(주변에 살아있는 이웃이 많은 곳)으로 계속 옮겨 다닌다 */
-function pickSafeTile(g, layer){
-  const list = aliveTiles(layer);
-  if(!list.length) return null;
-  const p = g.ctrl.position;
-  let best = null, bestScore = -1e9;
-  for(let i=0;i<10;i++){
-    const t = list[Math.floor(Math.random()*list.length)];
-    if(t.dying) continue;
-    const d = Math.hypot(t.x-p.x, t.z-p.z);
-    if(d < 2.5) continue;
-    let neigh = 0;
-    for(let j=0;j<list.length;j++){
-      const o = list[j];
-      if(!o.dying && Math.hypot(o.x-t.x, o.z-t.z) < HEX_R*2.2) neigh++;
-    }
-    const score = neigh*1.6 - d*0.35 - Math.hypot(t.x,t.z)*0.08;
-    if(score > bestScore){ bestScore = score; best = t; }
-  }
-  return best;
-}
 function hexAI(g, dt){
   const a = g.ai, p = g.ctrl.position;
   a.timer -= dt; a.jumpCd -= dt;
   const layer = tileLayerOf(p.y - 0.4);
   if(a.timer <= 0 || !a.tile || !a.tile.alive || a.tile.layer !== layer ||
      Math.hypot(a.tile.x-p.x, a.tile.z-p.z) < 1.5){
-    a.tile = pickSafeTile(g, layer);
+    a.tile = pickTileNear(g, t=>t.layer === layer, 2.5, 14, 0);
     a.timer = rand(1.1, 2.4);
   }
   let dx = 0, dz = 0;
   if(a.tile){ dx = a.tile.x - p.x; dz = a.tile.z - p.z; }
-  else { dx = -p.x; dz = -p.z; }                 // 발판이 없으면 중앙으로
+  else { dx = -p.x; dz = -p.z; }
   const dl = Math.hypot(dx, dz) || 1; dx/=dl; dz/=dl;
-  // 무너지는 중인 발판에서 밀어내기
   for(let i=0;i<tiles.length;i++){
     const t = tiles[i];
     if(!t.dying || !t.alive || t.layer !== layer) continue;
     const ox = p.x-t.x, oz = p.z-t.z, d = Math.hypot(ox, oz);
     if(d < HEX_R*1.5 && d > 0.01){ const w = (HEX_R*1.5-d)/(HEX_R*1.5)*2.4; dx += ox/d*w; dz += oz/d*w; }
   }
-  // 가장자리 밖으로 나가지 않기
   const rc = Math.hypot(p.x, p.z);
   if(rc > HEX_SPAN-2){ const w = (rc-(HEX_SPAN-2))/2*3.5; dx -= (p.x/rc)*w; dz -= (p.z/rc)*w; }
   const l2 = Math.hypot(dx, dz) || 1;
@@ -750,15 +818,128 @@ function hexAI(g, dt){
   applyMove(g, dx/l2, dz/l2, false, jump, dt);
 }
 
+/* ---------------------------------------------------------------- 맵 C: 갈래 고가도로
+   허브에서 뻗어나간 육각 고가도로 6줄기가 중간에서 두 갈래로 갈라졌다 다시 만나고,
+   바깥 순환로로 이어진다. 밟은 발판은 무너지지만 7초 뒤 다시 자라고,
+   빛나는 안전 발판은 절대 무너지지 않는다.                                        */
+const BR_R = 2.8, BR_Y = 13, BR_RING = 8, BR_REGROW = 7;
+const BR_SPAN = BR_RING*Math.sqrt(3)*BR_R + BR_R*2;
+function buildBridgeMap(){
+  ensureTileAssets();
+  const seen = {};
+  const put = (q, r, opts)=>{
+    const key = q + ',' + r;
+    if(seen[key]) return;
+    seen[key] = 1;
+    const w = axialXZ(q, r, BR_R);
+    makeTile(w.x, w.z, BR_Y, Object.assign({R:BR_R, regrow:BR_REGROW, colorIdx:2}, opts));
+  };
+  // 중앙 허브 (전부 안전 발판)
+  hexCells(1).forEach(c=>put(c.q, c.r, {safe:true, colorIdx:4}));
+
+  for(let d=0; d<6; d++){
+    const dir = HDIR[d], perp = HDIR[(d+2)%6];
+    // 곧게 뻗은 구간
+    [2,3,7,8].forEach(i=>put(dir[0]*i, dir[1]*i, {colorIdx:(d%2)?1:2}));
+    // 두 갈래로 갈라지는 구간 (가운데는 비어 있어 반드시 한쪽을 골라야 한다)
+    for(let i=3;i<=7;i++){
+      [1,-1].forEach(sgn=>{
+        const q = dir[0]*i + perp[0]*sgn, r = dir[1]*i + perp[1]*sgn;
+        const isEnd = (i===3 || i===7);
+        put(q, r, {safe:isEnd, colorIdx:isEnd?4:((d%2)?0:3)});
+      });
+    }
+  }
+  // 바깥 순환로 — 2차선(육각 링 두 겹). 여섯 걸음마다 안전 발판
+  [BR_RING-1, BR_RING].forEach((RG, lane)=>{
+    let cq = HDIR[4][0]*RG, cr = HDIR[4][1]*RG, n = lane*3;
+    for(let d=0; d<6; d++){
+      for(let k=0; k<RG; k++){
+        put(cq, cr, {safe:(n % 6 === 0), colorIdx:(n%6===0)?4:(lane?0:1)});
+        cq += HDIR[d][0]; cr += HDIR[d][1]; n++;
+      }
+    }
+  });
+  // 안전 발판 아래로 내려가는 다리 기둥
+  const pillarMat = new THREE.MeshStandardMaterial({color:0x4a5a68, roughness:.95});
+  tiles.forEach(t=>{
+    if(!t.safe) return;
+    const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, BR_Y+16, 8), pillarMat);
+    pil.position.set(t.x, BR_Y - (BR_Y+16)/2, t.z);
+    pil.castShadow = true; aMesh(pil);
+  });
+  const abyss = new THREE.Mesh(new THREE.CylinderGeometry(BR_SPAN*2.4, BR_SPAN*0.5, 30, 28),
+    new THREE.MeshStandardMaterial({color:0x2b3b4a, roughness:1}));
+  abyss.position.y = -24; aMesh(abyss);
+}
+function bridgeReset(announce){
+  tiles.forEach(t=>reviveTile(t));
+  fallingTiles.forEach(f=>scene.remove(f.mesh)); fallingTiles.length = 0;
+  if(announce){ banner('고가도로 복구!'); boing(240, 900, 0.5, 'triangle', 0.16); }
+}
+function bridgeSpawn(){
+  const safe = tiles.filter(t=>t.safe);
+  const t = safe.length ? safe[Math.floor(Math.random()*safe.length)] : null;
+  return t ? {x:t.x, y:BR_Y + 2.4, z:t.z} : {x:0, y:BR_Y+3, z:0};
+}
+function bridgeAI(g, dt){
+  const a = g.ai, p = g.ctrl.position;
+  a.timer -= dt; a.jumpCd -= dt;
+  if(a.timer <= 0 || !a.tile || !a.tile.alive ||
+     Math.hypot(a.tile.x-p.x, a.tile.z-p.z) < 1.8){
+    a.tile = pickTileNear(g, ()=>true, 3.2, 7.6, 3.5);
+    a.timer = rand(1.2, 2.6);
+  }
+  let dx, dz;
+  if(a.tile){ dx = a.tile.x - p.x; dz = a.tile.z - p.z; }
+  else { dx = -p.x; dz = -p.z; }
+  let dl = Math.hypot(dx, dz) || 1; dx/=dl; dz/=dl;
+  let throttle = 1;
+  // 지금 밟고 있는 발판 중심으로 살짝 당겨 길 가운데로 붙는다
+  const home = nearestTile(p.x, p.z, p.y);
+  if(home && home.dist > 0.5){
+    const hx = (home.tile.x-p.x)/home.dist, hz = (home.tile.z-p.z)/home.dist;
+    const w = clamp((home.dist - 0.5)/BR_R, 0, 1) * 1.5;
+    dx += hx*w; dz += hz*w;
+    dl = Math.hypot(dx, dz) || 1; dx/=dl; dz/=dl;
+  }
+  // 앞이 허공이면 속도를 줄이고 발판 쪽으로 방향을 튼다
+  const probe = nearestTile(p.x + dx*3.4, p.z + dz*3.4, p.y);
+  if(!probe || probe.dist > BR_R*0.9){
+    throttle = 0.42;
+    if(home && home.dist > 0.3){
+      dx = (home.tile.x - p.x); dz = (home.tile.z - p.z);
+      dl = Math.hypot(dx, dz) || 1; dx/=dl; dz/=dl;
+    }
+  }
+  // 무너지는 중인 발판 피하기
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(!t.dying || !t.alive) continue;
+    const ox = p.x-t.x, oz = p.z-t.z, d = Math.hypot(ox, oz);
+    if(d < BR_R*1.4 && d > 0.01){ const w = (BR_R*1.4-d)/(BR_R*1.4)*2.0; dx += ox/d*w; dz += oz/d*w; }
+  }
+  const l2 = Math.hypot(dx, dz) || 1;
+  let jump = false;
+  if(a.jumpCd <= 0 && g.grounded){ a.jumpCd = rand(3, 8); jump = Math.random() < 0.3; }
+  applyMove(g, dx/l2*throttle, dz/l2*throttle, false, jump, dt);
+}
+
 /* ---------------------------------------------------------------- 맵 목록 */
 const MAPS = [
   { id:'arena', name:'바나나 광장', tag:'회전 바나나와 고무 오리가 가득한 넓은 원형 경기장.',
     build:buildArenaMap, spawn:arenaSpawn, ai:arenaAI, killY:-12,
     camDist:16, camHigh:9.0, mapR:ARENA_R, debrisR:ARENA_R-4, hasTiles:false, speedMul:1.0,
     events:['low','banana','duck','reverse'] },
-  { id:'hex', name:'육각형 붕괴', tag:'밟으면 사라지는 육각 발판 4층. 끝까지 뚫리면 끝.',
-    build:buildHexMap, spawn:hexSpawn, ai:hexAI, killY:-14,
-    camDist:15, camHigh:9.5, mapR:HEX_SPAN+2, debrisR:HEX_SPAN-2, hasTiles:true, speedMul:0.72,
+  { id:'hex', name:'육각형 붕괴', tag:'밟으면 사라지는 육각 발판 5층. 끝까지 뚫리면 끝.',
+    build:buildHexMap, spawn:hexSpawn, ai:hexAI, reset:hexReset, regenAt:26, killY:-14,
+    camDist:15, camHigh:9.5, mapR:HEX_SPAN+2, debrisR:HEX_SPAN-2, hasTiles:true, hasLayers:true,
+    speedMul:0.72, ringY:(y)=>tileLayerOf(y-0.4)*LAYER_H + 0.35,
+    events:['low','banana','duck'] },
+  { id:'bridge', name:'갈래 고가도로', tag:'허공에 뜬 육각 고가도로가 두 갈래로 갈라진다. 빛나는 발판만 안전.',
+    build:buildBridgeMap, spawn:bridgeSpawn, ai:bridgeAI, reset:bridgeReset, regenAt:0, killY:-8,
+    camDist:17, camHigh:10.5, mapR:BR_SPAN+2, debrisR:BR_SPAN-6, hasTiles:true, hasLayers:false,
+    speedMul:0.70, ringY:()=>BR_Y + 0.45,
     events:['low','banana','duck'] }
 ];
 
@@ -1113,7 +1294,7 @@ function syncGuy(g){
   }
   const p = g.D.pelvis.position;
   let ringY = 0.09;
-  if(currentMap && currentMap.hasTiles) ringY = tileLayerOf(p.y - 0.4)*LAYER_H + 0.35;
+  if(currentMap && currentMap.ringY) ringY = currentMap.ringY(p.y);
   g.ring.position.set(p.x, ringY, p.z);
   g.ring.visible = p.y > currentMap.killY + 2;
 }
@@ -1325,12 +1506,13 @@ function drawMap(){
     mapCtx.arc(half + x*k, half + z*k, r, 0, 7); mapCtx.fill();
   };
   if(currentMap.hasTiles){
-    // 플레이어가 있는 층의 발판 상태
-    const L = tileLayerOf(player.D.pelvis.position.y - 0.4);
+    const L = currentMap.hasLayers ? tileLayerOf(player.D.pelvis.position.y - 0.4) : -1;
     for(let i=0;i<tiles.length;i++){
       const t = tiles[i];
-      if(t.layer !== L || !t.alive) continue;
-      put(t.x, t.z, HEX_R*k*0.78, t.dying ? '#d94f33' : hex(LAYER_COLORS[L % LAYER_COLORS.length]));
+      if(!t.alive || (L >= 0 && t.layer !== L)) continue;
+      const col = t.dying ? '#d94f33' :
+                  (t.safe ? '#7ff0e0' : hex(LAYER_COLORS[t.colorIdx % LAYER_COLORS.length]));
+      put(t.x, t.z, t.vr*k*0.78, col);
     }
   } else {
     plateaus.forEach(p=>{
@@ -1362,8 +1544,8 @@ function drawBoard(){
     const st = document.createElement('div');
     st.className = 'bstate';
     st.textContent = g.koTimer > 0 ? '뭉개짐' :
-      (currentMap.hasTiles ? (tileLayerOf(g.D.pelvis.position.y-0.4)+1) + '층'
-                           : (g.knockdowns + g.falls) + '회');
+      (currentMap.hasLayers ? (tileLayerOf(g.D.pelvis.position.y-0.4)+1) + '층'
+                            : (g.knockdowns + g.falls) + '회');
     row.appendChild(dot); row.appendChild(name); row.appendChild(st);
     elBoard.appendChild(row);
   });
@@ -1446,7 +1628,8 @@ function step(dt){
   elTimer.innerHTML = gameTime.toFixed(1) + '초<small>버틴 시간</small>';
   elStyle.textContent = Math.floor(style);
   if(currentMap.hasTiles){
-    elMyLayer.textContent = (tileLayerOf(player.D.pelvis.position.y - 0.4) + 1) + '/' + HEX_LAYERS;
+    if(currentMap.hasLayers)
+      elMyLayer.textContent = (tileLayerOf(player.D.pelvis.position.y - 0.4) + 1) + '/' + HEX_LAYERS;
     elTileLeft.textContent = aliveTiles().length;
   }
   drawMap();
@@ -1487,7 +1670,8 @@ function loadMap(map){
   currentMap = map;
   map.build();
   elMapInfo.style.display = map.hasTiles ? 'block' : 'none';
-  scene.fog.far = map.hasTiles ? 200 : 250;
+  document.getElementById('layerWrap').style.display = map.hasLayers ? 'inline' : 'none';
+  scene.fog.far = map.id === 'arena' ? 250 : (map.id === 'bridge' ? 230 : 200);
 }
 let pickedMap = 0, picked = 0;
 const mapPicker = document.getElementById('mapPicker');
@@ -1510,7 +1694,7 @@ function buildMapPicker(){
       html += '<i style="left:50%;top:50%;transform:translate(-50%,-50%) rotate(24deg);width:60px;height:9px;'+
               'background:#dcb733;border:2px solid #1a110a;border-radius:5px"></i>';
       prev.innerHTML = html;
-    } else {
+    } else if(m.id === 'hex'){
       const clip = 'clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)';
       const cols = ['#d44a76','#d99903','#2fae7a'];
       let html = '';
@@ -1521,6 +1705,20 @@ function buildMapPicker(){
                   'width:18px;height:20px;background:'+cols[row]+';'+clip+'"></i>';
         }
       }
+      prev.innerHTML = html;
+    } else {
+      // 갈래 고가도로: 가운데 허브에서 갈라졌다 다시 만나는 길
+      const clip = 'clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)';
+      const hexAt = (x, y, c, glow)=>
+        '<i style="left:calc(50% + '+x+'px - 7px);top:calc(50% + '+y+'px - 8px);width:14px;height:16px;'+
+        'background:'+c+';'+clip+(glow?';box-shadow:0 0 7px 3px #7ff0e0':'')+'"></i>';
+      let html = hexAt(0,0,'#7ff0e0',true);
+      [-1,1].forEach(sgn=>{
+        html += hexAt(sgn*15, 0, '#2fae7a');
+        html += hexAt(sgn*29, -13, '#d99903') + hexAt(sgn*29, 13, '#d99903');
+        html += hexAt(sgn*44, -13, '#d99903') + hexAt(sgn*44, 13, '#d99903');
+        html += hexAt(sgn*58, 0, '#7ff0e0', true);
+      });
       prev.innerHTML = html;
     }
     const nm = document.createElement('div'); nm.className='mname'; nm.textContent = m.name;
@@ -1575,7 +1773,7 @@ function startGame(){
   audioReady();
   player = guys[picked];
   if(!currentMap || currentMap.id !== MAPS[pickedMap].id) loadMap(MAPS[pickedMap]);
-  else if(currentMap.hasTiles) hexRegen();
+  else if(currentMap.reset) currentMap.reset(false);
   playing = true; gameTime = 0; lives = 3; style = 0; knockdowns = 0;
   eventTimer = 8;
   if(eventActive){ eventActive.off(); eventActive = null; }
