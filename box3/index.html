@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고블린 대소동 — CLAY GOBLIN BRAWL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#20140c; --paper:#fff6e0; --banana:#ffd93b; --duck:#ff9f1c;
+    --bubble:#ff5d8f; --mint:#3ddc97; --sky:#527f99; --clay:#ff8f6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--sky);
+    font-family:'Jua',"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--ink);
+    -webkit-user-select:none;user-select:none;}
+  canvas{display:block;}
+
+  #hud{position:fixed;inset:0;pointer-events:none;padding:18px;display:flex;flex-direction:column;}
+  .panel{background:var(--paper);border:4px solid var(--ink);border-radius:16px;
+    box-shadow:6px 6px 0 var(--ink);padding:10px 16px;}
+  #topbar{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
+  #timer{font-family:'Black Han Sans',sans-serif;font-size:30px;line-height:1;letter-spacing:1px;}
+  #timer small{display:block;font-family:'Jua',sans-serif;font-size:13px;opacity:.7;letter-spacing:0;}
+  #lives{display:flex;gap:7px;align-items:center;}
+  .clay-life{width:26px;height:26px;background:var(--clay);border:4px solid var(--ink);
+    border-radius:60% 40% 55% 45%/50% 60% 40% 50%;transition:.2s;}
+  .clay-life.gone{background:#c9c2b8;opacity:.35;transform:rotate(24deg) scale(.75);
+    border-radius:50% 60% 40% 55%/60% 45% 55% 40%;}
+  #style{font-size:19px;}
+  #style b{font-family:'Black Han Sans',sans-serif;font-size:26px;color:var(--bubble);}
+
+  #event{margin:0 auto;margin-top:12vh;text-align:center;font-family:'Black Han Sans',sans-serif;
+    font-size:clamp(26px,5vw,52px);color:#fff;letter-spacing:2px;
+    text-shadow:5px 5px 0 var(--ink),-3px -3px 0 var(--ink),3px -3px 0 var(--ink),-3px 3px 0 var(--ink);
+    opacity:0;transform:scale(.6) rotate(-6deg);}
+  #event.pop{animation:pop 2.6s ease-out forwards;}
+  @keyframes pop{
+    0%{opacity:0;transform:scale(.4) rotate(-14deg);}
+    12%{opacity:1;transform:scale(1.12) rotate(3deg);}
+    22%{transform:scale(1) rotate(-2deg);}
+    78%{opacity:1;transform:scale(1) rotate(-2deg);}
+    100%{opacity:0;transform:scale(.9) translateY(-30px);}}
+
+  #toast{position:absolute;left:50%;bottom:16%;transform:translateX(-50%);display:flex;
+    flex-direction:column;align-items:center;gap:8px;}
+  .yell{font-family:'Black Han Sans',sans-serif;font-size:clamp(20px,3vw,34px);color:var(--banana);
+    text-shadow:4px 4px 0 var(--ink);animation:yell 1.3s ease-out forwards;}
+  @keyframes yell{
+    0%{opacity:0;transform:translateY(20px) rotate(-8deg) scale(.7);}
+    20%{opacity:1;transform:translateY(0) rotate(4deg) scale(1.1);}
+    100%{opacity:0;transform:translateY(-70px) rotate(-3deg) scale(1);}}
+
+  #keys{position:absolute;left:18px;bottom:18px;font-size:15px;line-height:1.8;}
+  #keys kbd{display:inline-block;min-width:26px;text-align:center;background:#fff;
+    border:3px solid var(--ink);border-radius:6px;box-shadow:3px 3px 0 var(--ink);
+    padding:1px 6px;font-family:'Jua',sans-serif;margin-right:3px;}
+  #compass{position:absolute;right:18px;bottom:18px;width:132px;height:132px;padding:0;
+    border-radius:50%;overflow:hidden;}
+  #compass canvas{width:100%;height:100%;}
+
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:22px;text-align:center;padding:24px;
+    background:radial-gradient(circle at 50% 35%, #c7a96d 0%, #a76f86 45%, #557d94 100%);}
+  .screen.hidden{display:none;}
+  .title{font-family:'Black Han Sans',sans-serif;line-height:.95;color:#fff;
+    font-size:clamp(46px,10vw,110px);letter-spacing:2px;
+    text-shadow:8px 8px 0 var(--ink),-4px -4px 0 var(--ink),4px -4px 0 var(--ink),-4px 4px 0 var(--ink);
+    transform:rotate(-3deg);}
+  .title em{display:block;font-style:normal;font-size:.42em;color:var(--banana);transform:rotate(2deg);}
+  .desc{max-width:620px;font-size:18px;line-height:1.65;}
+  .btn{pointer-events:auto;cursor:pointer;font-family:'Black Han Sans',sans-serif;font-size:26px;
+    padding:14px 42px;border:5px solid var(--ink);border-radius:999px;background:var(--banana);
+    box-shadow:8px 8px 0 var(--ink);transition:transform .08s, box-shadow .08s;}
+  .btn:hover{transform:translate(3px,3px);box-shadow:4px 4px 0 var(--ink);}
+  .btn:active{transform:translate(8px,8px);box-shadow:0 0 0 var(--ink);}
+  .btn:focus-visible{outline:4px dashed var(--bubble);outline-offset:6px;}
+  .stat{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;}
+  .stat .panel{min-width:150px;}
+  .stat b{display:block;font-family:'Black Han Sans',sans-serif;font-size:38px;line-height:1.1;}
+  #overTitle{font-family:'Black Han Sans',sans-serif;font-size:clamp(38px,8vw,84px);color:#fff;
+    text-shadow:7px 7px 0 var(--ink);transform:rotate(-2deg);}
+  #rank{font-size:22px;background:#fff;border:4px solid var(--ink);border-radius:14px;
+    box-shadow:6px 6px 0 var(--ink);padding:10px 22px;}
+  .map-select{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;pointer-events:auto;}
+  .map-card{width:min(260px,42vw);padding:14px;border:4px solid var(--ink);border-radius:18px;
+    background:rgba(255,246,224,.92);box-shadow:5px 5px 0 var(--ink);cursor:pointer;transition:.15s;}
+  .map-card:hover{transform:translateY(-3px);}
+  .map-card.selected{outline:6px solid var(--banana);transform:translateY(-4px) rotate(-1deg);}
+  .map-preview{height:92px;border:3px solid var(--ink);border-radius:12px;margin-bottom:9px;overflow:hidden;position:relative;}
+  .map-preview.arena{background:linear-gradient(#6fb5df 0 48%,#efb2c9 48% 100%);}
+  .map-preview.arena:after{content:'';position:absolute;width:88px;height:26px;border-radius:50%;background:#ffd7e7;left:50%;top:54%;transform:translate(-50%,-50%);box-shadow:0 9px 0 #d77fa4;}
+  .map-preview.water{background:linear-gradient(#69a9d8 0 38%,#f3d69e 38% 48%,#3aa9d8 48% 100%);}
+  .map-preview.water:before{content:'';position:absolute;width:115px;height:16px;border-radius:20px;background:#f47fa8;right:8px;top:23px;transform:rotate(-17deg);box-shadow:0 13px 0 #ffd253;}
+  .map-preview.water:after{content:'';position:absolute;width:34px;height:34px;border:9px solid #ffcf4d;border-radius:50%;left:18px;bottom:9px;}
+  .map-card b{display:block;font-family:'Black Han Sans',sans-serif;font-size:21px;margin-bottom:3px;}
+  .map-card span{font-size:14px;opacity:.78;}
+  #selectedMapLabel{font-size:15px;opacity:.78;margin-top:-10px;}
+  @media (prefers-reduced-motion: reduce){ #event.pop,.yell{animation-duration:.01ms;} }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="topbar">
+    <div class="panel" id="timer">0.0초<small>버틴 시간</small></div>
+    <div class="panel"><div id="lives"></div></div>
+    <div class="panel" id="style">굴욕 점수 <b id="styleVal">0</b></div>
+  </div>
+  <div id="event"></div>
+  <div id="toast"></div>
+  <div id="keys" class="panel">
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 전력질주</div>
+    <div><kbd>Space</kbd> 점프 · 공중에서 한 번 더 누르면 <b>엉뚱한 포즈</b></div>
+    <div><kbd>마우스 드래그</kbd> 또는 <kbd>←</kbd><kbd>→</kbd> 카메라</div>
+  </div>
+  <div id="compass" class="panel"><canvas id="mapCanvas" width="264" height="264"></canvas></div>
+</div>
+
+<div class="screen" id="startScreen">
+  <h1 class="title">고블린 대소동<em>CLAY GOBLIN BRAWL</em></h1>
+  <p class="desc">흐느적 클레이 고블린으로 플레이할 맵을 선택하세요. 아레나에서는 회전 장애물을 피하고, 워터파크에서는 풀장과 미끄럼틀 사이를 달리며 살아남습니다.</p>
+  <div class="map-select" id="mapSelect">
+    <div class="map-card selected" data-map="arena"><div class="map-preview arena"></div><b>CLAY ARENA</b><span>회전 바나나 · 오리 · 점프패드</span></div>
+    <div class="map-card" data-map="waterpark"><div class="map-preview water"></div><b>WATER PARK</b><span>대형 풀장 · 워터슬라이드 · 튜브</span></div>
+  </div>
+  <div id="selectedMapLabel">선택된 맵: CLAY ARENA</div>
+  <button class="btn" id="startBtn">선택한 맵으로 출격!</button>
+</div>
+
+<div class="screen hidden" id="overScreen">
+  <div id="overTitle">떨어졌다!</div>
+  <div class="stat">
+    <div class="panel">버틴 시간<b id="finalTime">0.0</b>초</div>
+    <div class="panel">굴욕 점수<b id="finalStyle">0</b>점</div>
+    <div class="panel">최고 기록<b id="bestTime">0.0</b>초</div>
+  </div>
+  <div id="rank">평가 준비 중</div>
+  <button class="btn" id="retryBtn">다시 주무르기</button>
+</div>
+
+<script>
+window.addEventListener('error', function(e){
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99;background:#20140c;'+
+    'color:#ffd93b;font:14px/1.6 monospace;padding:14px;white-space:pre-wrap;';
+  d.textContent = '문제가 생겼습니다\n' + (e.message || e.type) +
+    '\n' + (e.filename || '') + (e.lineno ? ' : ' + e.lineno + '행' : '');
+  document.body.appendChild(d);
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script>
+/* =========================================================================
+   찰흙맨 대소동 v3
+   캐릭터 = 10개 물리 바디로 이루어진 '액티브 래그돌' 고무찰흙 인간.
+   걷기/서기는 각 부위를 목표 지점으로 끌어당기는 물렁한 스프링(PD 제어)으로만
+   구현되어, 항상 흐느적거리고 가끔 엉터리 물리엔진처럼 삐끗한다.
+   ========================================================================= */
+
+if(typeof THREE === 'undefined' || typeof CANNON === 'undefined'){
+  document.getElementById('startScreen').innerHTML =
+    '<h1 class="title">라이브러리를 못 불러왔습니다</h1>' +
+    '<p class="desc">Three.js와 Cannon.js를 CDN에서 받아오지 못했습니다. ' +
+    '인터넷 연결을 확인하거나, 두 파일을 내려받아 같은 폴더에 두고 script 경로를 바꿔주세요.</p>';
+  throw new Error('THREE 또는 CANNON 로딩 실패');
+}
+
+const V3 = THREE.Vector3;
+const clamp = (v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rand  = (a,b)=>a+Math.random()*(b-a);
+
+const COL = {banana:0xffd93b, bananaTip:0x8d6a3f, duck:0xffa62b, beak:0xff5d3b, ring:0x3ddc97};
+const CLAY = {skin:0x79a94b, skinDark:0x4f7835, shirt:0x7a4a2a, pants:0x4a355f, hair:0x30251d, dark:0x21170f, tooth:0xfff1c7, metal:0x6f7780, wood:0x6b3e22};
+
+// ---------------------------------------------------------------- 셋업
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x5f91ad);
+scene.fog = new THREE.Fog(0x789aaa, 80, 235);
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 700);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.78;
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xdce9ef, 0x756674, 0.58));
+const sun = new THREE.DirectionalLight(0xffe6bf, 0.72);
+sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+const shc = sun.shadow.camera;
+shc.left=-38; shc.right=38; shc.top=38; shc.bottom=-38; shc.near=1; shc.far=160;
+const sunTarget = new THREE.Object3D(); scene.add(sunTarget);
+sun.target = sunTarget; scene.add(sun);
+scene.add(new THREE.AmbientLight(0xcad5dc, 0.16));
+
+(function clouds(){
+  const m = new THREE.MeshBasicMaterial({color:0xffffff});
+  for(let i=0;i<26;i++){
+    const g = new THREE.Group();
+    for(let j=0;j<4;j++){
+      const s = new THREE.Mesh(new THREE.SphereGeometry(rand(4,8),8,7), m);
+      s.position.set(rand(-9,9), rand(-1,1), rand(-4,4)); g.add(s);
+    }
+    const a = Math.random()*Math.PI*2, r = rand(95,190);
+    g.position.set(Math.cos(a)*r, rand(24,60), Math.sin(a)*r);
+    scene.add(g);
+  }
+})();
+
+const world = new CANNON.World();
+world.gravity.set(0,-34,0);
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = false;
+world.solver.iterations = 14;
+world.defaultContactMaterial.friction = 0.2;
+world.defaultContactMaterial.restitution = 0.2;
+
+const matGround = new CANNON.Material('ground');
+const matPlayer = new CANNON.Material('player');
+const matClay   = new CANNON.Material('clay');
+const matBouncy = new CANNON.Material('bouncy');
+/* cannon.js는 마찰을 임펄스 상한으로 처리해서, 흔한 값(0.2~0.5)이면 프레임마다
+   속도를 크게 깎아버린다. 조종체는 속도를 직접 제어하므로 마찰을 거의 0으로 두고,
+   찰흙 발만 약간의 마찰을 줘서 질질 끌리는 느낌을 남긴다. */
+world.addContactMaterial(new CANNON.ContactMaterial(matGround, matPlayer, {friction:0.004, restitution:0.02}));
+world.addContactMaterial(new CANNON.ContactMaterial(matGround, matClay,   {friction:0.10, restitution:0.05}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBouncy, matPlayer, {friction:0.02, restitution:1.3}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBouncy, matClay,   {friction:0.1,  restitution:0.8}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBouncy, matGround, {friction:0.1,  restitution:0.75}));
+
+// 충돌 그룹: 1=월드, 2=찰흙 파츠(서로/조종체와 통과), 4=조종체
+const G_WORLD = 1, G_CLAY = 2, G_CTRL = 4;
+
+let actx = null;
+function audioReady(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); }
+function boing(f0=520, f1=90, dur=0.28, type='sine', vol=0.16){
+  if(!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, actx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(Math.max(30,f1), actx.currentTime+dur);
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+  o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+dur+0.02);
+}
+
+// ----------------------------------------------------------- 넓은 아레나
+const ARENA_R = 46;
+const plateaus = [];
+
+function checkerTexture(rep){
+  const c = document.createElement('canvas'); c.width=c.height=512;
+  const x = c.getContext('2d'); const n=8, s=512/n;
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+    x.fillStyle = (i+j)%2 ? '#fff1c9' : '#ffd0e4'; x.fillRect(i*s,j*s,s,s);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep,rep);
+  return t;
+}
+const padTop = new THREE.Mesh(
+  new THREE.CylinderGeometry(ARENA_R, ARENA_R, 1.0, 64),
+  [ new THREE.MeshStandardMaterial({color:0xffc8de, roughness:.9}),
+    new THREE.MeshStandardMaterial({map:checkerTexture(7), roughness:.85}),
+    new THREE.MeshStandardMaterial({color:0xffe6c2, roughness:.9}) ]);
+padTop.position.y = -0.5; padTop.receiveShadow = true; scene.add(padTop);
+
+const pillar = new THREE.Mesh(
+  new THREE.CylinderGeometry(ARENA_R*0.94, ARENA_R*0.3, 40, 40),
+  new THREE.MeshStandardMaterial({color:0xff9ec4, roughness:1}));
+pillar.position.y = -21; scene.add(pillar);
+
+const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(ARENA_R, 0.5, 8, 90),
+  new THREE.MeshStandardMaterial({color:COL.ring, emissive:0x1a7a52, roughness:.5}));
+ringMesh.rotation.x = Math.PI/2; ringMesh.position.y = 0.05; scene.add(ringMesh);
+
+const groundBody = new CANNON.Body({mass:0, material:matGround});
+{
+  const shape = new CANNON.Cylinder(ARENA_R, ARENA_R, 1.0, 32);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  groundBody.addShape(shape, new CANNON.Vec3(0,-0.5,0), q);
+}
+world.addBody(groundBody);
+
+[16, 30].forEach((r,i)=>{
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.16, 6, 80),
+    new THREE.MeshStandardMaterial({color: i? 0xffb3d1 : 0x9be7ff, roughness:.8}));
+  m.rotation.x = Math.PI/2; m.position.y = 0.03; scene.add(m);
+});
+
+function makePlateau(x, z, r, h, color){
+  const body = new CANNON.Body({mass:0, material:matGround});
+  const shape = new CANNON.Cylinder(r, r, h, 20);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  body.addShape(shape, new CANNON.Vec3(0,0,0), q);
+  body.position.set(x, h/2 - 0.5, z);
+  world.addBody(body);
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(r, r*1.05, h, 32),
+    [ new THREE.MeshStandardMaterial({color, roughness:.9}),
+      new THREE.MeshStandardMaterial({map:checkerTexture(2), roughness:.85}),
+      new THREE.MeshStandardMaterial({color, roughness:.9}) ]);
+  top.receiveShadow = true; top.castShadow = true; g.add(top);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(r, 0.28, 6, 44),
+    new THREE.MeshStandardMaterial({color:0xffd93b}));
+  lip.rotation.x = Math.PI/2; lip.position.y = h/2; g.add(lip);
+  g.position.copy(body.position); scene.add(g);
+  plateaus.push({x, z, r});
+  return body.position.y + h/2;
+}
+const PL = [];
+[[30,30],[-30,30],[30,-30],[-30,-30]].forEach((p,i)=>{
+  PL.push({x:p[0], z:p[1], y:makePlateau(p[0], p[1], 8, 7, i%2?0xa8e6cf:0xffd3b6)});
+});
+
+const pads = [];
+function makePad(x,z,y,power){
+  const body = new CANNON.Body({mass:0, material:matGround,
+    shape:new CANNON.Box(new CANNON.Vec3(1.9,0.35,1.9)),
+    position:new CANNON.Vec3(x, y+0.35, z)});
+  body.isPad = true; body.padPower = power || 27;
+  world.addBody(body);
+  const g = new THREE.Group(); g.position.set(x, y+0.35, z);
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(3.8,0.7,3.8),
+    new THREE.MeshStandardMaterial({color:0x3ddc97, roughness:.4, emissive:0x0d4a31}));
+  plate.castShadow = true; g.add(plate);
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.8,1.5,8),
+    new THREE.MeshStandardMaterial({color:0xffd93b}));
+  arrow.position.y = 1.3; g.add(arrow);
+  scene.add(g);
+  pads.push({body, mesh:g, t:Math.random()*5, arrow});
+}
+PL.forEach(p=>makePad(p.x - Math.sign(p.x)*11, p.z - Math.sign(p.z)*11, 0, 30));
+makePad(0, 20, 0, 24); makePad(0, -20, 0, 24);
+makePad(20, 0, 0, 24); makePad(-20, 0, 0, 24);
+
+// ----------------------------------------------------------- 워터파크 맵
+const waterParkGroup = new THREE.Group();
+waterParkGroup.visible = false; scene.add(waterParkGroup);
+const waterBodies = [];
+function waterBody(body){ waterBodies.push(body); return body; }
+function wpMesh(geo, color, rough=.55, transparent=false, opacity=1){
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color,roughness:rough,transparent,opacity}));
+  m.castShadow = true; m.receiveShadow = true; waterParkGroup.add(m); return m;
+}
+// 풀장 물 표면과 테두리
+const pool = wpMesh(new THREE.CylinderGeometry(34,34,0.24,64),0x2c9fd1,.22,true,.78); pool.position.y=0.18;
+const poolRing = wpMesh(new THREE.TorusGeometry(34,0.85,10,80),0xf4d06f,.65); poolRing.rotation.x=Math.PI/2; poolRing.position.y=.45;
+// 중앙 섬
+const island = wpMesh(new THREE.CylinderGeometry(8,9,1.2,40),0xf3cf93,.9); island.position.set(0,.45,0);
+const islandBody = waterBody(new CANNON.Body({mass:0,material:matGround}));
+{ const sh=new CANNON.Cylinder(8,9,1.2,32), q=new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2); islandBody.addShape(sh,new CANNON.Vec3(0,.45,0),q); }
+// 워터슬라이드 4개: 시각 + 경사 충돌판
+const slideColors=[0xff6b9d,0xffd45c,0x6ee7d8,0x9b8cff];
+const slideDefs=[[18,16,-.72],[ -18,16,.72],[18,-16,-2.42],[-18,-16,2.42]];
+slideDefs.forEach((d,i)=>{
+  const [x,z,yaw]=d;
+  const g=new THREE.Group(); g.position.set(x,4.2,z); g.rotation.y=yaw; waterParkGroup.add(g);
+  const deck=new THREE.Mesh(new THREE.BoxGeometry(7,1,7),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8})); deck.position.y=2.6; deck.castShadow=true; g.add(deck);
+  const ramp=new THREE.Mesh(new THREE.BoxGeometry(4.2,.45,13),new THREE.MeshStandardMaterial({color:slideColors[i],roughness:.45})); ramp.position.set(0,-.2,3.8); ramp.rotation.x=-.34; ramp.castShadow=true; g.add(ramp);
+  const railGeo=new THREE.BoxGeometry(.3,.75,13); [-2.05,2.05].forEach(rx=>{const rail=new THREE.Mesh(railGeo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:.5})); rail.position.set(rx,.25,3.8); rail.rotation.x=-.34; g.add(rail);});
+  const b=waterBody(new CANNON.Body({mass:0,material:matGround,shape:new CANNON.Box(new CANNON.Vec3(2.1,.23,6.5))}));
+  b.position.set(x,4.0,z); b.quaternion.setFromEuler(-.34,yaw,0,'XYZ');
+});
+// 튜브와 물놀이 볼 장식
+for(let i=0;i<12;i++){
+  const a=i/12*Math.PI*2, r=rand(14,30);
+  const tube=wpMesh(new THREE.TorusGeometry(1.2,.38,8,22), i%3===0?0xff6b9d:i%3===1?0xffd45c:0x6ee7d8,.4);
+  tube.rotation.x=Math.PI/2; tube.rotation.z=rand(-.3,.3); tube.position.set(Math.cos(a)*r,.65,Math.sin(a)*r);
+}
+// 분수 기둥
+for(let i=0;i<8;i++){
+  const a=i/8*Math.PI*2, r=11;
+  const jet=wpMesh(new THREE.CylinderGeometry(.12,.2,3.2,8),0xaeefff,.15,true,.55);
+  jet.position.set(Math.cos(a)*r,1.8,Math.sin(a)*r);
+}
+// 물 안쪽 벽 충돌: 워터파크에서 플레이어가 플랫폼 아래로 빠지지 않도록 얕은 바닥
+const waterFloorBody=waterBody(new CANNON.Body({mass:0,material:matGround,shape:new CANNON.Cylinder(34,34,.35,40)}));
+{ const q=new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2); waterFloorBody.quaternion.copy(q); waterFloorBody.position.set(0,-.12,0); }
+
+let currentMap = 'arena';
+function setMap(name){
+  currentMap = name;
+  const wp = name === 'waterpark';
+  waterParkGroup.visible = wp;
+  // 워터파크의 물리 바디만 선택 시 월드에 등록
+  waterBodies.forEach(b=>{
+    const exists = world.bodies.indexOf(b)>=0;
+    if(wp && !exists) world.addBody(b);
+    if(!wp && exists) world.remove(b);
+  });
+  // 기존 아레나 장식/장애물은 워터파크에서 일부 숨김
+  padTop.visible = !wp; pillar.visible = !wp; ringMesh.visible = !wp;
+  plateaus.forEach(()=>{});
+  hazards.forEach(h=>{
+    if(h.mesh) h.mesh.visible = !wp;
+    if(h.body) h.body.collisionResponse = !wp;
+  });
+  pads.forEach(p=>{ p.mesh.visible=!wp; p.body.collisionResponse=!wp; });
+  scene.background = new THREE.Color(wp ? 0x6faed2 : 0x74b6dc);
+  scene.fog.color.setHex(wp ? 0x95c4d8 : 0x9ecbe1);
+}
+
+/* ===================================================================
+   고무찰흙 인간
+   =================================================================== */
+
+// 손으로 주무른 듯 울퉁불퉁하게 찌그러뜨린 지오메트리
+function clayGeo(geo, amt){
+  amt = (amt === undefined) ? 0.09 : amt;
+  const p = geo.attributes.position;
+  const h = (x,y,z)=>{ const n = Math.sin(x*127.1 + y*311.7 + z*74.7)*43758.5453; return n - Math.floor(n); };
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i), y=p.getY(i), z=p.getZ(i);
+    const f = 1 + (h(x,y,z)-0.5)*amt*2;      // 같은 좌표는 같은 값 → 이음매가 갈라지지 않음
+    p.setXYZ(i, x*f, y*f, z*f);
+  }
+  p.needsUpdate = true; geo.computeVertexNormals();
+  return geo;
+}
+function clayMat(color, shiny){
+  return new THREE.MeshStandardMaterial({
+    color, roughness: shiny ? 0.45 : 0.78, metalness:0.02, flatShading:true});
+}
+const outlineMat = new THREE.MeshBasicMaterial({color:CLAY.dark, side:THREE.BackSide});
+function clayBlob(color, sx, sy, sz, outline){
+  const g = clayGeo(new THREE.SphereGeometry(1, 11, 9));
+  const m = new THREE.Mesh(g, clayMat(color));
+  m.scale.set(sx, sy, sz); m.castShadow = true;
+  m.userData.base = new THREE.Vector3(sx, sy, sz);   // 원래 크기 (찌그러뜨릴 때 기준)
+  if(outline){
+    const o = new THREE.Mesh(g, outlineMat); o.scale.setScalar(1.09); m.add(o);
+  }
+  return m;
+}
+
+// 골격 치수 (바닥 y=0 기준 선 자세)
+const REST = {
+  pelvisY:0.95, chestY:1.42, headY:1.90,
+  armX:0.34, upArmY:1.38, loArmY:0.99,
+  legX:0.13, thighY:0.63, shinY:0.20
+};
+const HIP_OFF = 0.40;   // 조종용 구체 중심 → 골반
+
+const clayBodies = [];
+function clayPart(mass, shape, x, y, z){
+  const b = new CANNON.Body({mass, shape, material:matClay,
+    linearDamping:0.05, angularDamping:0.16,
+    collisionFilterGroup:G_CLAY, collisionFilterMask:G_WORLD});
+  b.position.set(x, y, z);
+  world.addBody(b); clayBodies.push(b);
+  return b;
+}
+const box = (x,y,z)=> new CANNON.Box(new CANNON.Vec3(x,y,z));
+
+const D = {};   // 물리 바디
+D.pelvis = clayPart(3.0, box(0.22,0.16,0.16),  0, REST.pelvisY, 0);
+D.chest  = clayPart(3.0, box(0.26,0.24,0.18),  0, REST.chestY, 0);
+D.head   = clayPart(1.2, new CANNON.Sphere(0.25), 0, REST.headY, 0);
+D.armUL  = clayPart(0.5, box(0.09,0.20,0.09), -REST.armX, REST.upArmY, 0);
+D.armUR  = clayPart(0.5, box(0.09,0.20,0.09),  REST.armX, REST.upArmY, 0);
+D.armLL  = clayPart(0.4, box(0.08,0.19,0.08), -REST.armX, REST.loArmY, 0);
+D.armLR  = clayPart(0.4, box(0.08,0.19,0.08),  REST.armX, REST.loArmY, 0);
+D.thighL = clayPart(0.9, box(0.11,0.22,0.11), -REST.legX, REST.thighY, 0);
+D.thighR = clayPart(0.9, box(0.11,0.22,0.11),  REST.legX, REST.thighY, 0);
+D.shinL  = clayPart(0.7, box(0.10,0.21,0.10), -REST.legX, REST.shinY, 0);
+D.shinR  = clayPart(0.7, box(0.10,0.21,0.10),  REST.legX, REST.shinY, 0);
+
+const clayCons = [];
+function joint(a, pa, b, pb, force){
+  const c = new CANNON.PointToPointConstraint(a, new CANNON.Vec3(pa[0],pa[1],pa[2]),
+                                              b, new CANNON.Vec3(pb[0],pb[1],pb[2]), force||1e6);
+  world.addConstraint(c); clayCons.push(c);
+}
+joint(D.pelvis,[0,0.23,0],      D.chest,[0,-0.24,0]);
+joint(D.chest,[0,0.22,0],       D.head,[0,-0.26,0]);
+joint(D.chest,[-0.30,0.16,0],   D.armUL,[0,0.20,0]);
+joint(D.chest,[ 0.30,0.16,0],   D.armUR,[0,0.20,0]);
+joint(D.armUL,[0,-0.20,0],      D.armLL,[0,0.19,0]);
+joint(D.armUR,[0,-0.20,0],      D.armLR,[0,0.19,0]);
+joint(D.pelvis,[-0.13,-0.10,0], D.thighL,[0,0.22,0]);
+joint(D.pelvis,[ 0.13,-0.10,0], D.thighR,[0,0.22,0]);
+joint(D.thighL,[0,-0.22,0],     D.shinL,[0,0.21,0]);
+joint(D.thighR,[0,-0.22,0],     D.shinR,[0,0.21,0]);
+
+// ---- 3D 클레이 고블린 메시 (각 바디에 1:1로 붙음)
+const M = {};
+M.pelvis = clayBlob(CLAY.pants, 0.34, 0.25, 0.27, true);
+M.chest  = clayBlob(CLAY.shirt, 0.38, 0.35, 0.29, true);
+M.armUL  = clayBlob(CLAY.skin, 0.14, 0.25, 0.14);
+M.armUR  = clayBlob(CLAY.skin, 0.14, 0.25, 0.14);
+M.armLL  = clayBlob(CLAY.skin, 0.13, 0.24, 0.13);
+M.armLR  = clayBlob(CLAY.skin, 0.13, 0.24, 0.13);
+M.thighL = clayBlob(CLAY.pants, 0.17, 0.28, 0.17);
+M.thighR = clayBlob(CLAY.pants, 0.17, 0.28, 0.17);
+M.shinL  = clayBlob(CLAY.skin, 0.15, 0.27, 0.15);
+M.shinR  = clayBlob(CLAY.skin, 0.15, 0.27, 0.15);
+
+// 큼직한 고블린 손과 맨발
+[['armLL',-1],['armLR',1]].forEach(([k,s])=>{
+  const hand = clayBlob(CLAY.skin, 0.72, 0.62, 0.72);
+  hand.position.set(0, -1.04, 0); M[k].add(hand);
+});
+[['shinL',-1],['shinR',1]].forEach(([k,s])=>{
+  const foot = clayBlob(CLAY.skinDark, 1.05, 0.46, 1.65);
+  foot.position.set(0, -1.0, 0.42); M[k].add(foot);
+  // 발가락
+  [-0.38,0,0.38].forEach((x,i)=>{
+    const toe=clayBlob(CLAY.skin,0.22,0.18,0.36); toe.position.set(x,-0.15,0.9); foot.add(toe);
+  });
+});
+
+// 머리: 넓은 눈, 큰 귀, 삐뚤빼뚤한 이빨의 우스꽝스러운 고블린
+M.head = new THREE.Group();
+const skull = clayBlob(CLAY.skin, 0.31, 0.29, 0.28, true); M.head.add(skull);
+// 길고 뾰족한 귀
+[-1,1].forEach(side=>{
+  const ear = new THREE.Mesh(clayGeo(new THREE.ConeGeometry(0.105,0.48,7),0.22), clayMat(CLAY.skin));
+  ear.rotation.z = side * -Math.PI/2; ear.rotation.y = side*0.15;
+  ear.position.set(side*0.36,0.035,0); ear.castShadow=true; M.head.add(ear);
+  const inner=clayBlob(0xb86f72,0.06,0.12,0.035); inner.position.set(side*0.30,0.035,0.035); M.head.add(inner);
+});
+// 울퉁불퉁한 머리카락/두피 조각
+for(let i=0;i<5;i++){
+  const tuft = new THREE.Mesh(clayGeo(new THREE.ConeGeometry(0.045,0.18,6),0.28),clayMat(CLAY.hair));
+  tuft.position.set(-0.12+i*0.06,0.29, -0.02+Math.abs(i-2)*0.015); tuft.rotation.z=(i-2)*0.18; M.head.add(tuft);
+}
+// 커다랗고 서로 다른 크기의 흰 눈 + 작은 동공
+[[-0.115,1.15],[0.115,0.95]].forEach(([x,sc],i)=>{
+  const eye=clayBlob(0xfff8dc,0.095*sc,0.12*sc,0.055); eye.position.set(x,0.075,0.245); M.head.add(eye);
+  const pupil=clayBlob(0x17120e,0.035,0.045,0.025); pupil.position.set(x+(i?-0.012:0.012),0.07,0.294); M.head.add(pupil);
+});
+// 길고 축 처진 코
+const nose=clayBlob(CLAY.skinDark,0.085,0.105,0.12); nose.position.set(0,-0.005,0.285); nose.rotation.x=0.22; M.head.add(nose);
+// 벌어진 검은 입
+const mouth=clayBlob(0x351717,0.17,0.075,0.045); mouth.position.set(0,-0.145,0.255); M.head.add(mouth);
+// 삐뚤빼뚤 튀어나온 이빨
+[[-0.105,-0.01,0.04],[-0.035,0.012,-0.10],[0.04,-0.004,0.13],[0.115,0.014,-0.06]].forEach(([x,y,r],i)=>{
+  const tooth=new THREE.Mesh(clayGeo(new THREE.ConeGeometry(0.026,0.075,6),0.18),clayMat(CLAY.tooth));
+  tooth.position.set(x,-0.14+y,0.304); tooth.rotation.z=r+(i%2?Math.PI:0); M.head.add(tooth);
+});
+// 한쪽 눈썹을 올린 멍청하고 익살스러운 표정
+[-0.115,0.115].forEach((x,i)=>{
+  const brow=new THREE.Mesh(clayGeo(new THREE.BoxGeometry(0.12,0.025,0.035),0.35),clayMat(CLAY.hair));
+  brow.position.set(x,0.19,0.245); brow.rotation.z=i?-0.35:0.10; M.head.add(brow);
+});
+
+// 오른손의 작은 클레이 도끼
+const axe = new THREE.Group();
+const axeHandle = new THREE.Mesh(clayGeo(new THREE.CylinderGeometry(0.035,0.045,0.52,7),0.18),clayMat(CLAY.wood));
+axeHandle.rotation.z=0.18; axe.add(axeHandle);
+const axeHead = new THREE.Mesh(clayGeo(new THREE.BoxGeometry(0.28,0.16,0.08),0.22),clayMat(CLAY.metal));
+axeHead.position.set(-0.09,0.22,0); axeHead.rotation.z=-0.12; axe.add(axeHead);
+const blade = new THREE.Mesh(clayGeo(new THREE.ConeGeometry(0.13,0.25,5),0.18),clayMat(0x858d93));
+blade.position.set(-0.23,0.22,0); blade.rotation.z=Math.PI/2; axe.add(blade);
+axe.position.set(0,-1.15,0.05); axe.rotation.set(0.15,0,-0.18); axe.scale.setScalar(1.25); M.armLR.add(axe);
+
+// 왼손의 둥근 찰흙 방패
+const shield = new THREE.Group();
+const shieldDisc = new THREE.Mesh(clayGeo(new THREE.CylinderGeometry(0.25,0.25,0.075,14),0.15),clayMat(0x8d5434));
+shieldDisc.rotation.x=Math.PI/2; shieldDisc.castShadow=true; shield.add(shieldDisc);
+const shieldBoss=clayBlob(CLAY.metal,0.09,0.09,0.07); shieldBoss.position.z=0.06; shield.add(shieldBoss);
+for(let i=0;i<8;i++){
+  const a=i*Math.PI/4, riv=clayBlob(0xd0b36d,0.025,0.025,0.018); riv.position.set(Math.cos(a)*0.19,Math.sin(a)*0.19,0.065); shield.add(riv);
+}
+shield.position.set(0,-1.10,0.13); shield.rotation.z=-0.12; shield.scale.setScalar(1.15); M.armLL.add(shield);
+
+Object.values(M).forEach(m=>scene.add(m));
+
+// 조종용 구체 (보이지 않음). 찰흙 몸통은 여기에 매달려 끌려다닌다.
+const playerBody = new CANNON.Body({
+  mass:6, material:matPlayer, shape:new CANNON.Sphere(0.55),
+  linearDamping:0.0, angularDamping:0.9,
+  collisionFilterGroup:G_CTRL, collisionFilterMask:-1});
+playerBody.fixedRotation = true; playerBody.updateMassProperties();
+playerBody.position.set(0, 3, 14);
+world.addBody(playerBody);
+
+// ---- 액티브 래그돌 제어 -------------------------------------------------
+let koTimer = 0;          // 0보다 크면 완전 래그돌(통제 불능)
+let standRamp = 1;        // 일어서는 중이면 0→1 (비틀거리며 기상)
+let walkPhase = 0;
+let spasmTimer = rand(3,7);
+let faceAngle = 0;
+
+const _t = new V3();
+function pdPull(body, tx, ty, tz, k, d, maxF){
+  const m = body.mass;
+  let fx = (tx - body.position.x)*k*m - body.velocity.x*d*m;
+  let fy = (ty - body.position.y)*k*m - body.velocity.y*d*m;
+  let fz = (tz - body.position.z)*k*m - body.velocity.z*d*m;
+  const mag = Math.sqrt(fx*fx+fy*fy+fz*fz);
+  if(mag > maxF){ const s = maxF/mag; fx*=s; fy*=s; fz*=s; }
+  body.force.x += fx; body.force.y += fy; body.force.z += fz;
+}
+const _q = new CANNON.Quaternion(), _qi = new CANNON.Quaternion(), _qd = new CANNON.Quaternion();
+function alignTo(body, yaw, k, d){
+  _q.setFromAxisAngle(new CANNON.Vec3(0,1,0), yaw);
+  body.quaternion.conjugate(_qi);
+  _q.mult(_qi, _qd); _qd.normalize();
+  let angle = 2*Math.acos(clamp(_qd.w, -1, 1));
+  const s = Math.sqrt(Math.max(1e-9, 1-_qd.w*_qd.w));
+  let ax = _qd.x/s, ay = _qd.y/s, az = _qd.z/s;
+  if(angle > Math.PI){ angle -= 2*Math.PI; }
+  const m = body.mass;
+  body.torque.x += (ax*angle*k - body.angularVelocity.x*d)*m;
+  body.torque.y += (ay*angle*k - body.angularVelocity.y*d)*m;
+  body.torque.z += (az*angle*k - body.angularVelocity.z*d)*m;
+}
+
+function driveClay(dt, moveSpeed){
+  if(koTimer > 0) return;                    // 기절 중엔 몸을 못 가눔
+  const r = standRamp;
+  const C = playerBody.position;
+  const hx = C.x, hy = C.y + HIP_OFF, hz = C.z;
+
+  wobT += dt;
+  walkPhase += dt * (2.0 + moveSpeed*1.15);
+  const sw = Math.sin(walkPhase), cw = Math.cos(walkPhase);
+  const stride = clamp(moveSpeed*0.045, 0.08, 0.5);
+  const yaw = faceAngle;
+  const fwd = {x:Math.sin(yaw), z:Math.cos(yaw)};
+  const side = {x:Math.cos(yaw), z:-Math.sin(yaw)};
+  // 여러 주기를 섞은 노이즈 — 규칙적이지 않게 계속 휘청거린다
+  const nz = (f, p, a)=> Math.sin(wobT*f + p)*a + Math.sin(wobT*f*1.7 + p*2.3)*a*0.5;
+
+  // 골반: 조종체를 따라가되 물렁하게 늦게 따라온다
+  pdPull(D.pelvis, hx + nz(2.1,0,0.05), hy + Math.sin(walkPhase*2)*0.05 + nz(3.3,1,0.04),
+                   hz + nz(1.7,2,0.05), 240*r, 17, 800);
+  alignTo(D.pelvis, yaw, 8*r, 2.0);
+
+  // 가슴/머리: 세우는 힘이 아주 물러서 상체가 계속 출렁인다
+  pdPull(D.chest, hx + side.x*sw*0.13 + nz(1.9,0.7,0.10),
+                  hy + 0.47 + nz(2.7,1.3,0.05),
+                  hz + side.z*sw*0.13 + nz(2.3,2.1,0.10), 140*r, 12, 600);
+  alignTo(D.chest, yaw, 5.5*r, 1.6);
+  pdPull(D.head, hx + side.x*sw*0.18 + nz(1.5,0.4,0.14),
+                 hy + 0.95 + nz(3.1,2.6,0.06),
+                 hz + side.z*sw*0.18 + nz(1.3,1.9,0.14), 95*r, 9, 320);
+
+  // 발: 좌우 번갈아 내딛는 목표점. 힘이 약해 질질 끌리고 헛디딘다
+  const feet = [[D.shinL, -1, sw], [D.shinR, 1, -sw]];
+  feet.forEach(([leg, s, ph])=>{
+    const lift = Math.max(0, ph) * 0.34 * clamp(moveSpeed*0.12, 0.15, 1);
+    const fx2 = hx + side.x*(REST.legX*s*1.4) + fwd.x*(ph*stride) + nz(2.9, s*2, 0.06);
+    const fz2 = hz + side.z*(REST.legX*s*1.4) + fwd.z*(ph*stride) + nz(2.5, s*3, 0.06);
+    pdPull(leg, fx2, C.y - 0.36 + lift, fz2, 80*r, 10, 240);
+    alignTo(leg, yaw, 2.2*r, 0.9);
+  });
+  // 허벅지는 거의 안 잡아줌 → 무릎이 제멋대로 꺾인다
+  [[D.thighL,-1],[D.thighR,1]].forEach(([leg,s])=>{
+    pdPull(leg, hx + side.x*REST.legX*s, hy - 0.32, hz + side.z*REST.legX*s, 28*r, 6, 110);
+  });
+
+  // 손: 반대 팔이 휘적휘적. 힘이 약해 관성으로 계속 출렁인다
+  const hands = [[D.armLL, -1, -sw], [D.armLR, 1, sw]];
+  hands.forEach(([arm, s, ph])=>{
+    const px = hx + side.x*(0.46*s) + fwd.x*(ph*stride*1.8) + nz(3.7, s*1.4, 0.12);
+    const pz = hz + side.z*(0.46*s) + fwd.z*(ph*stride*1.8) + nz(3.1, s*2.7, 0.12);
+    const py = hy + 0.06 + (poseTimer>0 ? 1.15 : 0) + (grounded?0:0.5) + nz(2.2, s, 0.10);
+    pdPull(arm, px, py, pz, (poseTimer>0?85:26)*r, 6, 170);
+  });
+
+  standRamp = Math.min(1, standRamp + dt*1.6);
+
+  // 가끔 엉터리 물리엔진처럼 대놓고 삐끗한다
+  spasmTimer -= dt;
+  if(spasmTimer <= 0){
+    spasmTimer = rand(2.5, 6);
+    const list = [D.armUL, D.armUR, D.armLL, D.armLR, D.thighL, D.thighR, D.head, D.chest];
+    const b = list[Math.floor(Math.random()*list.length)];
+    b.applyImpulse(new CANNON.Vec3(rand(-4,4), rand(1,5), rand(-4,4)), new CANNON.Vec3(0,0,0));
+    b.angularVelocity.set(rand(-10,10), rand(-10,10), rand(-10,10));
+  }
+}
+let wobT = 0;
+
+// 몸 전체를 특정 위치로 다시 빚어 놓기
+function moldClayAt(x, y, z){
+  const set = (b, ox, oy, oz)=>{
+    b.position.set(x+ox, y+oy, z+oz);
+    b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0);
+    b.quaternion.set(0,0,0,1); b.force.set(0,0,0); b.torque.set(0,0,0);
+  };
+  set(D.pelvis, 0, REST.pelvisY, 0);
+  set(D.chest,  0, REST.chestY, 0);
+  set(D.head,   0, REST.headY, 0);
+  set(D.armUL, -REST.armX, REST.upArmY, 0);
+  set(D.armUR,  REST.armX, REST.upArmY, 0);
+  set(D.armLL, -REST.armX, REST.loArmY, 0);
+  set(D.armLR,  REST.armX, REST.loArmY, 0);
+  set(D.thighL,-REST.legX, REST.thighY, 0);
+  set(D.thighR, REST.legX, REST.thighY, 0);
+  set(D.shinL, -REST.legX, REST.shinY, 0);
+  set(D.shinR,  REST.legX, REST.shinY, 0);
+  standRamp = 0.25;
+}
+function knockOut(impulse){
+  if(koTimer > 0) return;
+  koTimer = 2.5; standRamp = 0;
+  if(impulse) D.chest.applyImpulse(impulse, new CANNON.Vec3(0,0.1,0));
+  clayBodies.forEach(b=>b.angularVelocity.set(rand(-10,10), rand(-10,10), rand(-10,10)));
+  // 충돌 콜백은 world.step 도중에 불리므로, 여기서 바로 제거하면 엔진 내부가 깨진다
+  ctrlRemovePending = true;
+}
+let ctrlRemovePending = false;
+function flushPendingBodyOps(){
+  if(ctrlRemovePending){
+    ctrlRemovePending = false;
+    if(world.bodies.indexOf(playerBody) >= 0) world.remove(playerBody);
+  }
+}
+function recoverFromKO(){
+  koTimer = 0; ctrlRemovePending = false;
+  const p = D.pelvis.position;
+  playerBody.position.set(p.x, Math.max(p.y - HIP_OFF, 0.6) + 0.3, p.z);
+  playerBody.velocity.set(0,0,0);
+  if(world.bodies.indexOf(playerBody) < 0) world.addBody(playerBody);
+  standRamp = 0;      // 비틀거리며 일어남
+  koCooldown = 0.9;
+}
+let koCooldown = 0;
+
+// 메시를 물리 바디에 붙이고, 속도에 따라 찰흙처럼 늘였다 줄였다
+const _base = new THREE.Vector3(1,1,1);
+function syncClay(dt){
+  const br = 1 + Math.sin(walkPhase*3.1)*0.06;      // 숨 쉬듯 계속 출렁이는 몸통
+  for(const k in D){
+    const b = D[k], m = M[k];
+    if(!m) continue;
+    m.position.copy(b.position);
+    m.quaternion.copy(b.quaternion);
+    // 빠르게 움직일수록 진행 방향으로 늘어나는 찰흙 늘어짐
+    const sp = Math.min(1, Math.hypot(b.velocity.x, b.velocity.y, b.velocity.z)/18);
+    let st = 1 + sp*0.30, sq = 1 - sp*0.14;
+    if(k === 'chest'){ st *= br; sq /= br; }
+    else if(k === 'pelvis'){ st /= br; sq *= br; }
+    const base = m.userData.base || _base;           // 머리는 그룹이라 기준값 1
+    m.scale.set(base.x*sq, base.y*st, base.z*sq);
+  }
+}
+
+// -------------------------------------------------------- 장애물
+const hazards = [];
+function markHazard(b, name, power){ b.isHazard = true; b.hazardName = name; b.hazardPower = power||1; }
+
+function bananaMesh(len){
+  const g = new THREE.Group();
+  const matY = new THREE.MeshStandardMaterial({color:COL.banana, roughness:.45});
+  const matT = new THREE.MeshStandardMaterial({color:COL.bananaTip, roughness:.8});
+  const N = 20;
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const r = 0.32 + 0.95*Math.pow(Math.sin(Math.PI*t), 0.7);
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r,14,12), (t<0.05||t>0.95)?matT:matY);
+    m.position.set(4 + t*len, 2.4*Math.sin(Math.PI*t) - 0.8, 0);
+    m.scale.set(1.15,1,1); m.castShadow = true; g.add(m);
+  }
+  return g;
+}
+function makeBananaArm(angleOffset, speed, height, len){
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  for(let i=0;i<7;i++){
+    const t = (i+0.5)/7;
+    body.addShape(box(len/14, 0.95, 0.95),
+      new CANNON.Vec3(4 + t*len, 2.4*Math.sin(Math.PI*t) - 0.8, 0));
+  }
+  body.position.set(0, height, 0);
+  body.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0), angleOffset);
+  markHazard(body, '바나나', 1.25); world.addBody(body);
+  const mesh = bananaMesh(len); mesh.position.y = height; scene.add(mesh);
+  const h = {body, mesh, baseSpeed:speed, dir:1, kind:'banana'};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    mesh.position.copy(body.position); mesh.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+
+function duckMesh(s){
+  const g = new THREE.Group();
+  const matD = new THREE.MeshStandardMaterial({color:COL.duck, roughness:.35});
+  const matB = new THREE.MeshStandardMaterial({color:COL.beak, roughness:.5});
+  const b = new THREE.Mesh(new THREE.SphereGeometry(1.1,18,14), matD);
+  b.scale.set(1.35,1,1.1); b.castShadow = true; g.add(b);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.6,1.1,10), matD);
+  tail.position.set(-1.5,0.5,0); tail.rotation.z = -1.0; g.add(tail);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.72,16,13), matD);
+  head.position.set(0.95,1.25,0); head.castShadow = true; g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.32,0.85,10), matB);
+  beak.position.set(1.7,1.1,0); beak.rotation.z = -Math.PI/2; g.add(beak);
+  const eyeM = new THREE.MeshStandardMaterial({color:0x20140c});
+  [-0.42,0.42].forEach(z=>{
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.13,10,9), eyeM);
+    e.position.set(1.35,1.45,z); g.add(e);
+  });
+  g.scale.setScalar(s); return g;
+}
+function makeDuckSpinner(x, z, radius, speed, ds){
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  const disc = new CANNON.Cylinder(radius, radius, 0.5, 16);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  body.addShape(disc, new CANNON.Vec3(0,0,0), q);
+  body.addShape(new CANNON.Sphere(1.35*ds), new CANNON.Vec3(0, 1.5*ds, 0));
+  body.addShape(new CANNON.Sphere(0.8*ds),  new CANNON.Vec3(1.0*ds, 2.6*ds, 0));
+  body.position.set(x, 1.1, z);
+  markHazard(body, '고무 오리', 1.5); world.addBody(body);
+  const g = new THREE.Group(); scene.add(g);
+  const discMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 30),
+    new THREE.MeshStandardMaterial({color:0x8ee5ff, roughness:.4}));
+  discMesh.castShadow = discMesh.receiveShadow = true; g.add(discMesh);
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(radius*0.62, 0.12, 6, 32),
+    new THREE.MeshStandardMaterial({color:0xff5d8f}));
+  stripe.rotation.x = Math.PI/2; stripe.position.y = 0.26; g.add(stripe);
+  const dk = duckMesh(ds); dk.position.set(0, 0.9*ds, 0); g.add(dk);
+  const h = {body, mesh:g, baseSpeed:speed, dir:1, kind:'duck', x, z};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    g.position.copy(body.position); g.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+function makeDuckArm(cx, cz, len, speed, height){
+  const body = new CANNON.Body({mass:0, type:CANNON.Body.KINEMATIC, material:matBouncy});
+  for(let i=0;i<5;i++){
+    const t = (i+0.5)/5;
+    body.addShape(box(len/10, 0.4, 0.6), new CANNON.Vec3(t*len, 0, 0));
+  }
+  body.addShape(new CANNON.Sphere(1.6), new CANNON.Vec3(len, 1.1, 0));
+  body.position.set(cx, height, cz);
+  markHazard(body, '오리 팔', 1.4); world.addBody(body);
+  const g = new THREE.Group(); scene.add(g);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.7, 1.1),
+    new THREE.MeshStandardMaterial({color:0xff5d8f, roughness:.5}));
+  bar.position.x = len/2; bar.castShadow = true; g.add(bar);
+  const d = duckMesh(1.15); d.position.set(len, 1.0, 0); g.add(d);
+  g.position.copy(body.position);
+  const h = {body, mesh:g, baseSpeed:speed, dir:1, kind:'arm', x:cx, z:cz};
+  h.update = ()=>{
+    body.angularVelocity.set(0, h.baseSpeed*h.dir*difficulty(), 0);
+    g.position.copy(body.position); g.quaternion.copy(body.quaternion);
+  };
+  hazards.push(h); return h;
+}
+function makeBumper(x,z,y){
+  y = y||0;
+  const body = new CANNON.Body({mass:0, material:matBouncy,
+    shape:new CANNON.Sphere(1.3), position:new CANNON.Vec3(x, y+1.0, z)});
+  markHazard(body, '젤리 범퍼', 1.0); world.addBody(body);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1.3,16,13),
+    new THREE.MeshStandardMaterial({color:0xb388ff, roughness:.3, emissive:0x2a1050}));
+  m.position.set(x, y+1.0, z); m.castShadow = true; scene.add(m);
+  const h = {body, mesh:m, t:Math.random()*6, kind:'bump', x, z};
+  h.update = (dt)=>{ h.t+=dt; const s = 1+Math.sin(h.t*4)*0.1; m.scale.set(s,2-s,s); };
+  hazards.push(h);
+}
+
+const bananaArms = [
+  makeBananaArm(0, 0.95, 1.2, 16), makeBananaArm(Math.PI, 0.95, 1.2, 16),
+  makeBananaArm(Math.PI/2, -0.65, 3.4, 22), makeBananaArm(-Math.PI/2, -0.65, 3.4, 22)];
+const spinners = [
+  makeDuckSpinner(-18,-14, 4.2, 1.35, 1.05), makeDuckSpinner( 19, 12, 4.4,-1.25, 1.1),
+  makeDuckSpinner(-14, 20, 3.8, 1.6,  0.9),  makeDuckSpinner( 13,-21, 3.8,-1.5, 0.9),
+  makeDuckSpinner( 36,  0, 4.0, 1.2,  1.0),  makeDuckSpinner(-36,  0, 4.0,-1.2, 1.0),
+  makeDuckSpinner(  0, 36, 4.0, 1.4,  1.0),  makeDuckSpinner(  0,-36, 4.0,-1.4, 1.0)];
+const duckArms = [makeDuckArm(26,26,9,-0.8,1.2), makeDuckArm(-26,-26,9,0.8,1.2)];
+PL.forEach(p=>makeBumper(p.x, p.z, p.y));
+[[24,-6],[-24,6],[6,24],[-6,-24],[40,-12],[-40,12],[12,40],[-12,-40],[32,18],[-32,-18]]
+  .forEach(p=>makeBumper(p[0],p[1]));
+
+const balls = [];
+for(let i=0;i<7;i++){
+  const r = rand(0.9,1.3);
+  const b = new CANNON.Body({mass:4, material:matBouncy, shape:new CANNON.Sphere(r),
+    linearDamping:0.04, angularDamping:0.1});
+  b.position.set(rand(-30,30), 6, rand(-30,30));
+  markHazard(b, '수박', 0.9); world.addBody(b);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r,16,13),
+    new THREE.MeshStandardMaterial({color:i%2?0x5cd65c:0xff6b9d, roughness:.5}));
+  m.castShadow = true; scene.add(m);
+  balls.push({body:b, mesh:m});
+}
+
+/* cannon.js의 기본 collisionFilterMask는 1이라, 그룹 2(찰흙)·4(조종체)와는
+   아예 충돌하지 않는다. 바닥·발판·장애물 등 월드 바디는 모두와 부딪히게 열어둔다. */
+world.bodies.forEach(b=>{
+  if(b !== playerBody && clayBodies.indexOf(b) < 0) b.collisionFilterMask = -1;
+});
+const debris = [];
+function spawnDebris(kind){
+  const r = kind==='duck' ? 0.85 : 0.65;
+  const b = new CANNON.Body({mass:3, material:matBouncy, shape:new CANNON.Sphere(r)});
+  const a = Math.random()*Math.PI*2, d = rand(0, ARENA_R-4);
+  b.position.set(Math.cos(a)*d, rand(28,38), Math.sin(a)*d);
+  b.velocity.set(rand(-3,3), 0, rand(-3,3));
+  b.angularVelocity.set(rand(-6,6), rand(-6,6), rand(-6,6));
+  markHazard(b, kind==='duck' ? '오리 폭격' : '바나나 폭풍', 1.1);
+  b.collisionFilterMask = -1;
+  world.addBody(b);
+  let g;
+  if(kind==='duck') g = duckMesh(0.55);
+  else { g = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.66,12,10),
+      new THREE.MeshStandardMaterial({color:COL.banana, roughness:.45}));
+    m.scale.set(1.5,0.85,0.85); m.castShadow = true; g.add(m); }
+  scene.add(g);
+  debris.push({body:b, mesh:g, life:16});
+}
+
+// 충돌 → 발판 튕김 / 기절
+playerBody.addEventListener('collide', (e)=>{
+  const other = e.body;
+  if(!playing || !other) return;
+  if(other.isPad){
+    if(playerBody.velocity.y < 2){
+      playerBody.velocity.y = other.padPower;
+      D.chest.velocity.y += other.padPower*0.5;
+      style += 5; boing(300, 1200, 0.25, 'square', 0.12);
+      confetti(playerBody.position, 10);
+    }
+    return;
+  }
+  if(koTimer > 0 || koCooldown > 0 || !other.isHazard) return;
+  const rel = Math.abs(e.contact.getImpactVelocityAlongNormal());
+  if(rel < 4.5) return;
+  const dir = new CANNON.Vec3(playerBody.position.x - other.position.x, 0,
+                              playerBody.position.z - other.position.z);
+  if(dir.norm() < 0.1) dir.set(rand(-1,1), 0, rand(-1,1));
+  dir.normalize();
+  const pw = other.hazardPower || 1;
+  const power = clamp(rel, 5, 22) * 2.2 * pw;
+  knockdowns++; style += 50;
+  knockOut(new CANNON.Vec3(dir.x*power, 20*pw, dir.z*power));
+  confetti(playerBody.position, 26);
+  boing(700, 60, 0.45, 'sawtooth', 0.2);
+  const cries = ['으아악!','꺄악!','뭉개졌다!','안 돼애애', other.hazardName + '에 맞았다!'];
+  yell(cries[Math.floor(Math.random()*cries.length)]);
+});
+
+const confettiPool = [];
+const confGeo = new THREE.BoxGeometry(0.18,0.18,0.03);
+function confetti(pos, n){
+  const palette = [0xff5d8f,0xffd93b,0x3ddc97,0x6ec6ff,0xb388ff];
+  for(let i=0;i<n;i++){
+    const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({
+      color:palette[i%palette.length], side:THREE.DoubleSide}));
+    m.position.set(pos.x, pos.y+0.6, pos.z); scene.add(m);
+    confettiPool.push({m, v:new V3(rand(-7,7), rand(5,12), rand(-7,7)),
+      rv:new V3(rand(-9,9),rand(-9,9),rand(-9,9)), life:1.6});
+  }
+}
+
+// -------------------------------------------------------- 입력 / 카메라
+const keys = {};
+addEventListener('keydown', e=>{
+  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
+  if(e.code === 'Space' && !keys['Space']) jumpPressed = true;
+  keys[e.code] = true; audioReady();
+});
+addEventListener('keyup', e=>{ keys[e.code] = false; });
+addEventListener('blur', ()=>{ for(const k in keys) keys[k] = false; });
+let jumpPressed = false;
+
+let camYaw = 0, camTargetYaw = 0, dragging = false, lastX = 0;
+renderer.domElement.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; audioReady();});
+addEventListener('pointerup', ()=>dragging=false);
+addEventListener('pointermove', e=>{ if(dragging){ camTargetYaw -= (e.clientX-lastX)*0.006; lastX = e.clientX; } });
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// -------------------------------------------------------- 게임 상태
+let playing = false, gameTime = 0, lives = 3, style = 0, knockdowns = 0, best = 0;
+let poseTimer = 0, posedThisJump = false, grounded = false, coyote = 0;
+let eventTimer = 8, eventActive = null, eventLeft = 0;
+
+const elTimer = document.getElementById('timer');
+const elLives = document.getElementById('lives');
+const elStyle = document.getElementById('styleVal');
+const elEvent = document.getElementById('event');
+const elToast = document.getElementById('toast');
+const mapCtx  = document.getElementById('mapCanvas').getContext('2d');
+
+function difficulty(){ return 1 + Math.min(gameTime/45, 1.2); }
+function drawLives(){
+  elLives.innerHTML = '';
+  for(let i=0;i<3;i++){
+    const d = document.createElement('div');
+    d.className = 'clay-life' + (i<lives ? '' : ' gone');
+    elLives.appendChild(d);
+  }
+}
+function yell(text){
+  const d = document.createElement('div'); d.className = 'yell'; d.textContent = text;
+  elToast.appendChild(d); setTimeout(()=>d.remove(), 1400);
+}
+function banner(text){
+  elEvent.textContent = text;
+  elEvent.classList.remove('pop'); void elEvent.offsetWidth; elEvent.classList.add('pop');
+}
+// 장애물에서 충분히 떨어진 자리를 골라 부활한다 (부활하자마자 맞는 일 방지)
+function safeSpawnSpot(){
+  if(currentMap==='waterpark'){
+    const a=Math.random()*Math.PI*2, r=rand(10,22);
+    return {x:Math.cos(a)*r,z:Math.sin(a)*r};
+  }
+  let bx = 28, bz = 0, bestScore = -1;
+  for(let i=0;i<24;i++){
+    const a = Math.random()*Math.PI*2, r = rand(24, 32);
+    const x = Math.cos(a)*r, z = Math.sin(a)*r;
+    let near = 1e9;
+    hazards.forEach(h=>{
+      if(h.x === undefined) return;                 // 중앙 회전 바나나는 아래에서 따로 계산
+      near = Math.min(near, Math.hypot(x-h.x, z-h.z));
+    });
+    near = Math.min(near, Math.abs(Math.hypot(x,z) - 20));   // 낮은 바나나가 휩쓰는 반경
+    if(near > bestScore){ bestScore = near; bx = x; bz = z; }
+    if(bestScore > 9) break;
+  }
+  return {x:bx, z:bz};
+}
+function respawn(){
+  const s = safeSpawnSpot(), x = s.x, z = s.z;
+  if(world.bodies.indexOf(playerBody) < 0) world.addBody(playerBody);
+  playerBody.position.set(x, 6, z);
+  playerBody.velocity.set(0,0,0);
+  moldClayAt(x, 6 + HIP_OFF - REST.pelvisY, z);
+  koTimer = 0; ctrlRemovePending = false; standRamp = 0.3; koCooldown = 1.8;
+}
+function loseLife(){
+  lives--; drawLives(); boing(200, 60, 0.5, 'square', 0.2);
+  if(lives <= 0) gameOver(); else { respawn(); yell('한 번 더!'); }
+}
+
+const EVENTS = [
+  {name:'저중력 파티!', dur:7, on(){ world.gravity.y = -13; }, off(){ world.gravity.y = -34; }},
+  {name:'바나나 폭풍!', dur:7, on(){ this.t=0; }, tick(dt){ this.t+=dt; if(this.t>0.3){this.t=0; spawnDebris('banana');} }, off(){}},
+  {name:'오리 폭격!',   dur:7, on(){ this.t=0; }, tick(dt){ this.t+=dt; if(this.t>0.5){this.t=0; spawnDebris('duck');} }, off(){}},
+  {name:'전부 역주행!', dur:8, on(){ [...bananaArms,...spinners,...duckArms].forEach(h=>h.dir*=-1); },
+      off(){ [...bananaArms,...spinners,...duckArms].forEach(h=>h.dir*=-1); }},
+];
+function triggerEvent(){
+  const ev = EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  eventActive = ev; eventLeft = ev.dur; ev.on();
+  banner(ev.name); boing(300, 900, 0.35, 'triangle', 0.14);
+}
+
+function drawMap(){
+  const S = 264, half = S/2, k = half/(ARENA_R+4);
+  mapCtx.clearRect(0,0,S,S);
+  mapCtx.fillStyle = currentMap==='waterpark' ? '#dff7ff' : '#fff6e0'; mapCtx.fillRect(0,0,S,S);
+  mapCtx.strokeStyle = '#20140c'; mapCtx.lineWidth = 6;
+  mapCtx.beginPath(); mapCtx.arc(half, half, ARENA_R*k, 0, 7); mapCtx.stroke();
+  if(currentMap==='waterpark'){
+    mapCtx.fillStyle='#42b8df'; mapCtx.beginPath(); mapCtx.arc(half,half,34*k,0,7); mapCtx.fill();
+    mapCtx.fillStyle='#f3cf93'; mapCtx.beginPath(); mapCtx.arc(half,half,8*k,0,7); mapCtx.fill();
+  }
+  const put = (x,z,r,color)=>{
+    mapCtx.fillStyle = color; mapCtx.beginPath();
+    mapCtx.arc(half + x*k, half + z*k, r, 0, 7); mapCtx.fill();
+  };
+  plateaus.forEach(p=>{
+    mapCtx.fillStyle = 'rgba(61,220,151,.45)'; mapCtx.beginPath();
+    mapCtx.arc(half+p.x*k, half+p.z*k, p.r*k, 0, 7); mapCtx.fill(); });
+  hazards.forEach(h=>{
+    if(h.kind==='duck') put(h.x, h.z, 5, '#ff9f1c');
+    else if(h.kind==='bump') put(h.x, h.z, 3, '#b388ff');
+    else if(h.kind==='arm') put(h.x, h.z, 4, '#ff5d8f');
+  });
+  put(0,0,5,'#ffd93b');
+  const t = D.pelvis.position;
+  put(t.x, t.z, 6, '#20140c'); put(t.x, t.z, 3.5, '#ffffff');
+}
+
+// -------------------------------------------------------- 메인 루프
+const clock = new THREE.Clock();
+const camPos = new V3(0, 12, 24), camLook = new V3();
+
+function updateGrounded(){
+  grounded = false;
+  for(let i=0;i<world.contacts.length;i++){
+    const c = world.contacts[i];
+    if(c.bi === playerBody && c.ri.y < -0.3){ grounded = true; break; }
+    if(c.bj === playerBody && c.rj.y < -0.3){ grounded = true; break; }
+  }
+}
+function sanityCheck(){
+  // 물리가 폭주하면(NaN·과속·몸이 뜯겨나감) 조용히 다시 빚어 놓는다
+  const pv = D.pelvis.position;
+  let bad = false;
+  for(let i=0;i<clayBodies.length;i++){
+    const b = clayBodies[i], p = b.position, v = b.velocity;
+    if(!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)){ bad = true; break; }
+    // 관절이 늘어나 몸이 뜯겨나간 경우
+    const dx = p.x-pv.x, dy = p.y-pv.y, dz = p.z-pv.z;
+    if(dx*dx + dy*dy + dz*dz > 9){ bad = true; break; }
+    // 속도 폭주는 잘라낸다
+    const sp = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    if(sp > 55){ const k = 55/sp; v.x*=k; v.y*=k; v.z*=k; }
+    const av = b.angularVelocity, aw = Math.sqrt(av.x*av.x+av.y*av.y+av.z*av.z);
+    if(aw > 30){ const k = 30/aw; av.x*=k; av.y*=k; av.z*=k; }
+  }
+  // 기절 중이 아닌데 몸이 조종체에서 너무 멀어지면 되돌린다
+  if(!bad && koTimer <= 0){
+    const c = playerBody.position;
+    const dx = pv.x-c.x, dy = pv.y-(c.y+HIP_OFF), dz = pv.z-c.z;
+    if(dx*dx + dy*dy + dz*dz > 25) bad = true;
+  }
+  if(bad){
+    const c = playerBody.position;
+    moldClayAt(c.x, c.y + HIP_OFF - REST.pelvisY, c.z);
+    standRamp = 0.2;
+  }
+}
+
+function step(dt){
+  gameTime += dt;
+  koCooldown = Math.max(0, koCooldown - dt);
+  poseTimer = Math.max(0, poseTimer - dt);
+
+  if(eventActive){
+    eventLeft -= dt;
+    if(eventActive.tick) eventActive.tick(dt);
+    if(eventLeft <= 0){ eventActive.off(); eventActive = null; eventTimer = rand(9,15); }
+  } else {
+    eventTimer -= dt;
+    if(eventTimer <= 0) triggerEvent();
+  }
+
+  if(keys['ArrowLeft'])  camTargetYaw += dt*2.0;
+  if(keys['ArrowRight']) camTargetYaw -= dt*2.0;
+  camYaw = lerp(camYaw, camTargetYaw, 1-Math.pow(0.0001, dt));
+
+  let moveSpeed = 0;
+  if(koTimer > 0){
+    koTimer -= dt;
+    if(koTimer <= 0 && D.pelvis.position.y > -3) recoverFromKO();
+  } else {
+    updateGrounded();
+    if(grounded){ coyote = 0.14; posedThisJump = false; }
+    else coyote = Math.max(0, coyote - dt);
+
+    let ix = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+    let iz = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
+    const len = Math.hypot(ix, iz);
+    if(len > 0){ ix/=len; iz/=len; }
+    const sn = Math.sin(camYaw), cs = Math.cos(camYaw);
+    const dx = ix*cs - iz*sn, dz = ix*sn + iz*cs;
+
+    const sprint = (keys['ShiftLeft']||keys['ShiftRight']) ? 1.4 : 1;
+    const SPEED = 14 * sprint;
+    const accel = grounded ? 15 : 8;
+    const v = playerBody.velocity;
+    const f = 1-Math.exp(-accel*dt);
+    v.x = lerp(v.x, dx*SPEED, f);
+    v.z = lerp(v.z, dz*SPEED, f);
+    moveSpeed = Math.hypot(v.x, v.z);
+    if(moveSpeed > 0.8) faceAngle = lerp(faceAngle, Math.atan2(v.x, v.z), 1-Math.pow(0.002, dt));
+
+    if(jumpPressed){
+      if(coyote > 0){
+        v.y = 15.5; coyote = 0;
+        D.chest.velocity.y += 6; D.head.velocity.y += 4;
+        boing(420, 900, 0.14, 'square', 0.1);
+      } else if(!posedThisJump){
+        posedThisJump = true; poseTimer = 0.7;
+        v.y += 5; style += 15;
+        D.armLL.applyImpulse(new CANNON.Vec3(rand(-3,3), 7, rand(-3,3)), new CANNON.Vec3(0,0,0));
+        D.armLR.applyImpulse(new CANNON.Vec3(rand(-3,3), 7, rand(-3,3)), new CANNON.Vec3(0,0,0));
+        confetti(playerBody.position, 8);
+        boing(900, 300, 0.2, 'triangle', 0.09);
+        yell('멋진 포즈!');
+      }
+    }
+  }
+  jumpPressed = false;
+
+  hazards.forEach(h=>h.update && h.update(dt));
+  driveClay(dt, moveSpeed);        // 힘은 world.step 직전에 넣어야 반영된다
+  world.step(1/60, dt, 4);
+  flushPendingBodyOps();
+  sanityCheck();
+  syncClay(dt);
+
+  pads.forEach(p=>{ p.t += dt; p.arrow.position.y = 1.3 + Math.sin(p.t*3)*0.25; });
+  balls.forEach(b=>{
+    if(b.body.position.y < -40){ b.body.position.set(rand(-25,25), 25, rand(-25,25)); b.body.velocity.set(0,0,0); }
+    b.mesh.position.copy(b.body.position); b.mesh.quaternion.copy(b.body.quaternion);
+  });
+  for(let i=debris.length-1;i>=0;i--){
+    const d = debris[i]; d.life -= dt;
+    d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion);
+    if(d.life <= 0 || d.body.position.y < -40){
+      scene.remove(d.mesh); world.remove(d.body); debris.splice(i,1);
+    }
+  }
+  if(D.pelvis.position.y < -12) loseLife();
+
+  for(let i=confettiPool.length-1;i>=0;i--){
+    const c = confettiPool[i];
+    c.life -= dt; c.v.y -= 22*dt;
+    c.m.position.addScaledVector(c.v, dt);
+    c.m.rotation.x += c.rv.x*dt; c.m.rotation.y += c.rv.y*dt; c.m.rotation.z += c.rv.z*dt;
+    if(c.life <= 0){ scene.remove(c.m); c.m.material.dispose(); confettiPool.splice(i,1); }
+  }
+
+  style += dt * 8;
+  elTimer.innerHTML = gameTime.toFixed(1) + '초<small>버틴 시간</small>';
+  elStyle.textContent = Math.floor(style);
+  drawMap();
+}
+
+function updateCamera(dt){
+  const t = D.pelvis.position;
+  const desired = new V3(t.x - Math.sin(camYaw)*16, t.y + 9.0, t.z - Math.cos(camYaw)*16);
+  camPos.lerp(desired, 1-Math.pow(0.002, dt));
+  camera.position.copy(camPos);
+  camLook.lerp(new V3(t.x, t.y+0.9, t.z), 1-Math.pow(0.0005, dt));
+  camera.lookAt(camLook);
+  sunTarget.position.set(t.x, 0, t.z);
+  sun.position.set(t.x + 26, 46, t.z + 20);
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 1/25);
+  if(playing) step(dt);
+  else {
+    hazards.forEach(h=>h.update && h.update(dt));
+    driveClay(dt, 0);
+    world.step(1/60, dt, 3);
+    flushPendingBodyOps();
+    sanityCheck(); syncClay(dt);
+    balls.forEach(b=>{ b.mesh.position.copy(b.body.position); b.mesh.quaternion.copy(b.body.quaternion); });
+  }
+  updateCamera(dt);
+  renderer.render(scene, camera);
+}
+animate();
+
+// -------------------------------------------------------- 화면 전환
+const startScreen = document.getElementById('startScreen');
+const overScreen  = document.getElementById('overScreen');
+function startGame(){
+  audioReady();
+  playing = true; gameTime = 0; lives = 3; style = 0; knockdowns = 0;
+  eventTimer = 8;
+  if(eventActive){ eventActive.off(); eventActive = null; }
+  world.gravity.y = -34;
+  debris.forEach(d=>{ scene.remove(d.mesh); world.remove(d.body); }); debris.length = 0;
+  setMap(currentMap);
+  respawn(); drawLives();
+  startScreen.classList.add('hidden');
+  overScreen.classList.add('hidden');
+  banner(currentMap==='waterpark' ? '워터파크에서 살아남아라!' : '살아남아라!');
+}
+function gameOver(){
+  playing = false;
+  best = Math.max(best, gameTime);
+  document.getElementById('finalTime').textContent = gameTime.toFixed(1);
+  document.getElementById('finalStyle').textContent = Math.floor(style);
+  document.getElementById('bestTime').textContent = best.toFixed(1);
+  const t = gameTime;
+  const rank = t < 15 ? '반죽만도 못한 실력' : t < 35 ? '그럭저럭 말랑말랑' :
+               t < 60 ? '바나나 회피 중급자' : t < 90 ? '고무 오리의 친구' : '전설의 찰흙맨';
+  document.getElementById('rank').textContent = `${rank} · 뭉개진 횟수 ${knockdowns}번`;
+  document.getElementById('overTitle').textContent =
+    knockdowns > 6 ? '너무 많이 뭉개졌다!' : '떨어졌다!';
+  overScreen.classList.remove('hidden');
+  boing(300, 80, 0.8, 'sawtooth', 0.2);
+}
+document.querySelectorAll('.map-card').forEach(card=>{
+  card.addEventListener('click',()=>{
+    document.querySelectorAll('.map-card').forEach(c=>c.classList.remove('selected'));
+    card.classList.add('selected');
+    currentMap = card.dataset.map;
+    document.getElementById('selectedMapLabel').textContent = '선택된 맵: ' + (currentMap==='waterpark' ? 'WATER PARK' : 'CLAY ARENA');
+    setMap(currentMap); drawMap();
+  });
+});
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', startGame);
+drawLives(); drawMap();
+</script>
+</body>
+</html>
