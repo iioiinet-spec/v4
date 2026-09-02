@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>고지능 AI 체스 게임</title>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #1e1e24;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 8px; }
+
+        #status {
+            font-size: 1.2rem;
+            margin-bottom: 16px;
+            font-weight: bold;
+            color: #4cd137;
+            min-height: 28px;
+        }
+
+        #chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 64px);
+            grid-template-rows: repeat(8, 64px);
+            border: 4px solid #2f3640;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: 64px;
+            height: 64px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 44px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .white-cell { background-color: #f0d9b5; }
+        .black-cell { background-color: #b58863; }
+        .selected { background-color: #7ed6df !important; }
+        .in-check { background-color: #e84118 !important; }
+        
+        .valid-move { position: relative; }
+        .valid-move::after {
+            content: '';
+            width: 16px;
+            height: 16px;
+            background-color: rgba(46, 204, 113, 0.7);
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        .btn-container {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 10px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            background-color: #e84118;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #c23616; }
+    </style>
+</head>
+<body>
+
+    <h1>AI 체스 게임 (고난이도)</h1>
+    <div id="status">백선(유저)의 차례입니다</div>
+    <div id="chessboard"></div>
+    <div class="btn-container">
+        <button onclick="resetGame()">게임 리셋</button>
+    </div>
+
+    <script>
+        const PIECES = {
+            'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'p': '♟', // 흑 (AI)
+            'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔', 'P': '♙'  // 백 (유저)
+        };
+
+        const PIECE_VALUES = {
+            'p': 100, 'r': 500, 'n': 320, 'b': 330, 'q': 900, 'k': 20000,
+            'P': -100, 'R': -500, 'N': -320, 'B': -330, 'Q': -900, 'K': -20000
+        };
+
+        // 기물 위치별 가치 테이블 (PST)
+        const PAWN_PST = [
+            [0,  0,  0,  0,  0,  0,  0,  0],
+            [50, 50, 50, 50, 50, 50, 50, 50],
+            [10, 10, 20, 30, 30, 20, 10, 10],
+            [ 5,  5, 10, 25, 25, 10,  5,  5],
+            [ 0,  0,  0, 20, 20,  0,  0,  0],
+            [ 5, -5,-10,  0,  0,-10, -5,  5],
+            [ 5, 10, 10,-20,-20, 10, 10,  5],
+            [ 0,  0,  0,  0,  0,  0,  0,  0]
+        ];
+
+        const KNIGHT_PST = [
+            [-50,-40,-30,-30,-30,-30,-40,-50],
+            [-40,-20,  0,  0,  0,  0,-20,-40],
+            [-30,  0, 10, 15, 15, 10,  0,-30],
+            [-30,  5, 15, 20, 20, 15,  5,-30],
+            [-30,  0, 15, 20, 20, 15,  0,-30],
+            [-30,  5, 10, 15, 15, 10,  5,-30],
+            [-40,-20,  0,  5,  5,  0,-20,-40],
+            [-50,-40,-30,-30,-30,-30,-40,-50]
+        ];
+
+        const initialBoard = [
+            ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
+            ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+            ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
+        ];
+
+        let board = JSON.parse(JSON.stringify(initialBoard));
+        let selectedCell = null;
+        let validMoves = [];
+        let isPlayerTurn = true;
+        let gameOver = false;
+
+        const boardElement = document.getElementById('chessboard');
+        const statusElement = document.getElementById('status');
+
+        function isWhitePiece(p) { return p && p === p.toUpperCase(); }
+        function isBlackPiece(p) { return p && p === p.toLowerCase(); }
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            const whiteKingCheck = isKingInCheck(true, board);
+            const blackKingCheck = isKingInCheck(false, board);
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = `cell ${(r + c) % 2 === 0 ? 'white-cell' : 'black-cell'}`;
+                    
+                    const piece = board[r][c];
+                    if (piece) {
+                        cell.innerText = PIECES[piece];
+                        cell.style.color = isBlackPiece(piece) ? '#111' : '#fff';
+                        if (isWhitePiece(piece)) {
+                            cell.style.textShadow = '0 0 3px #000';
+                        }
+
+                        if ((piece === 'K' && whiteKingCheck) || (piece === 'k' && blackKingCheck)) {
+                            cell.classList.add('in-check');
+                        }
+                    }
+
+                    if (selectedCell && selectedCell.r === r && selectedCell.c === c) {
+                        cell.classList.add('selected');
+                    }
+
+                    if (validMoves.some(m => m.r === r && m.c === c)) {
+                        cell.classList.add('valid-move');
+                    }
+
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(r, c) {
+            if (!isPlayerTurn || gameOver) return;
+
+            const piece = board[r][c];
+
+            if (piece && isWhitePiece(piece)) {
+                selectedCell = { r, c };
+                validMoves = getLegalMoves(r, c, board);
+                renderBoard();
+                return;
+            }
+
+            if (selectedCell) {
+                const isValid = validMoves.some(m => m.r === r && m.c === c);
+                if (isValid) {
+                    executeMove(selectedCell.r, selectedCell.c, r, c);
+                    selectedCell = null;
+                    validMoves = [];
+                    renderBoard();
+
+                    if (!gameOver) {
+                        statusElement.innerText = "AI가 수읽기를 진행 중입니다...";
+                        setTimeout(triggerAiMove, 50);
+                    }
+                }
+            }
+        }
+
+        function executeMove(fromR, fromC, toR, toC) {
+            board[toR][toC] = board[fromR][fromC];
+            board[fromR][fromC] = '';
+
+            if (board[toR][toC] === 'P' && toR === 0) board[toR][toC] = 'Q';
+            if (board[toR][toC] === 'p' && toR === 7) board[toR][toC] = 'q';
+
+            isPlayerTurn = !isPlayerTurn;
+            checkGameStatus();
+        }
+
+        function checkGameStatus() {
+            const currentIsWhite = isPlayerTurn;
+            const hasMoves = hasAnyLegalMoves(currentIsWhite, board);
+            const inCheck = isKingInCheck(currentIsWhite, board);
+
+            if (!hasMoves) {
+                gameOver = true;
+                if (inCheck) {
+                    const winner = currentIsWhite ? "AI(흑색) 승리!" : "당신(백색)의 승리!";
+                    statusElement.innerText = `체크메이트! ${winner}`;
+                    statusElement.style.color = "#e84118";
+                } else {
+                    statusElement.innerText = "스테일메이트 (무승부)!";
+                    statusElement.style.color = "#fbc531";
+                }
+            } else {
+                if (inCheck) {
+                    statusElement.innerText = `${currentIsWhite ? "당신의" : "AI의"} 킹이 체크당했습니다!`;
+                    statusElement.style.color = "#e84118";
+                } else {
+                    statusElement.innerText = currentIsWhite ? "백선(유저)의 차례입니다" : "AI(흑색)의 차례입니다";
+                    statusElement.style.color = "#4cd137";
+                }
+            }
+        }
+
+        function getRawMoves(r, c, currentBoard) {
+            const piece = currentBoard[r][c];
+            if (!piece) return [];
+
+            const moves = [];
+            const isWhite = isWhitePiece(piece);
+            const type = piece.toLowerCase();
+
+            const addMove = (tr, tc) => {
+                if (tr < 0 || tr >= 8 || tc < 0 || tc >= 8) return false;
+                const target = currentBoard[tr][tc];
+                if (!target) {
+                    moves.push({ r: tr, c: tc });
+                    return true;
+                }
+                if ((isWhite && isBlackPiece(target)) || (!isWhite && isWhitePiece(target))) {
+                    moves.push({ r: tr, c: tc });
+                }
+                return false;
+            };
+
+            if (type === 'k') {
+                [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+            } else if (type === 'q') {
+                [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr, dc]) => {
+                    let s = 1; while (addMove(r + dr * s, c + dc * s)) s++;
+                });
+            } else if (type === 'r') {
+                [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr, dc]) => {
+                    let s = 1; while (addMove(r + dr * s, c + dc * s)) s++;
+                });
+            } else if (type === 'b') {
+                [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr, dc]) => {
+                    let s = 1; while (addMove(r + dr * s, c + dc * s)) s++;
+                });
+            } else if (type === 'n') {
+                [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+            } else if (type === 'p') {
+                const dir = isWhite ? -1 : 1;
+                const startRow = isWhite ? 6 : 1;
+
+                if (r + dir >= 0 && r + dir < 8 && !currentBoard[r + dir][c]) {
+                    moves.push({ r: r + dir, c });
+                    if (r === startRow && !currentBoard[r + dir * 2][c]) {
+                        moves.push({ r: r + dir * 2, c });
+                    }
+                }
+                [-1, 1].forEach(dc => {
+                    const tr = r + dir, tc = c + dc;
+                    if (tr >= 0 && tr < 8 && tc >= 0 && tc < 8) {
+                        const target = currentBoard[tr][tc];
+                        if (target && (isWhite ? isBlackPiece(target) : isWhitePiece(target))) {
+                            moves.push({ r: tr, c: tc });
+                        }
+                    }
+                });
+            }
+            return moves;
+        }
+
+        function getLegalMoves(r, c, currentBoard) {
+            const rawMoves = getRawMoves(r, c, currentBoard);
+            const isWhite = isWhitePiece(currentBoard[r][c]);
+
+            return rawMoves.filter(move => {
+                const tempTarget = currentBoard[move.r][move.c];
+                currentBoard[move.r][move.c] = currentBoard[r][c];
+                currentBoard[r][c] = '';
+
+                const inCheck = isKingInCheck(isWhite, currentBoard);
+
+                currentBoard[r][c] = currentBoard[move.r][move.c];
+                currentBoard[move.r][move.c] = tempTarget;
+
+                return !inCheck;
+            });
+        }
+
+        function isKingInCheck(isWhite, currentBoard) {
+            let kingPos = null;
+            const targetKing = isWhite ? 'K' : 'k';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (currentBoard[r][c] === targetKing) {
+                        kingPos = { r, c };
+                        break;
+                    }
+                }
+            }
+            if (!kingPos) return false;
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = currentBoard[r][c];
+                    if (piece && (isWhite ? isBlackPiece(piece) : isWhitePiece(piece))) {
+                        const enemyMoves = getRawMoves(r, c, currentBoard);
+                        if (enemyMoves.some(m => m.r === kingPos.r && m.c === kingPos.c)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function hasAnyLegalMoves(isWhite, currentBoard) {
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = currentBoard[r][c];
+                    if (piece && (isWhite ? isWhitePiece(piece) : isBlackPiece(piece))) {
+                        if (getLegalMoves(r, c, currentBoard).length > 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // --- 정교한 판세 평가 알고리즘 (PST 반영) ---
+        function evaluateBoardAdvanced(b) {
+            let score = 0;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = b[r][c];
+                    if (!piece) continue;
+
+                    const isWhite = isWhitePiece(piece);
+                    const type = piece.toLowerCase();
+                    let baseValue = PIECE_VALUES[piece] || 0;
+                    let pstValue = 0;
+
+                    if (type === 'p') pstValue = PAWN_PST[isWhite ? 7 - r : r][c];
+                    if (type === 'n') pstValue = KNIGHT_PST[isWhite ? 7 - r : r][c];
+
+                    score += baseValue + (isWhite ? -pstValue : pstValue);
+                }
+            }
+            return score;
+        }
+
+        // --- 미니맥스 + 알파베타 가지치기 AI ---
+        function minimax(currentBoard, depth, alpha, beta, isMaximizing) {
+            if (depth === 0) {
+                return evaluateBoardAdvanced(currentBoard);
+            }
+
+            if (isMaximizing) {
+                let maxEval = -Infinity;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (isBlackPiece(currentBoard[r][c])) {
+                            const moves = getLegalMoves(r, c, currentBoard);
+                            for (const move of moves) {
+                                const temp = currentBoard[move.r][move.c];
+                                currentBoard[move.r][move.c] = currentBoard[r][c];
+                                currentBoard[r][c] = '';
+
+                                const evalValue = minimax(currentBoard, depth - 1, alpha, beta, false);
+
+                                currentBoard[r][c] = currentBoard[move.r][move.c];
+                                currentBoard[move.r][move.c] = temp;
+
+                                maxEval = Math.max(maxEval, evalValue);
+                                alpha = Math.max(alpha, evalValue);
+                                if (beta <= alpha) break;
+                            }
+                        }
+                    }
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (isWhitePiece(currentBoard[r][c])) {
+                            const moves = getLegalMoves(r, c, currentBoard);
+                            for (const move of moves) {
+                                const temp = currentBoard[move.r][move.c];
+                                currentBoard[move.r][move.c] = currentBoard[r][c];
+                                currentBoard[r][c] = '';
+
+                                const evalValue = minimax(currentBoard, depth - 1, alpha, beta, true);
+
+                                currentBoard[r][c] = currentBoard[move.r][move.c];
+                                currentBoard[move.r][move.c] = temp;
+
+                                minEval = Math.min(minEval, evalValue);
+                                beta = Math.min(beta, evalValue);
+                                if (beta <= alpha) break;
+                            }
+                        }
+                    }
+                }
+                return minEval;
+            }
+        }
+
+        function triggerAiMove() {
+            if (gameOver) return;
+
+            let bestMove = null;
+            let bestScore = -Infinity;
+            const searchDepth = 3; // 수읽기 깊이 (3단계 탐색)
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (isBlackPiece(board[r][c])) {
+                        const moves = getLegalMoves(r, c, board);
+                        for (const move of moves) {
+                            const temp = board[move.r][move.c];
+                            board[move.r][move.c] = board[r][c];
+                            board[r][c] = '';
+
+                            const score = minimax(board, searchDepth - 1, -Infinity, Infinity, false);
+
+                            board[r][c] = board[move.r][move.c];
+                            board[move.r][move.c] = temp;
+
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestMove = { from: { r, c }, to: move };
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (bestMove) {
+                executeMove(bestMove.from.r, bestMove.from.c, bestMove.to.r, bestMove.to.c);
+            }
+            renderBoard();
+        }
+
+        function resetGame() {
+            board = JSON.parse(JSON.stringify(initialBoard));
+            selectedCell = null;
+            validMoves = [];
+            isPlayerTurn = true;
+            gameOver = false;
+            statusElement.innerText = "백선(유저)의 차례입니다";
+            statusElement.style.color = "#4cd137";
+            renderBoard();
+        }
+
+        renderBoard();
+    </script>
+</body>
+</html>
