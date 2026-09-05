@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIVAL ARENA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14171c; --panel: #1b1f27; --panel-line: #2a2f3a;
+    --player: #ff6b35; --player-dim: #7a3a1f;
+    --rival: #00d9ff; --rival-dim: #0a5b6b;
+    --danger: #ff3b57; --gold: #ffc857; --text: #e8e6e1; --muted: #767c88;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: 'Space Mono', monospace; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  #stage { position: relative; width: min(96vw, 1100px); aspect-ratio: 16 / 10; }
+  canvas {
+    width: 100%; height: 100%; display: block;
+    background: radial-gradient(ellipse at center, #1a1e26 0%, #0f1114 100%);
+    border: 1px solid var(--panel-line); border-radius: 4px; cursor: crosshair;
+  }
+
+  /* ================= STATION LOBBY ================= */
+  #station { position: absolute; inset: 0; border-radius: 4px; overflow: hidden; background: #0d1b22; }
+  #stationRing {
+    position: absolute; inset: 6%; border-radius: 50%;
+    background: repeating-conic-gradient(from 0deg, #c9a876 0deg 8deg, #b8955f 8deg 16deg);
+    box-shadow: 0 0 0 10px #4a4030, inset 0 0 60px rgba(0,0,0,0.5);
+  }
+  #stationWater {
+    position: absolute; inset: 16%; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #6fd6e8 0%, #2c95b5 55%, #14607e 100%);
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.35); overflow: hidden;
+  }
+  #stationWater::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-radial-gradient(circle at 50% 50%, transparent 0 22px, rgba(255,255,255,0.05) 23px 24px);
+  }
+  .npc-tag {
+    position: absolute; display: flex; align-items: center; gap: 5px;
+    background: rgba(10,14,18,0.55); padding: 3px 8px 3px 5px; border-radius: 12px;
+    font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 13px; color: #fff; white-space: nowrap;
+  }
+  .npc-tag .lv {
+    background: var(--player); color: #14171c; width: 16px; height: 16px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+  }
+  .npc-figure { position: absolute; width: 22px; height: 30px; border-radius: 6px 6px 3px 3px; box-shadow: 0 3px 6px rgba(0,0,0,0.4); }
+
+  #currencyHud { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 6px; font-family: 'Rajdhani', sans-serif; font-weight: 700; }
+  .currency-pill { display: flex; align-items: center; gap: 6px; background: rgba(10,14,18,0.7); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 14px; font-size: 14px; }
+  .coin-icon { width: 14px; height: 14px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px #8a6a1f inset; }
+  .gem-icon { width: 12px; height: 12px; background: var(--rival); transform: rotate(45deg); }
+
+  #updateBanner {
+    position: absolute; top: 22%; left: 8%; background: #fff; color: #111; padding: 12px 18px; border-radius: 10px;
+    font-family: 'Rajdhani', sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,0.4); max-width: 220px;
+  }
+  #updateBanner::after { content: ''; position: absolute; bottom: -10px; left: 24px; border-width: 10px 8px 0 8px; border-style: solid; border-color: #fff transparent transparent transparent; }
+  .ub-title { font-weight: 700; font-size: 16px; }
+  .ub-sub { font-size: 12px; color: #555; margin-top: 2px; }
+
+  #stationTimer { position: absolute; top: 8%; right: 14%; font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--rival); font-size: 15px; letter-spacing: 3px; transform: rotate(8deg); text-shadow: 0 0 10px rgba(0,217,255,0.6); }
+  #moveToggle { position: absolute; bottom: 16px; left: 14px; background: #2f8bff; color: #fff; font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 13px; padding: 8px 16px; border-radius: 20px; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+  #profileIcons { position: absolute; bottom: 14px; right: 14px; display: flex; gap: 8px; }
+  .profile-circle { width: 34px; height: 34px; border-radius: 50%; background: #3a4150; border: 2px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  #playBtn {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(180deg, #9dff5c, #6bcf2f); color: #123a05;
+    font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: 3px;
+    padding: 12px 54px; border: none; border-radius: 12px;
+    box-shadow: 0 6px 0 #4a8f1e, 0 10px 18px rgba(0,0,0,0.4); cursor: pointer;
+  }
+  #playBtn:active { transform: translateX(-50%) translateY(4px); box-shadow: 0 2px 0 #4a8f1e; }
+
+  /* ================= MODALS ================= */
+  .overlay {
+    position: absolute; inset: 0; background: rgba(10,12,15,0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 20px; font-family: 'Rajdhani', sans-serif; overflow-y: auto;
+  }
+  .hidden { display: none !important; }
+  .eyebrow { font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 6px; color: var(--rival); margin-bottom: 10px; }
+  .title { font-size: clamp(28px, 5.4vw, 46px); font-weight: 700; letter-spacing: 2px; line-height: 1; margin: 0 0 20px 0; color: var(--text); }
+  .title span { color: var(--player); }
+
+  #modeCards, #mapCards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; max-width: 720px; }
+  .mode-card, .map-card {
+    width: 190px; background: var(--panel); border: 2px solid var(--panel-line); border-radius: 10px;
+    padding: 20px 14px; cursor: pointer; transition: border-color 0.15s, transform 0.15s;
+  }
+  .mode-card:hover, .map-card:hover { border-color: var(--player); transform: translateY(-4px); }
+  .mode-icon { font-size: 34px; margin-bottom: 10px; }
+  .mode-name { font-weight: 700; font-size: 19px; letter-spacing: 1px; margin-bottom: 6px; }
+  .mode-desc { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .map-thumb { width: 100%; height: 90px; border-radius: 6px; margin-bottom: 10px; border: 1px solid var(--panel-line); }
+
+  #diffList, #weaponList { display: flex; flex-direction: column; gap: 10px; width: min(92vw, 460px); }
+  .diff-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel); border: 2px solid var(--panel-line); border-left: 6px solid var(--tier-color, var(--muted));
+    border-radius: 8px; padding: 12px 18px; cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s;
+  }
+  .diff-btn:hover { background: #232833; }
+  .diff-name { font-weight: 700; font-size: 17px; }
+  .diff-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .diff-tag { font-size: 10px; letter-spacing: 2px; color: var(--tier-color, var(--muted)); font-weight: 700; }
+
+  .weapon-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel); border: 2px solid var(--panel-line); border-radius: 8px; padding: 12px 18px;
+    cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s;
+  }
+  .weapon-btn.equipped { border-color: var(--player); }
+  .weapon-btn:hover { background: #232833; }
+  .weapon-name { font-weight: 700; font-size: 17px; }
+  .weapon-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; max-width: 300px; }
+  .weapon-action { font-size: 12px; font-weight: 700; letter-spacing: 1px; padding: 6px 14px; border-radius: 14px; }
+  .weapon-action.locked { background: #3a2f1f; color: var(--gold); }
+  .weapon-action.owned { background: #1f3a2a; color: #6bcf2f; }
+  .weapon-action.eq { background: var(--player); color: #14171c; }
+
+  .backBtn { margin-top: 20px; background: transparent; border: 1px solid var(--muted); color: var(--muted); font-family: 'Space Mono', monospace; font-size: 11px; padding: 8px 20px; border-radius: 20px; cursor: pointer; letter-spacing: 2px; }
+  .backBtn:hover { color: var(--text); border-color: var(--text); }
+  .btn {
+    font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: 3px;
+    background: transparent; color: var(--player); border: 2px solid var(--player); padding: 12px 36px; cursor: pointer;
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); transition: all 0.15s; pointer-events: all; margin-top: 10px;
+  }
+  .btn:hover { background: var(--player); color: #14171c; }
+  #coinBadge { font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--gold); font-size: 15px; margin-bottom: 16px; }
+
+  /* ================= GAME HUD ================= */
+  #gameStage { position: absolute; inset: 0; }
+  #hud { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 18px; pointer-events: none; font-family: 'Rajdhani', sans-serif; }
+  .hp-block { width: 34%; }
+  .hp-block.rival { text-align: right; }
+  .hp-name { font-size: 13px; letter-spacing: 3px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 5px; }
+  .hp-name.player-name { color: var(--player); }
+  .hp-name.rival-name { color: var(--rival); }
+  .hp-bar-track { height: 12px; background: #0c0d10; border: 1px solid var(--panel-line); position: relative; overflow: hidden; }
+  .hp-bar-fill { height: 100%; transition: width 0.15s ease-out; }
+  .hp-bar-fill.player { background: linear-gradient(90deg, var(--player-dim), var(--player)); }
+  .hp-bar-fill.rival { background: linear-gradient(270deg, var(--rival-dim), var(--rival)); float: right; }
+
+  #centerHud { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 220px; }
+  #modeLabel { font-size: 10px; letter-spacing: 2px; color: var(--gold); }
+  #roundLabel { font-size: 12px; letter-spacing: 4px; color: var(--muted); }
+  #duelMeter { width: 200px; height: 8px; background: var(--panel-line); position: relative; border-radius: 2px; overflow: hidden; }
+  #duelFill { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--player); transition: left 0.2s ease-out, width 0.2s ease-out, background 0.2s; }
+  #roundDots { display: flex; gap: 6px; margin-top: 2px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--panel-line); border: 1px solid var(--muted); }
+  .dot.player-win { background: var(--player); border-color: var(--player); }
+  .dot.rival-win { background: var(--rival); border-color: var(--rival); }
+
+  #dashWrap { position: absolute; bottom: 14px; left: 18px; font-size: 11px; color: var(--muted); letter-spacing: 2px; }
+  #dashTrack { width: 90px; height: 5px; background: #0c0d10; border: 1px solid var(--panel-line); margin-top: 4px; }
+  #dashFill { height: 100%; background: var(--player); width: 100%; }
+  #weaponTag { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 2px; color: var(--gold); }
+  #controls { position: absolute; bottom: 14px; right: 18px; font-size: 10px; color: var(--muted); text-align: right; line-height: 1.6; letter-spacing: 1px; }
+
+  #tutorialCaption {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, 120px);
+    background: rgba(10,12,15,0.88); border: 1px solid var(--panel-line); padding: 14px 26px; border-radius: 8px;
+    font-family: 'Rajdhani', sans-serif; font-size: 17px; text-align: center; max-width: 480px;
+  }
+  #tutorialCaption .cap-sub { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .result-title { font-size: clamp(28px, 5.4vw, 46px); font-weight: 700; margin-bottom: 4px; }
+  .result-title.win { color: var(--player); }
+  .result-title.lose { color: var(--rival); }
+  .subtitle { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--muted); letter-spacing: 1px; max-width: 420px; margin-bottom: 20px; line-height: 1.7; }
+  .coin-toast { color: var(--gold); font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+
+  /* ================= AUTH ================= */
+  .auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .auth-tab {
+    background: var(--panel); border: 2px solid var(--panel-line); color: var(--muted);
+    font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 1px;
+    padding: 8px 20px; border-radius: 20px; cursor: pointer;
+  }
+  .auth-tab.active { border-color: var(--player); color: var(--player); }
+  .auth-form { display: flex; flex-direction: column; gap: 10px; width: min(88vw, 300px); }
+  .auth-input {
+    background: #0c0d10; border: 1px solid var(--panel-line); color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 14px; padding: 10px 12px; border-radius: 6px; outline: none;
+  }
+  .auth-input:focus { border-color: var(--player); }
+  .auth-error { color: var(--danger); font-family: 'Space Mono', monospace; font-size: 11px; min-height: 14px; margin-top: 4px; }
+  #accountLabel { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+
+    <!-- ============ LOGIN / SIGNUP ============ -->
+    <div class="overlay" id="authOverlay">
+      <div class="eyebrow">WELCOME</div>
+      <h1 class="title">RIVAL <span>ARENA</span></h1>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin">로그인</button>
+        <button class="auth-tab" id="tabSignup">회원가입</button>
+      </div>
+      <div class="auth-form">
+        <input class="auth-input" id="authUsername" type="text" placeholder="아이디" autocomplete="off">
+        <input class="auth-input" id="authPassword" type="password" placeholder="비밀번호" autocomplete="off">
+        <div class="auth-error" id="authError"></div>
+        <button class="btn" id="authSubmitBtn" style="align-self:center;">로그인</button>
+      </div>
+    </div>
+
+    <!-- ============ STATION LOBBY ============ -->
+    <div id="station" class="hidden">
+      <div id="stationRing"></div>
+      <div id="stationWater"></div>
+      <div class="npc-tag" style="top:18%; left:38%;"><span class="lv">2</span>joajoeun 🖥</div>
+      <div class="npc-figure" style="top:22%; left:40%; background:#e8c39e;"></div>
+      <div class="npc-tag" style="top:52%; left:30%;"><span class="lv">1</span>10B</div>
+      <div class="npc-figure" style="top:56%; left:32%; background:#c9915c;"></div>
+      <div class="npc-tag" style="top:50%; left:58%;"><span class="lv">1</span>hyejin_ff 🖥</div>
+      <div class="npc-figure" style="top:54%; left:60%; background:#5a4a3a;"></div>
+      <div class="npc-tag" style="top:56%; left:52%;"><span class="lv">1</span>seojin00130</div>
+
+      <div id="updateBanner"><div class="ub-title">New Update</div><div class="ub-sub">보기 →</div></div>
+      <div id="stationTimer">UPDATE 23h 30m</div>
+      <div id="currencyHud">
+        <div class="currency-pill"><div class="coin-icon"></div> <span id="coinCount">0</span></div>
+        <div class="currency-pill"><div class="gem-icon"></div> 36</div>
+        <div id="accountLabel"></div>
+      </div>
+      <button id="moveToggle">로 이동 ⚙</button>
+      <div id="profileIcons"><div class="profile-circle">🙂</div><div class="profile-circle">🔥</div></div>
+      <button id="playBtn">플레이</button>
+    </div>
+
+    <!-- ============ MODE SELECT ============ -->
+    <div class="overlay hidden" id="modeOverlay">
+      <div class="eyebrow">STEP 1</div>
+      <h1 class="title">모드 <span>선택</span></h1>
+      <div id="modeCards">
+        <div class="mode-card" data-mode="team"><div class="mode-icon">🛡️</div><div class="mode-name">팀전</div><div class="mode-desc">나의 팀 9명 vs<br>상대 팀 9명</div></div>
+        <div class="mode-card" data-mode="solo"><div class="mode-icon">⚔️</div><div class="mode-name">개인전</div><div class="mode-desc">나 1명 vs<br>상대 1명</div></div>
+        <div class="mode-card" data-mode="spectate"><div class="mode-icon">👁️</div><div class="mode-name">관전</div><div class="mode-desc">무적 상태로<br>둘의 대결을 관전</div></div>
+      </div>
+      <button class="backBtn" id="modeBack">← 스테이션으로</button>
+    </div>
+
+    <!-- ============ DIFFICULTY SELECT ============ -->
+    <div class="overlay hidden" id="diffOverlay">
+      <div class="eyebrow" id="diffEyebrow">STEP 2</div>
+      <h1 class="title">난이도 <span>선택</span></h1>
+      <div id="diffList"></div>
+      <button class="backBtn" id="diffBack">← 모드 다시 선택</button>
+    </div>
+
+    <!-- ============ MAP SELECT ============ -->
+    <div class="overlay hidden" id="mapOverlay">
+      <div class="eyebrow">STEP 3</div>
+      <h1 class="title">맵 <span>선택</span></h1>
+      <div id="mapCards">
+        <div class="map-card" data-map="crossroads">
+          <svg class="map-thumb" viewBox="0 0 120 72"><rect width="120" height="72" fill="#14171c"/><rect x="4" y="4" width="46" height="28" fill="#2a2f3a"/><rect x="70" y="4" width="46" height="28" fill="#2a2f3a"/><rect x="4" y="40" width="46" height="28" fill="#2a2f3a"/><rect x="70" y="40" width="46" height="28" fill="#2a2f3a"/></svg>
+          <div class="mode-name">교차로</div>
+          <div class="mode-desc">사거리 형태의 개방된 맵</div>
+        </div>
+        <div class="map-card" data-map="arena">
+          <svg class="map-thumb" viewBox="0 0 120 72"><rect width="120" height="72" fill="#14171c"/><rect x="52" y="8" width="16" height="24" fill="#2a2f3a"/><rect x="52" y="40" width="16" height="24" fill="#2a2f3a"/><rect x="22" y="32" width="26" height="6" fill="#2a2f3a"/><rect x="72" y="32" width="26" height="6" fill="#2a2f3a"/></svg>
+          <div class="mode-name">아레나 (기본)</div>
+          <div class="mode-desc">엄폐물이 고르게 배치된 맵</div>
+        </div>
+      </div>
+      <button class="backBtn" id="mapBack">← 난이도 다시 선택</button>
+    </div>
+
+    <!-- ============ WEAPON SELECT ============ -->
+    <div class="overlay hidden" id="weaponOverlay">
+      <div class="eyebrow">STEP 4</div>
+      <h1 class="title">무기 <span>선택</span></h1>
+      <div id="coinBadge">보유 코인: <span id="coinBadgeCount">0</span></div>
+      <div id="weaponList"></div>
+      <button class="btn" id="weaponConfirmBtn">전투 시작</button>
+      <button class="backBtn" id="weaponBack">← 맵 다시 선택</button>
+    </div>
+
+    <!-- ============ GAME ============ -->
+    <div id="gameStage" class="hidden">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div class="hp-block"><div class="hp-name player-name" id="leftName">YOU</div><div class="hp-bar-track"><div class="hp-bar-fill player" id="playerHpFill" style="width:100%"></div></div></div>
+        <div id="centerHud">
+          <div id="modeLabel">MODE</div>
+          <div id="roundLabel">ROUND 1</div>
+          <div id="duelMeter"><div id="duelFill" style="left:50%; width:0%;"></div></div>
+          <div id="roundDots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        </div>
+        <div class="hp-block rival"><div class="hp-name rival-name" id="rightName">RIVAL</div><div class="hp-bar-track"><div class="hp-bar-fill rival" id="rivalHpFill" style="width:100%"></div></div></div>
+      </div>
+      <div id="dashWrap">DASH<div id="dashTrack"><div id="dashFill"></div></div></div>
+      <div id="weaponTag">WEAPON: 돌격소총</div>
+      <div id="controls">WASD 이동 · SHIFT 대시<br>마우스 조준 · 클릭 발사/공격</div>
+
+      <div class="overlay hidden" id="tutorialIntroOverlay">
+        <div class="eyebrow">TUTORIAL</div>
+        <h1 class="title" id="tutorialTitle">튜토리얼</h1>
+        <p class="subtitle" id="tutorialDesc">선택한 모드의 기본 조작을 알려드릴게요.</p>
+        <button class="btn" id="tutorialStartBtn">시작</button>
+      </div>
+      <div id="tutorialCaption" class="hidden"><div class="cap-main">캡션</div><div class="cap-sub">부가 설명</div></div>
+
+      <div class="overlay hidden" id="endOverlay">
+        <div class="eyebrow" id="endEyebrow">ROUND OVER</div>
+        <h1 class="result-title" id="resultTitle">WIN</h1>
+        <div class="coin-toast hidden" id="coinToast">+0 코인</div>
+        <p class="subtitle" id="endSubtitle">다음 라운드를 준비하세요.</p>
+        <button class="btn" id="nextBtn">CONTINUE</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(() => {
+  // ======================================================================
+  // GLOBAL STATE
+  // ======================================================================
+  let coins = 0;
+  const unlockedWeapons = new Set(['rifle']);
+  let selectedWeaponKey = 'rifle';
+
+  const coinCountEl = document.getElementById('coinCount');
+  const coinBadgeCountEl = document.getElementById('coinBadgeCount');
+  function refreshCoinDisplay() { coinCountEl.textContent = coins; coinBadgeCountEl.textContent = coins; }
+
+  // ======================================================================
+  // ACCOUNT SYSTEM (login / signup, persisted via window.storage when available)
+  // ======================================================================
+  let currentUsername = null, currentPassword = null, currentSpecial = null;
+  let PLAYER_SPEED_MULT = 1;
+  const memoryAccounts = {}; // fallback if window.storage isn't available in this context
+
+  async function storageGetAccount(username) {
+    const key = 'account:' + username;
+    if (window.storage) {
+      try { const r = await window.storage.get(key, false); return r ? JSON.parse(r.value) : null; }
+      catch (e) { return null; }
+    }
+    return memoryAccounts[key] ? JSON.parse(memoryAccounts[key]) : null;
+  }
+  async function storageSetAccount(username, data) {
+    const key = 'account:' + username;
+    const json = JSON.stringify(data);
+    if (window.storage) {
+      try { await window.storage.set(key, json, false); return; } catch (e) { /* fall through to memory */ }
+    }
+    memoryAccounts[key] = json;
+  }
+  function persistAccount() {
+    if (!currentUsername) return;
+    storageSetAccount(currentUsername, {
+      password: currentPassword, coins, unlockedWeapons: [...unlockedWeapons], special: currentSpecial,
+    });
+  }
+
+  const authOverlay = document.getElementById('authOverlay');
+  const tabLogin = document.getElementById('tabLogin');
+  const tabSignup = document.getElementById('tabSignup');
+  const authUsername = document.getElementById('authUsername');
+  const authPassword = document.getElementById('authPassword');
+  const authError = document.getElementById('authError');
+  const authSubmitBtn = document.getElementById('authSubmitBtn');
+  const accountLabel = document.getElementById('accountLabel');
+  let authMode = 'login';
+
+  tabLogin.addEventListener('click', () => { authMode = 'login'; tabLogin.classList.add('active'); tabSignup.classList.remove('active'); authSubmitBtn.textContent = '로그인'; authError.textContent = ''; });
+  tabSignup.addEventListener('click', () => { authMode = 'signup'; tabSignup.classList.add('active'); tabLogin.classList.remove('active'); authSubmitBtn.textContent = '회원가입'; authError.textContent = ''; });
+
+  function enterStationAsAccount(username, account) {
+    currentUsername = username;
+    currentPassword = account.password;
+    coins = account.coins || 0;
+    unlockedWeapons.clear();
+    (account.unlockedWeapons && account.unlockedWeapons.length ? account.unlockedWeapons : ['rifle']).forEach(w => unlockedWeapons.add(w));
+    currentSpecial = account.special || null;
+    PLAYER_SPEED_MULT = (currentSpecial && currentSpecial.speedBoost) ? 1.25 : 1;
+    refreshCoinDisplay();
+    accountLabel.textContent = `${username}님 환영합니다` + (currentSpecial ? ' ★' : '');
+    authOverlay.classList.add('hidden');
+    station.classList.remove('hidden');
+  }
+
+  authSubmitBtn.addEventListener('click', async () => {
+    const username = authUsername.value.trim();
+    const password = authPassword.value;
+    authError.textContent = '';
+    if (!username || !password) { authError.textContent = '아이디와 비밀번호를 모두 입력해주세요.'; return; }
+
+    if (authMode === 'signup') {
+      const existing = await storageGetAccount(username);
+      if (existing) { authError.textContent = '이미 존재하는 아이디입니다.'; return; }
+      const isSpecial = username === '차준서';
+      const special = isSpecial ? { allWeapons: true, speedBoost: true, godKill: true } : null;
+      const account = {
+        password, coins: 0,
+        unlockedWeapons: isSpecial ? WEAPON_ORDER.slice() : ['rifle'],
+        special,
+      };
+      await storageSetAccount(username, account);
+      enterStationAsAccount(username, account);
+    } else {
+      const existing = await storageGetAccount(username);
+      if (!existing) { authError.textContent = '존재하지 않는 아이디입니다.'; return; }
+      if (existing.password !== password) { authError.textContent = '비밀번호가 올바르지 않습니다.'; return; }
+      enterStationAsAccount(username, existing);
+    }
+  });
+
+  const station = document.getElementById('station');
+  const modeOverlay = document.getElementById('modeOverlay');
+  const diffOverlay = document.getElementById('diffOverlay');
+  const mapOverlay = document.getElementById('mapOverlay');
+  const weaponOverlay = document.getElementById('weaponOverlay');
+  const gameStage = document.getElementById('gameStage');
+  const tutorialIntroOverlay = document.getElementById('tutorialIntroOverlay');
+  const tutorialCaption = document.getElementById('tutorialCaption');
+  const endOverlay = document.getElementById('endOverlay');
+
+  const playBtn = document.getElementById('playBtn');
+  const modeBack = document.getElementById('modeBack');
+  const diffBack = document.getElementById('diffBack');
+  const mapBack = document.getElementById('mapBack');
+  const weaponBack = document.getElementById('weaponBack');
+  const diffList = document.getElementById('diffList');
+  const diffEyebrow = document.getElementById('diffEyebrow');
+  const weaponList = document.getElementById('weaponList');
+  const weaponConfirmBtn = document.getElementById('weaponConfirmBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const tutorialStartBtn = document.getElementById('tutorialStartBtn');
+  const weaponTag = document.getElementById('weaponTag');
+  const coinToast = document.getElementById('coinToast');
+
+  let selectedMode = null, selectedDiff = null, selectedMapKey = 'arena';
+
+  const MODE_LABEL = { team: '팀전 (9 vs 9)', solo: '개인전 (1 vs 1)', spectate: '관전 모드' };
+
+  playBtn.addEventListener('click', () => { station.classList.add('hidden'); modeOverlay.classList.remove('hidden'); });
+  modeBack.addEventListener('click', () => { modeOverlay.classList.add('hidden'); station.classList.remove('hidden'); });
+  document.querySelectorAll('.mode-card').forEach(card => {
+    card.addEventListener('click', () => { selectedMode = card.dataset.mode; modeOverlay.classList.add('hidden'); openDifficultySelect(); });
+  });
+  diffBack.addEventListener('click', () => { diffOverlay.classList.add('hidden'); modeOverlay.classList.remove('hidden'); });
+  mapBack.addEventListener('click', () => { mapOverlay.classList.add('hidden'); diffOverlay.classList.remove('hidden'); });
+  weaponBack.addEventListener('click', () => { weaponOverlay.classList.add('hidden'); mapOverlay.classList.remove('hidden'); });
+  document.querySelectorAll('.map-card').forEach(card => {
+    card.addEventListener('click', () => { selectedMapKey = card.dataset.map; mapOverlay.classList.add('hidden'); openWeaponSelect(); });
+  });
+
+  // ======================================================================
+  // WEAPON DEFINITIONS
+  // ======================================================================
+  const WEAPONS = {
+    rifle:    { name: '돌격소총', cost: 0,  sub: '기본적인 총. 처음부터 보유.' },
+    mg:       { name: '기관총',   cost: 20, sub: '클릭하지 않아도 자동으로 연사됩니다.', auto: true, fireCdMult: 0.4, dmgMult: 0.55 },
+    katana:   { name: '카타나',   cost: 25, sub: '피격 시 일정 확률로 총알을 반사합니다. 근접 공격 전용.', melee: true, reflectChance: 0.35, meleeRange: 78, meleeDmg: 15, meleeCdMult: 0.9 },
+    sling:    { name: '새총',     cost: 35, sub: '벽에 맞으면 반사되며, 최대 3번 튕긴 뒤 사라집니다.', bounce: 3, dmgMult: 0.85 },
+    bayonet:  { name: '총검',     cost: 50, sub: '원거리 사격 가능. 가까이서 맞히면 데미지 증가.', closeBoost: true, closeRange: 120, closeMult: 1.9 },
+    infinity: { name: '인피니티', cost: 70, sub: '총알이 벽을 뚫고 날아갑니다.', pierce: true },
+  };
+  const WEAPON_ORDER = ['rifle', 'mg', 'katana', 'sling', 'bayonet', 'infinity'];
+
+  function openWeaponSelect() {
+    refreshCoinDisplay();
+    weaponList.innerHTML = '';
+    WEAPON_ORDER.forEach(key => {
+      const w = WEAPONS[key];
+      const owned = unlockedWeapons.has(key);
+      const btn = document.createElement('div');
+      btn.className = 'weapon-btn' + (selectedWeaponKey === key ? ' equipped' : '');
+      const actionLabel = selectedWeaponKey === key ? '장착됨' : (owned ? '장착' : `구매 (${w.cost})`);
+      const actionClass = selectedWeaponKey === key ? 'eq' : (owned ? 'owned' : 'locked');
+      btn.innerHTML = `
+        <div><div class="weapon-name">${w.name}</div><div class="weapon-sub">${w.sub}</div></div>
+        <div class="weapon-action ${actionClass}">${actionLabel}</div>`;
+      btn.addEventListener('click', () => {
+        if (owned) { selectedWeaponKey = key; openWeaponSelect(); }
+        else if (coins >= w.cost) { coins -= w.cost; unlockedWeapons.add(key); selectedWeaponKey = key; refreshCoinDisplay(); persistAccount(); openWeaponSelect(); }
+        else { btn.style.borderColor = 'var(--danger)'; setTimeout(() => btn.style.borderColor = '', 300); }
+      });
+      weaponList.appendChild(btn);
+    });
+    weaponOverlay.classList.remove('hidden');
+  }
+  weaponConfirmBtn.addEventListener('click', () => {
+    weaponOverlay.classList.add('hidden');
+    gameStage.classList.remove('hidden');
+    startMatch(selectedMode, selectedDiff, selectedMapKey, selectedWeaponKey);
+  });
+
+  // ======================================================================
+  // DIFFICULTY DEFINITIONS (+ per-tier weapon pool for enemies)
+  // ======================================================================
+  const DIFFICULTIES = [
+    { key: 'tutorial', label: '튜토리얼', sub: '선택한 모드의 조작법을 안내합니다', color: '#8a8f98', coin: 0 },
+    { key: 'beginner', label: '초급자', sub: 'AI가 아닌 무작위로 움직이는 봇', color: '#6bcf2f', coin: 1,
+      cfg: { aiType: 'random', speedMult: 0.8, aimError: 0.9, fireCdMult: 1.6, hp: 70, dmgMult: 0.8, canDash: false, weaponPool: ['rifle'] } },
+    { key: 'noviceMulti', label: '초심자 1 vs ?', sub: '매우 약한 봇 2~4명이 매 판 랜덤하게 등장 (1vs1보다 약함)', color: '#2fd6c9', coin: 3,
+      cfg: { aiType: 'random', speedMult: 0.5, aimError: 1.5, fireCdMult: 2.6, hp: 22, dmgMult: 0.3, canDash: false, countRange: [2, 4], weaponPool: ['rifle'] } },
+    { key: 'normal', label: '일반인', sub: '지형지물을 활용하는 약한 AI 봇', color: '#5c9dff', coin: 5,
+      cfg: { aiType: 'cover', speedMult: 0.95, aimError: 0.4, fireCdMult: 1.2, hp: 90, dmgMult: 1.0, canDash: false, usesCover: true, weaponPool: ['rifle', 'mg'] } },
+    { key: 'advanced', label: '고수', sub: '플레이어의 패턴을 분석하는 AI', color: '#ff9a3d', coin: 10,
+      cfg: { aiType: 'pattern', speedMult: 1.0, aimError: 0.22, fireCdMult: 1.0, hp: 100, dmgMult: 1.1, canDash: true, usesCover: true, tracksPattern: true, weaponPool: ['rifle', 'mg', 'sling'] } },
+    { key: 'myth', label: '신화', sub: '빠른 속도와 정확한 에임, 움직임 예측', color: '#c85cff', coin: 70,
+      cfg: { aiType: 'predict', speedMult: 1.25, aimError: 0.08, fireCdMult: 0.85, hp: 110, dmgMult: 1.2, canDash: true, usesCover: true, tracksPattern: true, predicts: true, weaponPool: ['rifle', 'mg', 'sling', 'katana'] } },
+    { key: 'god', label: '신', sub: '빠른 속도 + 10초마다 방패 + 움직임 예측', color: '#ff3b57', coin: 100,
+      cfg: { aiType: 'predictShield', speedMult: 1.35, aimError: 0.05, fireCdMult: 0.8, hp: 120, dmgMult: 1.3, canDash: true, usesCover: true, tracksPattern: true, predicts: true, hasShield: true, weaponPool: ['rifle', 'mg', 'sling', 'katana', 'bayonet', 'infinity'] } },
+  ];
+  const ALLY_CFG = { aiType: 'cover', speedMult: 1.0, aimError: 0.32, fireCdMult: 1.1, hp: 100, dmgMult: 1.0, canDash: false, usesCover: true, weaponPool: ['rifle'] };
+
+  function openDifficultySelect() {
+    diffEyebrow.textContent = `STEP 2 · ${MODE_LABEL[selectedMode]}`;
+    diffList.innerHTML = '';
+    DIFFICULTIES.forEach(d => {
+      const btn = document.createElement('div');
+      btn.className = 'diff-btn'; btn.style.setProperty('--tier-color', d.color);
+      btn.innerHTML = `<div><div class="diff-name">${d.label}</div><div class="diff-sub">${d.sub}</div></div><div class="diff-tag">SELECT</div>`;
+      btn.addEventListener('click', () => {
+        selectedDiff = d;
+        diffOverlay.classList.add('hidden');
+        if (d.key === 'tutorial') { gameStage.classList.remove('hidden'); startTutorial(selectedMode); }
+        else { mapOverlay.classList.remove('hidden'); }
+      });
+      diffList.appendChild(btn);
+    });
+    diffOverlay.classList.remove('hidden');
+  }
+
+  function returnToStation() {
+    gameStage.classList.add('hidden'); endOverlay.classList.add('hidden');
+    tutorialIntroOverlay.classList.add('hidden'); tutorialCaption.classList.add('hidden');
+    refreshCoinDisplay();
+    station.classList.remove('hidden');
+  }
+
+  // ======================================================================
+  // MAPS
+  // ======================================================================
+  const MAPS = {
+    arena: {
+      obstacles: [
+        {x: 552, y: 70, w: 96, h: 145}, {x: 552, y: 535, w: 96, h: 145},
+        {x: 215, y: 310, w: 170, h: 36}, {x: 815, y: 310, w: 170, h: 36},
+        {x: 72, y: 70, w: 36, h: 170}, {x: 1092, y: 70, w: 36, h: 170},
+        {x: 72, y: 510, w: 36, h: 170}, {x: 1092, y: 510, w: 36, h: 170},
+        {x: 350, y: 150, w: 60, h: 60}, {x: 790, y: 540, w: 60, h: 60},
+        {x: 350, y: 540, w: 60, h: 60}, {x: 790, y: 150, w: 60, h: 60},
+      ],
+      spawnY: (i, total) => (H_CONST / (total + 1)) * (i + 1) + rand(-15, 15),
+    },
+    crossroads: {
+      obstacles: [
+        {x: 40, y: 40, w: 430, h: 260}, {x: 730, y: 40, w: 430, h: 260},
+        {x: 40, y: 450, w: 430, h: 260}, {x: 730, y: 450, w: 430, h: 260},
+        {x: 560, y: 340, w: 80, h: 70},
+        {x: 300, y: 355, w: 50, h: 40}, {x: 850, y: 355, w: 50, h: 40},
+        {x: 575, y: 120, w: 50, h: 40}, {x: 575, y: 590, w: 50, h: 40},
+      ],
+      spawnY: (i, total) => 300 + ((i + 1) * (150 / (total + 1))),
+    },
+  };
+  let H_CONST = 750;
+
+  // ======================================================================
+  // CANVAS / ENGINE
+  // ======================================================================
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = 1200, H = 750; H_CONST = H;
+  canvas.width = W; canvas.height = H;
+
+  const playerHpFill = document.getElementById('playerHpFill');
+  const rivalHpFill = document.getElementById('rivalHpFill');
+  const leftName = document.getElementById('leftName');
+  const rightName = document.getElementById('rightName');
+  const duelFill = document.getElementById('duelFill');
+  const roundLabel = document.getElementById('roundLabel');
+  const modeLabel = document.getElementById('modeLabel');
+  const dashFill = document.getElementById('dashFill');
+  const dots = document.querySelectorAll('#roundDots .dot');
+  const resultTitle = document.getElementById('resultTitle');
+  const endEyebrow = document.getElementById('endEyebrow');
+  const endSubtitle = document.getElementById('endSubtitle');
+
+  let obstacles = MAPS.arena.obstacles;
+
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function pickWeaponKey(pool) { return pick(pool && pool.length ? pool : ['rifle']); }
+
+  function circleRectCollide(cx, cy, r, rect) {
+    const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+    const dx = cx - nx, dy = cy - ny;
+    return (dx * dx + dy * dy) < r * r;
+  }
+  function segmentIntersectsRect(x1, y1, x2, y2, rect) {
+    const steps = 16;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps; const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+      if (x > rect.x && x < rect.x + rect.w && y > rect.y && y < rect.y + rect.h) return true;
+    }
+    return false;
+  }
+  function hasLineOfSight(x1, y1, x2, y2) {
+    for (const o of obstacles) if (segmentIntersectsRect(x1, y1, x2, y2, o)) return false;
+    return true;
+  }
+  function nearestObstacle(x, y) {
+    let best = null, bestD = Infinity;
+    for (const o of obstacles) {
+      const cx = o.x + o.w / 2, cy = o.y + o.h / 2, d = Math.hypot(x - cx, y - cy);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    return best;
+  }
+
+  const R = 13, MAX_HP = 100, SPEED = 3.4, DASH_SPEED = 9, DASH_TIME = 10, DASH_COOLDOWN = 70;
+  const BULLET_SPEED = 9.5, BASE_BULLET_DMG = 9, FIRE_COOLDOWN = 14;
+  const SHIELD_INTERVAL = 600, SHIELD_DURATION = 90;
+
+  let mode, diffKey, diffCfgRef, wins, round, roundActive, running = false;
+  const ROUND_WIN_TARGET = 3, MAX_ROUNDS = 5;
+  let allies = [], enemies = [], bullets = [];
+  let playerEntity = null;
+  let keys = {}, mouse = { x: 0, y: 0, down: false, justPressed: false };
+
+  window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ') e.preventDefault();
+    if (e.key.toLowerCase() === 'v' && currentSpecial && currentSpecial.godKill && running && roundActive && !tutorialActive && mode !== 'spectate') {
+      enemies.forEach(en => { en.hp = 0; en.alive = false; });
+    }
+  });
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * (W / rect.width);
+    mouse.y = (e.clientY - rect.top) * (H / rect.height);
+  });
+  canvas.addEventListener('mousedown', () => { mouse.down = true; mouse.justPressed = true; });
+  window.addEventListener('mouseup', () => mouse.down = false);
+
+  function clampToArena(pos, r) { pos.x = Math.max(r, Math.min(W - r, pos.x)); pos.y = Math.max(r, Math.min(H - r, pos.y)); }
+  function resolveObstacleCollision(entity) {
+    for (const o of obstacles) {
+      if (circleRectCollide(entity.x, entity.y, R, o)) {
+        const cx = Math.max(o.x, Math.min(entity.x, o.x + o.w));
+        const cy = Math.max(o.y, Math.min(entity.y, o.y + o.h));
+        let dx = entity.x - cx, dy = entity.y - cy;
+        const dist = Math.hypot(dx, dy) || 0.001; dx /= dist; dy /= dist;
+        const overlap = R - dist;
+        if (overlap > 0) { entity.x += dx * overlap; entity.y += dy * overlap; }
+      }
+    }
+  }
+
+  function makeEntity(x, y, team, controlled, cfg, weaponKey) {
+    return {
+      x, y, prevX: x, prevY: y, vx: 0, vy: 0,
+      hp: cfg.hp || MAX_HP, maxHp: cfg.hp || MAX_HP,
+      team, controlled, cfg,
+      weapon: WEAPONS[weaponKey] || WEAPONS.rifle,
+      weaponKey: WEAPONS[weaponKey] ? weaponKey : 'rifle',
+      fireCd: rand(0, 20), dashCd: 0, dashT: 0,
+      shieldCd: SHIELD_INTERVAL, shieldT: 0,
+      wanderAngle: rand(0, Math.PI * 2), wanderTimer: 0,
+      strafeDir: Math.random() < 0.5 ? 1 : -1, strafeTimer: 0,
+      angle: team === 'ally' ? 0 : Math.PI, alive: true,
+    };
+  }
+
+  function buildTeams() {
+    allies = []; enemies = []; bullets = []; playerEntity = null;
+    obstacles = MAPS[selectedMapKey].obstacles;
+    const spawnYFn = MAPS[selectedMapKey].spawnY;
+    const cfg = diffCfgRef;
+
+    let allyCount, enemyCount;
+    if (mode === 'spectate') { allyCount = 1; enemyCount = 1; }
+    else if (mode === 'team') { allyCount = 9; enemyCount = cfg.countRange ? randInt(cfg.countRange[0], cfg.countRange[1]) : 9; }
+    else { allyCount = 1; enemyCount = cfg.countRange ? randInt(cfg.countRange[0], cfg.countRange[1]) : 1; }
+
+    for (let i = 0; i < allyCount; i++) {
+      const x = rand(70, 200);
+      const y = spawnYFn(i, allyCount);
+      const isPlayer = mode !== 'spectate' && i === 0;
+      const c = mode === 'spectate' ? cfg : ALLY_CFG;
+      const wKey = isPlayer ? selectedWeaponKey : pickWeaponKey(c.weaponPool);
+      const e = makeEntity(x, y, 'ally', isPlayer, c, wKey);
+      allies.push(e);
+      if (isPlayer) playerEntity = e;
+    }
+    for (let i = 0; i < enemyCount; i++) {
+      const x = rand(W - 200, W - 70);
+      const y = spawnYFn(i, enemyCount);
+      const wKey = pickWeaponKey(cfg.weaponPool);
+      enemies.push(makeEntity(x, y, 'enemy', false, cfg, wKey));
+    }
+  }
+
+  function nearestAlive(list, x, y) {
+    let best = null, bestD = Infinity;
+    for (const e of list) { if (!e.alive) continue; const d = Math.hypot(e.x - x, e.y - y); if (d < bestD) { bestD = d; best = e; } }
+    return best;
+  }
+  function nearFuturePoint(target, frames) { return { x: target.x + (target.vx || 0) * frames, y: target.y + (target.vy || 0) * frames }; }
+  function leadPoint(shooter, target) {
+    const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
+    const t = dist / BULLET_SPEED;
+    return { x: target.x + (target.vx || 0) * t, y: target.y + (target.vy || 0) * t };
+  }
+
+  function spawnBullet(team, x, y, angle, dmgMult, weapon) {
+    bullets.push({
+      x, y, spawnX: x, spawnY: y,
+      vx: Math.cos(angle) * BULLET_SPEED, vy: Math.sin(angle) * BULLET_SPEED,
+      team, dmg: BASE_BULLET_DMG * dmgMult,
+      bounces: (weapon && weapon.bounce) || 0,
+      pierce: !!(weapon && weapon.pierce),
+      closeBoost: weapon && weapon.closeBoost ? { range: weapon.closeRange, mult: weapon.closeMult } : null,
+    });
+  }
+
+  function meleeAttack(e, opposing) {
+    const target = nearestAlive(opposing, e.x, e.y);
+    if (!target) return false;
+    const dist = Math.hypot(target.x - e.x, target.y - e.y);
+    if (dist <= e.weapon.meleeRange) {
+      if (!(target.weapon && target.weapon.hasShield)) {
+        target.hp = Math.max(0, target.hp - e.weapon.meleeDmg);
+        if (target.hp <= 0) target.alive = false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function tryFireWeapon(e, opposing, aimAngleOverride) {
+    const w = e.weapon || WEAPONS.rifle;
+    if (w.melee) {
+      if (e.fireCd > 0) return;
+      e.fireCd = FIRE_COOLDOWN * (w.meleeCdMult || 1) * (e.cfg.fireCdMult || 1);
+      meleeAttack(e, opposing);
+      return;
+    }
+    if (e.fireCd > 0) return;
+    e.fireCd = FIRE_COOLDOWN * (w.fireCdMult || 1) * (e.cfg.fireCdMult || 1);
+    const angle = aimAngleOverride + (Math.random() - 0.5) * 0.05;
+    spawnBullet(e.team, e.x + Math.cos(angle) * (R + 6), e.y + Math.sin(angle) * (R + 6), angle, (w.dmgMult || 1) * (e.cfg.dmgMult || 1), w);
+  }
+
+  function updatePlayerControlled(p) {
+    let dx = 0, dy = 0;
+    if (keys['w']) dy -= 1; if (keys['s']) dy += 1; if (keys['a']) dx -= 1; if (keys['d']) dx += 1;
+    const mag = Math.hypot(dx, dy) || 1; dx /= mag; dy /= mag;
+
+    let speed = SPEED * PLAYER_SPEED_MULT;
+    if (p.dashT > 0) { speed = DASH_SPEED * PLAYER_SPEED_MULT; p.dashT--; }
+    else if (keys['shift'] && p.dashCd <= 0 && (dx !== 0 || dy !== 0)) { p.dashT = DASH_TIME; p.dashCd = DASH_COOLDOWN; speed = DASH_SPEED * PLAYER_SPEED_MULT; }
+    if (p.dashCd > 0) p.dashCd--;
+
+    p.x += dx * speed; p.y += dy * speed;
+    clampToArena(p, R); resolveObstacleCollision(p);
+    p.angle = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+    if (p.fireCd > 0) p.fireCd--;
+    if (!p.weapon) p.weapon = WEAPONS.rifle;
+
+    const w = p.weapon;
+    if (w.melee) {
+      if (mouse.justPressed) tryFireWeapon(p, enemies, p.angle);
+    } else if (w.auto) {
+      if (p.fireCd <= 0) tryFireWeapon(p, enemies, p.angle);
+    } else if (mouse.down) {
+      if (p.fireCd <= 0) tryFireWeapon(p, enemies, p.angle);
+    }
+    mouse.justPressed = false;
+    dashFill.style.width = (p.dashCd > 0 ? (100 - (p.dashCd / DASH_COOLDOWN) * 100) : 100) + '%';
+  }
+
+  function updateAIEntity(e, opposing) {
+    const cfg = e.cfg;
+    if (!e.weapon) e.weapon = WEAPONS.rifle; // absolute fallback: never let a bot end up with no gun
+    if (e.fireCd > 0) e.fireCd--; // <- this decrement was missing before, so bots' cooldown never reset and they basically never fired
+    const target = nearestAlive(opposing, e.x, e.y);
+    if (!target) return;
+    const sees = hasLineOfSight(e.x, e.y, target.x, target.y);
+
+    if (cfg.hasShield) {
+      if (e.shieldT > 0) e.shieldT--;
+      else { e.shieldCd--; if (e.shieldCd <= 0) { e.shieldT = SHIELD_DURATION; e.shieldCd = SHIELD_INTERVAL; } }
+    }
+
+    let dx = 0, dy = 0;
+    const meleeMode = e.weapon.melee;
+    const desiredDist = meleeMode ? 40 : 250;
+
+    if (cfg.aiType === 'random') {
+      e.wanderTimer--;
+      if (e.wanderTimer <= 0) { e.wanderAngle = rand(0, Math.PI * 2); e.wanderTimer = randInt(30, 70); }
+      dx = Math.cos(e.wanderAngle); dy = Math.sin(e.wanderAngle);
+    } else if (!sees && !meleeMode) {
+      // can't see the target at all: move straight toward them (ignore kiting/strafe)
+      // so bots reliably close in and get a clear shot instead of hiding behind cover forever
+      const toTarget = { x: target.x - e.x, y: target.y - e.y };
+      dx = toTarget.x; dy = toTarget.y;
+    } else {
+      const steerPoint = (cfg.tracksPattern || cfg.predicts) ? nearFuturePoint(target, cfg.predicts ? 15 : 10) : target;
+      const toTarget = { x: steerPoint.x - e.x, y: steerPoint.y - e.y };
+      const dist = Math.hypot(toTarget.x, toTarget.y) || 1;
+
+      if (cfg.usesCover && e.hp < e.maxHp * 0.4 && !meleeMode) {
+        const cover = nearestObstacle(e.x, e.y);
+        if (cover) { dx += (cover.x + cover.w / 2 - e.x); dy += (cover.y + cover.h / 2 - e.y); }
+      } else if (dist < desiredDist - 40) { dx -= toTarget.x; dy -= toTarget.y; }
+      else if (dist > desiredDist + 60) { dx += toTarget.x; dy += toTarget.y; }
+
+      e.strafeTimer--;
+      if (e.strafeTimer <= 0) { if (Math.random() < 0.35) e.strafeDir *= -1; e.strafeTimer = randInt(40, 80); }
+      const perpX = -toTarget.y / dist, perpY = toTarget.x / dist;
+      dx += perpX * 130 * e.strafeDir; dy += perpY * 130 * e.strafeDir;
+    }
+
+    const mag = Math.hypot(dx, dy) || 1; dx /= mag; dy /= mag;
+    let speed = SPEED * cfg.speedMult;
+    if (e.dashT > 0) { speed = DASH_SPEED; e.dashT--; }
+    else if (cfg.canDash && e.dashCd <= 0 && Math.random() < 0.012) { e.dashT = DASH_TIME; e.dashCd = DASH_COOLDOWN; }
+    if (e.dashCd > 0) e.dashCd--;
+
+    e.x += dx * speed; e.y += dy * speed;
+    clampToArena(e, R); resolveObstacleCollision(e);
+    e.angle = Math.atan2(target.y - e.y, target.x - e.x);
+
+    const dist2 = Math.hypot(target.x - e.x, target.y - e.y);
+    if (meleeMode) {
+      if (dist2 <= e.weapon.meleeRange) tryFireWeapon(e, opposing, e.angle);
+      return;
+    }
+    if (e.weapon.auto) { if (e.fireCd <= 0) tryFireWeapon(e, opposing, e.angle); return; }
+
+    if (e.fireCd > 0) return;
+    const canShoot = sees || cfg.aiType === 'random';
+    if (!canShoot) return;
+    const shootChance = cfg.aiType === 'random' && !sees ? 0.5 : 1.0;
+    if (Math.random() >= shootChance) return;
+    const aimAt = cfg.predicts ? leadPoint(e, target) : target;
+    let angle = Math.atan2(aimAt.y - e.y, aimAt.x - e.x);
+    angle += (Math.random() - 0.5) * cfg.aimError;
+    e.fireCd = FIRE_COOLDOWN * (e.weapon.fireCdMult || 1) * cfg.fireCdMult;
+    spawnBullet(e.team, e.x + Math.cos(angle) * (R + 6), e.y + Math.sin(angle) * (R + 6), angle, (e.weapon.dmgMult || 1) * cfg.dmgMult, e.weapon);
+  }
+
+  function updateVelocities(list) { for (const e of list) { e.vx = e.x - e.prevX; e.vy = e.y - e.prevY; e.prevX = e.x; e.prevY = e.y; } }
+
+  function reflectBullet(b, hitRect) {
+    const overlapLeft = Math.abs((b.x) - hitRect.x), overlapRight = Math.abs(hitRect.x + hitRect.w - b.x);
+    const overlapTop = Math.abs(b.y - hitRect.y), overlapBottom = Math.abs(hitRect.y + hitRect.h - b.y);
+    const minH = Math.min(overlapLeft, overlapRight), minV = Math.min(overlapTop, overlapBottom);
+    if (minH < minV) b.vx *= -1; else b.vy *= -1;
+    b.x += b.vx * 2; b.y += b.vy * 2;
+  }
+
+  function updateBullets() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < -10 || b.x > W + 10 || b.y < -10 || b.y > H + 10) { bullets.splice(i, 1); continue; }
+
+      if (!b.pierce) {
+        let hitRect = null;
+        for (const o of obstacles) if (b.x > o.x && b.x < o.x + o.w && b.y > o.y && b.y < o.y + o.h) { hitRect = o; break; }
+        if (hitRect) {
+          if (b.bounces > 0) { b.bounces--; reflectBullet(b, hitRect); continue; }
+          bullets.splice(i, 1); continue;
+        }
+      }
+
+      const targets = b.team === 'ally' ? enemies : allies;
+      let consumed = false;
+      for (const t of targets) {
+        if (!t.alive) continue;
+        if (Math.hypot(b.x - t.x, b.y - t.y) < R) {
+          if (t.cfg.hasShield && t.shieldT > 0) { consumed = true; break; }
+          if (t.weapon && t.weapon.melee && Math.random() < t.weapon.reflectChance) {
+            b.team = t.team; b.vx *= -1; b.vy *= -1;
+            consumed = false; break; // bullet survives, now flies back as reflected shot
+          }
+          let dmg = b.dmg;
+          if (b.closeBoost) {
+            const spawnDist = Math.hypot(b.x - b.spawnX, b.y - b.spawnY);
+            if (spawnDist < b.closeBoost.range) dmg *= b.closeBoost.mult;
+          }
+          t.hp = Math.max(0, t.hp - dmg);
+          if (t.hp <= 0) t.alive = false;
+          consumed = true; break;
+        }
+      }
+      if (consumed) bullets.splice(i, 1);
+    }
+  }
+
+  function aliveCount(list) { return list.filter(e => e.alive).length; }
+
+  function updateHudLabels() {
+    const diffLabel = DIFFICULTIES.find(d => d.key === diffKey).label;
+    modeLabel.textContent = `${MODE_LABEL[mode]} · ${diffLabel} · ${MAPS[selectedMapKey] === MAPS.arena ? '아레나' : '교차로'}`;
+    weaponTag.textContent = 'WEAPON: ' + (playerEntity ? playerEntity.weapon.name : WEAPONS[selectedWeaponKey].name);
+
+    if (mode === 'team') {
+      leftName.textContent = 'YOUR TEAM'; rightName.textContent = 'ENEMY TEAM';
+      const a = aliveCount(allies), e = aliveCount(enemies), aMax = allies.length, eMax = enemies.length;
+      playerHpFill.style.width = (a / aMax * 100) + '%'; rivalHpFill.style.width = (e / eMax * 100) + '%';
+      applyDuelMeter((a / aMax) - (e / eMax));
+    } else if (mode === 'spectate') {
+      leftName.textContent = 'PLAYER A'; rightName.textContent = 'PLAYER B';
+      const a = allies[0], e = enemies[0];
+      playerHpFill.style.width = (a ? a.hp : 0) + '%'; rivalHpFill.style.width = (e ? e.hp : 0) + '%';
+      applyDuelMeter(((a?a.hp:0) - (e?e.hp:0)) / 100);
+    } else {
+      leftName.textContent = 'YOU'; rightName.textContent = 'RIVAL';
+      const a = allies[0], e = enemies[0];
+      playerHpFill.style.width = (a ? a.hp : 0) + '%'; rivalHpFill.style.width = (e ? e.hp : 0) + '%';
+      applyDuelMeter(((a?a.hp:0) - (e?e.hp:0)) / 100);
+    }
+  }
+  function applyDuelMeter(diffNormalized) {
+    const half = Math.min(50, Math.abs(diffNormalized) * 50);
+    if (diffNormalized >= 0) { duelFill.style.left = (50 - half) + '%'; duelFill.style.width = half + '%'; duelFill.style.background = 'var(--player)'; }
+    else { duelFill.style.left = '50%'; duelFill.style.width = half + '%'; duelFill.style.background = 'var(--rival)'; }
+  }
+
+  function drawFighter(entity, color) {
+    if (!entity.alive) return;
+    ctx.save(); ctx.translate(entity.x, entity.y);
+    if (entity.cfg && entity.cfg.hasShield && entity.shieldT > 0) {
+      ctx.strokeStyle = 'rgba(0,217,255,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, R + 8, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (entity.weapon && entity.weapon.melee) {
+      ctx.strokeStyle = 'rgba(255,200,87,0.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, entity.weapon.meleeRange, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.shadowColor = color; ctx.shadowBlur = 10; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.rotate(entity.angle); ctx.fillStyle = '#14171c';
+    ctx.beginPath(); ctx.moveTo(R - 3, 0); ctx.lineTo(R - 10, -5); ctx.lineTo(R - 10, 5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(0,217,255,0.07)'; ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+    ctx.fillStyle = '#2a2f3a'; ctx.strokeStyle = '#3a4150';
+    obstacles.forEach(o => { ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeRect(o.x, o.y, o.w, o.h); });
+    bullets.forEach(b => { ctx.fillStyle = b.team === 'ally' ? '#ffb28a' : '#8ff2ff'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill(); });
+    allies.forEach(a => drawFighter(a, a.controlled ? '#ff6b35' : '#ffb37a'));
+    enemies.forEach(e => drawFighter(e, '#00d9ff'));
+  }
+
+  // ======================================================================
+  // ROUND / MATCH FLOW
+  // ======================================================================
+  let roundHistory = [];
+  function updateDots() {
+    dots.forEach((d, i) => { d.className = 'dot'; if (i < roundHistory.length) d.classList.add(roundHistory[i] === 'player' ? 'player-win' : 'rival-win'); });
+  }
+
+  function startMatch(m, diff, mapKey, weaponKey) {
+    mode = m; diffKey = diff.key; diffCfgRef = diff.cfg; selectedMapKey = mapKey; selectedWeaponKey = weaponKey;
+    wins = { player: 0, rival: 0 }; roundHistory = []; round = 1;
+    updateDots();
+    roundLabel.textContent = `ROUND ${round} / ${MAX_ROUNDS}`;
+    buildTeams();
+    roundActive = true; running = true;
+  }
+
+  function endRound(winnerTeam) {
+    roundActive = false;
+    if (winnerTeam === 'ally') { wins.player++; roundHistory.push('player'); }
+    else { wins.rival++; roundHistory.push('rival'); }
+    updateDots();
+
+    const matchOver = wins.player >= ROUND_WIN_TARGET || wins.rival >= ROUND_WIN_TARGET || round >= MAX_ROUNDS;
+    endEyebrow.textContent = matchOver ? 'MATCH RESULT' : 'ROUND OVER';
+    coinToast.classList.add('hidden');
+
+    if (mode === 'spectate') {
+      resultTitle.textContent = winnerTeam === 'ally' ? 'PLAYER A WINS' : 'PLAYER B WINS';
+      resultTitle.className = 'result-title win';
+    } else {
+      resultTitle.textContent = winnerTeam === 'ally' ? 'ROUND WON' : 'ROUND LOST';
+      resultTitle.className = 'result-title ' + (winnerTeam === 'ally' ? 'win' : 'lose');
+    }
+
+    if (matchOver) {
+      const playerWonMatch = wins.player > wins.rival;
+      if (mode === 'spectate') {
+        resultTitle.textContent = playerWonMatch ? 'PLAYER A VICTORY' : 'PLAYER B VICTORY';
+      } else {
+        resultTitle.textContent = playerWonMatch ? 'VICTORY' : 'DEFEAT';
+        if (playerWonMatch) {
+          const diff = DIFFICULTIES.find(d => d.key === diffKey);
+          const reward = diff.coin * (mode === 'team' ? 3 : 1);
+          coins += reward;
+          persistAccount();
+          coinToast.textContent = `+${reward} 코인`;
+          coinToast.classList.remove('hidden');
+        }
+      }
+      endSubtitle.textContent = `최종 스코어 ${wins.player} : ${wins.rival} — 스테이션으로 돌아갑니다.`;
+      nextBtn.textContent = 'STATION'; nextBtn.dataset.final = '1';
+    } else {
+      endSubtitle.textContent = `${wins.player} : ${wins.rival} — 다음 라운드로 이동합니다.`;
+      nextBtn.textContent = 'CONTINUE'; nextBtn.dataset.final = '0';
+    }
+    endOverlay.classList.remove('hidden');
+  }
+
+  nextBtn.addEventListener('click', () => {
+    endOverlay.classList.add('hidden');
+    if (nextBtn.dataset.final === '1') { returnToStation(); }
+    else { round++; roundLabel.textContent = `ROUND ${round} / ${MAX_ROUNDS}`; buildTeams(); roundActive = true; }
+  });
+
+  // ======================================================================
+  // TUTORIAL MODE
+  // ======================================================================
+  let tutorialStep = 0, tutorialTimer = 0, tutorialActive = false, tutorialDummy = null, tutorialPlayer = null;
+  const TUTORIAL_STEPS = [
+    { cap: 'W A S D 키로 이동해보세요', sub: '캐릭터를 움직이면 다음 단계로 넘어갑니다', check: () => keys['w']||keys['a']||keys['s']||keys['d'] },
+    { cap: 'SHIFT 키로 대시해보세요', sub: '이동 중 SHIFT를 누르면 빠르게 돌진합니다', check: () => tutorialPlayer.dashT > 0 || tutorialPlayer.dashCd > 0 },
+    { cap: '마우스로 조준하고 클릭해서 발사하세요', sub: '탄환은 엄폐물에 막힙니다', check: () => mouse.down },
+    { cap: '준비되셨습니다!', sub: '잠시 후 스테이션으로 돌아갑니다', check: () => true },
+  ];
+  function startTutorial(m) {
+    mode = m;
+    document.getElementById('tutorialTitle').textContent = `${MODE_LABEL[m]} 튜토리얼`;
+    document.getElementById('tutorialDesc').textContent = '기본 조작을 먼저 익혀볼까요? 실제 판에서는 위 모드로 라이벌과 맞붙게 됩니다.';
+    tutorialIntroOverlay.classList.remove('hidden');
+  }
+  tutorialStartBtn.addEventListener('click', () => {
+    tutorialIntroOverlay.classList.add('hidden');
+    obstacles = MAPS.arena.obstacles;
+    tutorialPlayer = makeEntity(280, H/2, 'ally', true, ALLY_CFG, 'rifle');
+    tutorialDummy = makeEntity(W - 280, H/2, 'enemy', false, { ...ALLY_CFG, aiType: 'idle' }, 'rifle');
+    allies = [tutorialPlayer]; enemies = [tutorialDummy]; bullets = []; playerEntity = tutorialPlayer;
+    tutorialStep = 0; tutorialTimer = 0; tutorialActive = true; roundActive = false; running = true;
+    modeLabel.textContent = '튜토리얼'; roundLabel.textContent = '연습 모드'; weaponTag.textContent = 'WEAPON: 돌격소총';
+    tutorialCaption.classList.remove('hidden'); renderTutorialCaption();
+  });
+  function renderTutorialCaption() {
+    const step = TUTORIAL_STEPS[tutorialStep];
+    tutorialCaption.querySelector('.cap-main').textContent = step.cap;
+    tutorialCaption.querySelector('.cap-sub').textContent = step.sub;
+  }
+  function updateTutorial() {
+    updatePlayerControlled(tutorialPlayer);
+    updateVelocities([tutorialPlayer, tutorialDummy]);
+    updateBullets(); draw(); drawFighter(tutorialDummy, '#00d9ff');
+    const step = TUTORIAL_STEPS[tutorialStep];
+    if (step.check()) {
+      tutorialTimer++;
+      if (tutorialTimer > 40) {
+        tutorialStep++; tutorialTimer = 0;
+        if (tutorialStep >= TUTORIAL_STEPS.length) {
+          tutorialActive = false; tutorialCaption.classList.add('hidden'); setTimeout(returnToStation, 600); return;
+        }
+        renderTutorialCaption();
+      }
+    }
+  }
+
+  // ======================================================================
+  // MAIN LOOP
+  // ======================================================================
+  function loop() {
+    if (gameStage && !gameStage.classList.contains('hidden')) {
+      if (tutorialActive) { updateTutorial(); }
+      else if (running && roundActive) {
+        if (playerEntity) updatePlayerControlled(playerEntity);
+        allies.forEach(a => { if (!a.controlled && a.alive) updateAIEntity(a, enemies); });
+        enemies.forEach(e => { if (e.alive) updateAIEntity(e, allies); });
+        updateVelocities(allies); updateVelocities(enemies);
+        updateBullets(); updateHudLabels(); draw();
+        if (aliveCount(enemies) === 0) endRound('ally');
+        else if (aliveCount(allies) === 0) endRound('enemy');
+      } else if (running) { draw(); }
+    }
+    requestAnimationFrame(loop);
+  }
+  refreshCoinDisplay();
+  loop();
+})();
+</script>
+</body>
+</html>
