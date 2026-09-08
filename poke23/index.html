@@ -549,6 +549,22 @@
   .hud, #toast, .path-wrap{ position:relative; z-index:10; }
   .player, .sky-flyer, .ground-walker, .rest-area, .swimmer, .meteno, .minior, .floating-minior, .light-minior{ z-index:12 !important; }
 
+
+  /* ---------- RANDOM 1F / 2F / 3F JUMP PLATFORMS ---------- */
+  .island::after{
+    content:attr(data-floor) 'F';
+    position:absolute; right:2px; bottom:26px; z-index:4;
+    min-width:28px; height:28px; padding:0 7px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:999px; background:rgba(255,253,246,.92);
+    color:#0B3B52; font-family:'Baloo 2',sans-serif;
+    font-size:12px; font-weight:800;
+    box-shadow:0 3px 8px rgba(0,0,0,.18);
+  }
+  .island.floor-2 .rock{ box-shadow:0 0 0 3px rgba(127,209,255,.30),0 10px 0 -4px rgba(0,0,0,.15),0 14px 16px rgba(0,0,0,.25); }
+  .island.floor-3 .rock{ box-shadow:0 0 0 3px rgba(255,201,60,.38),0 10px 0 -4px rgba(0,0,0,.15),0 14px 16px rgba(0,0,0,.25); }
+  .jump-arrow{ z-index:7; filter:drop-shadow(0 2px 2px rgba(255,255,255,.9)); }
+
 </style>
 </head>
 <body>
@@ -608,7 +624,36 @@ const EXTRA_MONS={384:{n:"레쿠쟈",i:"iVBORw0KGgoAAAANSUhEUgAAAGAAAABgBAMAAAAQ
   const MAX_GAP = 230;  // 멀리 뛰어야 하는 점프
   const ISLAND_WIDTH = 130;
   const ROCK_HEIGHT = 56;
-  const OFFSET_LEVELS = [170, 244, 200, 274];
+  // 발판 높이: 1층 / 2층 / 3층. 새 발판은 이 세 층 중 하나에 랜덤 배치됩니다.
+  // 층간 높이 차이는 메가라이츄의 기본 점프로 올라갈 수 있도록 88px로 맞췄습니다.
+  const FLOOR_LEVELS = [150, 238, 326];
+  const OFFSET_LEVELS = FLOOR_LEVELS; // 기존 코드와의 호환용
+  let lastFloor = 0;
+
+  function pickRandomFloor(idx, isStarter) {
+    // 시작 발판 3개는 플레이 방법을 익히기 쉽도록 1층→2층→1층으로 배치
+    if (isStarter && idx < 3) {
+      const starterFloors = [0, 1, 0];
+      lastFloor = starterFloors[idx];
+      return lastFloor;
+    }
+
+    // 1/2/3층을 랜덤 선택. 2층·3층도 충분히 등장하도록 가중치를 비슷하게 둠.
+    // 한 번에 두 층을 뛰어오르는 불가능한 배치를 막기 위해 현재 층의 ±1층만 후보로 사용.
+    const candidates = [lastFloor];
+    if (lastFloor > 0) candidates.push(lastFloor - 1);
+    if (lastFloor < FLOOR_LEVELS.length - 1) candidates.push(lastFloor + 1);
+
+    // 같은 층보다 위/아래 층이 조금 더 자주 선택되도록 함
+    let nextFloor;
+    if (Math.random() < 0.30) nextFloor = lastFloor;
+    else {
+      const moved = candidates.filter(f => f !== lastFloor);
+      nextFloor = moved[Math.floor(Math.random() * moved.length)];
+    }
+    lastFloor = nextFloor;
+    return nextFloor;
+  }
   const PLAYER_WIDTH = 96;
   const PLAYER_HEIGHT = 96;
   const GRAVITY = 0.9;
@@ -648,10 +693,12 @@ const EXTRA_MONS={384:{n:"레쿠쟈",i:"iVBORw0KGgoAAAANSUhEUgAAAGAAAABgBAMAAAAQ
     const idx = total;
     const name = POKEDATA[id].n;
     const x = nextX;
-    const offsetY = OFFSET_LEVELS[idx % 4];
+    const floor = pickRandomFloor(idx, isStarter);
+    const offsetY = FLOOR_LEVELS[floor];
 
     const island = document.createElement('div');
-    island.className = 'island' + (isStarter ? ' starter' : '');
+    island.className = 'island floor-' + (floor + 1) + (isStarter ? ' starter' : '');
+    island.dataset.floor = String(floor + 1);
     island.style.left = x + 'px';
     island.style.bottom = offsetY + 'px';
 
@@ -665,7 +712,7 @@ const EXTRA_MONS={384:{n:"레쿠쟈",i:"iVBORw0KGgoAAAANSUhEUgAAAGAAAABgBAMAAAAQ
 
     if (idx > 0) {
       const prev = platforms[idx - 1];
-      const prevOffset = OFFSET_LEVELS[(idx - 1) % 4];
+      const prevOffset = platforms[idx - 1].topY - ROCK_HEIGHT;
       const arrow = document.createElement('span');
       arrow.className = 'jump-arrow';
       arrow.textContent = offsetY >= prevOffset ? '↗️' : '↘️';
@@ -723,7 +770,7 @@ const EXTRA_MONS={384:{n:"레쿠쟈",i:"iVBORw0KGgoAAAANSUhEUgAAAGAAAABgBAMAAAAQ
   const playerImgWrap = player;
 
   let playerX = START_X + (ISLAND_WIDTH - PLAYER_WIDTH) / 2;
-  let playerY = OFFSET_LEVELS[0] + ROCK_HEIGHT;
+  let playerY = FLOOR_LEVELS[0] + ROCK_HEIGHT;
   let vy = 0;
   let onGround = true;
   let facing = 'right';
