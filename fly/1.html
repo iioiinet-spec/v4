@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Bird - High Quality Flappy Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #090a0f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: #fff;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 243, 255, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 243, 255, 0.5);
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #0b0c10, #1f2833);
+        }
+        .instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="480" height="640"></canvas>
+    <div class="instructions">스페이스바 또는 화면 클릭으로 점프</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- 오디오 효과 (Web Audio API 사용, 별도 파일 필요 없음) ---
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new AudioCtx();
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    if (type === 'jump') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'score') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+    } else if (type === 'hit') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.linearRampToValueAtTime(40, now + 0.2);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+}
+
+// --- 게임 변수 및 상태 ---
+let gameState = 'START'; // START, PLAYING, GAMEOVER
+let score = 0;
+let highScore = localStorage.getItem('cyberbird_highscore') || 0;
+let frameCount = 0;
+
+// 플레이어 (새)
+const bird = {
+    x: 80,
+    y: canvas.height / 2,
+    radius: 16,
+    velocity: 0,
+    gravity: 0.45,
+    jump: -7.5,
+    rotation: 0,
+    trail: []
+};
+
+// 장애물 (파이프)
+const pipeWidth = 65;
+const pipeGap = 160;
+const pipeSpeed = 2.5;
+let pipes = [];
+
+// 배경 파티클 (별/시티라이트 효과)
+const bgParticles = [];
+for (let i = 0; i < 60; i++) {
+    bgParticles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2 + 0.5,
+        speed: Math.random() * 0.5 + 0.1,
+        opacity: Math.random() * 0.7 + 0.3
+    });
+}
+
+// 충돌/점프 파티클 효과
+let particles = [];
+function createParticles(x, y, color, count = 15) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6,
+            size: Math.random() * 4 + 2,
+            color: color,
+            alpha: 1,
+            life: 0.03
+        });
+    }
+}
+
+// --- 이벤트 리스너 ---
+function handleInput() {
+    initAudio();
+    if (gameState === 'START') {
+        gameState = 'PLAYING';
+        resetGame();
+        bird.velocity = bird.jump;
+        playSound('jump');
+    } else if (gameState === 'PLAYING') {
+        bird.velocity = bird.jump;
+        playSound('jump');
+        createParticles(bird.x - 10, bird.y, '#00f3ff', 5);
+    } else if (gameState === 'GAMEOVER') {
+        gameState = 'PLAYING';
+        resetGame();
+        bird.velocity = bird.jump;
+        playSound('jump');
+    }
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') handleInput();
+});
+canvas.addEventListener('mousedown', handleInput);
+
+// --- 리셋 함수 ---
+function resetGame() {
+    bird.y = canvas.height / 2;
+    bird.velocity = 0;
+    bird.rotation = 0;
+    bird.trail = [];
+    pipes = [];
+    particles = [];
+    score = 0;
+    frameCount = 0;
+}
+
+// --- 게임 업데이트 ---
+function update() {
+    // 배경 파티클 업데이트
+    bgParticles.forEach(p => {
+        p.x -= p.speed;
+        if (p.x < 0) p.x = canvas.width;
+    });
+
+    if (gameState !== 'PLAYING') return;
+
+    frameCount++;
+
+    // 새 물리학
+    bird.velocity += bird.gravity;
+    bird.y += bird.velocity;
+
+    // 회전 각도 계산
+    bird.rotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, bird.velocity * 0.08));
+
+    // 잔상(Trail) 저장
+    bird.trail.push({ x: bird.x, y: bird.y });
+    if (bird.trail.length > 8) bird.trail.shift();
+
+    // 천장/바닥 충돌
+    if (bird.y - bird.radius <= 0 || bird.y + bird.radius >= canvas.height - 20) {
+        gameOver();
+    }
+
+    // 파이프 생성
+    if (frameCount % 100 === 0) {
+        const minHeight = 80;
+        const maxHeight = canvas.height - pipeGap - minHeight - 40;
+        const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+        
+        pipes.push({
+            x: canvas.width,
+            top: topHeight,
+            bottom: canvas.height - topHeight - pipeGap,
+            passed: false
+        });
+    }
+
+    // 파이프 이동 및 충돌 검사
+    for (let i = pipes.length - 1; i >= 0; i--) {
+        let p = pipes[i];
+        p.x -= pipeSpeed;
+
+        // 점수 획득
+        if (!p.passed && p.x + pipeWidth < bird.x) {
+            p.passed = true;
+            score++;
+            playSound('score');
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('cyberbird_highscore', highScore);
+            }
+        }
+
+        // 충돌 판정 (AABB vs Circle)
+        const birdLeft = bird.x - bird.radius + 4;
+        const birdRight = bird.x + bird.radius - 4;
+        const birdTop = bird.y - bird.radius + 4;
+        const birdBottom = bird.y + bird.radius - 4;
+
+        if (birdRight > p.x && birdLeft < p.x + pipeWidth) {
+            if (birdTop < p.top || birdBottom > canvas.height - p.bottom) {
+                gameOver();
+            }
+        }
+
+        // 화면 밖으로 나간 파이프 제거
+        if (p.x + pipeWidth < 0) {
+            pipes.splice(i, 1);
+        }
+    }
+
+    // 충돌 파티클 업데이트
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let pt = particles[i];
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.alpha -= pt.life;
+        if (pt.alpha <= 0) particles.splice(i, 1);
+    }
+}
+
+function gameOver() {
+    playSound('hit');
+    createParticles(bird.x, bird.y, '#ff0055', 30);
+    gameState = 'GAMEOVER';
+}
+
+// --- 렌더링 (그래픽 구현) ---
+function draw() {
+    // 1. 배경 클리어 및 그라디언트
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGrad.addColorStop(0, '#090a0f');
+    bgGrad.addColorStop(0.7, '#111827');
+    bgGrad.addColorStop(1, '#1a0b2e');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. 배경 별/파티클 그린
+    ctx.fillStyle = '#ffffff';
+    bgParticles.forEach(p => {
+        ctx.globalAlpha = p.opacity;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
+
+    // 3. 네온 그리드 배경 (원근감 효과)
+    ctx.strokeStyle = 'rgba(255, 0, 128, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+
+    // 4. 장애물 (파이프) 그리기 - 네온 사이버 스타일
+    pipes.forEach(p => {
+        // 위 쪽 파이프
+        drawNeonPipe(p.x, 0, pipeWidth, p.top, true);
+        // 아래 쪽 파이프
+        drawNeonPipe(p.x, canvas.height - p.bottom, pipeWidth, p.bottom, false);
+    });
+
+    // 5. 바닥 영역
+    const groundGrad = ctx.createLinearGradient(0, canvas.height - 20, 0, canvas.height);
+    groundGrad.addColorStop(0, '#00f3ff');
+    groundGrad.addColorStop(1, '#0055ff');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, canvas.height - 10, canvas.width, 10);
+
+    // 6. 플레이어 잔상(Trail) 효과
+    if (gameState === 'PLAYING') {
+        bird.trail.forEach((t, index) => {
+            const ratio = (index + 1) / bird.trail.length;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, bird.radius * ratio, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0, 243, 255, ${ratio * 0.3})`;
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    // 7. 파티클 그리기
+    particles.forEach(pt => {
+        ctx.save();
+        ctx.globalAlpha = pt.alpha;
+        ctx.fillStyle = pt.color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // 8. 플레이어(새) 그리기 - 고퀄리티 Futuristic Bird
+    if (gameState !== 'GAMEOVER' || particles.length > 0) {
+        ctx.save();
+        ctx.translate(bird.x, bird.y);
+        ctx.rotate(bird.rotation);
+
+        // 네온 글로우 효과
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00f3ff';
+
+        // 몸체 그라디언트
+        const birdGrad = ctx.createRadialGradient(-2, -2, 2, 0, 0, bird.radius);
+        birdGrad.addColorStop(0, '#ffffff');
+        birdGrad.addColorStop(0.4, '#00f3ff');
+        birdGrad.addColorStop(1, '#0066ff');
+
+        ctx.fillStyle = birdGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, bird.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 날개
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(-4, 2, 8, 4, Math.sin(frameCount * 0.3) * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 눈 ( Futuristic Eye )
+        ctx.fillStyle = '#ff0055';
+        ctx.beginPath();
+        ctx.arc(6, -4, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(7, -5, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    // 9. UI & Score 렌더링
+    drawUI();
+}
+
+// 네온 파이프 그리기 보조 함수
+function drawNeonPipe(x, y, width, height, isTop) {
+    ctx.save();
+    
+    // 글로우 효과
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#ff007f';
+
+    // 메인 파이프 테두리 및 배경
+    const pipeGrad = ctx.createLinearGradient(x, 0, x + width, 0);
+    pipeGrad.addColorStop(0, '#1f002b');
+    pipeGrad.addColorStop(0.5, '#4a0066');
+    pipeGrad.addColorStop(1, '#1f002b');
+
+    ctx.fillStyle = pipeGrad;
+    ctx.strokeStyle = '#ff007f';
+    ctx.lineWidth = 2;
+
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
+
+    // 파이프 캡 (끝부분 두꺼운 테두리)
+    const capHeight = 20;
+    const capY = isTop ? y + height - capHeight : y;
+
+    ctx.fillStyle = '#660080';
+    ctx.fillRect(x - 4, capY, width + 8, capHeight);
+    ctx.strokeRect(x - 4, capY, width + 8, capHeight);
+
+    // 하이라이트 선
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y);
+    ctx.lineTo(x + 8, y + height);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+// UI 텍스트 렌더링
+function drawUI() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    
+    if (gameState === 'START') {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#00f3ff';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('CYBER BIRD', canvas.width / 2, canvas.height / 3);
+
+        ctx.shadowBlur = 0;
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#00f3ff';
+        ctx.fillText('클릭하거나 스페이스바를 누르세요', canvas.width / 2, canvas.height / 2);
+    } 
+    else if (gameState === 'PLAYING') {
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00f3ff';
+        ctx.font = 'bold 48px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(score, canvas.width / 2, 80);
+    } 
+    else if (gameState === 'GAMEOVER') {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff0055';
+        ctx.font = 'bold 40px sans-serif';
+        ctx.fillStyle = '#ff0055';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 3);
+
+        ctx.shadowBlur = 0;
+        ctx.font = '20px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`SCORE : ${score}`, canvas.width / 2, canvas.height / 2 - 10);
+        
+        ctx.fillStyle = '#00f3ff';
+        ctx.fillText(`BEST : ${highScore}`, canvas.width / 2, canvas.height / 2 + 25);
+
+        ctx.font = '15px sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillText('다시 시작하려면 클릭하세요', canvas.width / 2, canvas.height / 2 + 80);
+    }
+    ctx.restore();
+}
+
+// --- 메인 게임 루프 ---
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// 게임 시작
+gameLoop();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pikachu Flappy Run</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #0c0f1d;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: #fff;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(255, 230, 0, 0.4);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 3px solid rgba(255, 230, 0, 0.6);
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #101428, #1d2243);
+        }
+        .instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.85);
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 6px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="480" height="640"></canvas>
+    <div class="instructions">스페이스바 또는 화면 클릭으로 점프</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- 오디오 효과 (Web Audio API 사용) ---
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new AudioCtx();
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    if (type === 'jump') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(450, now);
+        osc.frequency.exponentialRampToValueAtTime(850, now + 0.1);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'score') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.setValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+    } else if (type === 'hit') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.linearRampToValueAtTime(50, now + 0.2);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+}
+
+// --- 게임 상태 및 변수 ---
+let gameState = 'START';
+let score = 0;
+let highScore = localStorage.getItem('pikachu_canvas_highscore') || 0;
+let frameCount = 0;
+
+// 피카츄 플레이어 변수
+const pika = {
+    x: 90,
+    y: canvas.height / 2,
+    radius: 20,
+    velocity: 0,
+    gravity: 0.26,
+    jump: -4.8,
+    rotation: 0,
+    trail: []
+};
+
+// 장애물 파이프
+const pipeWidth = 65;
+const pipeGap = 175;
+const pipeSpeed = 2.3;
+let pipes = [];
+
+// 배경 별 및 전기 파티클
+const bgParticles = [];
+for (let i = 0; i < 50; i++) {
+    bgParticles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2 + 0.5,
+        speed: Math.random() * 0.5 + 0.1,
+        opacity: Math.random() * 0.7 + 0.3
+    });
+}
+
+let particles = [];
+function createElectricParticles(x, y, count = 10) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6,
+            size: Math.random() * 3 + 1.5,
+            color: Math.random() > 0.3 ? '#FFE600' : '#FFFFFF',
+            alpha: 1,
+            life: 0.04
+        });
+    }
+}
+
+// --- 입력 처리 ---
+function handleInput() {
+    initAudio();
+    if (gameState === 'START') {
+        gameState = 'PLAYING';
+        resetGame();
+        pika.velocity = pika.jump;
+        playSound('jump');
+    } else if (gameState === 'PLAYING') {
+        pika.velocity = pika.jump;
+        playSound('jump');
+        createElectricParticles(pika.x - 10, pika.y, 5);
+    } else if (gameState === 'GAMEOVER') {
+        gameState = 'PLAYING';
+        resetGame();
+        pika.velocity = pika.jump;
+        playSound('jump');
+    }
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') handleInput();
+});
+canvas.addEventListener('mousedown', handleInput);
+
+function resetGame() {
+    pika.y = canvas.height / 2;
+    pika.velocity = 0;
+    pika.rotation = 0;
+    pika.trail = [];
+    pipes = [];
+    particles = [];
+    score = 0;
+    frameCount = 0;
+}
+
+// --- 게임 로직 업데이트 ---
+function update() {
+    bgParticles.forEach(p => {
+        p.x -= p.speed;
+        if (p.x < 0) p.x = canvas.width;
+    });
+
+    if (gameState !== 'PLAYING') return;
+
+    frameCount++;
+
+    pika.velocity += pika.gravity;
+    if (pika.velocity > 7) pika.velocity = 7;
+    if (pika.velocity < -6) pika.velocity = -6;
+
+    pika.y += pika.velocity;
+    pika.rotation = Math.min(Math.PI / 6, Math.max(-Math.PI / 6, pika.velocity * 0.06));
+
+    pika.trail.push({ x: pika.x, y: pika.y });
+    if (pika.trail.length > 6) pika.trail.shift();
+
+    if (pika.y - pika.radius <= 0 || pika.y + pika.radius >= canvas.height - 20) {
+        gameOver();
+    }
+
+    if (frameCount % 110 === 0) {
+        const minHeight = 80;
+        const maxHeight = canvas.height - pipeGap - minHeight - 40;
+        const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+        
+        pipes.push({
+            x: canvas.width,
+            top: topHeight,
+            bottom: canvas.height - topHeight - pipeGap,
+            passed: false
+        });
+    }
+
+    for (let i = pipes.length - 1; i >= 0; i--) {
+        let p = pipes[i];
+        p.x -= pipeSpeed;
+
+        if (!p.passed && p.x + pipeWidth < pika.x) {
+            p.passed = true;
+            score++;
+            playSound('score');
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('pikachu_canvas_highscore', highScore);
+            }
+        }
+
+        const pikaLeft = pika.x - pika.radius + 4;
+        const pikaRight = pika.x + pika.radius - 4;
+        const pikaTop = pika.y - pika.radius + 4;
+        const pikaBottom = pika.y + pika.radius - 4;
+
+        if (pikaRight > p.x && pikaLeft < p.x + pipeWidth) {
+            if (pikaTop < p.top || pikaBottom > canvas.height - p.bottom) {
+                gameOver();
+            }
+        }
+
+        if (p.x + pipeWidth < 0) {
+            pipes.splice(i, 1);
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let pt = particles[i];
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.alpha -= pt.life;
+        if (pt.alpha <= 0) particles.splice(i, 1);
+    }
+}
+
+function gameOver() {
+    playSound('hit');
+    createElectricParticles(pika.x, pika.y, 30);
+    gameState = 'GAMEOVER';
+}
+
+// --- 캔버스에 달리는 피카츄 정밀 그리기 ---
+function drawPikachu(x, y, rotation) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+
+    // 노란 후광 Glow 효과
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#FFE600';
+
+    // 1. 꼬리 (Lightning Tail)
+    ctx.fillStyle = '#964B00';
+    ctx.fillRect(-22, -2, 6, 4);
+    
+    ctx.fillStyle = '#FFE600';
+    ctx.beginPath();
+    ctx.moveTo(-20, -2);
+    ctx.lineTo(-28, -12);
+    ctx.lineTo(-20, -12);
+    ctx.lineTo(-26, -26);
+    ctx.lineTo(-12, -16);
+    ctx.lineTo(-17, -16);
+    ctx.lineTo(-12, -2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. 양쪽 귀 (Ears)
+    // 왼쪽 귀
+    ctx.save();
+    ctx.rotate(-0.35);
+    ctx.fillStyle = '#FFE600';
+    ctx.beginPath();
+    ctx.ellipse(-6, -22, 5.5, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222222';
+    ctx.beginPath();
+    ctx.ellipse(-7, -31, 4, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 오른쪽 귀
+    ctx.save();
+    ctx.rotate(0.35);
+    ctx.fillStyle = '#FFE600';
+    ctx.beginPath();
+    ctx.ellipse(8, -21, 5.5, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222222';
+    ctx.beginPath();
+    ctx.ellipse(9, -30, 4, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 3. 달리는 다리 (Legs Animation)
+    const legOffset = Math.sin(frameCount * 0.45) * 6;
+    ctx.fillStyle = '#D4B000';
+    ctx.beginPath();
+    ctx.ellipse(-7 + legOffset, 16, 4.5, 8, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(8 - legOffset, 16, 4.5, 8, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. 몸통 (Body)
+    const bodyGrad = ctx.createRadialGradient(2, -2, 3, 0, 0, 22);
+    bodyGrad.addColorStop(0, '#FFFF80');
+    bodyGrad.addColorStop(0.6, '#FFE600');
+    bodyGrad.addColorStop(1, '#D9B500');
+
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 19, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. 파란색 번개 의상 (Running Vest)
+    ctx.fillStyle = '#0075FF';
+    ctx.beginPath();
+    ctx.ellipse(-1, 3, 13.5, 9.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 번개 마크
+    ctx.fillStyle = '#FFE600';
+    ctx.beginPath();
+    ctx.moveTo(1, -1);
+    ctx.lineTo(-3, 4);
+    ctx.lineTo(0, 4);
+    ctx.lineTo(-2, 8);
+    ctx.lineTo(3, 2);
+    ctx.lineTo(0, 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 6. 얼굴 요소 (Face: Cheek, Eye, Nose)
+    // 빨간볼 (Cheek)
+    ctx.fillStyle = '#FF2A2A';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#FF2A2A';
+    ctx.beginPath();
+    ctx.arc(11, 3, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 눈 (Eye)
+    ctx.fillStyle = '#222222';
+    ctx.beginPath();
+    ctx.arc(8.5, -5.5, 3.8, 0, Math.PI * 2);
+    ctx.fill();
+    // 눈 반사광
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(10, -7, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 코와 웃는 입 (Nose & Mouth)
+    ctx.fillStyle = '#222222';
+    ctx.beginPath();
+    ctx.arc(14.5, -2, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#222222';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.arc(12.5, 1, 2.5, 0, Math.PI * 0.85);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+// --- 렌더링 루프 ---
+function draw() {
+    // 배경
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGrad.addColorStop(0, '#0c1021');
+    bgGrad.addColorStop(0.7, '#1b223d');
+    bgGrad.addColorStop(1, '#2c1e4a');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 배경 별
+    ctx.fillStyle = '#ffffff';
+    bgParticles.forEach(p => {
+        ctx.globalAlpha = p.opacity;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
+
+    // 파이프 (몬스터볼 테마)
+    pipes.forEach(p => {
+        drawMonsterPipe(p.x, 0, pipeWidth, p.top, true);
+        drawMonsterPipe(p.x, canvas.height - p.bottom, pipeWidth, p.bottom, false);
+    });
+
+    // 바닥
+    const groundGrad = ctx.createLinearGradient(0, canvas.height - 20, 0, canvas.height);
+    groundGrad.addColorStop(0, '#ffe600');
+    groundGrad.addColorStop(1, '#ff9900');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, canvas.height - 10, canvas.width, 10);
+
+    // 이동 잔상 효과
+    if (gameState === 'PLAYING') {
+        pika.trail.forEach((t, index) => {
+            const ratio = (index + 1) / pika.trail.length;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, pika.radius * ratio, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 230, 0, ${ratio * 0.35})`;
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    // 전기 스파크 파티클
+    particles.forEach(pt => {
+        ctx.save();
+        ctx.globalAlpha = pt.alpha;
+        ctx.fillStyle = pt.color;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // 피카츄 캐릭터 직접 그리기
+    if (gameState !== 'GAMEOVER' || particles.length > 0) {
+        drawPikachu(pika.x, pika.y, pika.rotation);
+    }
+
+    // UI 텍스트
+    drawUI();
+}
+
+function drawMonsterPipe(x, y, width, height, isTop) {
+    ctx.save();
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+
+    const pipeGrad = ctx.createLinearGradient(x, 0, x + width, 0);
+    pipeGrad.addColorStop(0, '#2b3044');
+    pipeGrad.addColorStop(0.5, '#454d6b');
+    pipeGrad.addColorStop(1, '#2b3044');
+
+    ctx.fillStyle = pipeGrad;
+    ctx.strokeStyle = '#ffe600';
+    ctx.lineWidth = 2;
+
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
+
+    const capHeight = 22;
+    const capY = isTop ? y + height - capHeight : y;
+
+    ctx.fillStyle = isTop ? '#ff3b30' : '#ffffff';
+    ctx.fillRect(x - 4, capY, width + 8, capHeight);
+    ctx.strokeRect(x - 4, capY, width + 8, capHeight);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x + width / 2, capY + capHeight / 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawUI() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    
+    if (gameState === 'START') {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ffe600';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.fillStyle = '#ffe600';
+        ctx.fillText('PIKACHU RUN', canvas.width / 2, canvas.height / 3);
+
+        ctx.shadowBlur = 0;
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('클릭하거나 스페이스바를 누르세요', canvas.width / 2, canvas.height / 2);
+    } 
+    else if (gameState === 'PLAYING') {
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ffe600';
+        ctx.font = 'bold 48px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(score, canvas.width / 2, 80);
+    } 
+    else if (gameState === 'GAMEOVER') {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff3b30';
+        ctx.font = 'bold 40px sans-serif';
+        ctx.fillStyle = '#ff3b30';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 3);
+
+        ctx.shadowBlur = 0;
+        ctx.font = '20px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`SCORE : ${score}`, canvas.width / 2, canvas.height / 2 - 10);
+        
+        ctx.fillStyle = '#ffe600';
+        ctx.fillText(`BEST : ${highScore}`, canvas.width / 2, canvas.height / 2 + 25);
+
+        ctx.font = '15px sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillText('다시 시작하려면 클릭하세요', canvas.width / 2, canvas.height / 2 + 80);
+    }
+    ctx.restore();
+}
+
+// 게임 루프
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
