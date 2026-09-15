@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>포켓몬 프리덤 AI 어드벤처</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        #chat-container {
+            width: 780px;
+            background: #1e1e1e;
+            border: 4px solid #ffcb05;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            height: 88vh;
+            box-shadow: 0 0 25px rgba(255, 203, 5, 0.4);
+        }
+        #chat-header {
+            background: #2b2b2b;
+            padding: 15px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            border-bottom: 2px solid #444;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffcb05;
+            text-align: center;
+            line-height: 1.5;
+        }
+        #chat-log {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: #181818;
+        }
+        .message {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+        }
+        .ai-msg {
+            background: #2d2d2d;
+            color: #00ffcc;
+            align-self: flex-start;
+            border-left: 4px solid #00ffcc;
+        }
+        .user-msg {
+            background: #3b5ca8;
+            color: white;
+            align-self: flex-end;
+            border-right: 4px solid #ffcb05;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .user-msg:hover {
+            background: #4a6eb5;
+        }
+        .user-msg::after {
+            content: " 🖱️(터치)";
+            font-size: 10px;
+            color: #ffcb05;
+            opacity: 0.7;
+        }
+        .action-text {
+            color: #ff9800;
+            font-style: italic;
+            font-weight: bold;
+        }
+        #input-area {
+            display: flex;
+            padding: 12px;
+            background: #2b2b2b;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+            border-top: 2px solid #444;
+        }
+        #user-input {
+            flex: 1;
+            padding: 10px;
+            font-size: 15px;
+            border-radius: 6px;
+            border: 1px solid #555;
+            background: #111;
+            color: white;
+        }
+        #send-btn {
+            background: #ffcb05;
+            color: #1a2f5a;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-left: 8px;
+        }
+        #send-btn:hover {
+            background: #ffda47;
+        }
+        
+        /* 터치 시 뜨는 메뉴 */
+        .msg-menu {
+            position: absolute;
+            background: #222;
+            border: 2px solid #ffcb05;
+            border-radius: 6px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 10;
+            right: 0;
+            top: -45px;
+            white-space: nowrap;
+        }
+        .msg-menu button {
+            background: none;
+            border: none;
+            color: white;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .msg-menu button:hover {
+            background: #ffcb05;
+            color: #121212;
+        }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="chat-header">
+        ✨ 포켓몬 프리덤 월드 ✨<br>
+        <span id="header-status" style="font-size: 12px; color: #aaa;">먼저 사용하실 이름을 입력해 주세요!</span>
+    </div>
+    
+    <div id="chat-log">
+        <div class="message ai-msg" data-id="0">
+            <b>[오박사 연구소]</b><br>
+            오오, 새로운 트레이너가 찾아왔구나! 포켓몬 세계에 온 것을 환영한다.<br>
+            자네의 <b>이름(닉네임)</b>은 무엇인가? 아래 입력창에 적어주게나!
+        </div>
+    </div>
+
+    <div id="input-area">
+        <input type="text" id="user-input" placeholder="이름을 입력하세요..." onkeypress="if(event.key === 'Enter') sendCommand();">
+        <button id="send-btn" onclick="sendCommand()">결정</button>
+    </div>
+</div>
+
+<script>
+    let worldState = {
+        playerName: "",
+        isNameSet: false,
+        characters: ["오박사", "피카츄"],
+        location: "태초마을 광장"
+    };
+
+    let messageIdCounter = 1;
+
+    function appendMessage(text, sender, isUser = false) {
+        const chatLog = document.getElementById("chat-log");
+        const msgDiv = document.createElement("div");
+        msgDiv.className = `message ${sender === 'ai' ? 'ai-msg' : 'user-msg'}`;
+        
+        let currentId = messageIdCounter++;
+        msgDiv.setAttribute("data-id", currentId);
+        
+        let cleanText = text;
+        msgDiv.innerHTML = text;
+
+        if (isUser) {
+            msgDiv.onclick = (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.msg-menu').forEach(m => m.remove());
+
+                const menu = document.createElement("div");
+                menu.className = "msg-menu";
+                menu.style.display = "block";
+
+                const copyBtn = document.createElement("button");
+                copyBtn.innerText = "📋 복사하기";
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(cleanText);
+                    alert("클립보드에 복사되었습니다!");
+                    menu.remove();
+                };
+
+                const wipeBtn = document.createElement("button");
+                wipeBtn.innerText = "🗑️ 기억 & 이 아래 전부 삭제";
+                wipeBtn.onclick = () => {
+                    // 이 메시지 element부터 시작해서 그 이후에 생성된 모든 요소를 싹 다 삭제!
+                    let targetNode = msgDiv;
+                    while (targetNode) {
+                        let nextNode = targetNode.nextElementSibling;
+                        targetNode.remove();
+                        targetNode = nextNode;
+                    }
+                    menu.remove();
+                };
+
+                menu.appendChild(copyBtn);
+                menu.appendChild(wipeBtn);
+                msgDiv.appendChild(menu);
+            };
+        }
+
+        chatLog.appendChild(msgDiv);
+        chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    window.onclick = () => {
+        document.querySelectorAll('.msg-menu').forEach(m => m.remove());
+    };
+
+    function sendCommand() {
+        const inputField = document.getElementById("user-input");
+        let text = inputField.value.trim();
+        if (!text) return;
+
+        if (!worldState.isNameSet) {
+            worldState.playerName = text;
+            worldState.isNameSet = true;
+            
+            appendMessage(`내 이름은 [${worldState.playerName}]이야!`, 'user', true);
+            inputField.value = "";
+            inputField.placeholder = "대화나 (괄호 안의 행동)을 입력하세요...";
+            document.getElementById("send-btn").innerText = "보내기";
+            document.getElementById("header-status").innerText = `트레이너: ${worldState.playerName}님 | 말풍선 터치 시 복사/이후 삭제 가능`;
+
+            setTimeout(() => {
+                appendMessage(`오호, <b>${worldState.playerName}</b>(이)라고 하는구나! 멋진 이름이다.<br>자, 이제 <b>${worldState.playerName}</b>님만의 모험을 시작해볼까?<br><i>(힌트: 인물을 불러오거나 <b>(행동)</b>을 괄호 안에 적으면 모든 상황이 자유롭게 일어납니다!)</i>`, 'ai', false);
+            }, 400);
+            return;
+        }
+
+        appendMessage(text, 'user', true);
+        inputField.value = "";
+
+        setTimeout(() => {
+            processFreeAIResponse(text);
+        }, 500);
+    }
+
+    function processFreeAIResponse(input) {
+        let reply = "";
+        let actionMatch = input.match(/\((.*?)\)/);
+        let hasAction = actionMatch !== null;
+        let actionText = hasAction ? actionMatch[1] : "";
+        let pName = worldState.playerName;
+
+        if (input.includes("데려와") || input.includes("추가") || input.includes("소환") || input.includes("등장")) {
+            let possibleNames = ["이슬이", "지우", "로켓단 로이&로사", "웅이", "챔피언 단델", "뮤츠"];
+            let added = possibleNames.find(name => input.includes(name)) || "신비로운 방랑자";
+            if (!worldState.characters.includes(added)) {
+                worldState.characters.push(added);
+            }
+            reply = `✨ <b>[인물 등장]</b> 빛이 번쩍이더니 <b>${added}</b>(이)가 나타났습니다!<br><b>${added}</b>: "만나서 반가워, ${pName}! 앞으로 잘 부탁해."<br>현재 주변 인물: [${worldState.characters.join(", ")}]`;
+        }
+        else if (hasAction) {
+            reply = `⚡ <b>${pName}</b>님의 행동 <span class="action-text">(${actionText})</span>이(가) 세계에 적용되었습니다!<br>`;
+            if (actionText.includes("폭발") || actionText.includes("파괴") || actionText.includes("부수")) {
+                reply += `주변이 굉음과 함께 엄청난 충격에 휩싸였습니다! 오박사와 사람들이 <b>${pName}</b>님을 보며 당황해서 도망칩니다!`;
+            } else if (actionText.includes("배틀") || actionText.includes("싸워")) {
+                reply += `<b>${pName}</b>님의 선언으로 팽팽한 긴장감 속 배틀이 시작되었습니다! 포켓몬들이 강력한 기술을 주고받습니다.`;
+            } else {
+                reply += `<b>${pName}</b>님의 뜻대로 상황이 급변했습니다. 주변 인물들이 놀라며 반응합니다!`;
+            }
+        }
+        else {
+            reply = `🤖 포켓몬 세계의 인물들(${worldState.characters.join(", ")})이 <b>${pName}</b>님을 바라보며 대답합니다.<br>"좋은 생각이야, ${pName}! 다음엔 또 어떤 걸 해볼까?"`;
+        }
+
+        appendMessage(reply, 'ai', false);
+    }
+</script>
+
+</body>
+</html>
