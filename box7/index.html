@@ -152,7 +152,8 @@
     <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 전력질주</div>
     <div><kbd>Space</kbd> 점프 · 공중에서 한 번 더 누르면 <b>엉뚱한 포즈</b></div>
     <div><kbd>좌클릭</kbd> 밀기 / 망치 · <kbd>우클릭</kbd> 잡기(떼면 던짐)</div>
-    <div><kbd>드래그</kbd> 또는 <kbd>←</kbd><kbd>→</kbd> 카메라 · <kbd>B</kbd> 밝기 · <kbd>E</kbd><kbd>Q</kbd> 밀기/잡기</div>
+    <div><kbd>드래그</kbd> 또는 <kbd>←</kbd><kbd>→</kbd> 카메라 · <kbd>휠</kbd> 화면 확대/축소</div>
+    <div><kbd>Alt</kbd>+<kbd>휠</kbd> 내 캐릭터 크기 조절 · <kbd>B</kbd> 밝기 · <kbd>E</kbd><kbd>Q</kbd> 밀기/잡기</div>
   </div>
   <div id="compass" class="panel"><canvas id="mapCanvas" width="264" height="264"></canvas></div>
   <button id="bright" title="화면 밝기 (B키)">밝기: 보통</button>
@@ -1138,7 +1139,7 @@ function buildGuy(style){
   const legX = 0.13*s*w, ctrlR = 0.5*s;
 
   const g = {
-    style, name:style.name,
+    style, name:style.name, visualScale:1.0,
     dim:{shinC, thighC, pelvisC, chestC, headC, ctrlR,
       hipOff: pelvisC - ctrlR, chestUp: chestC - pelvisC, headUp: headC - pelvisC,
       legX, shoulderX, footDrop: pelvisC - shinC},
@@ -1462,20 +1463,27 @@ function syncGuy(g){
   for(const k in g.D){
     const b = g.D[k], m = g.M[k];
     if(!m) continue;
-    m.position.copy(b.position);
+    const vs = g.visualScale || 1;
+    // 각 파츠를 골반 기준으로 함께 벌리거나 모아 캐릭터 전체 크기를 시각적으로 조절한다.
+    const gp = g.D.pelvis.position;
+    m.position.set(gp.x + (b.position.x-gp.x)*vs,
+                   gp.y + (b.position.y-gp.y)*vs,
+                   gp.z + (b.position.z-gp.z)*vs);
     m.quaternion.copy(b.quaternion);
     const sp = Math.min(1, Math.hypot(b.velocity.x, b.velocity.y, b.velocity.z)/18);
     let st = 1 + sp*0.30, sq = 1 - sp*0.14;
     if(k === 'chest'){ st *= br; sq /= br; }
     else if(k === 'pelvis'){ st /= br; sq *= br; }
     const base = m.userData.base;
-    if(base) m.scale.set(base.x*sq, base.y*st, base.z*sq);
-    else m.scale.set(sq, st, sq);
+    const vs2 = g.visualScale || 1;
+    if(base) m.scale.set(base.x*sq*vs2, base.y*st*vs2, base.z*sq*vs2);
+    else m.scale.set(sq*vs2, st*vs2, sq*vs2);
   }
   const p = g.D.pelvis.position;
   let ringY = 0.09;
   if(currentMap && currentMap.ringY) ringY = currentMap.ringY(p.y);
   g.ring.position.set(p.x, ringY, p.z);
+  g.ring.scale.setScalar(g.visualScale || 1);
   g.ring.visible = p.y > currentMap.killY + 2;
 }
 function respawnGuy(g, spot){
@@ -1823,6 +1831,7 @@ addEventListener('blur', ()=>{ for(const k in keys) keys[k] = false; });
 let jumpPressed = false;
 
 let camYaw = 0, camTargetYaw = 0, dragging = false, lastX = 0;
+let cameraZoom = 1.0; // 바나나 광장 휠 줌: 작을수록 확대, 클수록 축소
 let downAt = 0, downX = 0, moved = 0;
 renderer.domElement.addEventListener('contextmenu', e=>e.preventDefault());
 renderer.domElement.addEventListener('pointerdown', e=>{
@@ -1842,6 +1851,20 @@ addEventListener('pointermove', e=>{
     camTargetYaw -= (e.clientX-lastX)*0.006; lastX = e.clientX;
   }
 });
+// 바나나 광장: 휠 = 카메라 확대/축소, Alt+휠 = 내 캐릭터 크기 조절
+renderer.domElement.addEventListener('wheel', e=>{
+  if(!playing || !currentMap || currentMap.id !== 'arena') return;
+  e.preventDefault();
+  const dir = Math.sign(e.deltaY);
+  if(e.altKey){
+    if(!player) return;
+    player.visualScale = clamp((player.visualScale || 1) * (dir > 0 ? 0.92 : 1.08), 0.45, 2.20);
+    yell('캐릭터 크기 ' + Math.round(player.visualScale*100) + '%');
+  } else {
+    cameraZoom = clamp(cameraZoom * (dir > 0 ? 1.10 : 0.90), 0.45, 2.35);
+  }
+}, {passive:false});
+
 addEventListener('resize', ()=>{
   camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -2110,9 +2133,10 @@ function step(dt){
 }
 function updateCamera(dt){
   const t = player.D.pelvis.position;
-  const desired = new V3(t.x - Math.sin(camYaw)*currentMap.camDist,
-                         t.y + currentMap.camHigh,
-                         t.z - Math.cos(camYaw)*currentMap.camDist);
+  const zoom = currentMap.id === 'arena' ? cameraZoom : 1.0;
+  const desired = new V3(t.x - Math.sin(camYaw)*currentMap.camDist*zoom,
+                         t.y + currentMap.camHigh*zoom,
+                         t.z - Math.cos(camYaw)*currentMap.camDist*zoom);
   camPos.lerp(desired, 1-Math.pow(0.002, dt));
   camera.position.copy(camPos);
   camLook.lerp(new V3(t.x, t.y+0.9, t.z), 1-Math.pow(0.0005, dt));
@@ -2141,6 +2165,7 @@ function animate(){
 function loadMap(map){
   clearArena();
   currentMap = map;
+  if(map.id === 'arena') cameraZoom = 1.0;
   map.build();
   elMapInfo.style.display = map.hasTiles ? 'block' : 'none';
   document.getElementById('layerWrap').style.display = map.hasLayers ? 'inline' : 'none';
