@@ -194,7 +194,7 @@ window.addEventListener('error', function(e){
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 <script>
 /* =========================================================================
-   찰흙맨 대소동 v5 — 맵 2종 + 캐릭터 5종
+   찰흙맨 대소동 v6 — 일곱 섬 징검다리 맵 추가
    · 캐릭터 = 물리 바디 11개 + 관절 10개짜리 액티브 래그돌
    · 맵 A 바나나 광장: 회전 장애물이 가득한 원형 경기장
    · 맵 B 육각형 붕괴: 밟으면 사라지는 육각 발판 4층 (폴가이즈 헥사곤 방식)
@@ -319,6 +319,9 @@ function boing(f0=520, f1=90, dur=0.28, type='sine', vol=0.16){
 const arenaBodies = [], arenaMeshes = [];
 const hazards = [], pads = [], plateaus = [], balls = [], debris = [];
 const tiles = [], fallingTiles = [];
+const islandPads = [], islandBridges = [];
+const seaCreatures = [], seaLoot = [], seaBubbles = [];
+let seaLootCount = 0;
 let currentMap = null;
 
 function aBody(b){ b.collisionFilterMask = -1; world.addBody(b); arenaBodies.push(b); return b; }
@@ -328,7 +331,8 @@ function clearArena(){
   arenaMeshes.forEach(m=>scene.remove(m));
   arenaBodies.length = 0; arenaMeshes.length = 0;
   hazards.length = 0; pads.length = 0; plateaus.length = 0; balls.length = 0; boats.length = 0;
-  tiles.length = 0; fallingTiles.length = 0;
+  tiles.length = 0; fallingTiles.length = 0; islandPads.length = 0; islandBridges.length = 0;
+  seaCreatures.length = 0; seaLoot.length = 0; seaBubbles.length = 0; seaLootCount = 0;
   debris.forEach(d=>{ scene.remove(d.mesh); world.remove(d.body); }); debris.length = 0;
 }
 const box = (x,y,z)=> new CANNON.Box(new CANNON.Vec3(x,y,z));
@@ -938,6 +942,224 @@ function bridgeAI(g, dt){
 }
 
 
+/* ---------------------------------------------------------------- 맵 D: 일곱 섬 징검다리
+   7개의 떠 있는 섬을 징검다리로 연결한다. 청록색 안전 발판은 항상 유지되고,
+   분홍/노랑 점멸 발판은 3초마다 나타났다 사라진다. 섬 사이에는 여러 갈래가 있어
+   타이밍을 보고 안전지대에서 기다렸다가 건너는 맵. */
+const ISLAND_Y = 7.0, ISLAND_R = 8.2;
+const ISLAND_POS = [
+  [0,0], [22,-14], [45,-4], [24,15], [-22,15], [-45,2], [-24,-18]
+];
+function makeIsland(x,z,idx){
+  const r = idx===0 ? 9.2 : ISLAND_R;
+  const body = new CANNON.Body({mass:0, material:matGround});
+  const sh = new CANNON.Cylinder(r,r,2.4,24);
+  const q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  body.addShape(sh, new CANNON.Vec3(0,0,0), q); body.position.set(x,ISLAND_Y,z); aBody(body);
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.CylinderGeometry(r*0.72,r,4.8,24),
+    new THREE.MeshStandardMaterial({color:idx%2?0x7f9b68:0x759b79,roughness:.95}));
+  rock.position.y=-1.5; rock.castShadow=rock.receiveShadow=true; g.add(rock);
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(r,r*0.98,0.65,28),
+    new THREE.MeshStandardMaterial({color:idx===0?0x6fcf70:0x83c96b,roughness:.9}));
+  grass.position.y=1.0; grass.receiveShadow=true; g.add(grass);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(r*0.78,.16,6,32),
+    new THREE.MeshStandardMaterial({color:0xf0d56a,roughness:.6}));
+  rim.rotation.x=Math.PI/2; rim.position.y=1.35; g.add(rim);
+  for(let k=0;k<5;k++){
+    const a=k*1.256+idx*.6, rr=r*.55;
+    const bush=new THREE.Mesh(new THREE.SphereGeometry(.65,9,7),
+      new THREE.MeshStandardMaterial({color:k%2?0x3f9c55:0x56b85d,roughness:1}));
+    bush.position.set(Math.cos(a)*rr,1.7,Math.sin(a)*rr); bush.scale.y=.75; g.add(bush);
+  }
+  g.position.copy(body.position); aMesh(g); islandPads.push({x,z,r,body,mesh:g});
+}
+function makeIslandStone(x,z,safe,phase){
+  const body=new CANNON.Body({mass:0,material:matGround,shape:box(1.55,.32,1.55)});
+  body.position.set(x,ISLAND_Y+.7,z); aBody(body);
+  const mat=new THREE.MeshStandardMaterial({color:safe?0x5de0c0:0xf06c91,roughness:.55,
+    emissive:safe?0x123c34:0x431020,emissiveIntensity:safe?.45:.7});
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(2.05,1.75,.65,8),mat);
+  mesh.position.copy(body.position); mesh.castShadow=mesh.receiveShadow=true; aMesh(mesh);
+  const t={body,mesh,x,z,safe,phase:phase||0,visible:true,last:true};
+  islandBridges.push(t); return t;
+}
+function connectIslands(a,b,route){
+  const A=ISLAND_POS[a], B=ISLAND_POS[b], dx=B[0]-A[0], dz=B[1]-A[1], d=Math.hypot(dx,dz);
+  const ux=dx/d, uz=dz/d, start=(a===0?9.2:ISLAND_R)+1.4, end=(b===0?9.2:ISLAND_R)+1.4;
+  const usable=d-start-end, n=Math.max(2,Math.floor(usable/4.1));
+  const px=-uz, pz=ux, bend=(route||0)*3.2;
+  for(let i=1;i<=n;i++){
+    const t=i/(n+1), along=start+usable*t;
+    const curve=Math.sin(Math.PI*t)*bend;
+    const x=A[0]+ux*along+px*curve, z=A[1]+uz*along+pz*curve;
+    const safe=(i===1 || i===n || i%4===0); // 섬 입구와 중간 체크포인트는 안전
+    makeIslandStone(x,z,safe,(a*1.17+b*.73+i*.47)%3);
+  }
+}
+function buildIslandMap(){
+  ISLAND_POS.forEach((p,i)=>makeIsland(p[0],p[1],i));
+  // 바깥 6개 섬을 고리로 연결 + 중앙으로 3개의 지름길 + 두 개의 우회 루트
+  [[1,2,1],[2,3,-1],[3,4,1],[4,5,-1],[5,6,1],[6,1,-1],
+   [0,1,0],[0,3,0],[0,5,0],[2,4,1],[5,1,-1]].forEach(e=>connectIslands(e[0],e[1],e[2]));
+  const water=new THREE.Mesh(new THREE.CircleGeometry(110,64),
+    new THREE.MeshStandardMaterial({color:0x277fa8,roughness:.28,metalness:.05,transparent:true,opacity:.94}));
+  water.rotation.x=-Math.PI/2; water.position.y=0; aMesh(water);
+  for(let r=18;r<=90;r+=18){
+    const wave=new THREE.Mesh(new THREE.TorusGeometry(r,.18,5,80),
+      new THREE.MeshStandardMaterial({color:0x73cbe0,roughness:.4,transparent:true,opacity:.65}));
+    wave.rotation.x=Math.PI/2; wave.position.y=.12; aMesh(wave);
+  }
+}
+function islandUpdate(dt){
+  // 3초 주기: 1.8초 보임, 1.2초 사라짐. 각 발판의 위상이 달라 '파도'처럼 켜진다.
+  const now=gameTime;
+  islandBridges.forEach(t=>{
+    if(t.safe){ t.mesh.rotation.y += dt*.35; return; }
+    const cyc=(now+t.phase)%3;
+    const on=cyc<1.8;
+    if(on!==t.last){
+      t.last=on; t.visible=on;
+      t.body.collisionFilterMask=on ? -1 : 0;
+      t.mesh.visible=on;
+      if(on){ t.mesh.scale.set(.15,.15,.15); }
+    }
+    if(on){
+      const k=Math.min(1,t.mesh.scale.x+dt*4.5); t.mesh.scale.set(k,k,k);
+      t.mesh.material.emissiveIntensity=.45+.35*Math.sin((cyc/1.8)*Math.PI);
+    }
+  });
+}
+function islandSpawn(){
+  const i=Math.floor(Math.random()*ISLAND_POS.length), p=ISLAND_POS[i];
+  return {x:p[0]+rand(-2.5,2.5),y:ISLAND_Y+4,z:p[1]+rand(-2.5,2.5)};
+}
+function islandAI(g,dt){
+  const a=g.ai,p=g.ctrl.position; a.timer-=dt; a.jumpCd-=dt;
+  if(a.timer<=0 || !a.target || Math.hypot(a.target.x-p.x,a.target.z-p.z)<2){
+    let choices=[];
+    islandBridges.forEach(t=>{ if((t.safe||t.visible) && Math.hypot(t.x-p.x,t.z-p.z)<12) choices.push(t); });
+    islandPads.forEach(t=>{ if(Math.hypot(t.x-p.x,t.z-p.z)<18) choices.push(t); });
+    const q=choices.length?choices[Math.floor(Math.random()*choices.length)]:islandPads[Math.floor(Math.random()*islandPads.length)];
+    a.target={x:q.x,z:q.z}; a.timer=rand(1.0,2.2);
+  }
+  let dx=a.target.x-p.x,dz=a.target.z-p.z,dl=Math.hypot(dx,dz)||1; dx/=dl;dz/=dl;
+  let jump=false; if(a.jumpCd<=0&&g.grounded){a.jumpCd=rand(2.5,5);jump=Math.random()<.24;}
+  applyMove(g,dx,dz,false,jump,dt);
+}
+
+
+/* ---------------------------------------------------------------- 맵 E: 바닷속 보물잠수
+   물고기처럼 자유롭게 잠수하며 산호초와 움직이는 해양동물을 발판 삼고,
+   조개·새우·가재를 모은다. Space=상승, Ctrl=하강.                           */
+const UW_FLOOR=-10, UW_R=58;
+function seaMat(c,em=0){ return new THREE.MeshStandardMaterial({color:c,roughness:.65,emissive:em,emissiveIntensity:.35}); }
+function makeCoral(x,z,h,c){
+  const g=new THREE.Group(), mat=seaMat(c,0x120812);
+  for(let i=0;i<5;i++){
+    const bh=h*rand(.55,1.05), r=rand(.28,.55);
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.65,r,bh,7),mat);
+    b.position.set(rand(-1.2,1.2),bh/2,rand(-1.2,1.2)); b.rotation.z=rand(-.28,.28); b.castShadow=true; g.add(b);
+    const tip=new THREE.Mesh(new THREE.SphereGeometry(r*.95,8,6),mat); tip.position.set(b.position.x,bh,b.position.z); g.add(tip);
+  }
+  g.position.set(x,UW_FLOOR+.3,z); aMesh(g);
+}
+function creatureMesh(kind,scale,color){
+  const g=new THREE.Group(), m=seaMat(color), white=seaMat(0xd8edf0), dark=seaMat(0x243947);
+  const body=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),m); body.scale.set(2.5*scale,.75*scale,1.0*scale); body.castShadow=true; g.add(body);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(.75*scale,1.8*scale,8),m); tail.rotation.z=Math.PI/2; tail.position.x=-2.7*scale; g.add(tail);
+  if(kind==='ray'){
+    body.scale.set(2.0*scale,.28*scale,2.7*scale); tail.scale.set(.5,.5,2.3); tail.rotation.set(Math.PI/2,0,0); tail.position.set(-2.1*scale,0,0);
+  }
+  if(kind==='shark'){
+    const fin=new THREE.Mesh(new THREE.ConeGeometry(.6*scale,1.5*scale,7),m); fin.position.set(0,.95*scale,0); g.add(fin);
+    const snout=new THREE.Mesh(new THREE.ConeGeometry(.65*scale,1.3*scale,10),m); snout.rotation.z=-Math.PI/2; snout.position.x=2.5*scale; g.add(snout);
+  }
+  if(kind==='whale'){ body.scale.set(3.3*scale,1.0*scale,1.2*scale); }
+  if(kind==='dolphin'){
+    const beak=new THREE.Mesh(new THREE.ConeGeometry(.25*scale,1.1*scale,8),m); beak.rotation.z=-Math.PI/2; beak.position.x=2.5*scale; g.add(beak);
+  }
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(.12*scale,7,6),dark); eye.position.set(1.75*scale,.25*scale,.78*scale); g.add(eye);
+  return g;
+}
+function makeSeaCreature(kind,orbitR,angle,speed,y,scale,color){
+  const body=new CANNON.Body({mass:0,type:CANNON.Body.KINEMATIC,material:matGround});
+  const len=(kind==='whale'?5.8:kind==='ray'?4.3:3.6)*scale;
+  body.addShape(box(len,.5*scale,1.4*scale)); body.position.set(Math.cos(angle)*orbitR,y,Math.sin(angle)*orbitR); aBody(body);
+  const mesh=creatureMesh(kind,scale,color); aMesh(mesh);
+  const c={kind,body,mesh,orbitR,angle,speed,y,scale,phase:rand(0,6.28),len};
+  c.update=(dt)=>{
+    c.angle+=c.speed*dt; const wob=Math.sin(tileClock*.7+c.phase)*3.5;
+    const x=Math.cos(c.angle)*c.orbitR + Math.cos(c.angle*2+c.phase)*wob;
+    const z=Math.sin(c.angle)*c.orbitR + Math.sin(c.angle*1.7+c.phase)*wob;
+    const yy=c.y+Math.sin(tileClock*1.1+c.phase)*2.2;
+    body.position.set(x,yy,z); body.velocity.set(0,0,0);
+    const yaw=-c.angle+(c.speed>0?Math.PI/2:-Math.PI/2); body.quaternion.setFromAxisAngle(new CANNON.Vec3(0,1,0),yaw);
+    mesh.position.copy(body.position); mesh.quaternion.copy(body.quaternion);
+    mesh.rotation.z += Math.sin(tileClock*2+c.phase)*.002;
+  };
+  seaCreatures.push(c); return c;
+}
+function lootMesh(type){
+  const g=new THREE.Group();
+  if(type==='shell'){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(.7,12,8,0,Math.PI*2,0,Math.PI*.62),seaMat(0xffd1dc,0x4a1525)); m.scale.set(1.2,.55,1); g.add(m);
+  } else if(type==='shrimp'){
+    const m=new THREE.Mesh(new THREE.TorusGeometry(.55,.18,6,12,Math.PI*1.45),seaMat(0xff8c76,0x4a160e)); m.rotation.z=.6; g.add(m);
+  } else {
+    const m=new THREE.Mesh(new THREE.SphereGeometry(.55,10,8),seaMat(0xc94736,0x3d0b07)); m.scale.set(1.4,.65,.8); g.add(m);
+    [-1,1].forEach(s=>{const claw=new THREE.Mesh(new THREE.SphereGeometry(.28,8,6),seaMat(0xe15c42));claw.position.set(.75,s*.55,0);g.add(claw);});
+  }
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(.9,.06,5,18),new THREE.MeshBasicMaterial({color:0xffe88a,transparent:true,opacity:.75})); halo.rotation.x=Math.PI/2; g.add(halo);
+  return g;
+}
+function spawnSeaLoot(type,x,y,z){ const mesh=lootMesh(type); mesh.position.set(x,y,z); aMesh(mesh); seaLoot.push({type,mesh,x,y,z,phase:rand(0,6.28),taken:false}); }
+function buildUnderwaterMap(){
+  const floor=new CANNON.Body({mass:0,material:matGround,shape:box(UW_R,1,UW_R)}); floor.position.set(0,UW_FLOOR-1,0); aBody(floor);
+  const seabed=new THREE.Mesh(new THREE.CylinderGeometry(UW_R,UW_R,2,64),seaMat(0xc6aa72)); seabed.position.y=UW_FLOOR-1; seabed.receiveShadow=true; aMesh(seabed);
+  for(let i=0;i<42;i++){ const a=Math.random()*Math.PI*2,r=rand(5,UW_R-5); makeCoral(Math.cos(a)*r,Math.sin(a)*r,rand(2,6),[0xf06c91,0xffa64d,0x8d6bd1,0x4fc7a4][i%4]); }
+  for(let i=0;i<28;i++){
+    const a=Math.random()*Math.PI*2,r=rand(6,UW_R-7), y=rand(-6,7); spawnSeaLoot(['shell','shrimp','lobster'][i%3],Math.cos(a)*r,y,Math.sin(a)*r);
+  }
+  makeSeaCreature('shark',25,0,.20,-1,1.15,0x718b98); makeSeaCreature('shark',43,2.4,-.14,2,.9,0x667f8d);
+  makeSeaCreature('whale',34,1.3,.075,3,1.45,0x557b9b); makeSeaCreature('dolphin',18,2.8,-.27,4,.9,0x6baac4);
+  makeSeaCreature('dolphin',30,4.5,.23,-2,.78,0x72b8cf); makeSeaCreature('ray',22,5.1,.16,0,1.2,0x715f8f);
+  makeSeaCreature('ray',40,.5,-.11,-4,.95,0x846da0);
+  for(let i=0;i<36;i++){
+    const b=new THREE.Mesh(new THREE.SphereGeometry(rand(.08,.22),6,5),new THREE.MeshBasicMaterial({color:0xbdefff,transparent:true,opacity:.55}));
+    b.position.set(rand(-UW_R,UW_R),rand(UW_FLOOR+1,12),rand(-UW_R,UW_R)); aMesh(b); seaBubbles.push({mesh:b,s:rand(.7,1.8),phase:rand(0,6.28)});
+  }
+}
+function underwaterUpdate(dt){
+  seaCreatures.forEach(c=>c.update(dt));
+  seaBubbles.forEach(b=>{ b.mesh.position.y+=b.s*dt; b.mesh.position.x+=Math.sin(tileClock+b.phase)*dt*.18; if(b.mesh.position.y>14)b.mesh.position.y=UW_FLOOR+1; });
+  guys.forEach(g=>{
+    const v=g.ctrl.velocity;
+    // 물속에서는 중력을 대부분 상쇄하여 천천히 가라앉는다.
+    v.y += 30.5*dt; v.y*=Math.pow(.72,dt);
+    if(g===player){ if(keys['Space']) v.y+=22*dt; if(keys['ControlLeft']||keys['ControlRight']) v.y-=24*dt; }
+    else { v.y += Math.sin(tileClock*1.2+g.ai.jumpCd)*5*dt; }
+    if(g.ctrl.position.y>11) v.y-=18*dt;
+  });
+  if(player){
+    const p=player.ctrl.position;
+    seaLoot.forEach(L=>{
+      if(L.taken)return; L.mesh.rotation.y+=dt*1.6; L.mesh.position.y=L.y+Math.sin(tileClock*2+L.phase)*.35;
+      if(Math.hypot(p.x-L.x,p.y-L.mesh.position.y,p.z-L.z)<2.4){
+        L.taken=true; L.mesh.visible=false; seaLootCount++; style+=L.type==='lobster'?80:L.type==='shrimp'?45:30;
+        yell((L.type==='lobster'?'가재':L.type==='shrimp'?'새우':'조개')+' 획득!  '+seaLootCount+'개'); boing(650,1100,.18,'sine',.1);
+        setTimeout(()=>{ if(currentMap&&currentMap.id==='underwater'){ L.taken=false; L.mesh.visible=true; } },7000);
+      }
+    });
+  }
+}
+function underwaterSpawn(){ const a=Math.random()*Math.PI*2,r=rand(5,30); return {x:Math.cos(a)*r,y:rand(-3,5),z:Math.sin(a)*r}; }
+function underwaterAI(g,dt){
+  const a=g.ai,p=g.ctrl.position; a.timer-=dt;
+  if(a.timer<=0||!a.target||Math.hypot(a.target.x-p.x,a.target.z-p.z)<3){ const L=seaLoot[Math.floor(Math.random()*seaLoot.length)]; a.target=L?{x:L.x,z:L.z}:{x:rand(-35,35),z:rand(-35,35)}; a.timer=rand(2,5); }
+  let dx=a.target.x-p.x,dz=a.target.z-p.z,d=Math.hypot(dx,dz)||1; applyMove(g,dx/d,dz/d,false,false,dt);
+}
+
 /* ---------------------------------------------------------------- 맵 D: 바이킹 항해 (하드코어)
    파도 위를 도는 롱십 여러 척. 배와 배 사이는 뛰어 건너야 하고,
    물에 빠지면 그대로 끝. 목숨은 하나뿐.                                          */
@@ -1087,6 +1309,14 @@ const MAPS = [
     camDist:17, camHigh:10.5, mapR:BR_SPAN+2, debrisR:BR_SPAN-6, hasTiles:true, hasLayers:false,
     speedMul:0.70, ringY:()=>BR_Y + 0.45,
     events:['low','banana','duck'] },
+  { id:'islands', name:'일곱 섬 징검다리', tag:'7개의 섬을 건너라! 청록 발판은 안전, 분홍 발판은 3초마다 나타났다 사라진다.',
+    build:buildIslandMap, spawn:islandSpawn, ai:islandAI, update:islandUpdate, killY:-5,
+    camDist:18, camHigh:11, mapR:62, debrisR:54, hasTiles:false, speedMul:0.76,
+    ringY:()=>ISLAND_Y+1.1, events:['low','banana','duck'] },
+  { id:'underwater', name:'바닷속 보물잠수', tag:'산호초 사이를 잠수하며 움직이는 상어·고래·돌고래·가오리를 밟고 조개·새우·가재를 모아라!',
+    build:buildUnderwaterMap, spawn:underwaterSpawn, ai:underwaterAI, update:underwaterUpdate, killY:-18,
+    camDist:17, camHigh:7.5, mapR:UW_R, debrisR:48, hasTiles:false, speedMul:0.72,
+    ringY:()=>UW_FLOOR+.2, events:['low'] },
   { id:'boat', name:'바이킹 항해', tag:'하드코어. 파도 위 롱십을 뛰어 건넌다. 물에 빠지면 그대로 끝, 목숨은 하나.',
     build:buildBoatMap, spawn:boatSpawn, ai:boatAI, update:boatUpdate, killY:1.2,
     camDist:17, camHigh:10, mapR:52, debrisR:44, hasTiles:false, hardcore:true,
@@ -2169,7 +2399,8 @@ function loadMap(map){
   map.build();
   elMapInfo.style.display = map.hasTiles ? 'block' : 'none';
   document.getElementById('layerWrap').style.display = map.hasLayers ? 'inline' : 'none';
-  scene.fog.far = map.id === 'arena' ? 250 : (map.id === 'bridge' ? 230 : 200);
+  if(map.id === 'underwater'){ scene.background.set(0x0b5f82); scene.fog.color.set(0x176f8e); scene.fog.near=28; scene.fog.far=105; }
+  else { scene.background.set(0x5aa8d8); scene.fog.color.set(0x86bcd8); scene.fog.near=85; scene.fog.far = map.id === 'arena' ? 250 : (map.id === 'bridge' ? 230 : (map.id === 'islands' ? 245 : 200)); }
 }
 let pickedMap = 0, picked = 0;
 const mapPicker = document.getElementById('mapPicker');
@@ -2204,6 +2435,23 @@ function buildMapPicker(){
         }
       }
       prev.innerHTML = html;
+    } else if(m.id === 'islands'){
+      let html = '';
+      const pts=[[0,0],[30,-18],[55,-5],[31,20],[-28,20],[-55,3],[-31,-20]];
+      pts.forEach((p,j)=>{ html += '<i style="left:calc(50% + '+p[0]+'px - 13px);top:calc(50% + '+p[1]+'px - 8px);width:26px;height:16px;border-radius:50%;background:#72b96c;border:2px solid #1a110a"></i>'; });
+      [[12,-7],[20,-12],[-12,8],[-20,14],[40,-12],[-40,10]].forEach((p,j)=>{ html += '<i style="left:calc(50% + '+p[0]+'px - 4px);top:calc(50% + '+p[1]+'px - 4px);width:8px;height:8px;border-radius:3px;background:'+(j%3===0?'#5de0c0':'#f06c91')+';border:1px solid #1a110a"></i>'; });
+      prev.innerHTML=html;
+    } else if(m.id === 'underwater'){
+      prev.style.background='#176f8e';
+      prev.innerHTML='<i style="left:8%;right:8%;bottom:8px;height:22px;border-radius:50%;background:#c6aa72"></i>'+
+        '<i style="left:18%;bottom:24px;width:8px;height:32px;background:#f06c91;border-radius:8px"></i>'+
+        '<i style="left:43%;top:32px;width:58px;height:18px;background:#557b9b;border-radius:50%"></i>'+
+        '<i style="right:12%;top:52px;width:38px;height:12px;background:#718b98;border-radius:50%"></i>'+
+        '<i style="left:30%;top:62px;width:9px;height:9px;border-radius:50%;background:#ffd1dc"></i>';
+    } else if(m.id === 'boat'){
+      prev.innerHTML = '<i style="left:8%;right:8%;bottom:8px;height:30px;border-radius:50%;background:#277fa8"></i>'+ 
+        '<i style="left:25%;top:38px;width:52px;height:18px;background:#7a5233;border:2px solid #1a110a;transform:rotate(-8deg)"></i>'+ 
+        '<i style="right:20%;top:24px;width:45px;height:16px;background:#a9793f;border:2px solid #1a110a;transform:rotate(9deg)"></i>';
     } else {
       // 갈래 고가도로: 가운데 허브에서 갈라졌다 다시 만나는 길
       const clip = 'clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)';
