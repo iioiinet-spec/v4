@@ -320,7 +320,7 @@ const arenaBodies = [], arenaMeshes = [];
 const hazards = [], pads = [], plateaus = [], balls = [], debris = [];
 const tiles = [], fallingTiles = [];
 const islandPads = [], islandBridges = [];
-const seaCreatures = [], seaLoot = [], seaBubbles = [];
+const seaCreatures = [], seaLoot = [], seaBubbles = [], underwaterGear = [];
 let seaLootCount = 0;
 let currentMap = null;
 
@@ -332,7 +332,7 @@ function clearArena(){
   arenaBodies.length = 0; arenaMeshes.length = 0;
   hazards.length = 0; pads.length = 0; plateaus.length = 0; balls.length = 0; boats.length = 0;
   tiles.length = 0; fallingTiles.length = 0; islandPads.length = 0; islandBridges.length = 0;
-  seaCreatures.length = 0; seaLoot.length = 0; seaBubbles.length = 0; seaLootCount = 0;
+  seaCreatures.length = 0; seaLoot.length = 0; seaBubbles.length = 0; underwaterGear.length = 0; seaLootCount = 0;
   debris.forEach(d=>{ scene.remove(d.mesh); world.remove(d.body); }); debris.length = 0;
 }
 const box = (x,y,z)=> new CANNON.Box(new CANNON.Vec3(x,y,z));
@@ -1114,6 +1114,39 @@ function lootMesh(type){
   return g;
 }
 function spawnSeaLoot(type,x,y,z){ const mesh=lootMesh(type); mesh.position.set(x,y,z); aMesh(mesh); seaLoot.push({type,mesh,x,y,z,phase:rand(0,6.28),taken:false}); }
+
+function makeUnderwaterKnightGear(g){
+  // 바닷속 전용 장비: 오른손 검 + 왼손 방패. 장비의 무게감은 underwaterUpdate의 추가 하강력으로 표현한다.
+  const sc=g.style.scale||1;
+  const sword=new THREE.Group();
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(.13*sc,1.75*sc,.08*sc),new THREE.MeshStandardMaterial({color:0xdce7ee,metalness:.8,roughness:.22}));
+  blade.position.y=-.95*sc; sword.add(blade);
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(.095*sc,.36*sc,4),new THREE.MeshStandardMaterial({color:0xeaf4f8,metalness:.85,roughness:.18}));
+  tip.position.y=-2.0*sc; tip.rotation.z=Math.PI; sword.add(tip);
+  const guard=new THREE.Mesh(new THREE.BoxGeometry(.72*sc,.10*sc,.13*sc),new THREE.MeshStandardMaterial({color:0xd6a936,metalness:.55,roughness:.35}));
+  guard.position.y=-.08*sc; sword.add(guard);
+  const grip=new THREE.Mesh(new THREE.CylinderGeometry(.07*sc,.07*sc,.55*sc,8),new THREE.MeshStandardMaterial({color:0x68432b,roughness:.8}));
+  grip.position.y=.24*sc; sword.add(grip); scene.add(sword); arenaMeshes.push(sword);
+
+  const shield=new THREE.Group();
+  const disc=new THREE.Mesh(new THREE.CylinderGeometry(.72*sc,.72*sc,.14*sc,16),new THREE.MeshStandardMaterial({color:0x3e88a8,metalness:.38,roughness:.42}));
+  disc.rotation.z=Math.PI/2; shield.add(disc);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(.72*sc,.07*sc,7,20),new THREE.MeshStandardMaterial({color:0xe0b64a,metalness:.55,roughness:.32}));
+  rim.rotation.y=Math.PI/2; shield.add(rim);
+  const boss=new THREE.Mesh(new THREE.SphereGeometry(.19*sc,10,8),new THREE.MeshStandardMaterial({color:0xe9cf78,metalness:.65,roughness:.28}));
+  boss.position.x=.10*sc; shield.add(boss); scene.add(shield); arenaMeshes.push(shield);
+  underwaterGear.push({g,sword,shield});
+}
+function syncUnderwaterGear(){
+  underwaterGear.forEach(k=>{
+    if(!k.g || !k.g.D) return;
+    const r=k.g.D.armLR, l=k.g.D.armLL;
+    k.sword.position.copy(r.position); k.sword.quaternion.copy(r.quaternion); k.sword.rotateZ(-.18);
+    k.shield.position.copy(l.position); k.shield.quaternion.copy(l.quaternion); k.shield.rotateZ(Math.PI/2);
+    const vs=k.g.visualScale||1; k.sword.scale.setScalar(vs); k.shield.scale.setScalar(vs);
+  });
+}
+
 function buildUnderwaterMap(){
   const floor=new CANNON.Body({mass:0,material:matGround,shape:box(UW_R,1,UW_R)}); floor.position.set(0,UW_FLOOR-1,0); aBody(floor);
   const seabed=new THREE.Mesh(new THREE.CylinderGeometry(UW_R,UW_R,2,64),seaMat(0xc6aa72)); seabed.position.y=UW_FLOOR-1; seabed.receiveShadow=true; aMesh(seabed);
@@ -1125,6 +1158,8 @@ function buildUnderwaterMap(){
   makeSeaCreature('whale',34,1.3,.075,3,1.45,0x557b9b); makeSeaCreature('dolphin',18,2.8,-.27,4,.9,0x6baac4);
   makeSeaCreature('dolphin',30,4.5,.23,-2,.78,0x72b8cf); makeSeaCreature('ray',22,5.1,.16,0,1.2,0x715f8f);
   makeSeaCreature('ray',40,.5,-.11,-4,.95,0x846da0);
+  // 다섯 캐릭터 모두 검과 방패를 들고 입수한다.
+  guys.forEach(g=>{ g.uwJumpCount=0; g.uwJumpCd=rand(.2,.8); makeUnderwaterKnightGear(g); });
   for(let i=0;i<36;i++){
     const b=new THREE.Mesh(new THREE.SphereGeometry(rand(.08,.22),6,5),new THREE.MeshBasicMaterial({color:0xbdefff,transparent:true,opacity:.55}));
     b.position.set(rand(-UW_R,UW_R),rand(UW_FLOOR+1,12),rand(-UW_R,UW_R)); aMesh(b); seaBubbles.push({mesh:b,s:rand(.7,1.8),phase:rand(0,6.28)});
@@ -1135,12 +1170,14 @@ function underwaterUpdate(dt){
   seaBubbles.forEach(b=>{ b.mesh.position.y+=b.s*dt; b.mesh.position.x+=Math.sin(tileClock+b.phase)*dt*.18; if(b.mesh.position.y>14)b.mesh.position.y=UW_FLOOR+1; });
   guys.forEach(g=>{
     const v=g.ctrl.velocity;
-    // 물속에서는 중력을 대부분 상쇄하여 천천히 가라앉는다.
-    v.y += 30.5*dt; v.y*=Math.pow(.72,dt);
-    if(g===player){ if(keys['Space']) v.y+=22*dt; if(keys['ControlLeft']||keys['ControlRight']) v.y-=24*dt; }
-    else { v.y += Math.sin(tileClock*1.2+g.ai.jumpCd)*5*dt; }
-    if(g.ctrl.position.y>11) v.y-=18*dt;
+    // 검과 방패가 무거워 부력이 약하다. 기본 중력(-34)을 일부만 상쇄해 확실히 해저로 가라앉는다.
+    v.y += 20.0*dt;
+    v.y *= Math.pow(.82,dt);
+    // Ctrl은 빠른 잠수. 상승은 연속 부력이 아니라 2단 점프로만 한다.
+    if(g===player && (keys['ControlLeft']||keys['ControlRight'])) v.y-=18*dt;
+    if(g.ctrl.position.y>11) v.y-=24*dt;
   });
+  syncUnderwaterGear();
   if(player){
     const p=player.ctrl.position;
     seaLoot.forEach(L=>{
@@ -1157,7 +1194,14 @@ function underwaterSpawn(){ const a=Math.random()*Math.PI*2,r=rand(5,30); return
 function underwaterAI(g,dt){
   const a=g.ai,p=g.ctrl.position; a.timer-=dt;
   if(a.timer<=0||!a.target||Math.hypot(a.target.x-p.x,a.target.z-p.z)<3){ const L=seaLoot[Math.floor(Math.random()*seaLoot.length)]; a.target=L?{x:L.x,z:L.z}:{x:rand(-35,35),z:rand(-35,35)}; a.timer=rand(2,5); }
-  let dx=a.target.x-p.x,dz=a.target.z-p.z,d=Math.hypot(dx,dz)||1; applyMove(g,dx/d,dz/d,false,false,dt);
+  let dx=a.target.x-p.x,dz=a.target.z-p.z,d=Math.hypot(dx,dz)||1;
+  g.uwJumpCd=(g.uwJumpCd||0)-dt;
+  let jump=false;
+  if(g.uwJumpCd<=0){
+    // AI도 바닥/해양동물을 딛고 1~2단 점프로 위로 튀어 오르며 보물을 쫓는다.
+    jump=true; g.uwJumpCd=g.grounded?rand(.7,1.4):rand(.18,.38);
+  }
+  applyMove(g,dx/d,dz/d,false,jump,dt);
 }
 
 /* ---------------------------------------------------------------- 맵 D: 바이킹 항해 (하드코어)
@@ -2164,6 +2208,23 @@ function applyMove(g, dx, dz, sprint, wantJump, dt){
   g.moveSpeed = Math.hypot(v.x, v.z);
   if(g.moveSpeed > 0.8) g.faceAngle = lerp(g.faceAngle, Math.atan2(v.x, v.z), 1-Math.pow(0.002, dt));
   if(wantJump){
+    // 바닷속 맵: 무거운 검·방패 때문에 가라앉지만 Space를 누를 때마다 최대 2번 강하게 튀어 오른다.
+    if(currentMap && currentMap.id === 'underwater'){
+      if(g.grounded) g.uwJumpCount = 0;
+      if((g.uwJumpCount||0) < 2){
+        g.uwJumpCount = (g.uwJumpCount||0) + 1;
+        v.y = (g.uwJumpCount === 1 ? 18.5 : 17.0) * st.jump;
+        g.coyote = 0; g.posedThisJump = true; g.poseTimer = 0.35;
+        g.D.chest.velocity.y += 7; g.D.head.velocity.y += 5;
+        g.D.armLL.velocity.y += 3; g.D.armLR.velocity.y += 3;
+        if(g === player){
+          boing(g.uwJumpCount===1?430:620, 1050, 0.16, 'square', 0.11);
+          if(g.uwJumpCount===2){ style += 10; yell('2단 점프!'); }
+        }
+        return g.uwJumpCount===1 ? 'jump' : 'doublejump';
+      }
+      return null;
+    }
     if(g.coyote > 0){
       v.y = 15.5 * st.jump; g.coyote = 0;
       g.D.chest.velocity.y += 6; g.D.head.velocity.y += 4;
@@ -2275,6 +2336,7 @@ function stepGuys(dt){
       updateGrounded(g);
       if(g.grounded){
         g.coyote = 0.14; g.posedThisJump = false;
+        if(currentMap && currentMap.id === 'underwater') g.uwJumpCount = 0;
         landedAfterDodge(g);
       } else {
         g.coyote = Math.max(0, g.coyote - dt);
@@ -2395,11 +2457,12 @@ function animate(){
 function loadMap(map){
   clearArena();
   currentMap = map;
+  document.querySelector('#keys div:nth-child(2)').innerHTML='<kbd>Space</kbd> 점프 · 공중에서 한 번 더 누르면 <b>엉뚱한 포즈</b>';
   if(map.id === 'arena') cameraZoom = 1.0;
   map.build();
   elMapInfo.style.display = map.hasTiles ? 'block' : 'none';
   document.getElementById('layerWrap').style.display = map.hasLayers ? 'inline' : 'none';
-  if(map.id === 'underwater'){ scene.background.set(0x0b5f82); scene.fog.color.set(0x176f8e); scene.fog.near=28; scene.fog.far=105; }
+  if(map.id === 'underwater'){ document.querySelector('#keys div:nth-child(2)').innerHTML='<kbd>Space</kbd> 2단 점프 · 검/방패 무게로 가라앉음 · <kbd>Ctrl</kbd> 빠른 잠수'; scene.background.set(0x0b5f82); scene.fog.color.set(0x176f8e); scene.fog.near=28; scene.fog.far=105; }
   else { scene.background.set(0x5aa8d8); scene.fog.color.set(0x86bcd8); scene.fog.near=85; scene.fog.far = map.id === 'arena' ? 250 : (map.id === 'bridge' ? 230 : (map.id === 'islands' ? 245 : 200)); }
 }
 let pickedMap = 0, picked = 0;
