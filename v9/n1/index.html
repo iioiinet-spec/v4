@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>파스텔 감성 다이어리 & 시간표</title>
+    <!-- 순수 CSS 및 커스텀 스타일 정의 -->
+    <style>
+        /* 구글 웹폰트 (고운돋움체, 나눔손글씨 펜체) 불러오기 */
+        @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Nanum+Pen+Script&display=swap');
+
+        /* 기본 화면 리셋 및 파스텔톤 배경 설정 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Gowun Dodum', sans-serif;
+            background: linear-gradient(135deg, #fdfbf7 0%, #e8e4db 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 10px;
+        }
+
+        /* 손글씨 느낌의 일기 본문 폰트 클래스 */
+        .diary-font {
+            font-family: 'Nanum Pen Script', cursive;
+            font-size: 1.8rem;
+        }
+
+        /* 1) 밝고 화사한 파스텔톤 감성의 겉표지 디자인 스타일 */
+        .pastel-cover {
+            background: linear-gradient(135deg, #fff0f3 0%, #f3e8ff 50%, #e0f2fe 100%);
+            box-shadow: 0 20px 40px rgba(150, 130, 140, 0.25), inset 0 0 30px rgba(255, 255, 255, 0.8);
+            border: 6px solid #fbcfe8;
+            border-radius: 2rem;
+            position: relative;
+        }
+
+        /* 책등 느낌의 제본 장식 라인 */
+        .book-spine {
+            position: absolute;
+            left: 24px;
+            top: 0;
+            bottom: 0;
+            width: 14px;
+            background: linear-gradient(90deg, #f472b6, #db2777);
+            border-radius: 4px;
+            box-shadow: inset 2px 0 4px rgba(0,0,0,0.1);
+        }
+
+        /* 노트 속지 줄무늬 및 배경 스타일 */
+        .lined-paper {
+            background-color: #fffefb;
+            background-image: linear-gradient(#f0eada 1px, transparent 1px);
+            background-size: 100% 2.2rem;
+        }
+
+        /* 일기장이 열릴 때의 부드러운 애니메이션 효과 */
+        .book-open-animation {
+            transform-origin: left center;
+            animation: unfoldBook 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+        @keyframes unfoldBook {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 날씨 애니메이션이 그려질 캔버스 스타일 (화면 전체 오버레이) */
+        #weather-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* 유틸리티 클래스 (숨김 처리용) */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 날씨 효과(비, 눈, 바람 등)가 그려지는 캔버스 -->
+    <canvas id="weather-canvas"></canvas>
+
+    <!-- 알람 및 안내 메시지가 나타나는 팝업 모달 창 -->
+    <div id="alarm-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden" style="position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center;">
+        <div style="background: #fff; padding: 2rem; border-radius: 1.5rem; text-align: center; border: 4px solid #f472b6; max-width: 320px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 id="modal-title" style="font-size: 1.5rem; font-weight: bold; color: #db2777; margin-bottom: 0.5rem;">알림</h3>
+            <p id="alarm-msg" style="font-size: 1.1rem; color: #4b5563; margin-bottom: 1.5rem;">내용이 들어갑니다.</p>
+            <button onclick="dismissModal()" style="padding: 0.6rem 1.5rem; background: #db2777; color: white; font-weight: bold; border: none; border-radius: 0.75rem; cursor: pointer;">확인</button>
+        </div>
+    </div>
+
+    <!-- 1) 겉표지 화면 (진짜 귀여운 파스텔톤 일기장 표지) -->
+    <div id="cover-screen" class="pastel-cover w-full max-w-3xl h-[80vh] min-h-[550px] flex flex-col items-center justify-center p-8 text-center relative shadow-2xl">
+        <!-- 제본용 책등 장식 -->
+        <div class="book-spine"></div>
+        
+        <!-- 표지 내부 컨텐츠 -->
+        <div class="z-10 pl-6">
+            <div style="display: inline-block; padding: 0.3rem 1rem; background: rgba(244, 114, 182, 0.2); color: #db2777; font-size: 0.9rem; font-weight: bold; border-radius: 9999px; margin-bottom: 1rem; border: 1px solid rgba(244, 114, 182, 0.4);">
+                🎀 파스텔 감성 기록장
+            </div>
+            <!-- "Diary" 각인 타이틀 -->
+            <h1 class="diary-font" style="font-size: 6rem; color: #be185d; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); margin-bottom: 0.5rem;">
+                Diary
+            </h1>
+            <p id="cover-subtitle" style="font-size: 1.2rem; color: #701a75; margin-bottom: 2.5rem; letter-spacing: 2px;">
+                우리 반 수업 시간표 & 스케줄
+            </p>
+            <!-- 일기장 펼치기 버튼 -->
+            <button onclick="openDiary()" style="padding: 1rem 2.5rem; background: linear-gradient(135deg, #f472b6, #db2777); color: white; font-size: 1.2rem; font-weight: bold; border: none; border-radius: 1.5rem; box-shadow: 0 10px 20px rgba(219, 39, 119, 0.3); cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                📖 일기장 펼치기
+            </button>
+        </div>
+        <div style="position: absolute; bottom: 1.5rem; right: 2rem; color: #db2777; font-size: 0.85rem; opacity: 0.7;">
+            ✨ Touch to Open
+        </div>
+    </div>
+
+    <!-- 2) 펼쳐진 일기장 내부 화면 (처음에는 숨겨져 있음) -->
+    <div id="diary-main" class="hidden w-full max-w-5xl min-h-[88vh] bg-white rounded-3xl shadow-2xl flex flex-col relative overflow-hidden book-open-animation" style="border: 6px solid #f472b6; transition: all 0.5s ease;">
+        
+        <!-- 상단 헤더: 제목, 실시간 시계, D-Day 카운터 -->
+        <div id="diary-header" style="background: #f472b6; color: white; padding: 1.2rem 2rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border-bottom: 4px solid #db2777; transition: background 0.5s;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <!-- 표지로 돌아가기 버튼 -->
+                <button onclick="closeDiary()" style="padding: 0.4rem 0.8rem; background: rgba(0,0,0,0.15); color: white; border: none; border-radius: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                    🏷️ 표지로 닫기
+                </button>
+                <h2 id="header-title" style="font-size: 1.4rem; font-weight: bold;">우리 반 수업 시간표 & 스케줄</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; background: rgba(0,0,0,0.1); padding: 0.5rem 1rem; border-radius: 0.75rem;">
+                <!-- 실시간 날짜 및 시간 -->
+                <span id="live-clock" style="font-family: monospace;">2026년 10월 02일 09:00:00</span>
+                <!-- 화면 위쪽 D-Day 카운터 -->
+                <span id="dday-badge" style="background: #db2777; padding: 0.3rem 0.8rem; border-radius: 0.5rem; font-weight: bold; color: #fdf2f8;">D-Day 계산중</span>
+            </div>
+        </div>
+
+        <!-- 3) 페이지 넘기기 컨트롤 바 (하루는 한 장, 이전/다음 요일 이동) -->
+        <div id="page-nav-bar" style="background: #fdf2f8; padding: 0.8rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #fbcfe8; transition: background 0.5s;">
+            <button onclick="prevPage()" style="padding: 0.5rem 1rem; background: #f472b6; color: white; border: none; border-radius: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                ◀ 이전 요일
+            </button>
+            <div style="display: flex; align-items: center; gap: 0.8rem;">
+                <span id="page-indicator" style="font-size: 1.2rem; font-weight: bold; color: #be185d;">📅 월요일 페이지 (1 / 5)</span>
+            </div>
+            <button onclick="nextPage()" style="padding: 0.5rem 1rem; background: #f472b6; color: white; border: none; border-radius: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                다음 요일 ▶
+            </button>
+        </div>
+
+        <!-- 일기장 본문 좌우 2단 그리드 영역 -->
+        <div class="flex-1" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding: 2rem; flex-grow: 1;" id="diary-grid-container">
+            
+            <!-- 왼쪽 페이지: 기분 선택, 날씨 선택, 5교시 시간표, 알람 설정 -->
+            <div class="lined-paper" style="padding: 1.5rem; border-radius: 1.5rem; border: 2px solid #e7e5e4; display: flex; flex-direction: column; justify-content: space-between; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                <div>
+                    <!-- 2) 오늘의 기분 선택 (5가지 단계 얼굴 표시) -->
+                    <div style="background: rgba(255,255,255,0.8); padding: 0.8rem 1rem; border-radius: 1rem; border: 1px solid #fbcfe8; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 0.95rem; font-weight: bold; color: #4b5563;">오늘의 기분:</span>
+                        <div style="display: flex; gap: 0.8rem;" id="mood-selector">
+                            <button onclick="setMood(1)" class="mood-btn" data-mood="1" title="매우 나쁨" style="font-size: 1.6rem; background:none; border:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">😭</button>
+                            <button onclick="setMood(2)" class="mood-btn" data-mood="2" title="조금 슬픔" style="font-size: 1.6rem; background:none; border:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">🙁</button>
+                            <button onclick="setMood(3)" class="mood-btn" data-mood="3" title="보통" style="font-size: 1.6rem; background:none; border:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">😐</button>
+                            <button onclick="setMood(4)" class="mood-btn" data-mood="4" title="좋음" style="font-size: 1.6rem; background:none; border:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">😊</button>
+                            <button onclick="setMood(5)" class="mood-btn" data-mood="5" title="매우 행복" style="font-size: 1.6rem; background:none; border:none; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">🤩</button>
+                        </div>
+                    </div>
+
+                    <!-- 날씨 선택 및 요일 타이틀 -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e7e5e4;">
+                        <h3 id="current-day-title" style="font-size: 1.2rem; font-weight: bold; color: #be185d;">월요일 시간표</h3>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label style="font-size: 0.9rem; font-weight: bold; color: #4b5563;">날씨:</label>
+                            <select id="weather-select" onchange="changeWeather(this.value)" style="background: white; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.3rem 0.6rem; font-size: 0.9rem; outline: none;">
+                                <option value="sunny">☀️ 맑음</option>
+                                <option value="rain">🌧️ 비</option>
+                                <option value="snow">❄️ 눈</option>
+                                <option value="wind">💨 바람</option>
+                                <option value="cloud">☁️ 흐림</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 아래쪽 월~금 5교시 시간표 표 -->
+                    <div style="background: rgba(255,255,255,0.9); border-radius: 1rem; border: 1px solid #e7e5e4; overflow: hidden; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                            <thead>
+                                <tr id="timetable-header-bg" style="background: #fdf2f8; color: #be185d; border-bottom: 1px solid #e7e5e4;">
+                                    <th style="padding: 0.6rem; text-align: center; width: 35%;">시간</th>
+                                    <th style="padding: 0.6rem;">과목</th>
+                                </tr>
+                            </thead>
+                            <tbody id="timetable-tbody">
+                                <!-- JavaScript로 동적 생성됨 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 알람 설정 영역 -->
+                <div style="background: rgba(255,255,255,0.8); padding: 0.8rem 1rem; border-radius: 1rem; border: 1px solid #fbcfe8; display: flex; align-items: center; justify-content: space-between; margin-top: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.9rem; font-weight: bold; color: #be185d;">⏰ 알람:</span>
+                        <input type="time" id="alarm-time-input" style="border: 1px solid #d1d5db; border-radius: 0.4rem; padding: 0.2rem 0.4rem; font-size: 0.9rem;">
+                    </div>
+                    <button onclick="setAlarm()" style="padding: 0.3rem 0.8rem; background: #db2777; color: white; font-size: 0.85rem; font-weight: bold; border: none; border-radius: 0.5rem; cursor: pointer;">설정</button>
+                </div>
+            </div>
+
+            <!-- 오른쪽 페이지: 오늘의 일기 작성 칸 및 꾸미기(낙서 & 스티커) -->
+            <div class="lined-paper" style="padding: 1.5rem; border-radius: 1.5rem; border: 2px solid #e7e5e4; display: flex; flex-direction: column; justify-content: space-between; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                <div>
+                    <!-- 일기 제목 및 저장 버튼 -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e7e5e4;">
+                        <h3 style="font-size: 1.2rem; font-weight: bold; color: #be185d;">✍️ 오늘의 일기</h3>
+                        <button onclick="saveDiary()" style="padding: 0.4rem 1rem; background: #059669; color: white; font-size: 0.85rem; font-weight: bold; border: none; border-radius: 0.5rem; cursor: pointer;">저장하기</button>
+                    </div>
+
+                    <!-- 일기 작성 칸 (텍스트에어리어) -->
+                    <div style="margin-bottom: 1rem;">
+                        <textarea id="diary-textarea" rows="5" class="diary-font" style="width: 100%; background: transparent; border: none; resize: none; outline: none; color: #1f2937; line-height: 2.2rem;" placeholder="오늘 있었던 일이나 생각을 자유롭게 적어보세요..."></textarea>
+                    </div>
+
+                    <!-- 다이어리 꾸미기 영역 (스티커 및 캔버스 낙서) -->
+                    <div style="border-top: 2px dashed #e7e5e4; padding-top: 0.8rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <span style="font-size: 0.9rem; font-weight: bold; color: #be185d;">🎨 꾸미기 (스티커 & 낙서)</span>
+                            <button onclick="clearCanvas()" style="padding: 0.2rem 0.6rem; background: #e5e7eb; color: #374151; font-size: 0.75rem; border: none; border-radius: 0.3rem; cursor: pointer;">지우기</button>
+                        </div>
+
+                        <!-- 스티커 팔레트 버튼들 -->
+                        <div style="display: flex; gap: 0.4rem; margin-bottom: 0.5rem; background: rgba(255,255,255,0.7); padding: 0.4rem; border-radius: 0.5rem; border: 1px solid #e7e5e4;">
+                            <button onclick="addSticker('⭐')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="별 스티커">⭐</button>
+                            <button onclick="addSticker('❤️')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="하트 스티커">❤️</button>
+                            <button onclick="addSticker('🍀')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="클로버 스티커">🍀</button>
+                            <button onclick="addSticker('🐱')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="고양이 스티커">🐱</button>
+                            <button onclick="addSticker('🔥')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="불꽃 스티커">🔥</button>
+                            <button onclick="addSticker('🎉')" style="background:none; border:none; font-size: 1.2rem; cursor:pointer;" title="파티 스티커">🎉</button>
+                        </div>
+
+                        <!-- 그림 낙서 및 스티커 부착용 캔버스 영역 -->
+                        <div style="position: relative; background: white; border: 1px solid #d1d5db; border-radius: 0.75rem; height: 110px; overflow: hidden;">
+                            <canvas id="doodle-canvas" style="width: 100%; height: 100%; cursor: crosshair; display: block;"></canvas>
+                            <div id="sticker-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 하단 안내 문구 -->
+                <div style="text-align: center; font-size: 0.8rem; color: #6b7280; border-top: 1px solid #e7e5e4; padding-top: 0.5rem; margin-top: 0.5rem;">
+                    💡 기분을 선택하면 일기장 전체 분위기와 색상이 실시간으로 변화합니다!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 로직 영역 -->
+    <script>
+        /* ========================================================== */
+        /* [여기만 고치세요] 데이터 및 상수 설정 영역 시작              */
+        /* ========================================================== */
+        const TITLE  = '우리 반 수업 시간표 & 스케줄'; // 다이어리 제목 상수
+        const TARGET = { label:'금요일', date:'2026-10-02' }; // D-Day 목표 이름 및 날짜 상수
+        const DAYS   = ['월','화','수','목','금']; // 월~금 요일 배열 상수
+        const PERIODS = [
+          { time:'09:00', subjects:['국어', '국어', '영어', '국어', '체육'] }, // 1교시 과목 목록 상수
+          { time:'10:00', subjects:['영어', '수학', '음악', '과학', '국어'] }, // 2교시 과목 목록 상수
+          { time:'11:00', subjects:['과학', '체육', '코딩', '영어', '수학'] }, // 3교시 과목 목록 상수
+          { time:'13:00', subjects:['사회', '사회', '수학', '수학', '실과'] }, // 4교시 과목 목록 상수
+          { time:'14:00', subjects:['사회', '미술', '도덕', '실과', '동아리'] }, // 5교시 과목 목록 상수
+        ];
+        /* [여기만 고치세요] 데이터 및 상수 설정 영역 끝                */
+        /* ========================================================== */
+
+        // 전역 상태 변수 정의
+        let currentPageIndex = 0;   // 현재 보고 있는 요일 페이지 인덱스 (0: 월 ~ 4: 금)
+        let currentMoodLevel = 4;   // 현재 선택된 기분 단계 (1: 매우 나쁨 ~ 5: 매우 좋음)
+        let alarmTargetTime = null; // 설정된 알람 시간 문자열
+        let weatherTimerId = null;  // 날씨 파티클 애니메이션 타이머 ID
+
+        // 웹페이지가 완전히 로드되면 실행되는 초기화 함수
+        window.onload = function() {
+            // 타이틀 상수를 화면 곳곳에 반영
+            document.getElementById('cover-subtitle').innerText = TITLE;
+            document.getElementById('header-title').innerText = TITLE;
+
+            // 페이지 및 시간표 렌더링 초기 실행
+            renderPage();
+            // D-Day 계산 실행
+            calculateDDay();
+            // 1초마다 실시간 시계 업데이트 시작
+            setInterval(updateRealtimeClock, 1000);
+            // 낙서 캔버스 초기화 설정
+            initDoodleCanvas();
+        };
+
+        // 겉표지에서 '일기장 펼치기' 버튼을 눌렀을 때 실행되는 함수 (전역 등록)
+        window.openDiary = function() {
+            document.getElementById('cover-screen').classList.add('hidden');
+            const mainDiary = document.getElementById('diary-main');
+            mainDiary.classList.remove('hidden');
+
+            // 일기장이 열릴 때 기본 선택된 날씨 효과 10초간 실행
+            triggerWeatherAnimation(document.getElementById('weather-select').value);
+        };
+
+        // 일기장을 닫고 다시 겉표지로 돌아가는 함수 (전역 등록)
+        window.closeDiary = function() {
+            document.getElementById('diary-main').classList.add('hidden');
+            document.getElementById('cover-screen').classList.remove('hidden');
+        };
+
+        // 페이지(요일)를 이전으로 넘기는 함수 (전역 등록)
+        window.prevPage = function() {
+            if (currentPageIndex > 0) {
+                currentPageIndex--;
+                renderPage();
+            } else {
+                showModal('알림', '이번 주의 첫 번째 요일(월요일)입니다!');
+            }
+        };
+
+        // 페이지(요일)를 다음으로 넘기는 함수 (전역 등록)
+        window.nextPage = function() {
+            if (currentPageIndex < DAYS.length - 1) {
+                currentPageIndex++;
+                renderPage();
+            } else {
+                showModal('알림', '이번 주의 마지막 요일(금요일)입니다!');
+            }
+        };
+
+        // 현재 페이지 인덱스에 맞춰 요일 제목, 시간표, 저장된 일기 내용을 렌더링하는 함수
+        function renderPage() {
+            // 페이지 상단 인디케이터 텍스트 갱신
+            const dayName = DAYS[currentPageIndex];
+            document.getElementById('page-indicator').innerText = `📅 ${dayName}요일 페이지 (${currentPageIndex + 1} / ${DAYS.length})`;
+            document.getElementById('current-day-title').innerText = `${dayName}요일 시간표`;
+
+            // 해당 요일의 5교시 시간표 표 생성
+            const tbody = document.getElementById('timetable-tbody');
+            tbody.innerHTML = '';
+
+            PERIODS.forEach((period, idx) => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #e7e5e4';
+                
+                const tdTime = document.createElement('td');
+                tdTime.style.padding = '0.6rem';
+                tdTime.style.textAlign = 'center';
+                tdTime.style.fontFamily = 'monospace';
+                tdTime.style.color = '#4b5563';
+                tdTime.style.fontSize = '0.9rem';
+                tdTime.innerText = `${idx + 1}교시 (${period.time})`;
+                tr.appendChild(tdTime);
+
+                const tdSubject = document.createElement('td');
+                tdSubject.style.padding = '0.6rem';
+                tdSubject.style.fontWeight = 'bold';
+                tdSubject.style.color = '#1f2937';
+                tdSubject.innerText = period.subjects[currentPageIndex];
+                tr.appendChild(tdSubject);
+
+                tbody.appendChild(tr);
+            });
+
+            // 해당 요일에 저장되어 있던 일기 불러오기
+            const savedDiaryText = localStorage.getItem(`diary_page_${dayName}`) || '';
+            document.getElementById('diary-textarea').value = savedDiaryText;
+        }
+
+        // D-Day 남은 날수를 계산하여 화면에 표시하는 함수
+        function calculateDDay() {
+            const todayDate = new Date();
+            const targetDateObj = new Date(TARGET.date);
+            const timeDiff = targetDateObj - todayDate;
+            const dayDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+            const badge = document.getElementById('dday-badge');
+            if (dayDiff > 0) {
+                badge.innerText = `${TARGET.label}까지 D-${dayDiff}`;
+            } else if (dayDiff === 0) {
+                badge.innerText = `${TARGET.label} 바로 오늘!`;
+            } else {
+                badge.innerText = `${TARGET.label} 지남 (${Math.abs(dayDiff)}일)`;
+            }
+        }
+
+        // 실시간 시계를 갱신하고 알람 시간을 체크하는 함수
+        function updateRealtimeClock() {
+            const now = new Date();
+            const yr = now.getFullYear();
+            const mo = String(now.getMonth() + 1).padStart(2, '0');
+            const dt = String(now.getDate()).padStart(2, '0');
+            const hr = String(now.getHours()).padStart(2, '0');
+            const mi = String(now.getMinutes()).padStart(2, '0');
+            const se = String(now.getSeconds()).padStart(2, '0');
+
+            document.getElementById('live-clock').innerText = `${yr}년 ${mo}월 ${dt}일 ${hr}:${mi}:${se}`;
+
+            // 설정된 알람 시간과 현재 시간이 일치하면 알람 발동
+            if (alarmTargetTime && `${hr}:${mi}` === alarmTargetTime) {
+                showModal('⏰ 알람 울림!', `설정하신 시간 ${alarmTargetTime}이 되었습니다!`);
+                alarmTargetTime = null;
+            }
+        }
+
+        // 2) 5가지 기분을 선택했을 때 일기장 전체 분위기(색상, 테두리 등)를 실시간으로 바꾸는 함수 (전역 등록)
+        window.setMood = function(level) {
+            currentMoodLevel = level;
+
+            // 선택된 기분 이모지 강조 효과
+            const moodButtons = document.querySelectorAll('.mood-btn');
+            moodButtons.forEach(btn => {
+                if (parseInt(btn.dataset.mood) === level) {
+                    btn.style.transform = 'scale(1.3)';
+                    btn.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))';
+                } else {
+                    btn.style.transform = 'scale(1)';
+                    btn.style.filter = 'none';
+                }
+            });
+
+            // 기분 단계별 파스텔 및 무드 컬러 팔레트 정의
+            const headerElem = document.getElementById('diary-header');
+            const navBarElem = document.getElementById('page-nav-bar');
+            const mainBookElem = document.getElementById('diary-main');
+            const tableHeaderElem = document.getElementById('timetable-header-bg');
+
+            if (level === 5) {
+                // 매우 좋음 (화사하고 따뜻한 핑크/골드 무드)
+                headerElem.style.background = '#f43f5e';
+                headerElem.style.borderColor = '#e11d48';
+                navBarElem.style.background = '#fff1f2';
+                mainBookElem.style.borderColor = '#f43f5e';
+                tableHeaderElem.style.background = '#ffe4e6';
+                tableHeaderElem.style.color = '#e11d48';
+            } else if (level === 4) {
+                // 좋음 (기본 화사한 파스텔 핑크 무드)
+                headerElem.style.background = '#f472b6';
+                headerElem.style.borderColor = '#db2777';
+                navBarElem.style.background = '#fdf2f8';
+                mainBookElem.style.borderColor = '#f472b6';
+                tableHeaderElem.style.background = '#fdf2f8';
+                tableHeaderElem.style.color = '#be185d';
+            } else if (level === 3) {
+                // 보통 (따뜻한 노란빛/베이지 무드)
+                headerElem.style.background = '#fbbf24';
+                headerElem.style.borderColor = '#f59e0b';
+                navBarElem.style.background = '#fffbeb';
+                mainBookElem.style.borderColor = '#fbbf24';
+                tableHeaderElem.style.background = '#fef3c7';
+                tableHeaderElem.style.color = '#b45309';
+            } else if (level === 2) {
+                // 나쁨 (차분하고 가라앉은 블루/그린 무드)
+                headerElem.style.background = '#38bdf8';
+                headerElem.style.borderColor = '#0284c7';
+                navBarElem.style.background = '#f0f9ff';
+                mainBookElem.style.borderColor = '#38bdf8';
+                tableHeaderElem.style.background = '#e0f2fe';
+                tableHeaderElem.style.color = '#0369a1';
+            } else {
+                // 매우 나쁨 (다소 어둡고 차분한 슬레이트/다크 무드)
+                headerElem.style.background = '#475569';
+                headerElem.style.borderColor = '#334155';
+                navBarElem.style.background = '#f8fafc';
+                mainBookElem.style.borderColor = '#475569';
+                tableHeaderElem.style.background = '#f1f5f9';
+                tableHeaderElem.style.color = '#334155';
+            }
+        };
+
+        // 날씨 선택 변경 시 호출되는 함수 (전역 등록)
+        window.changeWeather = function(selectedWeather) {
+            triggerWeatherAnimation(selectedWeather);
+        };
+
+        // 날씨에 따라 10초 동안 파티클 효과를 렌더링하는 함수
+        function triggerWeatherAnimation(weatherType) {
+            const canvasElem = document.getElementById('weather-canvas');
+            const ctx = canvasElem.getContext('2d');
+            canvasElem.width = window.innerWidth;
+            canvasElem.height = window.innerHeight;
+
+            if (weatherTimerId) clearInterval(weatherTimerId);
+
+            let particles = [];
+            if (weatherType === 'rain') {
+                for (let i = 0; i < 90; i++) {
+                    particles.push({ x: Math.random() * canvasElem.width, y: Math.random() * canvasElem.height, len: Math.random() * 20 + 10, speed: Math.random() * 8 + 4 });
+                }
+            } else if (weatherType === 'snow') {
+                for (let i = 0; i < 70; i++) {
+                    particles.push({ x: Math.random() * canvasElem.width, y: Math.random() * canvasElem.height, radius: Math.random() * 4 + 2, speed: Math.random() * 2 + 1, drift: Math.random() * 2 - 1 });
+                }
+            } else if (weatherType === 'wind') {
+                for (let i = 0; i < 40; i++) {
+                    particles.push({ x: Math.random() * canvasElem.width, y: Math.random() * canvasElem.height, len: Math.random() * 30 + 15, speed: Math.random() * 12 + 8 });
+                }
+            }
+
+            let frameCounter = 0;
+            weatherTimerId = setInterval(() => {
+                ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+                frameCounter++;
+
+                if (weatherType === 'rain') {
+                    ctx.strokeStyle = 'rgba(100, 150, 255, 0.6)';
+                    ctx.lineWidth = 1.5;
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x - 1, p.y + p.len);
+                        ctx.stroke();
+                        p.y += p.speed;
+                        p.x -= 0.3;
+                        if (p.y > canvasElem.height) p.y = -20;
+                    });
+                } else if (weatherType === 'snow') {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        p.y += p.speed;
+                        p.x += p.drift;
+                        if (p.y > canvasElem.height) p.y = -10;
+                    });
+                } else if (weatherType === 'wind') {
+                    ctx.strokeStyle = 'rgba(200, 200, 200, 0.4)';
+                    ctx.lineWidth = 1;
+                    particles.forEach(p => {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p.x + p.len, p.y);
+                        ctx.stroke();
+                        p.x += p.speed;
+                        if (p.x > canvasElem.width) p.x = -50;
+                    });
+                }
+
+                // 정확히 10초(약 330프레임)가 지나면 애니메이션 자동 중지
+                if (frameCounter > 330 || weatherType === 'sunny' || weatherType === 'cloud') {
+                    ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+                    clearInterval(weatherTimerId);
+                }
+            }, 30);
+        }
+
+        // 현재 요일 페이지의 일기 내용을 로컬스토리지에 저장하는 함수 (전역 등록)
+        window.saveDiary = function() {
+            const dayName = DAYS[currentPageIndex];
+            const textContent = document.getElementById('diary-textarea').value;
+            localStorage.setItem(`diary_page_${dayName}`, textContent);
+            showModal('저장 완료!', `${dayName}요일 일기가 안전하게 저장되었습니다! 📖`);
+        };
+
+        // 알람 시간 설정 함수 (전역 등록)
+        window.setAlarm = function() {
+            const timeInputValue = document.getElementById('alarm-time-input').value;
+            if (!timeInputValue) {
+                showModal('알림', '올바른 알람 시간을 선택해주세요.');
+                return;
+            }
+            alarmTargetTime = timeInputValue;
+            showModal('알람 설정', `⏰ ${timeInputValue}에 알람이 설정되었습니다.`);
+        };
+
+        // 커스텀 모달 팝업 창을 띄우는 함수
+        function showModal(titleText, msgText) {
+            document.getElementById('modal-title').innerText = titleText;
+            document.getElementById('alarm-msg').innerText = msgText;
+            document.getElementById('alarm-modal').style.display = 'flex';
+        }
+
+        // 모달 팝업 창을 닫는 함수 (전역 등록)
+        window.dismissModal = function() {
+            document.getElementById('alarm-modal').style.display = 'none';
+        };
+
+        // 낙서용 캔버스 초기화 및 마우스/터치 드로잉 이벤트 설정 함수
+        function initDoodleCanvas() {
+            const canvasElem = document.getElementById('doodle-canvas');
+            const ctx = canvasElem.getContext('2d');
+            
+            canvasElem.width = canvasElem.parentElement.clientWidth;
+            canvasElem.height = canvasElem.parentElement.clientHeight;
+
+            let drawing = false;
+            let startX = 0;
+            let startY = 0;
+
+            function beginDrawing(e) {
+                drawing = true;
+                const rect = canvasElem.getBoundingClientRect();
+                startX = (e.clientX || e.touches[0].clientX) - rect.left;
+                startY = (e.clientY || e.touches[0].clientY) - rect.top;
+            }
+
+            function keepDrawing(e) {
+                if (!drawing) return;
+                const rect = canvasElem.getBoundingClientRect();
+                const currentX = (e.clientX || e.touches[0].clientX) - rect.left;
+                const currentY = (e.clientY || e.touches[0].clientY) - rect.top;
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = '#db2777';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                startX = currentX;
+                startY = currentY;
+            }
+
+            function stopDrawing() {
+                drawing = false;
+            }
+
+            canvasElem.addEventListener('mousedown', beginDrawing);
+            canvasElem.addEventListener('mousemove', keepDrawing);
+            canvasElem.addEventListener('mouseup', stopDrawing);
+            canvasElem.addEventListener('mouseout', stopDrawing);
+
+            canvasElem.addEventListener('touchstart', beginDrawing);
+            canvasElem.addEventListener('touchmove', keepDrawing);
+            canvasElem.addEventListener('touchend', stopDrawing);
+        }
+
+        // 낙서 캔버스 초기화 및 전체 지우기 함수 (전역 등록)
+        window.clearCanvas = function() {
+            const canvasElem = document.getElementById('doodle-canvas');
+            const ctx = canvasElem.getContext('2d');
+            ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+            document.getElementById('sticker-container').innerHTML = '';
+        };
+
+        // 다이어리에 귀여운 이모지 스티커를 부착하는 함수 (전역 등록)
+        window.addSticker = function(emojiSymbol) {
+            const container = document.getElementById('sticker-container');
+            const stickerItem = document.createElement('div');
+            stickerItem.style.position = 'absolute';
+            stickerItem.style.fontSize = '2rem';
+            stickerItem.style.cursor = 'pointer';
+            stickerItem.style.userSelect = 'none';
+            stickerItem.style.transition = 'transform 0.2s';
+            
+            // 캔버스 내 무작위 위치에 스티커 배치
+            const maxX = container.clientWidth - 40;
+            const maxY = container.clientHeight - 40;
+            stickerItem.style.left = Math.max(0, Math.random() * maxX) + 'px';
+            stickerItem.style.top = Math.max(0, Math.random() * maxY) + 'px';
+            stickerItem.innerText = emojiSymbol;
+
+            // 스티커를 클릭하면 삭제되도록 이벤트 추가
+            stickerItem.onclick = function() {
+                stickerItem.remove();
+            };
+
+            container.appendChild(stickerItem);
+        };
+    </script>
+</body>
+</html>
