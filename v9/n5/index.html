@@ -201,6 +201,7 @@ canvas{
     <p>1~4 : 무기 변경　R : 장전</p>
     <p>E : 무기 줍기 / 차량 / 엘리베이터</p>
     <p>T : 하늘 섬광탄 / 3초 조명</p>
+    <p>마우스 휠 : 화면 확대 / 축소 · 좁은 골목에서 좀비 기습 주의</p>
     <button id="startButton">게임 시작</button>
 </div>
 
@@ -232,7 +233,7 @@ canvas{
 <div id="damageFlash"></div>
 
 <div id="help">
-    WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~4 무기 · T 섬광탄 (3초)
+    WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~4 무기 · T 섬광탄 (3초) · 휠 확대/축소
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
@@ -1106,68 +1107,91 @@ const fc=facadeCanvas.getContext('2d');fc.fillStyle='#b5b7b2';fc.fillRect(0,0,25
 for(let i=0;i<3500;i++){const v=140+Math.random()*65;fc.fillStyle=`rgba(${v},${v},${v},.28)`;fc.fillRect(Math.random()*256,Math.random()*256,2,2);}
 fc.strokeStyle='#757975';fc.lineWidth=2;for(let y=0;y<256;y+=32){fc.beginPath();fc.moveTo(0,y);fc.lineTo(256,y);fc.stroke();for(let x=(y/32%2)*32;x<256;x+=64){fc.beginPath();fc.moveTo(x,y);fc.lineTo(x,y+32);fc.stroke();}}
 const facadeTexture=new THREE.CanvasTexture(facadeCanvas);facadeTexture.colorSpace=THREE.SRGBColorSpace;
-function createCityBuilding(
-    x,
-    z,
-    w,
-    d,
-    h
-){
-
-    const wall = createObstacle(x,0,z,w,h,d,0x777d83,"cityBuilding");
-    wall.mesh.material.map = facadeTexture;
-    wall.mesh.material.color.setHex([0x89918f,0x8e8074,0x6a7a85][Math.floor(Math.random()*3)]);
-    const group = new THREE.Group(); group.position.set(x,0,z); scene.add(group);
-    const trim = new THREE.MeshStandardMaterial({color:0x303b44,roughness:0.85});
-    const glass = new THREE.MeshStandardMaterial({color:0x243a49,metalness:.6,roughness:.25});
-    const lit = new THREE.MeshStandardMaterial({color:0xc1a268,emissive:0xffb84c,emissiveIntensity:.65});
-    function box(wi,he,de,px,py,pz,mat){const m=new THREE.Mesh(new THREE.BoxGeometry(wi,he,de),mat);m.position.set(px,py,pz);group.add(m);return m;}
-    for(let y=2.2;y<h-1;y+=3.1){
-        for(let px=-w/2+1.6;px<w/2-1;px+=2.7){
-            for(const side of [-1,1]){
-                box(1.55,1.9,.14,px,y,side*(d/2+.07),trim);
-                box(1.25,1.55,.16,px,y,side*(d/2+.15),Math.random()<.16?lit:glass);
-                box(1.65,.12,.35,px,y-.95,side*(d/2+.16),trim);
-            }
-        }
-        for(let pz=-d/2+1.6;pz<d/2-1;pz+=2.7)for(const side of [-1,1]){
-            box(.14,1.9,1.55,side*(w/2+.07),y,pz,trim);
-            box(.16,1.55,1.25,side*(w/2+.15),y,pz,Math.random()<.12?lit:glass);
-        }
-        box(w+.4,.18,d+.4,0,y+1.25,0,trim);
+// Window grids and weathered plaster are drawn into reusable facade textures.
+const cityTextures=[];
+for(const palette of ['#555c60','#63594e','#4e5961']){
+    const c=document.createElement('canvas');c.width=256;c.height=256;const g=c.getContext('2d');
+    g.fillStyle=palette;g.fillRect(0,0,256,256);
+    for(let i=0;i<1700;i++){g.fillStyle=Math.random()<.5?'#ffffff0b':'#00000018';g.fillRect(Math.random()*256,Math.random()*256,2,5);}
+    for(let row=0;row<4;row++)for(let col=0;col<4;col++){
+        const x=col*64+15,y=row*64+12;g.fillStyle='#242a2e';g.fillRect(x-3,y-3,35,45);
+        g.fillStyle=Math.random()<.08?'#8c7951':'#172732';g.fillRect(x,y,29,38);
+        g.fillStyle='#646965';g.fillRect(x+14,y,2,38);g.fillRect(x,y+19,29,2);g.fillRect(x-5,y+39,39,4);
+        if(Math.random()<.3){g.strokeStyle='#0e151c';g.lineWidth=2;g.beginPath();g.moveTo(x+3,y+2);g.lineTo(x+19,y+16);g.lineTo(x+8,y+34);g.stroke();}
+        g.fillStyle='#00000022';g.fillRect(x-2,y+44,34,12);
     }
-    box(w+.7,.4,d+.7,0,h+.2,0,trim);
-    box(w*.35,1.3,d*.3,-w*.18,h+.85,0,trim);
-    box(1.8,2.8,.2,0,1.4,-d/2-.15,glass);
-    box(3.2,.22,1.5,0,3,-d/2-.6,trim);
-
+    const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;cityTextures.push(t);
 }
-
-for(let i=0;i<45;i++){
-
-    const x =
-        (Math.random()-0.5)*500;
-
-    const z =
-        (Math.random()-0.5)*500;
-
-    if(
-        Math.abs(x)<24 || Math.abs(z)<24 ||
-        Math.abs(Math.abs(x)-120)<20 || Math.abs(Math.abs(z)-120)<20 ||
-        (Math.abs(x-70)<35 && Math.abs(z-70)<30)
-    ){
-        continue;
+const cityRoofMat=new THREE.MeshStandardMaterial({color:0x343e44,roughness:1});
+function cityDetailBox(group,w,h,d,x,y,z,mat){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;group.add(m);return m;}
+function createCityBuilding(x,z,w,d,h){
+    const wall=createObstacle(x,0,z,w,h,d,0xffffff,'cityBuilding');
+    wall.mesh.material.map=cityTextures[Math.floor(Math.random()*cityTextures.length)];
+    const group=new THREE.Group();group.position.set(x,0,z);scene.add(group);
+    cityDetailBox(group,w+.5,.3,d+.5,0,h+.15,0,cityRoofMat);
+    cityDetailBox(group,w*.3,1.1,d*.25,w*.18,h+.8,0,cityRoofMat);
+    cityDetailBox(group,w+.2,.25,d+.2,0,.18,0,cityRoofMat);
+    cityDetailBox(group,2.6,.16,.9,0,2.9,-d/2-.3,cityRoofMat);
+    cityDetailBox(group,1.5,2.5,.08,0,1.25,-d/2-.055,cityRoofMat);
+}
+const alleyBlocks=[];
+const alleyMat=new THREE.MeshStandardMaterial({color:0x343a3a,roughness:1});
+const pavementMat=new THREE.MeshStandardMaterial({color:0x62635d,roughness:1});
+function surface(x,z,w,d,mat,y=.075){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),mat);m.rotation.x=-Math.PI/2;m.position.set(x,y,z);m.receiveShadow=true;scene.add(m);}
+// The 120-unit road grid encloses 3 x 3 building blocks. Five-unit corridors connect every entrance.
+for(const bx of [-180,-60,60,180])for(const bz of [-180,-60,60,180]){
+    if(bx===60 && bz===60)continue; // Keep the existing explorable apartment and its entrance.
+    const block={x:bx,z:bz,minX:bx-46,maxX:bx+46,minZ:bz-46,maxZ:bz+46,used:false};alleyBlocks.push(block);
+    surface(bx,bz,94,94,pavementMat,.06);
+    for(const offset of [-15.5,15.5]){surface(bx+offset,bz,5,94,alleyMat,.081);surface(bx,bz+offset,94,5,alleyMat,.082);}
+    for(let ix=-1;ix<=1;ix++)for(let iz=-1;iz<=1;iz++){
+        const x=bx+ix*31,z=bz+iz*31;
+        const h=10+((ix+iz+6+Math.abs(bx+bz)/60)%4)*3;
+        createCityBuilding(x,z,26,26,h);
     }
-
-    createCityBuilding(
-        x,
-        z,
-        8+Math.random()*12,
-        8+Math.random()*12,
-        5+Math.random()*15
-    );
+    // Low roadside curbs are decorative; alley mouths stay open for walking and driving.
+    for(const side of [-1,1])for(const off of [-31,0,31]){
+        const g=new THREE.Group();scene.add(g);
+        cityDetailBox(g,25,.16,.35,bx+off,.08,bz+side*47,pavementMat);
+        cityDetailBox(g,.35,.16,25,bx+side*47,.08,bz+off,pavementMat);
+    }
 }
-
+// Add the outer road ring, sidewalks and dashed road centerlines.
+for(const v of [-240,240]){createRoad(v,0,18,500);createRoad(0,v,500,18);}
+for(const v of [-240,-120,120,240])for(let n=-234;n<=234;n+=12){
+    const g=new THREE.Group();scene.add(g);
+    cityDetailBox(g,.18,.025,4,v,.066,n,markingMat);
+    cityDetailBox(g,4,.025,.18,n,.066,v,markingMat);
+}
+const lamps=[];
+const lampMetal=new THREE.MeshStandardMaterial({color:0x303b3e,metalness:.7,roughness:.7});
+const deadGlass=new THREE.MeshStandardMaterial({color:0x1c282d,metalness:.4,roughness:.35});
+function streetLamp(x,z,index){
+    const g=new THREE.Group();g.position.set(x,0,z);scene.add(g);
+    const broken=index%3!==0;g.rotation.z=broken?(index%2?-.07:.08):0;
+    cityDetailBox(g,.26,.35,.26,0,.18,0,lampMetal);
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(.075,.13,6,8),lampMetal);pole.position.y=3;pole.castShadow=true;g.add(pole);
+    cityDetailBox(g,1.6,.11,.11,.65,5.9,0,lampMetal);
+    const shade=cityDetailBox(g,.85,.18,.5,1.3,5.8,0,lampMetal);if(broken)shade.rotation.z=.35;
+    const bulbMat=new THREE.MeshStandardMaterial({color:broken?0x35403e:0xf2d899,emissive:0xffc66d,emissiveIntensity:broken?0:.8});
+    cityDetailBox(g,.6,.055,.34,1.3,5.68,0,bulbMat);
+    let light=null;
+    if(!broken && lamps.filter(l=>l.light).length<12){light=new THREE.PointLight(0xffbc61,18,18,2);light.position.set(x+1.3,5.6,z);scene.add(light);}
+    if(broken){const cable=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,1.2,5),lampMetal);cable.position.set(1.4,5.1,0);cable.rotation.z=.25;g.add(cable);for(let j=0;j<3;j++){const shard=cityDetailBox(g,.17,.03,.12,.7+j*.2,.05,.4,deadGlass);shard.rotation.y=j;}}
+    lamps.push({x,z,broken,light,mat:bulbMat,seed:index*1.91});
+}
+let lampIndex=0;
+for(const v of [-120,0,120])for(const n of [-205,-155,-85,-35,35,85,155,205])streetLamp(v+(lampIndex%2?14:-14),n,lampIndex++);
+for(const b of alleyBlocks){streetLamp(b.x-15.5,b.z-41,lampIndex++);}
+const debrisMat=new THREE.MeshStandardMaterial({color:0x443e36,roughness:1});
+const binMat=new THREE.MeshStandardMaterial({color:0x39433b,roughness:1});
+for(const b of alleyBlocks){
+    const g=new THREE.Group();scene.add(g);
+    // Refuse sits against a facade, leaving the middle of the corridor clear.
+    cityDetailBox(g,1.2,1.25,.8,b.x-13.7,.63,b.z-5,binMat);
+    cityDetailBox(g,1.35,.12,.95,b.x-13.7,1.3,b.z-5,cityRoofMat);
+    for(let j=0;j<4;j++)cityDetailBox(g,.3+j*.08,.13,.3,b.x-13.4,.08,b.z+1+j*.6,debrisMat);
+}
 
 /* =========================================================
    차량
@@ -1447,6 +1471,10 @@ function blocked(
 
 
     for(const object of obstacles){
+        if(object.type === "cityBuilding"){
+            if(Math.abs(x-object.x)<object.w/2+.35 && Math.abs(z-object.z)<object.d/2+.35 && y>object.y && y-1.7<object.y+object.h)return true;
+            continue;
+        }
 
         /*
           건물과 내부벽만 플레이어를
@@ -2019,10 +2047,16 @@ function updateReload(){
    좀비 생성
 ========================================================= */
 
-function createZombie(){
+function createZombie(spawnX,spawnZ){
     let x,z;let tries=0;
+    if(Number.isFinite(spawnX)&&Number.isFinite(spawnZ)){
+        if(blocked(spawnX,1.7,spawnZ))return null;
+        x=spawnX;z=spawnZ;
+    }else{
     do{const angle=Math.random()*Math.PI*2,r=48+Math.random()*65;x=player.x+Math.cos(angle)*r;z=player.z+Math.sin(angle)*r;tries++;}
     while(tries<100 && blocked(x,1.7,z));
+    if(blocked(x,1.7,z))return null;
+    }
     const group=new THREE.Group(),rig=new THREE.Group();group.add(rig);
     const skin=new THREE.MeshStandardMaterial({color:0x81916a,roughness:1});
     const clothes=new THREE.MeshStandardMaterial({color:[0x424c55,0x5c413e,0x485447][Math.floor(Math.random()*3)],roughness:1});
@@ -2054,6 +2088,7 @@ function createZombie(){
     }
     group.position.set(x,0,z);scene.add(group);
     zombies.push({mesh:group,rig,head,arms,legs,phase:Math.random()*6.28,x,z,y:0,hp:2+Math.floor(wave/2),speed:.038+Math.random()*.017+Math.min(.025,wave*.0015),vy:0,ground:true,jumpTimer:100,attackTimer:0});
+    return zombies[zombies.length-1];
 }
 
 function updateZombies(){
@@ -3179,8 +3214,39 @@ function updateFlare(){
     else flareHUD.textContent='T · 하늘 섬광탄 (3초)';
 }
 window.addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+let zoomFov=75;
+window.addEventListener('wheel',e=>{
+    e.preventDefault();zoomFov=THREE.MathUtils.clamp(zoomFov+Math.sign(e.deltaY)*5,40,100);
+    camera.fov=zoomFov;camera.updateProjectionMatrix();
+},{passive:false});
+const districtHUD=document.createElement('div');districtHUD.style.cssText='position:fixed;left:15px;bottom:65px;z-index:25;color:#eee;font-size:18px;background:#10171dde;border:1px solid #58636b;border-radius:6px;padding:9px 14px;pointer-events:none';document.body.appendChild(districtHUD);
+const scareNotice=document.createElement('div');scareNotice.style.cssText='position:fixed;left:50%;top:28%;transform:translateX(-50%);color:#f1c6a3;font-size:26px;font-weight:bold;text-shadow:0 2px 6px #000;z-index:35;pointer-events:none;opacity:0';document.body.appendChild(scareNotice);
+let scareUntil=0,lastAmbush=-Infinity,alleyInside=false;
+let audioContext=null;
+function scareSound(){try{
+    audioContext=audioContext||new (window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();
+    const o=audioContext.createOscillator(),gain=audioContext.createGain();o.type='sawtooth';o.frequency.setValueAtTime(95,audioContext.currentTime);o.frequency.exponentialRampToValueAtTime(28,audioContext.currentTime+.6);
+    gain.gain.setValueAtTime(.045,audioContext.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+.65);o.connect(gain);gain.connect(audioContext.destination);o.start();o.stop(audioContext.currentTime+.7);
+}catch(e){}}
+function updateDistrict(){
+    const now=performance.now();let b=alleyBlocks.find(b=>player.x>b.minX&&player.x<b.maxX&&player.z>b.minZ&&player.z<b.maxZ);
+    districtHUD.textContent=(b?'좁은 골목 · 모퉁이 주의':'차도 / 교차로')+' · 확대 '+Math.round(75/zoomFov*100)+'%';
+    for(const l of lamps){if(l.broken)continue;const near=Math.hypot(l.x-player.x,l.z-player.z)<50;const flicker=near&&(Math.sin(now*.026+l.seed)>.85||Math.sin(now*.009+l.seed)<-.93);l.mat.emissiveIntensity=flicker?.03:.8;if(l.light)l.light.intensity=flicker?.15:18;}
+    if(!gameStarted||gameOver){alleyInside=!!b;return;}
+    if(b&&!b.used&&!player.inCar&&now-lastAmbush>3500){
+        let spawn=null;
+        // Place the attacker at the first side passage ahead, tucked around its corner.
+        const dirX=-Math.sin(player.yaw),dirZ=-Math.cos(player.yaw);
+        const horizontal=Math.abs(player.z-(b.z-15.5))<3||Math.abs(player.z-(b.z+15.5))<3;
+        if(horizontal){const junction=dirX>0?b.x-15.5:b.x+15.5;const lane=Math.abs(player.z-(b.z-15.5))<3?b.z-15.5:b.z+15.5;spawn={x:junction,z:lane+6};}
+        else{const junction=dirZ>0?b.z-15.5:b.z+15.5;const lane=Math.abs(player.x-(b.x-15.5))<3?b.x-15.5:b.x+15.5;spawn={x:lane+6,z:junction};}
+        if(Math.hypot(spawn.x-player.x,spawn.z-player.z)>7 && Math.hypot(spawn.x-player.x,spawn.z-player.z)<20){const zombie=createZombie(spawn.x,spawn.z);if(zombie){zombie.speed*=1.3;b.used=true;lastAmbush=now;scareUntil=now+1400;scareNotice.textContent='골목 안에서 발소리가 들립니다…';scareSound();}}
+    }
+    alleyInside=!!b;scareNotice.style.opacity=now<scareUntil?'1':'0';
+}
 function update(){
     updateFlare();
+    updateDistrict();
 
     if(!gameStarted){
         return;
