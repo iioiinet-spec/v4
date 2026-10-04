@@ -11,7 +11,8 @@ html,body{margin:0;padding:0;overflow:hidden;background:#05070a;color:#e6ecee;fo
 canvas{display:block}
 
 /* ====== 영화풍 화면 오버레이 ====== */
-#grain,#vignette,#scan,#bloodVig,#damageFlash{position:fixed;inset:0;pointer-events:none}
+#grain,#vignette,#scan,#bloodVig,#acidVig,#damageFlash{position:fixed;inset:0;pointer-events:none}
+#acidVig{z-index:25;opacity:0;background:radial-gradient(ellipse at center,rgba(120,200,40,0) 24%,rgba(126,200,36,.4) 72%,rgba(44,86,10,.8) 100%);transition:opacity .25s}
 #grain{z-index:22;opacity:.09;background-repeat:repeat;mix-blend-mode:overlay;animation:grainShift .55s steps(3) infinite}
 @keyframes grainShift{0%{background-position:0 0}33%{background-position:-48px 24px}66%{background-position:36px -36px}100%{background-position:0 0}}
 #vignette{z-index:23;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 46%,rgba(0,0,0,.32) 80%,rgba(0,0,0,.7) 100%)}
@@ -132,6 +133,13 @@ color:#ffe9e2;font-family:inherit;font-size:19px;font-weight:bold;letter-spacing
 #waveMessage{position:fixed;top:13%;left:50%;transform:translateX(-50%);z-index:30;display:none;text-align:center;color:#e3c05f;font-size:44px;font-weight:900;letter-spacing:.2em;text-shadow:0 4px 0 #0a0c0d,0 0 40px rgba(190,60,30,.45);pointer-events:none}
 #scareNotice{position:fixed;left:50%;top:27%;transform:translateX(-50%);z-index:35;opacity:0;color:#edc2a0;font-size:23px;font-weight:bold;letter-spacing:.08em;text-shadow:0 2px 8px #000;transition:opacity .4s;pointer-events:none}
 #runnerWarn{position:fixed;left:50%;top:34%;transform:translateX(-50%);z-index:35;opacity:0;color:#ff7a52;font-size:20px;font-weight:bold;letter-spacing:.22em;text-shadow:0 2px 10px #000,0 0 26px rgba(255,80,40,.6);transition:opacity .3s;pointer-events:none}
+#gearWarn{position:fixed;left:50%;top:41%;transform:translateX(-50%);z-index:35;opacity:0;color:#bdf25a;font-size:17px;font-weight:bold;letter-spacing:.14em;text-shadow:0 2px 10px #000,0 0 22px rgba(150,240,50,.6);transition:opacity .3s;pointer-events:none}
+.spec{display:flex;gap:10px;margin-top:4px;padding-top:6px;border-top:1px solid rgba(150,170,170,.16);font-size:11.5px;letter-spacing:.04em;color:#8c9b96}
+.spec u{text-decoration:none;display:inline-flex;align-items:center;gap:3px}
+.spec b{font-weight:700}
+.spec .s1 b{color:#ffd45e}.spec .s2 b{color:#9bee3a}.spec .s3 b{color:#ff9a4e}
+.spec .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.spec .s1 .dot{background:#ffd45e}.spec .s2 .dot{background:#9bee3a}.spec .s3 .dot{background:#ff9a4e}
 #loading{position:fixed;inset:0;z-index:900;display:none;justify-content:center;align-items:center;background:#05080a;color:#c9d4d0;font-size:17px;letter-spacing:.3em}
 #help{position:fixed;left:14px;bottom:14px;z-index:20;font-size:12px;color:#8a9a95;text-shadow:0 2px 3px #000;pointer-events:none}
 #credit{position:fixed;right:14px;bottom:14px;z-index:20;font-size:11.5px;letter-spacing:.05em;color:#7a8884;text-shadow:0 2px 3px #000;pointer-events:none}
@@ -228,6 +236,7 @@ color:#ffe9e2;font-family:inherit;font-size:19px;font-weight:bold;letter-spacing
   <div class="stat"><span>웨이브</span><b id="wave">0</b></div>
   <div class="stat"><span>잔존 감염체</span><b id="zombies">0</b></div>
   <div class="stat"><span>러너</span><b id="runners">0</b></div>
+  <div class="spec" id="specials"></div>
   <div class="stat"><span>상태</span><b id="carStatus">도보</b></div>
 </div>
 
@@ -251,11 +260,13 @@ color:#ffe9e2;font-family:inherit;font-size:19px;font-weight:bold;letter-spacing
 <div id="waveMessage"></div>
 <div id="scareNotice"></div>
 <div id="runnerWarn">⚠ 러너 접근</div>
+<div id="gearWarn"></div>
 
 <div id="grain"></div>
 <div id="vignette"></div>
 <div id="scan"></div>
 <div id="bloodVig"></div>
+<div id="acidVig"></div>
 <div id="damageFlash"></div>
 
 <div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~4 무기 · T 섬광탄 · 휠 확대 · M 사운드</div>
@@ -932,16 +943,20 @@ function resetAmmo(scale){
 const DIFFS = {
     easy:      { name:"쉬움",   tag:"SURVIVOR",  first:8,  per:4,  cap:38,
                  hp:1.6, hpW:.35, spd:.82, run:0,   runW:0,    crawl:.30, dmg:3, drop:.26, ammoScale:1.5,
-                 desc:"감염체가 느리고 수가 적습니다. 러너는 나타나지 않으며 탄약이 넉넉합니다." },
+                 scream:0,   acid:0,   pack:.05, specialFrom:5, callIn:0,
+                 desc:"감염체가 느리고 수가 적습니다. 러너는 나타나지 않고, 5웨이브부터 군집형만 소수 섞입니다." },
     normal:    { name:"보통",   tag:"OUTBREAK",  first:12, per:6,  cap:58,
                  hp:2.0, hpW:.5,  spd:1,   run:.10, runW:.012, crawl:.27, dmg:4, drop:.18, ammoScale:1,
-                 desc:"표준 교전 밀도. 러너가 간헐적으로 섞여 들어옵니다." },
+                 scream:.05, acid:.05, pack:.09, specialFrom:3, callIn:3,
+                 desc:"표준 교전 밀도. 러너에 더해 3웨이브부터 경보음·부식성·군집형이 등장합니다." },
     hard:      { name:"어려움", tag:"OVERRUN",   first:18, per:9,  cap:82,
                  hp:2.6, hpW:.62, spd:1.12,run:.26, runW:.02,  crawl:.24, dmg:6, drop:.14, ammoScale:.8,
-                 desc:"대규모 무리가 몰려옵니다. 러너 비중이 높고 보급이 부족합니다." },
+                 scream:.09, acid:.09, pack:.15, specialFrom:2, callIn:5,
+                 desc:"대규모 무리. 러너 비중이 높고 특수 개체가 2웨이브부터 꾸준히 섞입니다." },
     nightmare: { name:"악몽",   tag:"NIGHTMARE", first:26, per:13, cap:110,
                  hp:3.2, hpW:.8,  spd:1.25,run:.42, runW:.028, crawl:.20, dmg:8, drop:.10, ammoScale:.6,
-                 desc:"압도적인 밀도와 속도. 러너가 주력이며 탄약은 최소한만 주어집니다." }
+                 scream:.12, acid:.13, pack:.19, specialFrom:2, callIn:7,
+                 desc:"압도적인 밀도와 속도. 러너가 주력이고 특수 개체가 쉴 새 없이 밀려옵니다." }
 };
 
 let DIFF = DIFFS.normal;
@@ -1005,6 +1020,59 @@ function screechSound(){
         g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime+.6);
         o.connect(f); f.connect(g); g.connect(ctx.destination);
         o.start(); o.stop(ctx.currentTime+.62);
+    }catch(e){}
+}
+
+/* 경보음 개체의 비명 — 길고 날카롭게 */
+function screamSound(){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    try{
+        const t0 = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(.001, t0);
+        out.gain.exponentialRampToValueAtTime(.085, t0+.12);
+        out.gain.setValueAtTime(.085, t0+.9);
+        out.gain.exponentialRampToValueAtTime(.001, t0+1.5);
+        out.connect(ctx.destination);
+
+        for(const det of [1, 1.006, .992]){
+            const o = ctx.createOscillator(), f = ctx.createBiquadFilter();
+            o.type = "sawtooth";
+            o.frequency.setValueAtTime(170*det, t0);
+            o.frequency.exponentialRampToValueAtTime(980*det, t0+.3);
+            o.frequency.exponentialRampToValueAtTime(620*det, t0+1.0);
+            o.frequency.exponentialRampToValueAtTime(140*det, t0+1.5);
+            f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 2.2;
+            o.connect(f); f.connect(out);
+            o.start(t0); o.stop(t0+1.52);
+        }
+
+        /* 바닥을 울리는 저음 */
+        const sub = ctx.createOscillator(), sg = ctx.createGain();
+        sub.type = "sine";
+        sub.frequency.setValueAtTime(70, t0);
+        sub.frequency.exponentialRampToValueAtTime(34, t0+1.3);
+        sg.gain.setValueAtTime(.06, t0);
+        sg.gain.exponentialRampToValueAtTime(.001, t0+1.4);
+        sub.connect(sg); sg.connect(ctx.destination);
+        sub.start(t0); sub.stop(t0+1.42);
+    }catch(e){}
+}
+
+/* 산성 분출 — 치익 하는 소리 */
+function acidSound(){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    try{
+        const len = Math.floor(ctx.sampleRate*1.1);
+        const buf = ctx.createBuffer(1,len,ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for(let i=0;i<len;i++) data[i] = (Math.random()*2-1)*Math.pow(1-i/len,1.6);
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass"; hp.frequency.value = 2600;
+        const g = ctx.createGain(); g.gain.value = .085;
+        src.connect(hp); hp.connect(g); g.connect(ctx.destination);
+        src.start();
     }catch(e){}
 }
 
@@ -1382,11 +1450,19 @@ const zombieMat = new THREE.MeshStandardMaterial({
 });
 const zEyeGreen = new THREE.MeshStandardMaterial({ color:0xd4e493, emissive:0xb7d055, emissiveIntensity:1.6 });
 const zEyeRed   = new THREE.MeshStandardMaterial({ color:0xffb089, emissive:0xff4318, emissiveIntensity:2.6 });
+const zEyeAmber = new THREE.MeshStandardMaterial({ color:0xffcf9a, emissive:0xff7a1e, emissiveIntensity:2.2 });
+const zEyePale  = new THREE.MeshStandardMaterial({ color:0xfff0b0, emissive:0xffc61e, emissiveIntensity:2.4 });
+const zEyeToxic = new THREE.MeshStandardMaterial({ color:0xe2ff9e, emissive:0x9bff2e, emissiveIntensity:2.6 });
+
+/* 특수 개체의 장기 — 비명용 목주머니 · 산성 낭 */
+const zSacPale  = new THREE.MeshStandardMaterial({ color:0xcbb79a, emissive:0x7a5f34, emissiveIntensity:.55, roughness:.55 });
+const zSacAcid  = new THREE.MeshStandardMaterial({ color:0x93c93f, emissive:0x5fae1c, emissiveIntensity:.95, roughness:.5 });
 
 const Z_SKIN  = [0x8e9873, 0x7b8667, 0x9aa081, 0x6f7a60, 0x979a6f];
 const Z_CLOTH = [0x3f4a53, 0x5a403c, 0x474f42, 0x6a5a44, 0x33383c];
 const Z_PANTS = [0x242c33, 0x2e2a25, 0x343a33];
 const Z_WOUND = 0x5e2a26, Z_BLOOD = 0x47100e, Z_DARK = 0x1a1d18, Z_TOOTH = 0xcabfa4;
+const Z_PUS   = 0xb4c257, Z_MARK = 0x8d1f17, Z_BONE = 0xbdb295, Z_ASH = 0x8d9a8c;
 
 /* 여러 조각을 하나의 지오메트리로 합친다 (색은 정점에 굽는다) */
 function mergeParts(list){
@@ -1468,77 +1544,213 @@ function zombieGeometry(kind, v){
     const skin  = Z_SKIN[v % Z_SKIN.length];
     const cloth = Z_CLOTH[(v*2+1) % Z_CLOTH.length];
     const pants = Z_PANTS[v % Z_PANTS.length];
-    const runner = kind === "runner";
+
+    const runner   = kind === "runner";
+    const screamer = kind === "screamer";
+    const acid     = kind === "acid";
+    const pack     = kind === "pack";
+
+    /* 체형 — 종류마다 실루엣이 확실히 다르게 */
+    const tw = acid ? .92 : screamer ? .5  : (runner || pack) ? .58 : .66;   /* 어깨 너비 */
+    const td = acid ? .62 : screamer ? .34 : .4;                             /* 두께 */
+    const th = screamer ? .94 : acid ? .9 : .84;                             /* 몸통 높이 */
+    const front = td/2 + .01;
+
+    const headY = screamer ? 2.34 : acid ? 1.94 : 2;
+    const armX  = acid ? .54 : screamer ? .4  : .4;
+    const armY  = acid ? 1.6 : screamer ? 1.72 : 1.64;
+    const legX  = acid ? .25 : .18;
+    const legY  = acid ? .78 : screamer ? .92 : .89;
 
     /* ---- 몸통 (rig 원점 기준) ---- */
     const t = partList();
-    const tw = runner ? .58 : .66;
-    t.add(GEO.box, cloth, 0,1.28,0, 0,0,0, tw,.84,.4);
-    t.add(GEO.box, Z_WOUND, .16,1.25,.21, 0,0,0, .24,.36,.04);
-    t.add(GEO.box, Z_BLOOD, -.05,1.02,.21, 0,0,0, .5,.2,.04);
+    t.add(GEO.box, cloth, 0, 1.28, 0, 0,0,0, tw, th, td);
+    t.add(GEO.box, Z_WOUND, .16, 1.25, front, 0,0,0, .24,.36,.04);
+    t.add(GEO.box, Z_BLOOD, -.05, 1.02, front, 0,0,0, .5,.2,.04);
+
     if(runner){
-        /* 찢겨 드러난 갈비 */
         for(let i=0;i<3;i++) t.add(GEO.box, Z_TOOTH, -.1+i*.11, 1.12+i*.1, .2, 0,0,.25, .1,.045,.05);
         t.add(GEO.box, skin, 0,1.28,-.2, 0,0,0, tw*.95,.8,.08);
+
+    }else if(screamer){
+        /* 바싹 마른 몸 — 드러난 갈비와 길게 늘어난 목 */
+        for(let i=0;i<5;i++)
+            t.add(GEO.box, Z_BONE, 0, 1.04+i*.12, front, 0,0,(i%2?.1:-.1), tw*1.02, .05, .05);
+        t.add(GEO.box, skin, 0, 1.28, -td/2, 0,0,0, tw*.9, th*.9, .07);
+        t.add(GEO.cyl, skin, 0, 1.95, 0, 0,0,0, .2, .78, .2);
+        t.add(GEO.cyl, Z_WOUND, 0, 1.78, .1, .25,0,0, .13, .3, .13);
+
+    }else if(acid){
+        /* 부풀어 터지기 직전의 몸 — 돋아난 농포 */
+        t.add(GEO.sph, skin, 0, 1.06, .04, 0,0,0, .92,.7,.62);
+        for(let i=0;i<8;i++){
+            const a = i/8*6.283, r = .2 + (i%3)*.065;
+            t.add(GEO.sph, i%2 ? Z_PUS : Z_WOUND,
+                Math.cos(a)*.44, 1.16+Math.sin(a*2)*.28, Math.sin(a)*.3, 0,0,0, r,r,r);
+        }
+        for(let i=0;i<3;i++)
+            t.add(GEO.box, Z_PUS, -.3+i*.3, .86, front+.02, 0,0,rand(-.3,.3), .18,.22,.06);
+        t.add(GEO.cyl, Z_PUS, 0, 1.72, 0, 0,0,0, .34,.16,.34);
+
+    }else if(pack){
+        /* 날렵한 몸 — 가슴의 붉은 표식 */
+        t.add(GEO.box, Z_MARK, 0, 1.36, front, 0,0,.42, .66,.09,.04);
+        t.add(GEO.box, Z_MARK, 0, 1.14, front, 0,0,-.42, .66,.09,.04);
+        t.add(GEO.box, skin, 0, 1.28, -td/2, 0,0,0, tw*.92,.74,.07);
+        for(let i=0;i<2;i++) t.add(GEO.box, cloth, -.2+i*.4, .86, .19, 0,0,(i?-.2:.2), .18,.26,.05);
+
     }else{
         for(let i=0;i<3;i++) t.add(GEO.box, cloth, -.26+i*.26, .84, .19, 0,0,(i-1)*.28, .16,.3,.05);
     }
-    t.add(GEO.cyl, skin, 0,1.8,0, 0,0,0, .3,.2,.3);
+
+    if(!screamer) t.add(GEO.cyl, skin, 0,1.8,0, 0,0,0, .3,.2,.3);
     t.add(GEO.box, Z_BLOOD, 0,1.74,.12, 0,0,0, .3,.1,.06);
     const torso = mergeParts(t);
 
-    /* ---- 머리 (피벗 0,2,0) ---- */
+    /* ---- 머리 ---- */
     const h = partList();
-    h.add(GEO.sph, skin, 0,0,0, 0,0,0, .54,.72,.53);
-    h.add(GEO.box, skin, 0,-.22,.06, 0,0,0, .28,.13,.25);
-    for(const side of [-1,1]) h.add(GEO.sph, Z_DARK, side*.11,.055,.215, 0,0,0, .16,.16,.16);
-    h.add(GEO.box, Z_DARK, 0,-.13,.258, 0,0,0, .15,.05,.04);
-    for(let i=0;i<4;i++) h.add(GEO.box, Z_TOOTH, -.045+i*.03,-.12,.279, 0,0,0, .026,.034,.02);
-    h.add(GEO.box, Z_WOUND, -.18,-.08,.17, 0,0,0, .1,.16,.04);
-    h.add(GEO.box, Z_BLOOD, 0,-.26,.15, 0,0,0, .2,.1,.04);
-    if(runner){
-        h.add(GEO.box, Z_WOUND, .1,.12,.2, 0,0,.4, .22,.1,.05);
-        h.add(GEO.box, Z_BLOOD, -.12,-.2,.2, 0,0,0, .26,.14,.04);
+
+    if(screamer){
+        /* 길쭉한 두개골 + 턱이 빠진 거대한 입 */
+        h.add(GEO.sph, skin, 0,.04,-.02, 0,0,0, .48,.78,.5);
+        h.add(GEO.box, Z_DARK, 0,-.34,.13, .18,0,0, .34,.56,.3);        /* 벌어진 입 안쪽 */
+        h.add(GEO.box, skin, 0,-.62,.17, .34,0,0, .36,.34,.34);         /* 축 늘어진 아래턱 */
+        for(const side of [-1,1])
+            h.add(GEO.box, skin, side*.16,-.42,.14, .2,0,side*.12, .07,.42,.2);  /* 늘어난 턱 근육 */
+        for(let i=0;i<6;i++){
+            h.add(GEO.box, Z_TOOTH, -.1+i*.04, -.2, .25, 0,0,0, .028,.07,.03);
+            h.add(GEO.box, Z_TOOTH, -.1+i*.04, -.7, .3, 0,0,0, .026,.07,.03);
+        }
+        for(const side of [-1,1]){
+            h.add(GEO.sph, Z_DARK, side*.14,.12,.2, 0,0,0, .17,.17,.17);
+            h.add(GEO.box, Z_WOUND, side*.24,-.14,.1, 0,0,side*.4, .07,.34,.1);  /* 찢어진 볼 */
+        }
+        h.add(GEO.box, Z_BONE, 0,.4,0, 0,0,0, .3,.07,.42);
+
+    }else if(acid){
+        /* 녹아내린 얼굴 */
+        h.add(GEO.sph, skin, 0,0,0, 0,0,0, .6,.62,.58);
+        h.add(GEO.sph, Z_PUS, .18,.1,.16, 0,0,0, .24,.24,.24);
+        h.add(GEO.sph, Z_PUS, -.2,-.06,.12, 0,0,0, .19,.19,.19);
+        h.add(GEO.box, Z_WOUND, 0,-.2,.16, 0,0,0, .34,.2,.22);
+        for(const side of [-1,1]) h.add(GEO.sph, Z_DARK, side*.13,.045,.22, 0,0,0, .17,.17,.17);
+        for(let i=0;i<3;i++) h.add(GEO.box, Z_PUS, -.1+i*.1,-.34,.14, 0,0,0, .05,.16,.05); /* 흘러내린 점액 */
+
+    }else if(pack){
+        /* 뼈 볏이 솟은 머리 */
+        h.add(GEO.sph, skin, 0,0,0, 0,0,0, .5,.7,.56);
+        for(let i=0;i<4;i++)
+            h.add(GEO.cone, Z_BONE, 0,.22+i*.015,-.16+i*.11, .35,0,0, .1,.26-i*.04,.1);
+        h.add(GEO.box, skin, 0,-.24,.1, 0,0,0, .26,.15,.3);
+        for(const side of [-1,1]){
+            h.add(GEO.sph, Z_DARK, side*.11,.05,.22, 0,0,0, .16,.16,.16);
+            h.add(GEO.box, Z_MARK, side*.2,.02,.14, 0,0,side*.3, .05,.28,.08);
+        }
+        for(let i=0;i<4;i++) h.add(GEO.box, Z_TOOTH, -.045+i*.03,-.14,.285, 0,0,0, .026,.04,.02);
+
+    }else{
+        h.add(GEO.sph, skin, 0,0,0, 0,0,0, .54,.72,.53);
+        h.add(GEO.box, skin, 0,-.22,.06, 0,0,0, .28,.13,.25);
+        for(const side of [-1,1]) h.add(GEO.sph, Z_DARK, side*.11,.055,.215, 0,0,0, .16,.16,.16);
+        h.add(GEO.box, Z_DARK, 0,-.13,.258, 0,0,0, .15,.05,.04);
+        for(let i=0;i<4;i++) h.add(GEO.box, Z_TOOTH, -.045+i*.03,-.12,.279, 0,0,0, .026,.034,.02);
+        h.add(GEO.box, Z_WOUND, -.18,-.08,.17, 0,0,0, .1,.16,.04);
+        h.add(GEO.box, Z_BLOOD, 0,-.26,.15, 0,0,0, .2,.1,.04);
+        if(runner){
+            h.add(GEO.box, Z_WOUND, .1,.12,.2, 0,0,.4, .22,.1,.05);
+            h.add(GEO.box, Z_BLOOD, -.12,-.2,.2, 0,0,0, .26,.14,.04);
+        }
     }
     const head = mergeParts(h);
 
     /* ---- 눈 ---- */
     const ey = partList();
-    for(const side of [-1,1]) ey.add(GEO.sph, 0xffffff, side*.11,.055,.27, 0,0,0, .072,.072,.072);
+    const ex = screamer ? .14 : acid ? .13 : .11;
+    const eyY = screamer ? .12 : acid ? .045 : .055;
+    const ez = screamer ? .255 : acid ? .275 : .27;
+    const er = screamer ? .08 : .072;
+    for(const side of [-1,1]) ey.add(GEO.sph, 0xffffff, side*ex, eyY, ez, 0,0,0, er,er,er);
     const eyes = mergeParts(ey);
 
-    /* ---- 팔 (피벗 ±.4,1.64,0) ---- */
+    /* ---- 팔 ---- */
     const arms = [];
     for(const side of [-1,1]){
         const a = partList();
-        if(runner){
-            a.add(GEO.cyl, skin, 0,-.22,0, 0,0,0, .19,.48,.19);
-            a.add(GEO.box, cloth, 0,-.1,0, 0,0,0, .22,.2,.22);
+        if(acid){
+            a.add(GEO.cyl, skin, 0,-.24,0, 0,0,0, .3,.52,.3);
+            a.add(GEO.sph, Z_PUS, .04,-.3,.08, 0,0,0, .18,.18,.18);
+            a.add(GEO.cyl, skin, 0,-.62,.06, 0,0,0, .24,.46,.24);
+            a.add(GEO.sph, skin, 0,-.88,.08, 0,0,0, .24,.24,.24);
+            for(let f=0;f<3;f++) a.add(GEO.box, Z_PUS, (f-1)*.05,-.98,.09, 0,0,0, .04,.14,.045);
+        }else if(screamer){
+            a.add(GEO.cyl, skin, 0,-.26,0, 0,0,0, .15,.56,.15);
+            a.add(GEO.cyl, skin, 0,-.7,.04, 0,0,0, .12,.52,.12);
+            a.add(GEO.sph, skin, 0,-.99,.06, 0,0,0, .15,.15,.15);
+            for(let f=0;f<3;f++) a.add(GEO.box, skin, (f-1)*.04,-1.12,.07, 0,0,0, .026,.2,.03);
         }else{
-            a.add(GEO.cyl, cloth, 0,-.22,0, 0,0,0, .22,.48,.22);
+            if(runner || pack){
+                a.add(GEO.cyl, skin, 0,-.22,0, 0,0,0, .19,.48,.19);
+                a.add(GEO.box, cloth, 0,-.1,0, 0,0,0, .22,.2,.22);
+            }else{
+                a.add(GEO.cyl, cloth, 0,-.22,0, 0,0,0, .22,.48,.22);
+            }
+            a.add(GEO.cyl, skin, 0,-.6,.06, 0,0,0, .16,.43,.16);
+            a.add(GEO.sph, skin, 0,-.85,.08, 0,0,0, .19,.19,.19);
+            for(let f=0;f<3;f++) a.add(GEO.box, skin, (f-1)*.037,-.94,.09, 0,0,0, .028,.13,.036);
+            a.add(GEO.box, Z_BLOOD, 0,-.92,.11, 0,0,0, .12,.07,.05);
         }
-        a.add(GEO.cyl, skin, 0,-.6,.06, 0,0,0, .16,.43,.16);
-        a.add(GEO.sph, skin, 0,-.85,.08, 0,0,0, .19,.19,.19);
-        for(let f=0;f<3;f++) a.add(GEO.box, skin, (f-1)*.037,-.94,.09, 0,0,0, .028,.13,.036);
-        a.add(GEO.box, Z_BLOOD, 0,-.92,.11, 0,0,0, .12,.07,.05);
         arms.push(mergeParts(a));
     }
 
-    /* ---- 다리 (피벗 ±.18,.89,0) ---- */
+    /* ---- 다리 ---- */
     const legs = [];
     for(const side of [-1,1]){
         const l = partList();
-        l.add(GEO.cyl, pants, 0,-.34,0, 0,0,0, .28,.73,.28);
-        l.add(GEO.box, Z_DARK, 0,-.78,.075, 0,0,0, .24,.16,.38);
-        if(runner) l.add(GEO.box, skin, 0,-.52,0, 0,0,0, .2,.2,.2);
+        if(acid){
+            l.add(GEO.cyl, pants, 0,-.3,0, 0,0,0, .38,.62,.38);
+            l.add(GEO.box, Z_DARK, 0,-.68,.08, 0,0,0, .3,.18,.42);
+            l.add(GEO.sph, Z_PUS, .1,-.2,.14, 0,0,0, .15,.15,.15);
+        }else if(screamer){
+            l.add(GEO.cyl, pants, 0,-.38,0, 0,0,0, .22,.8,.22);
+            l.add(GEO.box, Z_DARK, 0,-.83,.075, 0,0,0, .22,.14,.36);
+            l.add(GEO.box, Z_BONE, 0,-.52,-.1, 0,0,0, .16,.3,.05);
+        }else{
+            l.add(GEO.cyl, pants, 0,-.34,0, 0,0,0, .28,.73,.28);
+            l.add(GEO.box, Z_DARK, 0,-.78,.075, 0,0,0, .24,.16,.38);
+            if(runner || pack) l.add(GEO.box, skin, 0,-.52,0, 0,0,0, .2,.2,.2);
+        }
         legs.push(mergeParts(l));
     }
 
-    const set = { torso, head, eyes, armL:arms[0], armR:arms[1], legL:legs[0], legR:legs[1] };
+    /* ---- 장기 (목주머니 · 산성 낭) ---- */
+    let organ = null, organPos = null, organMat = null;
+    if(screamer){
+        const o = partList();
+        o.add(GEO.sph, 0xffffff, 0,0,0, 0,0,0, .34,.32,.33);
+        organ = mergeParts(o);
+        organPos = [0, 2.03, .12];
+        organMat = zSacPale;
+    }else if(acid){
+        const o = partList();
+        o.add(GEO.sph, 0xffffff, 0,0,0, 0,0,0, .5,.46,.42);
+        /* 표면을 덮은 핏줄 */
+        for(let i=0;i<4;i++)
+            o.add(GEO.box, 0x6f8f2e, -.16+i*.11, .02, .2, 0,0,(i%2?.5:-.5), .035,.3,.03);
+        /* 아래로 맺힌 산성 방울 */
+        for(let i=0;i<2;i++) o.add(GEO.sph, 0xbce85e, -.09+i*.18,-.24,.08, 0,0,0, .1,.14,.1);
+        organ = mergeParts(o);
+        organPos = [0, 1.0, .3];
+        organMat = zSacAcid;
+    }
+
+    const set = {
+        torso, head, eyes, organ, organPos, organMat,
+        armL:arms[0], armR:arms[1], legL:legs[0], legR:legs[1],
+        headY, armX, armY, legX, legY
+    };
     zGeoCache.set(key, set);
     return set;
 }
-
 
 /* =========================================================
    좀비 생성
@@ -1560,11 +1772,26 @@ function freeSpawn(minR,maxR){
 }
 
 function rollKind(){
+    /* 특수 개체 — 난이도마다 등장 웨이브와 비율이 다르다 */
+    if(wave >= DIFF.specialFrom){
+        /* 웨이브가 지날수록 비중이 커지되, 비율이 0 인 종류는 끝까지 나오지 않는다 */
+        const g = 1 + Math.min(.85, (wave-DIFF.specialFrom)*.07);
+        const r = Math.random();
+        let acc = DIFF.scream*g;
+        if(r < acc) return "screamer";
+        acc += DIFF.acid*g;
+        if(r < acc) return "acid";
+        acc += DIFF.pack*g;
+        if(r < acc) return "pack";
+    }
+
     const runnerChance = Math.min(.74, DIFF.run + wave*DIFF.runW);
     if(wave >= 2 && Math.random() < runnerChance) return "runner";
     if(Math.random() < DIFF.crawl) return "crawler";
     return "walker";
 }
+
+let packSlotSeq = 0;
 
 function createZombie(spawnX, spawnZ, kind){
     let x, z;
@@ -1579,8 +1806,12 @@ function createZombie(spawnX, spawnZ, kind){
     }
 
     const k = kind || rollKind();
-    const crawler = k === "crawler";
-    const runner  = k === "runner";
+    const crawler  = k === "crawler";
+    const runner   = k === "runner";
+    const screamer = k === "screamer";
+    const acid     = k === "acid";
+    const pack     = k === "pack";
+
     const v = Math.floor(Math.random()*6);
     const geo = zombieGeometry(crawler ? "walker" : k, v);
 
@@ -1593,12 +1824,26 @@ function createZombie(spawnX, spawnZ, kind){
     rig.add(torso);
 
     const head = new THREE.Group();
-    head.position.set(0,2,0);
+    head.position.set(0, geo.headY, 0);
     rig.add(head);
     const headMesh = new THREE.Mesh(geo.head, zombieMat);
     headMesh.castShadow = true;
     head.add(headMesh);
-    head.add(new THREE.Mesh(geo.eyes, runner ? zEyeRed : zEyeGreen));
+
+    const eyeMat = runner ? zEyeRed
+                 : screamer ? zEyePale
+                 : acid ? zEyeToxic
+                 : pack ? zEyeAmber
+                 : zEyeGreen;
+    head.add(new THREE.Mesh(geo.eyes, eyeMat));
+
+    /* 목주머니 · 산성 낭 */
+    let organ = null;
+    if(geo.organ){
+        organ = new THREE.Mesh(geo.organ, geo.organMat);
+        organ.position.set(geo.organPos[0], geo.organPos[1], geo.organPos[2]);
+        rig.add(organ);
+    }
 
     const arms = [], legs = [];
     const armGeo = [geo.armL, geo.armR], legGeo = [geo.legL, geo.legR];
@@ -1606,14 +1851,14 @@ function createZombie(spawnX, spawnZ, kind){
     for(let i=0;i<2;i++){
         const side = i ? 1 : -1;
         const arm = new THREE.Group();
-        arm.position.set(side*.4, 1.64, 0);
+        arm.position.set(side*geo.armX, geo.armY, 0);
         const am = new THREE.Mesh(armGeo[i], zombieMat);
         am.castShadow = true;
         arm.add(am);
         rig.add(arm); arms.push(arm);
 
         const leg = new THREE.Group();
-        leg.position.set(side*.18, .89, 0);
+        leg.position.set(side*geo.legX, geo.legY, 0);
         const lm = new THREE.Mesh(legGeo[i], zombieMat);
         lm.castShadow = true;
         leg.add(lm);
@@ -1621,24 +1866,36 @@ function createZombie(spawnX, spawnZ, kind){
     }
 
     group.position.set(x,0,z);
-    group.scale.setScalar(runner ? .95+Math.random()*.1 : .93+Math.random()*.16);
+    group.scale.setScalar(
+        acid ? 1.04+Math.random()*.12 :
+        screamer ? .99+Math.random()*.1 :
+        runner ? .95+Math.random()*.1 :
+        pack ? .96+Math.random()*.1 :
+        .93+Math.random()*.16);
     world.add(group);
 
     const waveSpeed = Math.min(.028, wave*.0015);
     let speed = (.038 + Math.random()*.017 + waveSpeed) * DIFF.spd;
     let hp = Math.max(1, Math.round(DIFF.hp + wave*DIFF.hpW));
 
-    if(runner){ speed *= 2.15; hp = Math.max(1, Math.round(hp*.72)); }
-    if(crawler){ speed *= .78; }
+    if(runner){   speed *= 2.15; hp = Math.max(1, Math.round(hp*.72)); }
+    if(crawler){  speed *= .78; }
+    if(screamer){ speed *= .82;  hp = Math.max(1, Math.round(hp*1.15)); }
+    if(acid){     speed *= .58;  hp = Math.max(2, Math.round(hp*2.1));  }
+    if(pack){     speed *= 1.28; hp = Math.max(1, Math.round(hp*.95));  }
 
     const created = {
-        mesh:group, rig, head, arms, legs,
-        kind: k, crawler, runner,
+        mesh:group, rig, head, arms, legs, organ,
+        kind: k, crawler, runner, screamer, acid, pack,
         phase: Math.random()*6.28,
         x, z, y:0, vy:0,
-        hp, speed,
+        hp, speed, baseSpeed: speed,
         attackTimer:0, lunge:0, screamed:false, stuck:0,
-        shadowOn:true
+        alert:0, shadowOn:true,
+        screamTimer: 150 + Math.floor(Math.random()*240),
+        screamAnim: 0,
+        packAngle: (packSlotSeq++ % 6) * (Math.PI*2/6) + rand(-.18,.18),
+        inPosition: false
     };
 
     if(crawler){
@@ -1691,17 +1948,281 @@ function zombieStep(zb, dirX, dirZ, step){
     return false;
 }
 
+/* =========================================================
+   특수 개체 효과 — 비명 충격파 · 산성 웅덩이
+========================================================= */
+
+/* ---- 비명 충격파 ---- */
+const shockRings = [];
+(function(){
+    const geo = new THREE.RingGeometry(.52,.64,40);
+    geo.userData.shared = true;
+    for(let i=0;i<4;i++){
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+            color:0xffd68a, transparent:true, opacity:0, side:THREE.DoubleSide,
+            depthWrite:false, blending:THREE.AdditiveBlending }));
+        m.rotation.x = -Math.PI/2;
+        m.visible = false;
+        scene.add(m);
+        shockRings.push({ mesh:m, t:0 });
+    }
+})();
+let shockIdx = 0;
+
+function emitShock(x,y,z){
+    const r = shockRings[shockIdx++ % shockRings.length];
+    r.mesh.position.set(x, y+.25, z);
+    r.mesh.visible = true;
+    r.t = 1;
+}
+
+function updateShocks(){
+    for(const r of shockRings){
+        if(r.t <= 0) continue;
+        r.t -= .018;
+        if(r.t <= 0){ r.mesh.visible = false; r.t = 0; continue; }
+        const k = 1-r.t;
+        r.mesh.scale.setScalar(1 + k*58);
+        r.mesh.material.opacity = r.t*r.t*.7;
+    }
+}
+
+/* ---- 산성 ---- */
+const acidTex = (function(){
+    const c = cvs(128), g = c.getContext("2d");
+    for(let i=0;i<24;i++){
+        const x = 64+rand(-34,34), y = 64+rand(-34,34), rr = 12+Math.random()*26;
+        const rg = g.createRadialGradient(x,y,0,x,y,rr);
+        rg.addColorStop(0,"rgba(186,255,88,.95)");
+        rg.addColorStop(.55,"rgba(116,196,40,.7)");
+        rg.addColorStop(1,"rgba(60,110,22,0)");
+        g.fillStyle = rg;
+        g.beginPath(); g.arc(x,y,rr,0,6.3); g.fill();
+    }
+    for(let i=0;i<30;i++){
+        g.fillStyle = "rgba(226,255,150,"+(.25+Math.random()*.5)+")";
+        g.beginPath(); g.arc(64+rand(-46,46), 64+rand(-46,46), 1.5+Math.random()*4, 0, 6.3); g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+})();
+
+const acidPools = [];
+let acidScreen = 0;
+
+const acidSprayMat = new THREE.PointsMaterial({
+    map: softTex("rgba(226,255,150,1)","rgba(120,210,40,.85)"),
+    color:0xa8f03c, size:.22, transparent:true, opacity:.95,
+    depthWrite:false, alphaTest:.08, sizeAttenuation:true
+});
+const acidSprays = [];
+for(let i=0;i<5;i++){
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(18*3), 3));
+    const pts = new THREE.Points(geo, acidSprayMat);
+    pts.visible = false; pts.frustumCulled = false;
+    scene.add(pts);
+    acidSprays.push({ pts, vel:new Array(18), life:0 });
+}
+let acidSprayIdx = 0;
+
+function acidSpray(x,y,z){
+    const b = acidSprays[acidSprayIdx++ % acidSprays.length];
+    const pos = b.pts.geometry.attributes.position.array;
+    for(let i=0;i<18;i++){
+        pos[i*3] = x; pos[i*3+1] = y; pos[i*3+2] = z;
+        b.vel[i] = new THREE.Vector3(rand(-.17,.17), rand(.05,.24), rand(-.17,.17));
+    }
+    b.pts.geometry.attributes.position.needsUpdate = true;
+    b.pts.visible = true;
+    b.life = 42;
+}
+
+function updateAcidSprays(){
+    for(const b of acidSprays){
+        if(b.life <= 0) continue;
+        b.life--;
+        const pos = b.pts.geometry.attributes.position.array;
+        for(let i=0;i<18;i++){
+            b.vel[i].y -= .013;
+            pos[i*3]   += b.vel[i].x;
+            pos[i*3+1] += b.vel[i].y;
+            pos[i*3+2] += b.vel[i].z;
+        }
+        b.pts.geometry.attributes.position.needsUpdate = true;
+        if(b.life <= 0) b.pts.visible = false;
+    }
+}
+
+/* 장비 부식 */
+function corrodeGear(){
+    const cur = ammo[player.weapon];
+    const lost = Math.max(1, Math.ceil(cur.clip*.45));
+    cur.clip = Math.max(0, cur.clip - lost);
+    cur.reserve = Math.max(0, cur.reserve - 5);
+    player.shootCooldown = Math.max(player.shootCooldown, 40);
+    player.reload = false;
+    const el = document.getElementById("gearWarn");
+    el.textContent = "⚠ 장비 부식 — 탄약 " + lost + "발 손실";
+    el.style.opacity = "1";
+    clearTimeout(el._t);
+    el._t = setTimeout(function(){ el.style.opacity = "0"; }, 1700);
+}
+
+/* 처치된 부식성 개체가 산을 뿜는다 */
+function acidBurst(x,y,z){
+    acidSound();
+    acidSpray(x, y+1.0, z);
+
+    const radius = 3.6;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(radius*2, radius*2),
+        new THREE.MeshBasicMaterial({ map:acidTex, color:0x9bee3a, transparent:true,
+            opacity:0, depthWrite:false, blending:THREE.AdditiveBlending }));
+    m.rotation.x = -Math.PI/2;
+    m.rotation.z = Math.random()*6.28;
+    m.position.set(x, y+.09, z);
+    m.scale.setScalar(.2);
+    world.add(m);
+
+    acidPools.push({ mesh:m, x, z, y, r:radius, life:620, max:620, grow:.2,
+                     tick:0, seed:Math.random()*10 });
+
+    /* 터질 때 가까이 있으면 바로 피해 + 장비 손상 */
+    const d = Math.hypot(player.x-x, player.z-z);
+    if(gameStarted && d < radius+1.4 && Math.abs(player.y-1.7-y) < 2.4){
+        player.hp -= DIFF.dmg*1.6;
+        acidScreen = 1;
+        shake = Math.max(shake, .36);
+        damageFlash();
+        corrodeGear();
+        if(player.hp <= 0){ player.hp = 0; endGame(); }
+    }
+}
+
+function updateAcidPools(){
+    const now = performance.now();
+
+    for(let i=acidPools.length-1; i>=0; i--){
+        const p = acidPools[i];
+        p.life--;
+
+        if(p.grow < 1){ p.grow = Math.min(1, p.grow+.07); p.mesh.scale.setScalar(p.grow); }
+
+        const k = Math.min(1, p.life/120);
+        p.mesh.material.opacity = k * (.5 + .22*Math.sin(now*.005 + p.seed));
+
+        if(p.life <= 0){
+            world.remove(p.mesh);
+            p.mesh.geometry.dispose();
+            acidPools.splice(i,1);
+            continue;
+        }
+
+        if(!gameStarted || player.inCar) continue;
+
+        const d = Math.hypot(player.x-p.x, player.z-p.z);
+        if(d < p.r*p.grow && Math.abs(player.y-1.7-p.y) < 2.3){
+            p.tick++;
+            acidScreen = Math.max(acidScreen, .55);
+            if(p.tick % 20 === 0){
+                player.hp -= DIFF.dmg*.5;
+                shake = Math.max(shake, .09);
+                if(p.tick % 120 === 0) corrodeGear();
+                if(player.hp <= 0){ player.hp = 0; endGame(); return; }
+            }
+        }
+    }
+
+    acidScreen *= .93;
+    document.getElementById("acidVig").style.opacity = acidScreen < .02 ? "0" : (acidScreen*.6).toFixed(3);
+}
+
+
+/* =========================================================
+   군집 지능 — 포위 후 일제 돌격
+========================================================= */
+
+const PACK_R = 11.5;
+const packState = { ready:false, timer:0, wait:0, spin:0 };
+
+function updatePackState(){
+    packState.spin += .0015;
+
+    let total = 0, inRing = 0;
+    for(const zb of zombies){
+        if(!zb.pack) continue;
+        total++;
+        if(Math.hypot(zb.x-player.x, zb.z-player.z) < PACK_R+5) inRing++;
+    }
+
+    if(total === 0){
+        packState.ready = false; packState.wait = 0; packState.timer = 0;
+        return;
+    }
+
+    if(packState.ready){
+        if(--packState.timer <= 0){ packState.ready = false; packState.wait = 0; }
+    }else{
+        packState.wait++;
+        if((inRing >= 3 && total >= 3) || packState.wait > 620){
+            packState.ready = true;
+            packState.timer = 280;
+            if(inRing >= 3) showScare("군집 감염체가 포위를 완성했습니다 — 일제 돌격!");
+        }
+    }
+}
+
+
+/* =========================================================
+   좀비 업데이트
+========================================================= */
+
+const zCount = { runner:0, screamer:0, acid:0, pack:0 };
+
+function doScream(zb){
+    screamSound();
+    emitShock(zb.x, zb.y, zb.z);
+    showScare("⚠ 경보음 — 주변 무리가 몰려옵니다");
+
+    for(const o of zombies){
+        if(o === zb) continue;
+        if(Math.hypot(o.x-zb.x, o.z-zb.z) < 72){
+            o.alert = 620;
+            o.stuck = 0;
+            o.screamed = true;
+        }
+    }
+
+    /* 비명을 듣고 새로 모여드는 개체 */
+    const room = DIFF.cap - zombies.length - spawnQueue.length;
+    const extra = Math.max(0, Math.min(DIFF.callIn, room));
+    for(let i=0;i<extra;i++)
+        spawnQueue.push(ambushRunner(.08) ? "runner" : null);
+}
+
 function updateZombies(){
     let nearRunner = false;
+    zCount.runner = zCount.screamer = zCount.acid = zCount.pack = 0;
+
+    updatePackState();
 
     for(let i=0;i<zombies.length;i++){
         const zb = zombies[i];
+
+        if(zb.runner) zCount.runner++;
+        else if(zb.screamer) zCount.screamer++;
+        else if(zb.acid) zCount.acid++;
+        else if(zb.pack) zCount.pack++;
 
         const dx = player.x - zb.x;
         const dy = player.y - 1.7 - zb.y;
         const dz = player.z - zb.z;
         const flat = Math.hypot(dx,dz);
         const reach = Math.abs(dy) < 2.4;
+        const len = Math.max(flat, .001);
+
+        if(zb.alert > 0) zb.alert--;
 
         if(zb.runner && !zb.screamed && flat < 46){
             zb.screamed = true;
@@ -1709,9 +2230,25 @@ function updateZombies(){
         }
         if(zb.runner && flat < 20 && reach) nearRunner = true;
 
-        if(flat > 1.7 || !reach){
-            const len = Math.max(flat, .001);
+        /* ---- 경보음 개체 — 주기적으로 비명을 지른다 ---- */
+        if(zb.screamer){
+            if(zb.screamAnim > 0){
+                zb.screamAnim--;
+                if(zb.screamAnim === 44) doScream(zb);
+            }else{
+                zb.screamTimer--;
+                if(zb.screamTimer <= 0 && flat < 62 && reach){
+                    zb.screamAnim = 78;
+                    zb.screamTimer = 460 + Math.floor(Math.random()*260);
+                }
+            }
+        }
+
+        const screaming = zb.screamer && zb.screamAnim > 0;
+
+        if((flat > 1.7 || !reach) && !screaming){
             let step = zb.speed*(.82+.18*Math.sin(zb.phase));
+            if(zb.alert > 0) step *= 1.34;
 
             if(zb.runner){
                 zb.lunge -= 1;
@@ -1719,7 +2256,28 @@ function updateZombies(){
                 if(zb.lunge > 0) step *= 1.45;
             }
 
-            const moved = zombieStep(zb, dx/len, dz/len, step);
+            let moved;
+
+            /* 군집 — 돌격 전까지는 플레이어 주위를 둘러싼다 */
+            if(zb.pack && !packState.ready && flat > 6.5 && reach){
+                const a = zb.packAngle + packState.spin;
+                const tx = player.x + Math.sin(a)*PACK_R;
+                const tz = player.z + Math.cos(a)*PACK_R;
+                const ox = tx-zb.x, oz = tz-zb.z;
+                const ol = Math.hypot(ox,oz);
+
+                if(ol > 1.6){
+                    moved = zombieStep(zb, ox/ol, oz/ol, step);
+                    zb.inPosition = false;
+                }else{
+                    zb.inPosition = true;
+                    moved = true;
+                }
+            }else{
+                if(zb.pack && packState.ready) step *= 1.2;
+                moved = zombieStep(zb, dx/len, dz/len, step);
+            }
+
             zb.mesh.rotation.y = Math.atan2(dx,dz);
 
             /* 벽 뒤에 갇혀 웨이브가 멈추지 않도록, 오래 막히면 다시 접근시킨다 */
@@ -1729,15 +2287,18 @@ function updateZombies(){
                 if(spot){ zb.x = spot.x; zb.z = spot.z; zb.y = supportHeight(spot.x, spot.z, 0, .5); }
                 zb.stuck = 0;
             }
-        }else{
+        }else if(!screaming){
             zb.attackTimer--;
             if(zb.attackTimer <= 0){
-                player.hp -= DIFF.dmg * (zb.runner ? 1.3 : 1);
+                const mul = zb.runner ? 1.3 : zb.acid ? 1.25 : 1;
+                player.hp -= DIFF.dmg * mul;
                 damageFlash();
                 shake = Math.max(shake, zb.runner ? .42 : .3);
-                zb.attackTimer = zb.runner ? 32 : 45;
+                zb.attackTimer = zb.runner ? 32 : zb.acid ? 54 : 45;
                 if(player.hp <= 0){ player.hp = 0; endGame(); return; }
             }
+        }else{
+            zb.mesh.rotation.y = Math.atan2(dx,dz);
         }
 
         /* 수직 — 계단 · 에스컬레이터 · 캣워크를 따라 오른다 */
@@ -1750,7 +2311,7 @@ function updateZombies(){
             zb.y = support; zb.vy = 0;
         }
 
-        /* 애니메이션 */
+        /* ---- 애니메이션 ---- */
         if(zb.crawler){
             zb.phase += .085;
             const gait = Math.sin(zb.phase);
@@ -1765,6 +2326,7 @@ function updateZombies(){
                 zb.arms[0].rotation.x = .8+.45*Math.sin(zb.phase*2);
                 zb.rig.position.y = .55;
             }
+
         }else if(zb.runner){
             zb.phase += .23;
             const gait = Math.sin(zb.phase);
@@ -1782,6 +2344,80 @@ function updateZombies(){
                 zb.arms[1].rotation.x = -2.0-.5*Math.sin(zb.phase*2);
                 zb.rig.rotation.x = .3;
             }
+
+        }else if(zb.screamer){
+            /* 비틀거리는 걸음, 비명 중에는 몸을 활처럼 젖힌다 */
+            const sa = zb.screamAnim;
+            if(sa > 0){
+                const inhale = sa > 44 ? (78-sa)/34 : 1;
+                const blast  = sa > 44 ? 0 : (44-sa)/44;
+                zb.rig.rotation.x = -.42*inhale;
+                zb.rig.rotation.z = 0;
+                zb.rig.position.y = .05 + .08*inhale;
+                zb.head.rotation.set(-1.05*inhale, 0, 0);
+                zb.arms[0].rotation.set(.5*inhale, 0, -1.15*inhale);
+                zb.arms[1].rotation.set(.5*inhale, 0, 1.15*inhale);
+                zb.legs[0].rotation.x = -.12;
+                zb.legs[1].rotation.x = .12;
+                if(zb.organ){
+                    const pulse = 1 + inhale*1.15 + (blast>0 ? Math.sin(blast*26)*.22*(1-blast) : 0);
+                    zb.organ.scale.setScalar(pulse);
+                }
+            }else{
+                zb.phase += .052;
+                const gait = Math.sin(zb.phase);
+                zb.legs[0].rotation.x = gait*.42;
+                zb.legs[1].rotation.x = -gait*.3;
+                zb.arms[0].rotation.set(-.18+gait*.1, 0, -.2);
+                zb.arms[1].rotation.set(-.12-gait*.14, 0, .22);
+                zb.rig.rotation.x = .2;
+                zb.rig.rotation.z = .1*Math.sin(zb.phase*.5);
+                zb.rig.position.y = .02+Math.abs(gait)*.045;
+                zb.head.rotation.set(.12, .22*Math.sin(zb.phase*.33), .22);
+                if(zb.organ) zb.organ.scale.setScalar(1+.06*Math.sin(zb.phase*1.6));
+                if(flat <= 1.7 && reach) zb.arms[0].rotation.x = -1.4+.3*Math.sin(zb.phase*3);
+            }
+
+        }else if(zb.acid){
+            /* 무겁게 흔들리는 걸음, 산성 낭이 끓는다 */
+            zb.phase += .044;
+            const gait = Math.sin(zb.phase);
+            zb.legs[0].rotation.x = gait*.3;
+            zb.legs[1].rotation.x = -gait*.3;
+            zb.arms[0].rotation.set(-.42+gait*.2, 0, -.46);
+            zb.arms[1].rotation.set(-.42-gait*.2, 0, .46);
+            zb.rig.rotation.x = .16;
+            zb.rig.rotation.z = .13*gait;
+            zb.rig.position.y = .03+Math.abs(gait)*.07;
+            zb.head.rotation.set(.18, 0, .1*gait);
+            if(zb.organ){
+                const b = 1 + .13*Math.sin(zb.phase*2.4) + .05*Math.sin(zb.phase*5.1);
+                zb.organ.scale.set(b, b*.96, b);
+            }
+            if(flat <= 1.7 && reach){
+                zb.arms[0].rotation.x = -1.5+.4*Math.sin(zb.phase*3);
+                zb.arms[1].rotation.x = -1.5-.4*Math.sin(zb.phase*3);
+            }
+
+        }else if(zb.pack){
+            /* 꼿꼿하고 빠른 걸음, 주변을 살핀다 */
+            zb.phase += .105;
+            const gait = Math.sin(zb.phase);
+            const charging = packState.ready;
+            zb.legs[0].rotation.x = gait*.62;
+            zb.legs[1].rotation.x = -gait*.62;
+            zb.arms[0].rotation.set(-.5-gait*.5, 0, -.2);
+            zb.arms[1].rotation.set(-.5+gait*.5, 0, .2);
+            zb.rig.rotation.x = charging ? .34 : .05;
+            zb.rig.rotation.z = .04*Math.sin(zb.phase*.5);
+            zb.rig.position.y = .02+Math.abs(gait)*.05;
+            zb.head.rotation.set(charging ? -.12 : .04,
+                                 charging ? 0 : .42*Math.sin(zb.phase*.26), .05*gait);
+            if(flat <= 1.7 && reach){
+                zb.arms[0].rotation.x = -1.8+.45*Math.sin(zb.phase*3);
+                zb.arms[1].rotation.x = -1.8-.45*Math.sin(zb.phase*3);
+            }
+
         }else{
             zb.phase += .065;
             const gait = Math.sin(zb.phase);
@@ -1814,7 +2450,6 @@ function updateZombies(){
     runnerAlert = nearRunner ? 1 : Math.max(0, runnerAlert - .04);
     document.getElementById("runnerWarn").style.opacity = nearRunner ? "1" : "0";
 }
-
 
 /* =========================================================
    피 튀김 · 혈흔 · 시체
@@ -1955,6 +2590,9 @@ function updateBullets(){
 function killZombie(index){
     const zb = zombies[index];
     if(!zb) return;
+
+    /* 부식성 개체는 터지면서 산을 뿌린다 */
+    if(zb.acid) acidBurst(zb.x, zb.y, zb.z);
 
     if(Math.random() < DIFF.drop){
         spawnWeapon(pick(["pistol","rifle","shotgun","smg"]), zb.x, zb.y+0.5, zb.z);
@@ -2475,8 +3113,19 @@ function updateHUD(){
     document.getElementById("zombies").textContent = zombies.length + (spawnQueue.length ? " (+"+spawnQueue.length+")" : "");
 
     const rEl = document.getElementById("runners");
-    rEl.textContent = runnerCount;
-    rEl.className = runnerCount > 0 ? "danger" : "";
+    rEl.textContent = zCount.runner;
+    rEl.className = zCount.runner > 0 ? "danger" : "";
+
+    const sp = document.getElementById("specials");
+    if(zCount.screamer || zCount.acid || zCount.pack){
+        sp.innerHTML =
+            "<u class='s1'><i class='dot'></i>경보 <b>" + zCount.screamer + "</b></u>" +
+            "<u class='s2'><i class='dot'></i>부식 <b>" + zCount.acid + "</b></u>" +
+            "<u class='s3'><i class='dot'></i>군집 <b>" + zCount.pack + "</b></u>";
+        sp.style.display = "flex";
+    }else{
+        sp.style.display = "none";
+    }
 
     document.getElementById("carStatus").textContent = player.inCar ? "🚗 운전 중" : "도보";
 
@@ -2720,10 +3369,17 @@ const disposables = [];
 function own(resource){ disposables.push(resource); return resource; }
 
 function clearWorld(){
-    for(const arr of [zombies,bullets,pickups,cars,elevators,corpses,decals,lamps,fires,mists,steams,props,spawnQueue])
+    for(const arr of [zombies,bullets,pickups,cars,elevators,corpses,decals,lamps,fires,mists,steams,props,spawnQueue,acidPools])
         arr.length = 0;
 
     runnerCount = 0;
+    acidScreen = 0;
+    zCount.runner = zCount.screamer = zCount.acid = zCount.pack = 0;
+    packState.ready = false; packState.timer = 0; packState.wait = 0;
+    for(const r of shockRings){ r.t = 0; r.mesh.visible = false; }
+    document.getElementById("acidVig").style.opacity = "0";
+    document.getElementById("gearWarn").style.opacity = "0";
+    document.getElementById("specials").style.display = "none";
 
     while(world.children.length){
         const child = world.children[0];
@@ -4381,11 +5037,18 @@ function refreshBrief(){
     const first = d.first, per = d.per;
     const runner = Math.round(Math.min(.74, d.run + 3*d.runW)*100);
 
+    const g = 1 + Math.min(.85, 3*.07);
+    const sp = [];
+    if(d.scream > 0) sp.push("경보음 <b>" + Math.round(d.scream*g*100) + "%</b>");
+    if(d.acid   > 0) sp.push("부식성 <b>" + Math.round(d.acid*g*100) + "%</b>");
+    if(d.pack   > 0) sp.push("군집형 <b>" + Math.round(d.pack*g*100) + "%</b>");
+
     document.getElementById("brief").innerHTML =
         "<b>" + m.name + "</b> · " + d.name + " (" + d.tag + ")<br>" +
         d.desc + "<br>" +
         "1웨이브 <b>" + first + "</b>마리 · 웨이브마다 <b>+" + per + "</b> · 동시 최대 <b>" + d.cap + "</b> · " +
-        "3웨이브 기준 러너 <b>" + runner + "%</b>";
+        "러너 <b>" + runner + "%</b><br>" +
+        "<span style='color:#c79a63'>특수 개체 " + (sp.length ? sp.join(" · ") + " — " + d.specialFrom + "웨이브부터" : "없음") + "</span>";
 }
 
 document.getElementById("mapCards").addEventListener("click", function(e){
@@ -4434,6 +5097,9 @@ function update(){
     updateAsh();
     updateBlood();
     updateCorpses();
+    updateShocks();
+    updateAcidSprays();
+    updateAcidPools();
 
     if(currentMap && currentMap.state) currentMap.tick(currentMap.state, now);
     document.getElementById("scareNotice").style.opacity = now < scareUntil ? "1" : "0";
