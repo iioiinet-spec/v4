@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8x8 모두의 마블</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Pretendard', sans-serif; }
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            grid-template-rows: repeat(8, minmax(0, 1fr));
+            width: 100%;
+            max-width: 540px;
+            aspect-ratio: 1 / 1;
+        }
+        @keyframes bounce-short {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out infinite; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-between p-2 md:p-4 select-none overflow-x-hidden">
+
+    <header class="w-full max-w-5xl flex items-center justify-between bg-slate-900 border border-slate-800 px-4 py-3 rounded-2xl shadow-xl mb-3">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl md:text-3xl">🎲</span>
+            <div>
+                <h1 class="text-lg md:text-2xl font-black bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">8x8 모두의 마블</h1>
+                <p class="text-[11px] text-slate-400">AI 플레이어 및 다중 건물·발전소 건설 시스템 적용</p>
+            </div>
+        </div>
+        <div id="game-status-badge" class="bg-indigo-950 border border-indigo-500/40 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-300">
+            게임 대기 중
+        </div>
+    </header>
+
+    <main class="w-full max-w-5xl flex-1 flex flex-col lg:flex-row gap-4 items-center justify-center">
+
+        <!-- Setup Screen Modal -->
+        <div id="setup-screen" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl flex flex-col items-center text-center space-y-6">
+                <div class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-orange-500 rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-orange-500/30">
+                    🤖
+                </div>
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">게임 모드 선택</h2>
+                    <p class="text-sm text-slate-400">플레이어 구성 및 AI 대전 인원을 선택해주세요. (초기 자본: 2,000,000 마블)</p>
+                </div>
+                <div class="grid grid-cols-1 gap-3 w-full">
+                    <button onclick="startGameMode(1)" class="py-3 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 rounded-2xl font-bold transition shadow-md text-sm text-white">
+                        👤 플레이어 1명 + 🤖 AI 1명 (총 2인)
+                    </button>
+                    <button onclick="startGameMode(2)" class="py-3 bg-slate-800 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-500 rounded-2xl font-bold transition shadow-md text-sm">
+                        👤 플레이어 1명 + 🤖 AI 2명 (총 3인)
+                    </button>
+                    <button onclick="startGameMode(3)" class="py-3 bg-slate-800 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-500 rounded-2xl font-bold transition shadow-md text-sm">
+                        👤 플레이어 1명 + 🤖 AI 3명 (총 4인)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8x8 Board Container -->
+        <div class="relative w-full max-w-[540px] aspect-square bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden board-grid" id="game-board">
+            <!-- Tiles and Center Logo rendered dynamically via JS -->
+        </div>
+
+        <div class="w-full lg:w-80 flex flex-col gap-3">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">현재 차례</span>
+                    <div id="current-player-indicator" class="flex items-center space-x-2 text-sm font-bold text-white">
+                        <span id="cp-token">💩P1</span> <span id="cp-name">플레이어 1</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-4 text-center">
+                    <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                        <div class="text-[10px] text-slate-400">보유 자산</div>
+                        <div id="cp-money" class="text-sm font-bold text-emerald-400">2,000,000 🅜</div>
+                    </div>
+                    <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                        <div class="text-[10px] text-slate-400">위치</div>
+                        <div id="cp-pos" class="text-sm font-bold text-amber-400">출발지</div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <div class="flex items-center justify-center gap-2 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                        <div id="dice-1" class="w-9 h-9 bg-slate-900 border border-slate-700 rounded-lg flex items-center justify-center text-lg font-bold shadow-inner text-amber-400">🎲</div>
+                        <span class="text-slate-500 font-bold">×</span>
+                        <div id="dice-2" class="w-9 h-9 bg-slate-900 border border-slate-700 rounded-lg flex items-center justify-center text-lg font-bold shadow-inner text-amber-400">🎲</div>
+                        <span class="text-slate-500 font-bold">-</span>
+                        <div id="dice-3" class="w-9 h-9 bg-slate-900 border border-slate-700 rounded-lg flex items-center justify-center text-lg font-bold shadow-inner text-amber-400">🎲</div>
+                    </div>
+                    <div id="dice-formula-desc" class="text-[10px] text-center text-slate-400 font-medium">이동 공식: (A × B - C)</div>
+                    <button id="roll-btn" onclick="rollDice()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-[0.98] text-white font-extrabold rounded-xl shadow-lg shadow-orange-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm">
+                        주사위 3개 던지기 🎲
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex-1 flex flex-col">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-800 pb-1.5">플레이어 현황</h3>
+                <div id="players-list" class="flex flex-col gap-2 overflow-y-auto max-h-40 pr-1"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="action-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col space-y-4">
+            <div id="modal-header" class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 id="modal-title" class="text-lg font-bold text-white">타이틀</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white">&times;</button>
+            </div>
+            <div id="modal-body" class="text-sm text-slate-300 space-y-3 max-h-[60vh] overflow-y-auto pr-1"></div>
+            <div id="modal-footer" class="flex flex-col sm:flex-row gap-2 pt-2"></div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl z-50 transition-all duration-300 opacity-0 pointer-events-none flex items-center space-x-3 text-sm">
+        <span id="toast-icon">✨</span>
+        <span id="toast-text" class="font-semibold">알림 메시지</span>
+    </div>
+
+    <script>
+        const BOARD_TILES = [
+            { id: 0, name: "출발지", type: "start", color: "bg-rose-500/10 border-rose-500/40" },
+            { id: 1, name: "타이베이", type: "property", price: 20000, baseRent: 2000, color: "bg-sky-500/10 border-sky-500/40" },
+            { id: 2, name: "베이징", type: "property", price: 26000, baseRent: 2600, color: "bg-sky-500/10 border-sky-500/40" },
+            { id: 3, name: "기부금", type: "tax", amount: 50000, color: "bg-amber-500/10 border-amber-500/40" },
+            { id: 4, name: "홍콩", type: "property", price: 32000, baseRent: 3200, color: "bg-emerald-500/10 border-emerald-500/40" },
+            { id: 5, name: "싱가포르", type: "property", price: 38000, baseRent: 3800, color: "bg-emerald-500/10 border-emerald-500/40" },
+            { id: 6, name: "시드니", type: "property", price: 44000, baseRent: 4400, color: "bg-emerald-500/10 border-emerald-500/40" },
+            { id: 7, name: "무인도", type: "island", color: "bg-slate-800/50 border-slate-700" },
+
+            { id: 8, name: "하와이", type: "property", price: 50000, baseRent: 5000, color: "bg-violet-500/10 border-violet-500/40" },
+            { id: 9, name: "런던", type: "property", price: 56000, baseRent: 5600, color: "bg-violet-500/10 border-violet-500/40" },
+            { id: 10, name: "LA", type: "property", price: 62000, baseRent: 6200, color: "bg-violet-500/10 border-violet-500/40" },
+            { id: 11, name: "국세청", type: "tax", amount: 80000, color: "bg-red-500/10 border-red-500/40" },
+            { id: 12, name: "샌프란시스코", type: "property", price: 68000, baseRent: 6800, color: "bg-amber-500/10 border-amber-500/40" },
+            { id: 13, name: "파리", type: "property", price: 76000, baseRent: 7600, color: "bg-amber-500/10 border-amber-500/40" },
+            { id: 14, name: "보너스", type: "bonus", amount: 100000, color: "bg-pink-500/10 border-pink-500/40" },
+
+            { id: 15, name: "베를린", type: "property", price: 86000, baseRent: 8600, color: "bg-indigo-500/10 border-indigo-500/40" },
+            { id: 16, name: "로마", type: "property", price: 96000, baseRent: 9600, color: "bg-indigo-500/10 border-indigo-500/40" },
+            { id: 17, name: "아테네", type: "property", price: 106000, baseRent: 10600, color: "bg-indigo-500/10 border-indigo-500/40" },
+            { id: 18, name: "기부금", type: "tax", amount: 60000, color: "bg-amber-500/10 border-amber-500/40" },
+            { id: 19, name: "부에노스아이레스", type: "property", price: 118000, baseRent: 11800, color: "bg-teal-500/10 border-teal-500/40" },
+            { id: 20, name: "상파울루", type: "property", price: 130000, baseRent: 13000, color: "bg-teal-500/10 border-teal-500/40" },
+            { id: 21, name: "세계여행", type: "travel", color: "bg-blue-500/10 border-blue-500/40" },
+
+            { id: 22, name: "시카고", type: "property", price: 144000, baseRent: 14400, color: "bg-rose-500/10 border-rose-500/40" },
+            { id: 23, name: "토론토", type: "property", price: 158000, baseRent: 15800, color: "bg-rose-500/10 border-rose-500/40" },
+            { id: 24, name: "사회복지", type: "fund", amount: 70000, color: "bg-yellow-500/10 border-yellow-500/40" },
+            { id: 25, name: "뉴욕", type: "property", price: 174000, baseRent: 17400, color: "bg-fuchsia-500/10 border-fuchsia-500/40" },
+            { id: 26, name: "도쿄", type: "property", price: 188000, baseRent: 18800, color: "bg-fuchsia-500/10 border-fuchsia-500/40" },
+            { id: 27, name: "서울", type: "property", price: 200000, baseRent: 20000, color: "bg-fuchsia-500/10 border-fuchsia-500/40" }
+        ];
+
+        let players = [];
+        let currentPlayerIndex = 0;
+        let boardProperties = {}; 
+        let isRolling = false;
+        let pendingRentPayment = null;
+
+        const playerColors = [
+            { name: "빨강", bg: "bg-red-500", text: "text-red-400", border: "border-red-500", symbol: "💩P1", isAI: false },
+            { name: "파랑", bg: "bg-blue-500", text: "text-blue-400", border: "border-blue-500", symbol: "💩P2", isAI: true },
+            { name: "초록", bg: "bg-emerald-500", text: "text-emerald-400", border: "border-emerald-500", symbol: "💩P3", isAI: true },
+            { name: "노랑", bg: "bg-amber-500", text: "text-amber-400", border: "border-amber-500", symbol: "💩P4", isAI: true }
+        ];
+
+        function startGameMode(aiCount) {
+            players = [];
+            // Player 1 is always human
+            players.push({ id: 0, name: "플레이어 1", money: 2000000, pos: 0, isBankrupt: false, color: playerColors[0] });
+            
+            // Add AI players based on selection
+            for (let i = 1; i <= aiCount; i++) {
+                players.push({ id: i, name: `AI ${i}`, money: 2000000, pos: 0, isBankrupt: false, color: playerColors[i] });
+            }
+
+            currentPlayerIndex = 0;
+            boardProperties = {};
+            pendingRentPayment = null;
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-status-badge').textContent = '게임 진행 중';
+            initBoardGrid();
+            updateUI();
+            showToast("게임이 시작되었습니다!");
+            checkAITurn();
+        }
+
+        function getTileCoordinates(index) {
+            if (index <= 7) return { row: 0, col: index };
+            if (index <= 14) return { row: index - 7, col: 7 };
+            if (index <= 21) return { row: 7, col: 7 - (index - 14) };
+            return { row: 7 - (index - 21), col: 0 };
+        }
+
+        function initBoardGrid() {
+            const boardEl = document.getElementById('game-board');
+            boardEl.innerHTML = '';
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const tileIndex = BOARD_TILES.findIndex(t => {
+                        const coords = getTileCoordinates(t.id);
+                        return coords.row === r && coords.col === c;
+                    });
+
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = "relative border border-slate-800 bg-slate-900/90 p-1 flex flex-col justify-between items-center text-center overflow-hidden text-[9px] md:text-[11px]";
+                    
+                    if (tileIndex !== -1) {
+                        const tile = BOARD_TILES[tileIndex];
+                        cellDiv.id = `tile-${tile.id}`;
+                        cellDiv.classList.add(...tile.color.split(' '));
+                        
+                        let badgeHtml = `<span class="font-bold text-slate-200 truncate w-full">${tile.name}</span>`;
+                        if (tile.price) {
+                            badgeHtml += `<span class="text-[9px] text-amber-400 font-semibold">${(tile.price/10000)}만</span>`;
+                        }
+                        cellDiv.innerHTML = `
+                            <div class="w-full">${badgeHtml}</div>
+                            <div id="tile-tokens-${tile.id}" class="flex flex-wrap justify-center gap-0.5 my-auto"></div>
+                            <div id="tile-owner-${tile.id}" class="w-full h-3 rounded-sm text-[8px] font-bold truncate"></div>
+                        `;
+                    } else {
+                        if (r === 2 && c === 2) {
+                            cellDiv.style.gridRow = "3 / span 4";
+                            cellDiv.style.gridColumn = "3 / span 4";
+                            cellDiv.className = "col-span-4 row-span-4 bg-slate-950/80 border border-slate-800 rounded-2xl p-2 flex flex-col items-center justify-center text-center shadow-inner m-1 z-10 pointer-events-none";
+                            cellDiv.innerHTML = `
+                                <div class="text-2xl md:text-3xl mb-1">🎲</div>
+                                <div class="font-bold text-xs md:text-sm text-amber-400 mb-0.5">모두의 마블</div>
+                                <div class="text-[9px] text-slate-400 leading-tight">(A × B - C) 공식 적용</div>
+                            `;
+                        } else if ((r >= 2 && r <= 5) && (c >= 2 && c <= 5)) {
+                            cellDiv.style.display = 'none';
+                        } else {
+                            cellDiv.classList.add('bg-slate-950/40', 'border-none');
+                        }
+                    }
+                    boardEl.appendChild(cellDiv);
+                }
+            }
+        }
+
+        function rollDice() {
+            if (isRolling) return;
+            if (pendingRentPayment) {
+                showToast("먼저 통행료를 지불하거나 처리해주세요!");
+                return;
+            }
+            let cp = players[currentPlayerIndex];
+            if (cp.color.isAI) return; // Human button blocked during AI turn
+
+            executeRollSequence();
+        }
+
+        function executeRollSequence() {
+            isRolling = true;
+            document.getElementById('roll-btn').disabled = true;
+
+            let d1Elem = document.getElementById('dice-1');
+            let d2Elem = document.getElementById('dice-2');
+            let d3Elem = document.getElementById('dice-3');
+
+            let count = 0;
+            let rollInterval = setInterval(() => {
+                d1Elem.textContent = Math.floor(Math.random() * 6) + 1;
+                d2Elem.textContent = Math.floor(Math.random() * 6) + 1;
+                d3Elem.textContent = Math.floor(Math.random() * 6) + 1;
+                count++;
+                if (count > 10) {
+                    clearInterval(rollInterval);
+                    let v1 = Math.floor(Math.random() * 6) + 1;
+                    let v2 = Math.floor(Math.random() * 6) + 1;
+                    let v3 = Math.floor(Math.random() * 6) + 1;
+                    d1Elem.textContent = v1;
+                    d2Elem.textContent = v2;
+                    d3Elem.textContent = v3;
+                    finalizeMove(v1, v2, v3);
+                }
+            }, 50);
+        }
+
+        function finalizeMove(d1, d2, d3) {
+            let rawMove = (d1 * d2) - d3;
+            let moveSteps = rawMove > 0 ? rawMove : 1;
+
+            let cp = players[currentPlayerIndex];
+            let oldPos = cp.pos;
+            let newPos = (oldPos + moveSteps) % 28;
+
+            if (newPos < oldPos || (oldPos + moveSteps >= 28)) {
+                cp.money += 300000;
+                showToast(`${cp.name}님이 출발지를 지나 월급 300,000 마블을 받았습니다! 🎉`);
+            }
+
+            cp.pos = newPos;
+            updateUI();
+            showToast(`${cp.name}: ${d1} × ${d2} - ${d3} = ${rawMove} (이동: ${moveSteps}칸)`);
+            handleTileAction(cp, newPos);
+        }
+
+        function handleTileAction(player, pos) {
+            let tile = BOARD_TILES[pos];
+
+            if (tile.type === 'property') {
+                let prop = boardProperties[pos];
+                if (!prop || prop.owner === null) {
+                    if (player.color.isAI) {
+                        aiHandlePurchase(player, tile, pos);
+                    } else {
+                        showPropertyPurchaseModal(player, tile, pos);
+                    }
+                } else if (prop.owner === player.id) {
+                    if (player.color.isAI) {
+                        aiHandleUpgrade(player, tile, pos);
+                    } else {
+                        showPropertyUpgradeOrManageModal(player, tile, pos);
+                    }
+                } else {
+                    if (player.color.isAI) {
+                        aiHandleToll(player, tile, pos);
+                    } else {
+                        showTollPaymentModal(player, tile, pos);
+                    }
+                }
+            } else if (tile.type === 'tax') {
+                player.money -= tile.amount;
+                if (player.color.isAI) {
+                    setTimeout(closeModalAndNext, 1000);
+                }
+                openModal("기부금 / 세금 💸", `
+                    <p class="text-red-400 font-bold">${tile.name}</p>
+                    <p>${player.name}님이 사회에 <strong>${tile.amount.toLocaleString()} 마블</strong>을 납부하였습니다.</p>
+                `, player.color.isAI ? [] : [{ text: "확인", class: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-xl w-full", action: closeModalAndNext }]);
+            } else if (tile.type === 'bonus') {
+                player.money += tile.amount;
+                if (player.color.isAI) {
+                    setTimeout(closeModalAndNext, 1000);
+                }
+                openModal("보너스 수령 🎁", `
+                    <p class="text-emerald-400 font-bold">${tile.name} 당첨!</p>
+                    <p>${player.name}님이 보너스로 <strong>${tile.amount.toLocaleString()} 마블</strong>을 받았습니다.</p>
+                `, player.color.isAI ? [] : [{ text: "확인", class: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-xl w-full", action: closeModalAndNext }]);
+            } else {
+                showToast(`${player.name}님이 ${tile.name}에 도착했습니다.`);
+                if (player.color.isAI) {
+                    setTimeout(endTurn, 1000);
+                }
+            }
+        }
+
+        function getUnitCosts(tilePrice) {
+            return {
+                land: tilePrice,
+                villa: Math.round(tilePrice * 1.0),
+                building: Math.round(tilePrice * 1.5),
+                hotel: Math.round(tilePrice * 2.0),
+                thermal: Math.round(tilePrice * 1.2),
+                hydro: Math.round(tilePrice * 1.8),
+                nuclear: Math.round(tilePrice * 2.5),
+                landmark: Math.round(tilePrice * 3.0)
+            };
+        }
+
+        // AI Logic Functions
+        function checkAITurn() {
+            let cp = players[currentPlayerIndex];
+            if (!cp.isBankrupt && cp.color.isAI) {
+                setTimeout(() => {
+                    executeRollSequence();
+                }, 1200);
+            }
+        }
+
+        function aiHandlePurchase(player, tile, pos) {
+            let costs = getUnitCosts(tile.price);
+            let cost = costs.land; // Basic land purchase
+            if (player.money >= cost + 200000) {
+                player.money -= cost;
+                boardProperties[pos] = {
+                    owner: player.id,
+                    counts: { land: 1, villa: 0, building: 0, hotel: 0, thermal: 0, hydro: 0, nuclear: 0, landmark: 0 }
+                };
+                showToast(`${player.name}님이 ${tile.name}을(를) 구입했습니다!`);
+            } else {
+                showToast(`${player.name}님이 ${tile.name} 구입을 패스했습니다.`);
+            }
+            setTimeout(endTurn, 1200);
+        }
+
+        function aiHandleUpgrade(player, tile, pos) {
+            let prop = boardProperties[pos];
+            let costs = getUnitCosts(tile.price);
+            // AI buys a villa or building if plenty of cash
+            if (player.money >= costs.villa + 300000 && prop.counts.villa < 2) {
+                player.money -= costs.villa;
+                prop.counts.villa += 1;
+                showToast(`${player.name}님이 ${tile.name}에 별장을 추가 건설했습니다!`);
+            } else {
+                showToast(`${player.name}님이 소유지 관리를 마쳤습니다.`);
+            }
+            setTimeout(endTurn, 1200);
+        }
+
+        function aiHandleToll(player, tile, pos) {
+            let prop = boardProperties[pos];
+            let owner = players.find(p => p.id === prop.owner);
+            let rent = calculateRent(tile, prop.counts);
+
+            if (player.money < rent) {
+                player.isBankrupt = true;
+                rent = player.money;
+            }
+
+            player.money -= rent;
+            owner.money += rent;
+
+            showToast(`${player.name}님이 ${owner.name}님에게 통행료 ${rent.toLocaleString()} 마블을 지불했습니다.`);
+            if (player.isBankrupt) {
+                showToast(`${player.name}님이 파산하셨습니다! 💀`);
+            }
+            setTimeout(endTurn, 1200);
+        }
+
+        // Human Modals
+        function showPropertyPurchaseModal(player, tile, pos) {
+            let costs = getUnitCosts(tile.price);
+            openModal("건물 및 발전소 구입하기", `
+                <div class="space-y-3">
+                    <div class="text-center">
+                        <div class="text-base font-bold text-white">${tile.name}</div>
+                        <div class="text-xs text-slate-400">기준 땅값: <span class="text-amber-400 font-bold">${tile.price.toLocaleString()} 마블</span></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                            <span>토지 (기본)</span>
+                            <input type="number" id="qty-land" min="1" max="5" value="1" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                            <span>별장 (${costs.villa.toLocaleString()})</span>
+                            <input type="number" id="qty-villa" min="0" max="10" value="0" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                            <span>빌딩 (${costs.building.toLocaleString()})</span>
+                            <input type="number" id="qty-building" min="0" max="10" value="0" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                            <span>호텔 (${costs.hotel.toLocaleString()})</span>
+                            <input type="number" id="qty-hotel" min="0" max="10" value="0" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                    </div>
+                </div>
+            `, [
+                { text: "구입 완료하기", class: "bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl flex-1 text-sm", action: () => executeBuyUnits(player, pos, tile.price) },
+                { text: "패스", class: "bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 px-4 rounded-xl flex-1 text-sm", action: closeModalAndNext }
+            ]);
+        }
+
+        function executeBuyUnits(player, pos, tilePrice) {
+            let costs = getUnitCosts(tilePrice);
+            let qLand = parseInt(document.getElementById('qty-land').value) || 1;
+            let qVilla = parseInt(document.getElementById('qty-villa').value) || 0;
+            let qBuilding = parseInt(document.getElementById('qty-building').value) || 0;
+            let qHotel = parseInt(document.getElementById('qty-hotel').value) || 0;
+
+            let totalCost = (qLand * costs.land) + (qVilla * costs.villa) + (qBuilding * costs.building) + (qHotel * costs.hotel);
+
+            if (player.money < totalCost) {
+                showToast("자금이 부족합니다!");
+                return;
+            }
+
+            player.money -= totalCost;
+            boardProperties[pos] = {
+                owner: player.id,
+                counts: { land: qLand, villa: qVilla, building: qBuilding, hotel: qHotel, thermal: 0, hydro: 0, nuclear: 0, landmark: 0 }
+            };
+
+            closeModal();
+            updateUI();
+            showToast(`${player.name}님이 건물을 구입했습니다!`);
+            endTurn();
+        }
+
+        function showPropertyUpgradeOrManageModal(player, tile, pos) {
+            let prop = boardProperties[pos];
+            let costs = getUnitCosts(tile.price);
+            let c = prop.counts;
+            let hasExistingBuildings = (c.land + c.villa + c.building + c.hotel) > 0;
+
+            openModal("내 소유지 관리 / 추가 건설", `
+                <div class="space-y-3">
+                    <div class="text-center">
+                        <div class="text-base font-bold text-white">${tile.name} (내 소유)</div>
+                        <div class="text-xs text-slate-400">랜드마크 및 추가 건설이 가능합니다.</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                            <span>별장 수량</span>
+                            <input type="number" id="m-villa" min="0" max="10" value="${c.villa}" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between ${!hasExistingBuildings ? 'opacity-50' : ''}">
+                            <span class="font-bold text-amber-400">랜드마크</span>
+                            <input type="number" id="m-landmark" min="0" max="3" value="${c.landmark}" ${!hasExistingBuildings ? 'disabled' : ''} class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-amber-400">
+                        </div>
+                    </div>
+                </div>
+            `, [
+                { text: "반영", class: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl flex-1 text-sm", action: () => executeUpdateUnits(player, pos, tile.price) },
+                { text: "닫기", class: "bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 px-4 rounded-xl flex-1 text-sm", action: closeModalAndNext }
+            ]);
+        }
+
+        function executeUpdateUnits(player, pos, tilePrice) {
+            let prop = boardProperties[pos];
+            let costs = getUnitCosts(tilePrice);
+            let oldC = prop.counts;
+
+            let newVilla = parseInt(document.getElementById('m-villa').value) || 0;
+            let newLandmark = parseInt(document.getElementById('m-landmark').value) || 0;
+
+            let diffVilla = Math.max(0, newVilla - oldC.villa);
+            let diffLandmark = Math.max(0, newLandmark - oldC.landmark);
+
+            let addCost = (diffVilla * costs.villa) + (diffLandmark * costs.landmark);
+
+            if (player.money < addCost) {
+                showToast("자금이 부족합니다!");
+                return;
+            }
+
+            player.money -= addCost;
+            prop.counts.villa = newVilla;
+            prop.counts.landmark = newLandmark;
+
+            closeModal();
+            updateUI();
+            showToast("소유지가 업데이트되었습니다!");
+            endTurn();
+        }
+
+        function calculateRent(tile, counts) {
+            let base = tile.baseRent;
+            let sum = (counts.land * base) +
+                      (counts.villa * base * 2) +
+                      (counts.building * base * 3) +
+                      (counts.hotel * base * 5) +
+                      (counts.landmark * base * 10);
+            return Math.round(sum);
+        }
+
+        function showTollPaymentModal(player, tile, pos) {
+            let prop = boardProperties[pos];
+            let owner = players.find(p => p.id === prop.owner);
+            let rent = calculateRent(tile, prop.counts);
+
+            pendingRentPayment = { debtor: player, creditor: owner, amount: rent };
+
+            openModal("통행료 지불 ⚠", `
+                <div class="text-center space-y-3">
+                    <div class="text-base font-bold text-rose-400">${owner.name}님의 소유지입니다!</div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                        <div class="text-xs text-slate-400">지불해야 할 통행료</div>
+                        <div class="text-lg font-extrabold text-amber-400">${rent.toLocaleString()} 마블</div>
+                    </div>
+                </div>
+            `, [
+                { 
+                    text: "통행료 지불하기", 
+                    class: "bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-extrabold py-3 px-4 rounded-xl flex-1 shadow-lg text-sm", 
+                    action: executeTollPayment 
+                }
+            ]);
+        }
+
+        function executeTollPayment() {
+            if (!pendingRentPayment) return;
+            let { debtor, creditor, amount } = pendingRentPayment;
+
+            if (debtor.money < amount) {
+                amount = debtor.money;
+                debtor.isBankrupt = true;
+            }
+
+            debtor.money -= amount;
+            creditor.money += amount;
+
+            showToast(`${debtor.name}님이 ${creditor.name}님에게 통행료를 지불했습니다.`);
+            pendingRentPayment = null;
+            closeModal();
+            updateUI();
+
+            if (debtor.isBankrupt) {
+                showToast(`${debtor.name}님이 파산하셨습니다! 💀`);
+            }
+
+            endTurn();
+        }
+
+        function endTurn() {
+            if (pendingRentPayment) return;
+            let activePlayers = players.filter(p => !p.isBankrupt);
+            if (activePlayers.length <= 1) {
+                document.getElementById('game-status-badge').textContent = '게임 종료';
+                openModal("게임 종료 🏆", `
+                    <div class="text-center space-y-2">
+                        <div class="text-2xl font-black text-amber-400">${activePlayers[0]?.name || '승자 없음'} 승리!</div>
+                    </div>
+                `, [{ text: "새로고침", class: "bg-indigo-600 text-white font-bold py-2 px-4 rounded-xl w-full text-sm", action: () => location.reload() }]);
+                return;
+            }
+
+            do {
+                currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            } while (players[currentPlayerIndex].isBankrupt);
+
+            isRolling = false;
+            document.getElementById('roll-btn').disabled = false;
+            updateUI();
+            checkAITurn();
+        }
+
+        function openModal(title, bodyHtml, buttons) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-body').innerHTML = bodyHtml;
+            let footer = document.getElementById('modal-footer');
+            footer.innerHTML = '';
+            buttons.forEach(b => {
+                let btn = document.createElement('button');
+                btn.className = b.class;
+                btn.textContent = b.text;
+                btn.onclick = b.action;
+                footer.appendChild(btn);
+            });
+            document.getElementById('action-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('action-modal').classList.add('hidden');
+        }
+
+        function closeModalAndNext() {
+            closeModal();
+            endTurn();
+        }
+
+        function showToast(msg) {
+            let toast = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        function updateUI() {
+            let cp = players[currentPlayerIndex];
+            document.getElementById('cp-name').textContent = cp.name;
+            document.getElementById('cp-token').textContent = cp.color.symbol;
+            document.getElementById('cp-money').textContent = `${cp.money.toLocaleString()} 🅜`;
+            document.getElementById('cp-pos').textContent = BOARD_TILES[cp.pos].name;
+
+            // Disable human roll button if it's AI turn
+            if (cp.color.isAI) {
+                document.getElementById('roll-btn').disabled = true;
+                document.getElementById('roll-btn').textContent = `${cp.name} (AI) 차례...`;
+            } else {
+                document.getElementById('roll-btn').disabled = isRolling;
+                document.getElementById('roll-btn').textContent = "주사위 3개 던지기 🎲";
+            }
+
+            BOARD_TILES.forEach(tile => {
+                let tokenContainer = document.getElementById(`tile-tokens-${tile.id}`);
+                let ownerContainer = document.getElementById(`tile-owner-${tile.id}`);
+                if (tokenContainer) {
+                    tokenContainer.innerHTML = '';
+                    players.forEach(p => {
+                        if (p.pos === tile.id && !p.isBankrupt) {
+                            let span = document.createElement('span');
+                            span.className = `${p.color.text} font-bold text-xs animate-bounce-short`;
+                            span.textContent = p.color.symbol;
+                            tokenContainer.appendChild(span);
+                        }
+                    });
+                }
+                if (ownerContainer) {
+                    let prop = boardProperties[tile.id];
+                    if (prop && prop.owner !== null) {
+                        let ownerPlayer = players[prop.owner];
+                        ownerContainer.className = `w-full h-3 rounded-sm text-[8px] font-bold ${ownerPlayer.color.bg} text-white flex items-center justify-center truncate px-1`;
+                        ownerContainer.textContent = ownerPlayer.name;
+                    } else {
+                        ownerContainer.className = 'w-full h-3 rounded-sm';
+                        ownerContainer.textContent = '';
+                    }
+                }
+            });
+
+            let listEl = document.getElementById('players-list');
+            listEl.innerHTML = '';
+            players.forEach((p, idx) => {
+                let div = document.createElement('div');
+                div.className = `flex items-center justify-between p-2 rounded-xl border ${idx === currentPlayerIndex ? 'bg-slate-800 border-indigo-500' : 'bg-slate-950/50 border-slate-800/80'}`;
+                div.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs">${p.color.symbol}</span>
+                        <div>
+                            <div class="text-xs font-bold ${p.isBankrupt ? 'line-through text-slate-500' : 'text-white'}">${p.name} ${p.color.isAI ? '(AI)' : '(인간)'}</div>
+                            <div class="text-[10px] text-slate-400">${p.isBankrupt ? '파산' : BOARD_TILES[p.pos].name}</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold ${p.isBankrupt ? 'text-slate-500' : 'text-emerald-400'}">${p.money.toLocaleString()} 🅜</div>
+                `;
+                listEl.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>

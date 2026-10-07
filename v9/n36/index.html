@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>제곱근 반영 함수 그래프 계산기</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Math.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <!-- FontAwesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-full w-full overflow-hidden flex flex-col font-sans antialiased">
+
+    <!-- Header Bar -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-2.5 flex items-center justify-between shadow-md z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-lg shadow-indigo-600/30">
+                <i class="fa-solid fa-chart-line text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
+                    수학 함수 & 제곱근 대형 그래프 계산기
+                </h1>
+                <p class="text-[11px] text-slate-400">음수 영역 지원 · 순차 설정 · Full-Screen View</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="btn-toggle-sidebar" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-indigo-400"></i> <span id="sidebar-toggle-text">패널 닫기</span>
+            </button>
+            <button id="btn-rewizard" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg shadow-lg shadow-indigo-600/20 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 순차 설정 다시하기
+            </button>
+        </div>
+    </header>
+
+    <!-- Sequential Wizard Modal -->
+    <div id="wizard-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl transition-all">
+            <!-- Wizard Step Header -->
+            <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <span id="wizard-step-num" class="bg-indigo-600 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                    <h2 id="wizard-step-title" class="text-base font-semibold text-white">단계별 설정을 시작합니다</h2>
+                </div>
+                <div class="text-xs text-slate-400"><span id="wizard-current-step">1</span> / 3 단계</div>
+            </div>
+
+            <!-- Wizard Step Content -->
+            <div id="wizard-step-container" class="min-h-[160px] flex flex-col justify-center">
+                <!-- Step 1: X Range Input -->
+                <div id="wizard-step-1" class="space-y-4">
+                    <p class="text-xs text-slate-300 leading-relaxed"><b>1단계: X축 탐색 범위(음수/양수) 설정</b><br>그래프에 표시할 X의 최소값과 최대값을 입력하세요.</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">X 최소값 (Min)</label>
+                            <input type="number" id="wiz-x-min" value="-10" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">X 최대값 (Max)</label>
+                            <input type="number" id="wiz-x-max" value="10" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Intermediate Equation 'a' Input -->
+                <div id="wizard-step-2" class="space-y-4 hidden">
+                    <p class="text-xs text-slate-300 leading-relaxed"><b>2단계: 매개 변수 또는 중간 식 a 설정</b><br>기본값은 <code class="bg-slate-950 px-1.5 py-0.5 rounded text-teal-400">a = x^2</code> 입니다.</p>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">a 식 (x에 대한 함수)</label>
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-teal-400 text-sm">a =</span>
+                            <input type="text" id="wiz-eq-a" value="x^2" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-teal-500 outline-none font-mono text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Main Equation 'y' Input -->
+                <div id="wizard-step-3" class="space-y-4 hidden">
+                    <p class="text-xs text-slate-300 leading-relaxed"><b>3단계: 최종 출력 식 y 설정</b><br>기본값은 <code class="bg-slate-950 px-1.5 py-0.5 rounded text-indigo-400">y = x^2</code> 입니다. (x 또는 a 사용 가능)</p>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">y 식 (x 또는 변수 a 사용 가능)</label>
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-indigo-400 text-sm">y =</span>
+                            <input type="text" id="wiz-eq-y" value="x^2" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wizard Footer Controls -->
+            <div class="flex justify-between items-center mt-6 pt-4 border-t border-slate-800">
+                <button id="wiz-btn-prev" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition hidden">이전</button>
+                <div class="flex-1"></div>
+                <button id="wiz-btn-next" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-600/30">다음</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Workspace (Full-bleed Graph with Floating Control Drawer) -->
+    <main class="flex-1 w-full h-full relative overflow-hidden flex">
+        
+        <!-- Floating/Collapsible Control Panel -->
+        <aside id="sidebar-panel" class="absolute top-3 left-3 z-10 w-80 max-h-[calc(100%-1.5rem)] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col space-y-4 overflow-y-auto transition-all duration-300 ease-in-out">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <h2 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-indigo-400"></i> 그래프 제어판
+                </h2>
+                <button id="btn-close-sidebar-x" class="text-slate-400 hover:text-white text-xs p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Equations Setup -->
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1 font-mono">중간 식 a(x)</label>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-teal-400">a =</span>
+                        <input type="text" id="input-eq-a" value="x^2" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white font-mono outline-none focus:border-teal-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] text-slate-400 mb-1 font-mono">주 그래프 y(x)</label>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-indigo-400">y =</span>
+                        <input type="text" id="input-eq-y" value="x^2" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white font-mono outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <button id="btn-apply-equations" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition shadow-md shadow-indigo-600/20">
+                    그래프 반영하기
+                </button>
+            </div>
+
+            <!-- Negative Sqrt Handling -->
+            <div class="border-t border-slate-800 pt-3 space-y-1.5">
+                <label class="block text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-square-root-variable text-teal-400"></i> 음수 제곱근 (√x) 계산
+                </label>
+                <select id="select-sqrt-mode" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="signed">부호 유지: sign(x) * √|x| (음수 영역 대칭)</option>
+                    <option value="real">실수 정의 한정 (x < 0 구간 숨김)</option>
+                    <option value="abs">절댓값 변환: √( |x| )</option>
+                </select>
+                <p class="text-[10px] text-slate-400 leading-tight">
+                    * 음수 입력 시 제곱근 계산 방법을 선택할 수 있습니다.
+                </p>
+            </div>
+
+            <!-- Quick Preset Examples -->
+            <div class="border-t border-slate-800 pt-3">
+                <label class="block text-xs font-semibold text-slate-300 mb-2">대표 방정식 예제</label>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <button class="btn-preset bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 px-2 rounded-lg text-left transition font-mono truncate" data-a="x^2" data-y="x^2">
+                        y = x^2
+                    </button>
+                    <button class="btn-preset bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 px-2 rounded-lg text-left transition font-mono truncate" data-a="x" data-y="sqrt(x)">
+                        y = √x
+                    </button>
+                    <button class="btn-preset bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 px-2 rounded-lg text-left transition font-mono truncate" data-a="x^3" data-y="sqrt(abs(a))*sign(a)">
+                        y = sign(a)√|a|
+                    </button>
+                    <button class="btn-preset bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 px-2 rounded-lg text-left transition font-mono truncate" data-a="x^2 - 4" data-y="sqrt(a)">
+                        y = √(x² - 4)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Axis Range Controls -->
+            <div class="border-t border-slate-800 pt-3 space-y-2">
+                <label class="block text-xs font-semibold text-slate-300">좌표축 영역 (범위 지정)</label>
+                <div class="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                        <span class="text-slate-400">X Min:</span>
+                        <input type="number" id="input-xmin" value="-10" class="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white font-mono">
+                    </div>
+                    <div>
+                        <span class="text-slate-400">X Max:</span>
+                        <input type="number" id="input-xmax" value="10" class="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white font-mono">
+                    </div>
+                    <div>
+                        <span class="text-slate-400">Y Min:</span>
+                        <input type="number" id="input-ymin" value="-10" class="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white font-mono">
+                    </div>
+                    <div>
+                        <span class="text-slate-400">Y Max:</span>
+                        <input type="number" id="input-ymax" value="10" class="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white font-mono">
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Full Canvas Area -->
+        <div class="flex-1 h-full w-full relative bg-slate-950" id="canvas-container">
+            <canvas id="graphCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+
+            <!-- On-Canvas Floating Tool Overlay (Zoom Controls, Hover Inspector & Legends) -->
+            <div class="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-3 pointer-events-none">
+                <!-- Cursor Inspector Badge -->
+                <div class="pointer-events-auto bg-slate-900/80 backdrop-blur border border-slate-800 rounded-xl p-3 shadow-xl text-xs font-mono space-y-1 min-w-[160px]">
+                    <div class="text-[10px] uppercase tracking-wider text-indigo-400 font-bold mb-1 flex items-center gap-1">
+                        <i class="fa-solid fa-crosshairs"></i> 실시간 좌표
+                    </div>
+                    <div class="flex justify-between gap-3"><span class="text-slate-400">X:</span><span id="hover-x" class="text-white font-bold">-</span></div>
+                    <div class="flex justify-between gap-3"><span class="text-teal-400">a(x):</span><span id="hover-a" class="text-teal-300">-</span></div>
+                    <div class="flex justify-between gap-3"><span class="text-indigo-400">y(x):</span><span id="hover-y" class="text-indigo-300">-</span></div>
+                </div>
+
+                <!-- Floating Zoom Toolbar -->
+                <div class="pointer-events-auto bg-slate-900/80 backdrop-blur border border-slate-800 rounded-xl p-1.5 shadow-xl flex items-center gap-1">
+                    <button id="btn-zoom-in" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition" title="확대">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                    </button>
+                    <button id="btn-zoom-out" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition" title="축소">
+                        <i class="fa-solid fa-minus text-xs"></i>
+                    </button>
+                    <button id="btn-reset-zoom" class="px-2.5 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1 transition" title="기본 화면 리셋">
+                        <i class="fa-solid fa-rotate-left text-xs"></i> 리셋
+                    </button>
+                </div>
+            </div>
+
+            <!-- Legend Overlay top right -->
+            <div class="absolute top-4 right-4 z-10 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-800 px-3 py-2 rounded-xl shadow-lg flex items-center gap-4 text-xs font-medium">
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1 bg-indigo-400 rounded-full inline-block"></span> y(x) 메인 식</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1 bg-teal-400 rounded-full inline-block"></span> a(x) 중간 식</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State management
+        const state = {
+            eqA: 'x^2',
+            eqY: 'x^2',
+            xMin: -10,
+            xMax: 10,
+            yMin: -10,
+            yMax: 10,
+            sqrtMode: 'signed',
+            wizardStep: 1,
+            isSidebarOpen: true
+        };
+
+        // DOM elements
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const sidebar = document.getElementById('sidebar-panel');
+        const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar');
+        const sidebarToggleText = document.getElementById('sidebar-toggle-text');
+        const closeSidebarX = document.getElementById('btn-close-sidebar-x');
+
+        // Wizard elements
+        const wizardModal = document.getElementById('wizard-modal');
+        const wizStepNum = document.getElementById('wizard-step-num');
+        const wizStepTitle = document.getElementById('wizard-step-title');
+        const wizCurrentStep = document.getElementById('wizard-current-step');
+        const wizStep1 = document.getElementById('wizard-step-1');
+        const wizStep2 = document.getElementById('wizard-step-2');
+        const wizStep3 = document.getElementById('wizard-step-3');
+        const wizBtnPrev = document.getElementById('wiz-btn-prev');
+        const wizBtnNext = document.getElementById('wiz-btn-next');
+
+        // Dragging & Interaction variables
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let initialXMin, initialXMax, initialYMin, initialYMax;
+        let dpr = window.devicePixelRatio || 1;
+
+        // Custom Safe Math Scope
+        function createCustomScope(xVal) {
+            const safeSqrt = (v) => {
+                if (v >= 0) return Math.sqrt(v);
+                
+                if (state.sqrtMode === 'signed') {
+                    return -Math.sqrt(Math.abs(v));
+                } else if (state.sqrtMode === 'abs') {
+                    return Math.sqrt(Math.abs(v));
+                } else {
+                    return NaN;
+                }
+            };
+
+            return {
+                x: xVal,
+                sqrt: safeSqrt,
+                Sqrt: safeSqrt,
+                cbrt: Math.cbrt,
+                sign: Math.sign,
+                abs: Math.abs
+            };
+        }
+
+        function evaluateFormula(formulaStr, scope) {
+            try {
+                const compiled = math.compile(formulaStr);
+                const res = compiled.evaluate(scope);
+                return (typeof res === 'number' && !isNaN(res) && isFinite(res)) ? res : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Canvas Responsive High-DPI Resizing
+        function resizeCanvas() {
+            dpr = window.devicePixelRatio || 1;
+            const rect = container.getBoundingClientRect();
+            
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            
+            ctx.scale(dpr, dpr);
+            drawGraph();
+        }
+
+        function getLogicalWidth() { return canvas.width / dpr; }
+        function getLogicalHeight() { return canvas.height / dpr; }
+
+        // Coordinate transformations
+        function toScreenX(x) {
+            return ((x - state.xMin) / (state.xMax - state.xMin)) * getLogicalWidth();
+        }
+
+        function toScreenY(y) {
+            return getLogicalHeight() - ((y - state.yMin) / (state.yMax - state.yMin)) * getLogicalHeight();
+        }
+
+        function toMathX(px) {
+            return state.xMin + (px / getLogicalWidth()) * (state.xMax - state.xMin);
+        }
+
+        function toMathY(py) {
+            return state.yMin + ((getLogicalHeight() - py) / getLogicalHeight()) * (state.yMax - state.yMin);
+        }
+
+        // Draw Axes and Grid Lines
+        function drawGridAndAxes() {
+            const width = getLogicalWidth();
+            const height = getLogicalHeight();
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Grid Lines & Labels Setup
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#1e293b'; // slate-800
+            ctx.fillStyle = '#64748b';   // slate-500
+            ctx.font = '11px monospace';
+
+            // X-Grid
+            const xRange = state.xMax - state.xMin;
+            let xStep = Math.pow(10, Math.floor(Math.log10(xRange))) / 2;
+            if (xRange / xStep > 25) xStep *= 2;
+
+            const startX = Math.ceil(state.xMin / xStep) * xStep;
+            for (let x = startX; x <= state.xMax; x += xStep) {
+                const sx = toScreenX(x);
+                ctx.beginPath();
+                ctx.moveTo(sx, 0);
+                ctx.lineTo(sx, height);
+                ctx.stroke();
+
+                const sy0 = Math.max(20, Math.min(height - 12, toScreenY(0) + 15));
+                ctx.fillText(Number(x.toFixed(2)).toString(), sx - 8, sy0);
+            }
+
+            // Y-Grid
+            const yRange = state.yMax - state.yMin;
+            let yStep = Math.pow(10, Math.floor(Math.log10(yRange))) / 2;
+            if (yRange / yStep > 25) yStep *= 2;
+
+            const startY = Math.ceil(state.yMin / yStep) * yStep;
+            for (let y = startY; y <= state.yMax; y += yStep) {
+                const sy = toScreenY(y);
+                ctx.beginPath();
+                ctx.moveTo(0, sy);
+                ctx.lineTo(width, sy);
+                ctx.stroke();
+
+                const sx0 = Math.max(10, Math.min(width - 30, toScreenX(0) + 6));
+                if (Math.abs(y) > 0.0001) {
+                    ctx.fillText(Number(y.toFixed(2)).toString(), sx0, sy + 4);
+                }
+            }
+
+            // Main Origin X, Y Axes
+            ctx.strokeStyle = '#475569'; // slate-600
+            ctx.lineWidth = 2;
+
+            const yZero = toScreenY(0);
+            ctx.beginPath();
+            ctx.moveTo(0, yZero);
+            ctx.lineTo(width, yZero);
+            ctx.stroke();
+
+            const xZero = toScreenX(0);
+            ctx.beginPath();
+            ctx.moveTo(xZero, 0);
+            ctx.lineTo(xZero, height);
+            ctx.stroke();
+        }
+
+        // Draw Function Line
+        function drawFunctionCurve(formulaStr, color, lineWidth = 2) {
+            const width = getLogicalWidth();
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+
+            let isDrawing = false;
+            const steps = width; 
+
+            for (let i = 0; i <= steps; i++) {
+                const px = i;
+                const xVal = toMathX(px);
+
+                const scopeA = createCustomScope(xVal);
+                const aVal = evaluateFormula(state.eqA, scopeA);
+
+                const scopeY = { ...scopeA, a: aVal };
+                let yVal = evaluateFormula(formulaStr, scopeY);
+
+                if (yVal !== null && !isNaN(yVal)) {
+                    const py = toScreenY(yVal);
+
+                    if (!isDrawing) {
+                        ctx.moveTo(px, py);
+                        isDrawing = true;
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                } else {
+                    isDrawing = false;
+                }
+            }
+            ctx.stroke();
+        }
+
+        function drawGraph() {
+            drawGridAndAxes();
+
+            if (state.eqA) {
+                drawFunctionCurve(state.eqA, '#2dd4bf', 1.5); // Teal color
+            }
+
+            if (state.eqY) {
+                drawFunctionCurve(state.eqY, '#818cf8', 2.5); // Indigo color
+            }
+        }
+
+        // Mouse and Interaction Events
+        let mouseX = 0, mouseY = 0;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+
+            if (isDragging) {
+                const dx = (mouseX - dragStartX) / getLogicalWidth() * (initialXMax - initialXMin);
+                const dy = (mouseY - dragStartY) / getLogicalHeight() * (initialYMax - initialYMin);
+
+                state.xMin = initialXMin - dx;
+                state.xMax = initialXMax - dx;
+                state.yMin = initialYMin + dy;
+                state.yMax = initialYMax + dy;
+
+                syncInputsFromState();
+                drawGraph();
+            } else {
+                const mathX = toMathX(mouseX);
+                const scopeA = createCustomScope(mathX);
+                const valA = evaluateFormula(state.eqA, scopeA);
+                const scopeY = { ...scopeA, a: valA };
+                const valY = evaluateFormula(state.eqY, scopeY);
+
+                document.getElementById('hover-x').innerText = mathX.toFixed(3);
+                document.getElementById('hover-a').innerText = valA !== null ? valA.toFixed(3) : 'N/A';
+                document.getElementById('hover-y').innerText = valY !== null ? valY.toFixed(3) : 'N/A';
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStartX = mouseX;
+            dragStartY = mouseY;
+            initialXMin = state.xMin;
+            initialXMax = state.xMax;
+            initialYMin = state.yMin;
+            initialYMax = state.yMax;
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        // Wheel Zoom Functionality
+        function applyZoom(factor, cx = getLogicalWidth() / 2, cy = getLogicalHeight() / 2) {
+            const mathX = toMathX(cx);
+            const mathY = toMathY(cy);
+
+            state.xMin = mathX + (state.xMin - mathX) * factor;
+            state.xMax = mathX + (state.xMax - mathX) * factor;
+            state.yMin = mathY + (state.yMin - mathY) * factor;
+            state.yMax = mathY + (state.yMax - mathY) * factor;
+
+            syncInputsFromState();
+            drawGraph();
+        }
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 1.12 : 0.88;
+            applyZoom(zoomFactor, mouseX, mouseY);
+        });
+
+        document.getElementById('btn-zoom-in').addEventListener('click', () => applyZoom(0.8));
+        document.getElementById('btn-zoom-out').addEventListener('click', () => applyZoom(1.25));
+
+        // Sync inputs with internal state
+        function syncInputsFromState() {
+            document.getElementById('input-xmin').value = Math.round(state.xMin * 100) / 100;
+            document.getElementById('input-xmax').value = Math.round(state.xMax * 100) / 100;
+            document.getElementById('input-ymin').value = Math.round(state.yMin * 100) / 100;
+            document.getElementById('input-ymax').value = Math.round(state.yMax * 100) / 100;
+        }
+
+        function updateFromInputControls() {
+            state.eqA = document.getElementById('input-eq-a').value;
+            state.eqY = document.getElementById('input-eq-y').value;
+            state.xMin = parseFloat(document.getElementById('input-xmin').value) || -10;
+            state.xMax = parseFloat(document.getElementById('input-xmax').value) || 10;
+            state.yMin = parseFloat(document.getElementById('input-ymin').value) || -10;
+            state.yMax = parseFloat(document.getElementById('input-ymax').value) || 10;
+            state.sqrtMode = document.getElementById('select-sqrt-mode').value;
+            drawGraph();
+        }
+
+        document.getElementById('btn-apply-equations').addEventListener('click', updateFromInputControls);
+        document.getElementById('select-sqrt-mode').addEventListener('change', updateFromInputControls);
+
+        document.getElementById('btn-reset-zoom').addEventListener('click', () => {
+            state.xMin = -10; state.xMax = 10;
+            state.yMin = -10; state.yMax = 10;
+            syncInputsFromState();
+            drawGraph();
+        });
+
+        // Sidebar Collapse/Expand Logic
+        function toggleSidebar() {
+            state.isSidebarOpen = !state.isSidebarOpen;
+            if (state.isSidebarOpen) {
+                sidebar.classList.remove('-translate-x-[120%]');
+                sidebarToggleText.innerText = "패널 닫기";
+            } else {
+                sidebar.classList.add('-translate-x-[120%]');
+                sidebarToggleText.innerText = "패널 열기";
+            }
+        }
+
+        toggleSidebarBtn.addEventListener('click', toggleSidebar);
+        closeSidebarX.addEventListener('click', toggleSidebar);
+
+        // Presets Button Bindings
+        document.querySelectorAll('.btn-preset').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.currentTarget;
+                document.getElementById('input-eq-a').value = target.dataset.a;
+                document.getElementById('input-eq-y').value = target.dataset.y;
+                updateFromInputControls();
+            });
+        });
+
+        // Wizard Step Navigation
+        function showWizardStep(step) {
+            state.wizardStep = step;
+            wizCurrentStep.innerText = step;
+            wizStepNum.innerText = step;
+
+            wizStep1.classList.add('hidden');
+            wizStep2.classList.add('hidden');
+            wizStep3.classList.add('hidden');
+
+            if (step === 1) {
+                wizStepTitle.innerText = "1단계: X축 범위 설정";
+                wizStep1.classList.remove('hidden');
+                wizBtnPrev.classList.add('hidden');
+                wizBtnNext.innerText = "다음 단계";
+            } else if (step === 2) {
+                wizStepTitle.innerText = "2단계: 식 a(x) 입력";
+                wizStep2.classList.remove('hidden');
+                wizBtnPrev.classList.remove('hidden');
+                wizBtnNext.innerText = "다음 단계";
+            } else if (step === 3) {
+                wizStepTitle.innerText = "3단계: 식 y 입력 및 완공";
+                wizStep3.classList.remove('hidden');
+                wizBtnPrev.classList.remove('hidden');
+                wizBtnNext.innerText = "대형 그래프 시작하기";
+            }
+        }
+
+        wizBtnNext.addEventListener('click', () => {
+            if (state.wizardStep === 1) {
+                const xmin = parseFloat(document.getElementById('wiz-x-min').value);
+                const xmax = parseFloat(document.getElementById('wiz-x-max').value);
+                if (!isNaN(xmin) && !isNaN(xmax) && xmin < xmax) {
+                    state.xMin = xmin;
+                    state.xMax = xmax;
+                    showWizardStep(2);
+                } else {
+                    alert('유효한 X축 범위를 입력해주세요 (Min < Max).');
+                }
+            } else if (state.wizardStep === 2) {
+                state.eqA = document.getElementById('wiz-eq-a').value || 'x^2';
+                showWizardStep(3);
+            } else if (state.wizardStep === 3) {
+                state.eqY = document.getElementById('wiz-eq-y').value || 'x^2';
+
+                document.getElementById('input-eq-a').value = state.eqA;
+                document.getElementById('input-eq-y').value = state.eqY;
+                syncInputsFromState();
+
+                wizardModal.classList.add('hidden');
+                resizeCanvas();
+            }
+        });
+
+        wizBtnPrev.addEventListener('click', () => {
+            if (state.wizardStep > 1) {
+                showWizardStep(state.wizardStep - 1);
+            }
+        });
+
+        document.getElementById('btn-rewizard').addEventListener('click', () => {
+            wizardModal.classList.remove('hidden');
+            showWizardStep(1);
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        window.onload = function() {
+            resizeCanvas();
+            showWizardStep(1);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>시험 직전에 공부 안하는 나</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-color: #12161f;       /* 전체 배경 색상 */
+      --cell-color: #696969;     /* 시간표 칸 색상 */
+      --text-color: #d88af5;     /* 기본 글자 색상 */
+      --point-color: #7be0c8;    /* 강조 포인트 색상 */
+      --radius: 8px;             /* 모서리 둥글기 */
+      --font-main: 'Gowun Dodum', sans-serif; /* 기본 글꼴 */
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: var(--font-main);
+    }
+
+    .container {
+      width: min(1100px, 94%);
+      margin: 40px auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      color: var(--text-color);
+      font-size: clamp(26px, 5vw, 42px);
+    }
+
+    .mood {
+      margin: 0 0 8px;
+      color: var(--point-color);
+      font-size: 16px;
+    }
+
+    .target {
+      margin-bottom: 24px;
+      color: var(--text-color);
+      opacity: 0.85;
+    }
+
+    .schedule {
+      overflow-x: auto;
+    }
+
+    .timetable {
+      width: 100%;
+      min-width: 700px;
+      border-collapse: separate;
+      border-spacing: 6px;
+      table-layout: fixed;
+    }
+
+    .timetable th,
+    .timetable td {
+      padding: 14px 8px;
+      text-align: center;
+      border-radius: var(--radius);
+    }
+
+    .timetable th {
+      background: var(--point-color);
+      color: var(--bg-color);
+    }
+
+    .timetable td {
+      background: var(--cell-color);
+      color: var(--text-color);
+      min-height: 60px;
+    }
+
+    .time {
+      background: transparent !important;
+      color: var(--point-color) !important;
+      font-weight: bold;
+    }
+
+    .current-period {
+      outline: 3px solid var(--point-color);
+      outline-offset: -3px;
+      box-shadow: 0 0 14px rgba(123, 224, 200, 0.35);
+    }
+
+    .day-off {
+      margin: 20px 0;
+      padding: 16px;
+      border: 2px solid var(--point-color);
+      border-radius: var(--radius);
+      color: var(--point-color);
+      text-align: center;
+      font-size: 20px;
+    }
+
+    /* 폭죽 입자 */
+    .firework-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      border-radius: 50%;
+      will-change: transform, opacity;
+    }
+
+    @media (max-width: 700px) {
+      .container {
+        margin: 24px auto;
+      }
+
+      .timetable th,
+      .timetable td {
+        padding: 12px 6px;
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="container">
+
+    <h1 id="title"></h1>
+
+    <p class="mood">
+      시험 직전인데도 느긋하게 잠들고 게임하러 가는, 어두운 교실의 엉뚱한 하루
+    </p>
+
+    <div class="target" id="target"></div>
+
+    <div id="dayOff"></div>
+
+    <div class="schedule">
+      <table class="timetable">
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>월</th>
+            <th>화</th>
+            <th>수</th>
+            <th>목</th>
+            <th>금</th>
+          </tr>
+        </thead>
+
+        <tbody id="timetableBody"></tbody>
+      </table>
+    </div>
+
+  </main>
+
+
+  <script>
+    const TITLE  = '시험 직전에 공부 안하는 나';
+
+    const TARGET = {
+      label: '시험날후',
+      date: '2026-12-16'
+    };
+
+    const DAYS = ['월','화','수','목','금'];
+
+    const PERIODS = [
+      {
+        time: '09:05',
+        subjects: [
+          '자습(잠자기)',
+          '쉬는 시간',
+          '국어 시험',
+          '쉬는 시간',
+          '잠자기'
+        ]
+      },
+      {
+        time: '10:00',
+        subjects: [
+          '정보실 가서 게임',
+          '쉬는 시간',
+          '수학 시험',
+          '쉬는 시간',
+          '잠자기'
+        ]
+      },
+      {
+        time: '10:55',
+        subjects: [
+          '체육',
+          '국어',
+          '역사 시험',
+          '체육',
+          '정보실 가서 게임'
+        ]
+      },
+      {
+        time: '11:50',
+        subjects: [
+          '체육',
+          '역사(자는 시간)',
+          '조기 하교',
+          '시험끝축하파티',
+          '정보실 가서 게임'
+        ]
+      },
+      {
+        time: '13:30',
+        subjects: [
+          '체육',
+          '체육',
+          '조기하교',
+          '시험끝축하파티',
+          '잠자기'
+        ]
+      }
+    ];
+
+
+    const titleElement =
+      document.getElementById('title');
+
+    const targetElement =
+      document.getElementById('target');
+
+    const timetableBody =
+      document.getElementById('timetableBody');
+
+    const dayOffElement =
+      document.getElementById('dayOff');
+
+
+    titleElement.textContent = TITLE;
+
+    targetElement.textContent =
+      `${TARGET.label} · ${TARGET.date}`;
+
+
+    /* =========================
+       시간표 생성
+    ========================= */
+
+    PERIODS.forEach((period, periodIndex) => {
+
+      const row =
+        document.createElement('tr');
+
+
+      const timeCell =
+        document.createElement('td');
+
+      timeCell.className = 'time';
+
+      timeCell.textContent =
+        period.time;
+
+      row.appendChild(timeCell);
+
+
+      period.subjects.forEach(
+        (subject, dayIndex) => {
+
+          const cell =
+            document.createElement('td');
+
+          cell.className = 'cell';
+
+          cell.dataset.day =
+            dayIndex;
+
+          cell.dataset.period =
+            periodIndex;
+
+          cell.textContent =
+            subject;
+
+          row.appendChild(cell);
+        }
+      );
+
+
+      timetableBody.appendChild(row);
+    });
+
+
+    /* =========================
+       시간 → 분
+    ========================= */
+
+    function timeToMinutes(time) {
+
+      const [hour, minute] =
+        time.split(':').map(Number);
+
+      return hour * 60 + minute;
+    }
+
+
+    /* =========================
+       현재 교시 강조
+    ========================= */
+
+    function updateCurrentPeriod() {
+
+      const now = new Date();
+
+      const day = now.getDay();
+
+
+      document
+        .querySelectorAll('.current-period')
+        .forEach(cell => {
+          cell.classList.remove(
+            'current-period'
+          );
+        });
+
+
+      // 주말
+      if (day === 0 || day === 6) {
+
+        dayOffElement.innerHTML =
+          '<div class="day-off">오늘은 쉬는 날</div>';
+
+        return;
+      }
+
+
+      dayOffElement.innerHTML = '';
+
+
+      const dayIndex =
+        day - 1;
+
+
+      const currentMinutes =
+        now.getHours() * 60 +
+        now.getMinutes();
+
+
+      let currentPeriodIndex = -1;
+
+
+      PERIODS.forEach(
+        (period, index) => {
+
+          const start =
+            timeToMinutes(period.time);
+
+
+          let end;
+
+
+          if (
+            index <
+            PERIODS.length - 1
+          ) {
+
+            end =
+              timeToMinutes(
+                PERIODS[index + 1].time
+              );
+
+          } else {
+
+            end =
+              24 * 60;
+          }
+
+
+          if (
+            currentMinutes >= start &&
+            currentMinutes < end
+          ) {
+
+            currentPeriodIndex =
+              index;
+          }
+        }
+      );
+
+
+      if (
+        currentPeriodIndex === -1
+      ) {
+        return;
+      }
+
+
+      const currentCell =
+        document.querySelector(
+          `.cell[data-day="${dayIndex}"][data-period="${currentPeriodIndex}"]`
+        );
+
+
+      if (currentCell) {
+
+        currentCell.classList.add(
+          'current-period'
+        );
+      }
+    }
+
+
+    /* =========================
+       폭죽 생성
+    ========================= */
+
+    function firework() {
+
+      const rockets = 18;
+
+
+      for (let r = 0; r < rockets; r++) {
+
+        setTimeout(() => {
+
+          const startX =
+            window.innerWidth *
+            (0.05 + Math.random() * 0.9);
+
+
+          const startY =
+            window.innerHeight + 20;
+
+
+          const targetX =
+            window.innerWidth *
+            (0.05 + Math.random() * 0.9);
+
+
+          const targetY =
+            window.innerHeight *
+            (0.05 + Math.random() * 0.55);
+
+
+          const rocket =
+            document.createElement('div');
+
+
+          rocket.className =
+            'firework-particle';
+
+
+          rocket.style.left =
+            `${startX}px`;
+
+          rocket.style.top =
+            `${startY}px`;
+
+          rocket.style.width =
+            '5px';
+
+          rocket.style.height =
+            '18px';
+
+          rocket.style.background =
+            getRandomColor();
+
+
+          rocket.style.boxShadow =
+            '0 0 12px currentColor, 0 0 25px currentColor';
+
+
+          document.body.appendChild(
+            rocket
+          );
+
+
+          const animation =
+            rocket.animate(
+              [
+                {
+                  transform:
+                    'translate(-50%, -50%) scale(1)',
+                  opacity: 1
+                },
+                {
+                  transform:
+                    `translate(
+                      ${targetX - startX}px,
+                      ${targetY - startY}px
+                    ) scale(0.7)`,
+                  opacity: 1
+                }
+              ],
+              {
+                duration:
+                  700 +
+                  Math.random() * 500,
+
+                easing:
+                  'cubic-bezier(.15,.8,.3,1)'
+              }
+            );
+
+
+          animation.onfinish =
+            () => {
+
+              rocket.remove();
+
+
+              createExplosion(
+                targetX,
+                targetY,
+                150 +
+                Math.random() * 180
+              );
+            };
+
+        }, r * 180);
+      }
+
+
+      // 추가 대형 폭발
+      for (let i = 0; i < 12; i++) {
+
+        setTimeout(() => {
+
+          createExplosion(
+            window.innerWidth *
+              (0.08 + Math.random() * 0.84),
+
+            window.innerHeight *
+              (0.08 + Math.random() * 0.65),
+
+            130 +
+            Math.random() * 230
+          );
+
+        }, 1000 + i * 450);
+      }
+    }
+
+
+    /* =========================
+       폭발
+    ========================= */
+
+    function createExplosion(
+      x,
+      y,
+      radius
+    ) {
+
+      const particleCount =
+        90 +
+        Math.floor(
+          Math.random() * 70
+        );
+
+
+      for (
+        let i = 0;
+        i < particleCount;
+        i++
+      ) {
+
+        const particle =
+          document.createElement('div');
+
+
+        particle.className =
+          'firework-particle';
+
+
+        const size =
+          3 +
+          Math.random() * 7;
+
+
+        particle.style.width =
+          `${size}px`;
+
+        particle.style.height =
+          `${size}px`;
+
+
+        particle.style.left =
+          `${x}px`;
+
+        particle.style.top =
+          `${y}px`;
+
+
+        particle.style.background =
+          getRandomColor();
+
+
+        particle.style.boxShadow = `
+          0 0 8px currentColor,
+          0 0 18px currentColor,
+          0 0 30px currentColor
+        `;
+
+
+        document.body.appendChild(
+          particle
+        );
+
+
+        const angle =
+          Math.random() *
+          Math.PI * 2;
+
+
+        const distance =
+          radius *
+          (0.35 + Math.random() * 0.9);
+
+
+        const moveX =
+          Math.cos(angle) *
+          distance;
+
+
+        const moveY =
+          Math.sin(angle) *
+          distance;
+
+
+        particle.animate(
+          [
+            {
+              transform:
+                'translate(-50%, -50%) scale(1)',
+              opacity: 1
+            },
+            {
+              transform:
+                `translate(
+                  calc(-50% + ${moveX}px),
+                  calc(-50% + ${moveY}px)
+                ) scale(0.15)`,
+              opacity: 0
+            }
+          ],
+          {
+            duration:
+              1000 +
+              Math.random() * 1200,
+
+            easing:
+              'cubic-bezier(.05,.55,.25,1)'
+          }
+        ).onfinish = () => {
+          particle.remove();
+        };
+      }
+
+
+      // 폭발 중심 섬광
+      createFlash(x, y);
+    }
+
+
+    /* =========================
+       폭발 섬광
+    ========================= */
+
+    function createFlash(x, y) {
+
+      const flash =
+        document.createElement('div');
+
+
+      flash.style.position =
+        'fixed';
+
+      flash.style.left =
+        `${x}px`;
+
+      flash.style.top =
+        `${y}px`;
+
+      flash.style.width =
+        '40px';
+
+      flash.style.height =
+        '40px';
+
+      flash.style.borderRadius =
+        '50%';
+
+      flash.style.background =
+        '#ffffff';
+
+      flash.style.pointerEvents =
+        'none';
+
+      flash.style.zIndex =
+        '10000';
+
+      flash.style.boxShadow = `
+        0 0 30px #ffffff,
+        0 0 80px #7be0c8,
+        0 0 140px #d88af5
+      `;
+
+
+      document.body.appendChild(
+        flash
+      );
+
+
+      flash.animate(
+        [
+          {
+            transform:
+              'translate(-50%, -50%) scale(0)',
+            opacity: 1
+          },
+          {
+            transform:
+              'translate(-50%, -50%) scale(12)',
+            opacity: 0
+          }
+        ],
+        {
+          duration: 500,
+          easing: 'ease-out'
+        }
+      ).onfinish = () => {
+        flash.remove();
+      };
+    }
+
+
+    /* =========================
+       랜덤 폭죽 색상
+    ========================= */
+
+    function getRandomColor() {
+
+      const colors = [
+        '#7be0c8',
+        '#d88af5',
+        '#ffffff',
+        '#ffe66d',
+        '#ff7eb6',
+        '#6ecbff',
+        '#ff9f43'
+      ];
+
+
+      return colors[
+        Math.floor(
+          Math.random() *
+          colors.length
+        )
+      ];
+    }
+
+
+    /* =========================
+       시험끝축하파티 클릭
+    ========================= */
+
+    document
+      .querySelectorAll('.cell')
+      .forEach(cell => {
+
+        if (
+          cell.textContent.trim() ===
+          '시험끝축하파티'
+        ) {
+
+          cell.style.cursor =
+            'pointer';
+
+
+          cell.addEventListener(
+            'click',
+            () => {
+
+              firework();
+
+            }
+          );
+        }
+      });
+
+
+    /* =========================
+       실행
+    ========================= */
+
+    updateCurrentPeriod();
+
+
+    // 1분마다 현재 교시 갱신
+    setInterval(
+      updateCurrentPeriod,
+      60 * 1000
+    );
+
+  </script>
+
+</body>
+</html>
+

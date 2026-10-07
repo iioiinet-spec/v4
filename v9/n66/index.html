@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <!-- 문서의 문자 인코딩을 UTF-8로 설정합니다 -->
+    <meta charset="UTF-8">
+    <!-- 모바일 기기에서 화면이 알맞게 보이도록 뷰포트를 설정합니다 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 브라우저 탭에 표시될 제목입니다 -->
+    <title>나만의 D-Day & 시간표</title>
+    <!-- 디자인을 예쁘게 만들기 위해 Tailwind CSS 외부 라이브러리를 불러옵니다 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- 부드러운 폰트 적용을 위한 구글 폰트 (Pretendard) 를 불러옵니다 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+    <style>
+        /* 전체 문서에 폰트를 적용하고 배경색을 지정합니다 */
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="min-h-screen py-8 px-4 flex flex-col items-center justify-start">
+
+    <!-- 전체 내용을 담고 있는 메인 컨테이너 박스입니다 -->
+    <div class="w-full max-w-4xl space-y-6">
+
+        <!-- 1) 상단 D-Day 카운터 영역 -->
+        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-xl p-8 text-white text-center">
+            <!-- 목표 이름을 표시하는 제목입니다 -->
+            <h2 id="target-title" class="text-xl md:text-2xl font-medium opacity-90 mb-2">목표 로딩 중...</h2>
+            <!-- 남은 날짜(D-Day)를 아주 크게 표시하는 숫자입니다 -->
+            <div id="d-day-count" class="text-5xl md:text-7xl font-black tracking-tight drop-shadow-md">D-0</div>
+        </div>
+
+        <!-- 2) 하단 월~금 시간표 영역 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+            <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <span>📅</span> 이번 주 시간표 (월~금)
+            </h3>
+            <!-- 모바일에서도 스크롤이 가능하도록 감싼 반응형 테이블 박스입니다 -->
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-center">
+                    <thead>
+                        <tr class="bg-indigo-50 text-indigo-900 border-b-2 border-indigo-100">
+                            <th class="py-3 px-2 font-semibold rounded-l-xl">교시</th>
+                            <th class="py-3 px-2 font-semibold">월요일</th>
+                            <th class="py-3 px-2 font-semibold">화요일</th>
+                            <th class="py-3 px-2 font-semibold">수요일</th>
+                            <th class="py-3 px-2 font-semibold">목요일</th>
+                            <th class="py-3 px-2 font-semibold rounded-r-xl">금요일</th>
+                        </tr>
+                    </thead>
+                    <tbody id="timetable-body" class="text-gray-700 divide-y divide-gray-100">
+                        <!-- 자바스크립트가 이 자리에 시간표 줄을 자동으로 채워줍니다 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JavaScript 기능 구현 구간 -->
+    <script>
+        /* ========================================================
+         * 🚨 [여기만 고치세요] 데이터 설정 구역 🚨
+         * 이 상자 안의 내용만 바꾸면 웹페이지가 자동으로 바뀝니다!
+         * ======================================================== */
+        const CONFIG = {
+            // 목표 이름 (원하는 기념일이나 시험 이름을 적어보세요)
+            targetName: "여름방학까지",
+            // 목표 날짜 (년, 월, 일을 형식에 맞춰 수정하세요. 월은 실제보다 1 작게 적지 않고 평소 적는 숫자로 적어도 되도록 아래 코드가 계산해줍니다)
+            targetDate: "2026-07-20", 
+
+            // 월~금 교시별 과목 데이터 (수요일은 5교시까지만 입력되어 있습니다!)
+            timetable: [
+                ["국어", "사회", "체육", "과학", "영어"], // 1교시 (월, 화, 수, 목, 금)
+                ["수학", "과학", "미술", "국어", "사회"], // 2교시
+                ["영어", "수학", "음악", "사회", "수학"], // 3교시
+                ["사회", "국어", "실과", "수학", "과학"], // 4교시
+                ["체육", "영어", "도덕", "과학", "국어"], // 5교시
+                ["미술", "도덕", ""    , "국어", "체육"]  // 6교시 (수요일은 5교시까지만 있으므로 3번째 칸을 빈칸("")으로 둡니다)
+            ]
+        };
+        /* ======================================================== */
+
+        // 1) 화면이 처음 켜질 때 D-Day를 계산해서 화면에 보여주는 함수를 실행합니다
+        function updateDDay() {
+            // HTML에서 목표 이름 자리를 찾아옵니다
+            const titleElement = document.getElementById("target-title");
+            // HTML에서 남은 날짜 숫자를 보여줄 자리를 찾아옵니다
+            const countElement = document.getElementById("d-day-count");
+
+            // 설정한 목표 날짜를 날짜 객체로 변환합니다
+            const targetTime = new Date(CONFIG.targetDate).getTime();
+            // 오늘 날짜를 가져옵니다 (시간은 0시 0분 0초로 맞춤)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // 남은 시간(밀리초)을 계산합니다
+            const timeLeft = targetTime - today.getTime();
+            // 밀리초를 하루 단위(일)로 바꿉니다
+            const diffDays = Math.ceil(timeLeft / (1000 * 60 * 60 * 24));
+
+            // 화면에 목표 이름을 적어줍니다
+            titleElement.textContent = CONFIG.targetName;
+
+            // 남은 날짜에 따라 화면에 글자를 다르게 적어줍니다
+            if (diffDays > 0) {
+                countElement.textContent = `D - ${diffDays}`;
+            } else if (diffDays === 0) {
+                countElement.textContent = `오늘이 바로 D-Day! 🎉`;
+            } else {
+                countElement.textContent = `D + ${Math.abs(diffDays)} (지남)`;
+            }
+        }
+
+        // 2) 시간표 표를 자동으로 만들어주는 함수입니다
+        function renderTimetable() {
+            // HTML에서 시간표 내용을 넣을 tbody 자리를 찾아옵니다
+            const tbody = document.getElementById("timetable-body");
+            // 기존에 들어있던 내용을 깨끗이 비웁니다
+            tbody.innerHTML = "";
+
+            // 설정된 시간표 줄 수(교시 수)만큼 반복합니다
+            CONFIG.timetable.forEach((periodSubjects, index) => {
+                // 새로운 줄(tr 태그)을 만듭니다
+                const row = document.createElement("tr");
+                row.className = "hover:bg-gray-50 transition-colors";
+
+                // 몇 교시인지 알려주는 첫 번째 칸을 만듭니다
+                const periodCell = document.createElement("td");
+                periodCell.className = "py-3 px-2 font-bold text-indigo-600 bg-gray-50/50";
+                periodCell.textContent = `${index + 1}교시`;
+                row.appendChild(periodCell);
+
+                // 월요일부터 금요일까지 과목 이름들을 차례대로 칸에 넣습니다
+                periodSubjects.forEach(subject => {
+                    const subjectCell = document.createElement("td");
+                    subjectCell.className = "py-3 px-2 border-l border-gray-100 text-gray-600";
+                    // 만약 과목이 비어있다면 빈칸으로 남겨둡니다
+                    subjectCell.textContent = subject || "-";
+                    row.appendChild(subjectCell);
+                });
+
+                // 완성된 교시 줄을 시간표 표에 추가합니다
+                tbody.appendChild(row);
+            });
+        }
+
+        // 웹페이지가 열릴 때 두 가지 함수를 실행합니다
+        updateDDay();
+        renderTimetable();
+    </script>
+</body>
+</html>

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>백층탈출: 엄마의 사랑에서 벗어나라!</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .font-jua {
+            font-family: 'Jua', sans-serif;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+        .glow-red {
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+        }
+        .glow-green {
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 overflow-x-hidden">
+
+    <div id="game-wrapper" class="w-full max-w-4xl bg-slate-900 border-2 border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative">
+
+        <!-- Header / Status Bar -->
+        <header class="bg-slate-800 border-b border-slate-700 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 z-10">
+            <div class="flex items-center space-x-3">
+                <span class="bg-red-600 text-white font-jua text-lg sm:text-2xl px-3 py-1 rounded-lg border border-red-400 flex items-center gap-2">
+                    <i class="fa-solid font-bold fa-building-circle-arrow-right"></i>
+                    <span id="floor-display">100층</span>
+                </span>
+                <div class="flex flex-col">
+                    <span class="text-xs text-slate-400 font-semibold" id="floor-name-display">100층 - 내 방</span>
+                    <div class="w-28 sm:w-40 bg-slate-700 h-2.5 rounded-full overflow-hidden mt-1">
+                        <div id="floor-progress" class="bg-emerald-500 h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sound Toggle -->
+            <button id="btn-sound" class="w-10 h-10 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg flex items-center justify-center transition border border-slate-600">
+                <i class="fa-solid fa-volume-high text-lg"></i>
+            </button>
+        </header>
+
+        <div class="relative w-full bg-slate-950 flex justify-center items-center overflow-hidden aspect-[16/9] max-h-[500px]">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- Dialog Overlay -->
+            <div id="dialog-overlay" class="absolute bottom-3 left-3 right-3 sm:bottom-6 sm:left-6 sm:right-6 bg-slate-900/95 border-2 border-amber-500/80 rounded-xl p-3 sm:p-4 text-white flex items-start space-x-3 shadow-2xl backdrop-blur-md transition-all duration-300 transform translate-y-full opacity-0 pointer-events-none z-20">
+                <div id="dialog-avatar" class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-900 border-2 border-red-400 flex-shrink-0 flex items-center justify-center text-2xl overflow-hidden shadow">
+                    👩
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div id="dialog-name" class="font-jua text-amber-400 text-sm sm:text-base">엄마</div>
+                    <p id="dialog-text" class="text-xs sm:text-sm text-slate-100 font-medium leading-relaxed mt-0.5">"아들~ 바깥은 너무 위험하단다! 엄마랑 백층에서 영원히 안전하게 살자!"</p>
+                </div>
+                <button id="btn-dialog-next" class="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg transition shrink-0 self-end">
+                    다음 <i class="fa-solid fa-chevron-right ml-1"></i>
+                </button>
+            </div>
+
+            <!-- Narrative / Scenario Choice Overlay -->
+            <div id="event-overlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-30 hidden">
+                <div class="bg-slate-900 border-2 border-indigo-500 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl relative">
+                    <h3 id="event-title" class="font-jua text-2xl text-indigo-400 mb-3">이벤트 발생</h3>
+                    <!-- Prominent Countdown Box -->
+                    <div id="qte-container" class="hidden mb-4 bg-red-950/90 border-2 border-red-500 rounded-xl py-3 px-5 flex items-center justify-center gap-3 animate-pulse shadow-lg">
+                        <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl"></i>
+                        <span class="text-sm text-red-300 font-bold">남은 시간:</span>
+                        <span id="qte-countdown" class="font-jua text-4xl text-yellow-300 tracking-wider">0.5</span><span class="text-xs text-red-300 font-bold self-end mb-1">초</span>
+                    </div>
+                    <p id="event-desc" class="text-sm text-slate-300 mb-5 leading-relaxed">상황 설명...</p>
+                    <div id="event-choices" class="flex flex-col space-y-3">
+                        <!-- Choices injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- START SCREEN -->
+            <div id="screen-start" class="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 z-40 text-center">
+                <div class="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-4 border border-red-500/40 animate-pulse">
+                    <i class="fa-solid fa-person-running text-4xl text-red-500"></i>
+                </div>
+                <h1 class="font-jua text-3xl sm:text-5xl text-amber-400 mb-2 drop-shadow-lg">백층탈출</h1>
+                <p class="text-sm sm:text-base text-slate-300 max-w-md mb-6 leading-relaxed">
+                    엄마는 당신을 과도한 사랑으로 100층 타워에 가두려 합니다.<br>
+                    <span class="text-amber-300 font-bold">선택지와 기믹을 현명하게 헤쳐나와 100층에서 1층으로 탈출하세요!</span>
+                </p>
+
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-left max-w-sm w-full mb-6 text-xs text-slate-300 space-y-1.5">
+                    <div class="font-bold text-amber-400 mb-1 border-b border-slate-800 pb-1">🎮 조작 방법</div>
+                    <div>• <span class="text-white font-semibold">이동:</span> 방향키 (←/→) 또는 [A] / [D]</div>
+                    <div>• <span class="text-white font-semibold">상호작용:</span> [스페이스바] 또는 [E] (또는 화면 버튼)</div>
+                </div>
+
+                <button id="btn-start" class="font-jua text-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black px-10 py-3.5 rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95 glow-green">
+                    탈출 시작하기!
+                </button>
+            </div>
+
+            <!-- GAME OVER SCREEN -->
+            <div id="screen-gameover" class="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 z-40 text-center hidden">
+                <div class="text-6xl mb-3 animate-bounce">👩‍👦</div>
+                <h2 class="font-jua text-3xl sm:text-4xl text-red-500 mb-2">엄마에게 붙잡혔습니다!</h2>
+                <p id="gameover-reason" class="text-sm text-slate-300 max-w-md mb-4">
+                    "우리 착한 아들/딸, 밖에 나가면 고생이야~ 평생 100층에서 엄마랑 과자 먹으며 살자!"
+                </p>
+                <div class="bg-slate-900 border border-slate-800 px-6 py-3 rounded-xl mb-6">
+                    <span class="text-slate-400 text-xs block">실패한 층수</span>
+                    <span id="final-floor" class="font-jua text-3xl text-amber-400">45층</span>
+                </div>
+                <div class="flex gap-3">
+                    <button id="btn-restart" class="font-jua text-lg bg-red-600 hover:bg-red-500 text-white font-bold px-6 py-3 rounded-xl shadow-lg transition transform hover:scale-105">
+                        이 층에서 다시 시도 <i class="fa-solid fa-rotate-right ml-1"></i>
+                    </button>
+                    <button id="btn-restart-100" class="font-jua text-base bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold px-4 py-3 rounded-xl shadow-lg transition">
+                        100층부터 처음부터
+                    </button>
+                </div>
+            </div>
+
+            <!-- ESCAPE SUCCESS SCREEN -->
+            <div id="screen-victory" class="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 z-40 text-center hidden">
+                <div class="text-6xl mb-3 animate-pulse">🎉🏃💨</div>
+                <h2 class="font-jua text-3xl sm:text-5xl text-emerald-400 mb-2">1층 탈출 성공!</h2>
+                <p class="text-sm sm:text-base text-slate-300 max-w-md mb-6 leading-relaxed">
+                    드디어 엄마의 과도한 보호에서 벗어나 진짜 세상 밖으로 나아갑니다!<br>
+                    엄마도 당신의 자립을 받아들이고 멀리서 응원해주기로 했습니다.
+                </p>
+                <button id="btn-victory-restart" class="font-jua text-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-8 py-3 rounded-xl shadow-lg transition transform hover:scale-105">
+                    처음부터 다시하기
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 border-t border-slate-700 p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 z-10">
+            <div id="status-hint" class="text-xs text-slate-300 bg-slate-900/80 border border-slate-700 px-3 py-2 rounded-lg text-center w-full flex items-center justify-center gap-2">
+                <i class="fa-solid fa-lightbulb text-amber-400"></i>
+                <span id="hint-text">오브젝트에 다가간 후 [스페이스바] 또는 [상호작용] 버튼을 누르세요.</span>
+            </div>
+        </div>
+
+        <!-- Mobile Touch Gamepad -->
+        <div id="mobile-controls" class="bg-slate-950 p-3 border-t border-slate-800 grid grid-cols-3 gap-2 sm:hidden">
+            <button id="m-btn-left" class="bg-slate-800 active:bg-slate-700 border border-slate-700 rounded-xl p-3 text-white text-xl flex items-center justify-center active:scale-95 transition">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <button id="m-btn-action" class="bg-amber-600 active:bg-amber-500 border border-amber-500 rounded-xl p-3 text-slate-950 font-bold text-sm flex flex-col items-center justify-center active:scale-95 transition">
+                <i class="fa-solid fa-hand text-lg mb-0.5"></i>
+                <span class="text-[10px]">상호작용</span>
+            </button>
+            <button id="m-btn-right" class="bg-slate-800 active:bg-slate-700 border border-slate-700 rounded-xl p-3 text-white text-xl flex items-center justify-center active:scale-95 transition">
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+            }
+
+            playBeep(freq = 440, type = 'sine', duration = 0.1, vol = 0.1) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e){}
+            }
+
+            playAlertSound() {
+                this.playBeep(880, 'sawtooth', 0.15, 0.2);
+                setTimeout(() => this.playBeep(660, 'sawtooth', 0.25, 0.2), 100);
+            }
+
+            playItemSound() {
+                this.playBeep(523.25, 'triangle', 0.1, 0.2);
+                setTimeout(() => this.playBeep(659.25, 'triangle', 0.15, 0.2), 80);
+            }
+
+            playSuccessSound() {
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    setTimeout(() => this.playBeep(freq, 'sine', 0.2, 0.15), idx * 100);
+                });
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = 800;
+            canvas.height = 450;
+        }
+        resizeCanvas();
+
+        let gameState = {
+            running: false,
+            currentFloor: 100,
+            inEvent: false,
+            dialogActive: false,
+            qteTimer: null,
+            timeoutId: null,
+            eventTriggered: false
+        };
+
+        const player = {
+            x: 100,
+            y: 320,
+            width: 32,
+            height: 48,
+            speed: 4,
+            dir: 1
+        };
+
+        const SCENARIOS = {
+            100: {
+                name: "100층 - 내 방",
+                hint: "100층 - 내 방. 포근한 침대와 방문이 있습니다. 문을 열고 나가자.",
+                setup: (objs) => {
+                    objs.push({ type: 'bed', x: 200, y: 280, width: 90, height: 80, label: '포근한 침대' });
+                    objs.push({ type: 'door', x: 720, y: 250, width: 60, height: 120, label: '방문 열기' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'bed') {
+                        showDialog("침대", "엄마가 매일 아침 따뜻하게 덮어주던 이불이다. 여기서 잠들면 영원히 탈출하지 못할지도 모른다.");
+                    } else if (obj.type === 'door') {
+                        showEvent("방문 앞", "문을 열고 어디로 나갈까?", [
+                            { text: "계단으로 간다", action: () => { closeEvent(); triggerGameOver("계단에는 엄마가 이미 기다리고 있었습니다!"); } },
+                            { text: "창문으로 간다", action: () => { closeEvent(); gotoFloor(90); } }
+                        ]);
+                    }
+                }
+            },
+            90: {
+                name: "90층 - 식당",
+                hint: "90층 - 식당. 맛있는 냄새가 진동하는 식탁과 창문이 있습니다.",
+                setup: (objs) => {
+                    objs.push({ type: 'dining_table', x: 300, y: 270, width: 180, height: 90, label: '식탁 및 의자' });
+                    objs.push({ type: 'exit', x: 720, y: 250, width: 60, height: 120, label: '다음 층으로' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'dining_table') {
+                        showDialog("식탁", "엄마가 차려준 특식들이 가득하다. 배고프지만 멈출 시간이 없다.");
+                    } else if (obj.type === 'exit') {
+                        gotoFloor(81);
+                    }
+                }
+            },
+            81: {
+                name: "81층 - 복도",
+                hint: "81층 - 복도. 벽면에 고급 미술작품들이 걸려있습니다. 엄마가 기다리고 있다! 0.5초 이내에 대처하라!",
+                setup: (objs) => {
+                    objs.push({ type: 'art', x: 250, y: 160, width: 70, height: 80, label: '미술 작품 감상' });
+                    gameState.eventTriggered = false;
+                },
+                update: () => {
+                    if (player.x > 300 && !gameState.eventTriggered) {
+                        gameState.eventTriggered = true;
+                        showEvent("엄마의 습격!", "엄마가 갑자기 나타났다! 0.5초 안에 물건을 집어 던져야 한다!", [
+                            { text: "물건 집어 던지기!", action: () => {
+                                clearQTE();
+                                closeEvent();
+                                showDialog("주인공", "식탁 위 물건을 집어 엄마에게 던졌다! 엄마가 당황한 사이 도망친다!");
+                                setTimeout(() => gotoFloor(60), 1800);
+                            }}
+                        ], 500); // 0.5초 제한시간
+                    }
+                },
+                interact: (obj) => {
+                    if (obj.type === 'art') {
+                        showDialog("미술작품", "엄마와 함께 찍은 가족 초상화가 걸려있다. 섬뜩한 시선이 느껴진다.");
+                    }
+                }
+            },
+            60: {
+                name: "60층 - 놀이방",
+                hint: "60층 - 놀이방. 아기자기한 정글짐과 미끄럼틀이 있습니다.",
+                setup: (objs) => {
+                    objs.push({ type: 'playground', x: 200, y: 230, width: 120, height: 130, label: '정글짐 놀이터' });
+                    objs.push({ type: 'slide', x: 450, y: 150, width: 160, height: 220, label: '미끄럼틀 타기' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'playground') {
+                        showDialog("놀이터", "알록달록한 블록과 장난감들이 가득하다. 어린 시절로 돌아간 기분이다.");
+                    } else if (obj.type === 'slide') {
+                        showDialog("주인공", "미끄럼틀을 타고 아래로 내려간다! 쓩~");
+                        setTimeout(() => gotoFloor(50), 1500);
+                    }
+                }
+            },
+            50: {
+                name: "50층 - 전산실",
+                hint: "50층 - 전산실. 바닥의 메모장을 확인하면 힌트가 있습니다.",
+                setup: (objs) => {
+                    objs.push({ type: 'memo', x: 250, y: 350, width: 35, height: 25, label: '메모장 확인' });
+                    objs.push({ type: 'server', x: 600, y: 200, width: 100, height: 170, label: '제어반 조작' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'memo') {
+                        showDialog("메모장", '"이틀뒤면 XX어머니회가야될 시간이네... 그때 우리 아이도 볼수있을려나?"');
+                    } else if (obj.type === 'server') {
+                        showEvent("전산실 제어반", "여러 색상의 전선이 있다. 어떤 줄을 선택할까?", [
+                            { text: "빨간색 줄", action: () => { closeEvent(); triggerGameOver("잘못된 전선을 골라 경보가 울렸다!"); } },
+                            { text: "파란색 줄", action: () => { closeEvent(); triggerGameOver("잘못된 전선을 골라 경보가 울렸다!"); } },
+                            { text: "주황색 줄", action: () => { closeEvent(); triggerGameOver("잘못된 전선을 골라 경보가 울렸다!"); } },
+                            { text: "초록색 줄", action: () => { closeEvent(); showDialog("시스템", "정답! 잠금이 해제되었습니다."); setTimeout(() => gotoFloor(20), 1500); } }
+                        ]);
+                    }
+                }
+            },
+            20: {
+                name: "20층 - 사무실",
+                hint: "20층 - 사무실. 책상과 컴퓨터가 배치되어 있습니다. 엄마가 들어온다!",
+                setup: (objs) => {
+                    objs.push({ type: 'desk', x: 320, y: 280, width: 140, height: 80, label: '사무 책상 및 컴퓨터' });
+                    gameState.eventTriggered = false;
+                },
+                update: () => {
+                    if (player.x > 500 && !gameState.eventTriggered) {
+                        gameState.eventTriggered = true;
+                        showEvent("위기 상황!", "사무실 문이 벌컥 열리며 엄마가 들어왔다!", [
+                            { text: "경보 울리기", action: () => { closeEvent(); showDialog("주인공", "비상 경보를 울려 엄마의 시선을 분산시켰다!"); setTimeout(() => gotoFloor(15), 1500); } },
+                            { text: "암전시키기", action: () => { closeEvent(); triggerGameOver("어두워졌지만 엄마는 건물을 훤히 꿰뚫고 있어 바로 붙잡혔다!"); } }
+                        ]);
+                    }
+                },
+                interact: (obj) => {
+                    if (obj.type === 'desk') {
+                        showDialog("사무 책상", "컴퓨터 화면에 건물 전체의 보안 시스템 로그가 띄워져 있다.");
+                    }
+                }
+            },
+            15: {
+                name: "15층 - 실내골프장",
+                hint: "15층 - 실내골프장. 종이를 확인하고 마스코트의 퀴즈를 풀어라!",
+                setup: (objs) => {
+                    objs.push({ type: 'memo', x: 200, y: 350, width: 35, height: 25, label: '종이 확인' });
+                    objs.push({ type: 'mascot', x: 650, y: 230, width: 70, height: 130, label: '마스코트와 대화' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'memo') {
+                        showDialog("골프장 종이", '"뜨거운 면발은?"');
+                    } else if (obj.type === 'mascot') {
+                        showEvent("실내골프장 마스코트", "저 종이에 적힌 문제의 정답은?", [
+                            { text: "화면", action: () => {
+                                closeEvent();
+                                showDialog("마스코트", '"이런 아재개그를 알고있다니, 그거 알 시간에 공부했으면 서울대갔겠다."\n(마스코트가 슬금슬금 비켜섭니다.)');
+                                setTimeout(() => gotoFloor(10), 2200);
+                            }},
+                            { text: "불면", action: () => { closeEvent(); triggerGameOver("마스코트: '틀렸어! 넌 탈출 자격이 없다!'"); } },
+                            { text: "길이나 비켜 이 돼지야!", action: () => { closeEvent(); triggerGameOver("마스코트가 화를 내며 가로막고 엄마를 호출했습니다!"); } }
+                        ]);
+                    }
+                }
+            },
+            10: {
+                name: "10층 - 중앙복도",
+                hint: "10층 - 중앙복도. 엄마와의 최종 결전! 0.8초 내에 행동하라!",
+                setup: (objs) => {
+                    gameState.eventTriggered = false;
+                },
+                update: () => {
+                    if (player.x > 350 && !gameState.eventTriggered) {
+                        gameState.eventTriggered = true;
+                        showEvent("최종 결전!", "엄마가 매서운 눈빛으로 칼을 던지려 한다! 0.8초 내에 행동을 선택하라!", [
+                            { text: "잡는다", action: () => { clearQTE(); closeEvent(); triggerGameOver("칼을 잡으려다 손을 베여 엄마에게 제압당했습니다!"); } },
+                            { text: "막는다", action: () => { 
+                                clearQTE();
+                                closeEvent(); 
+                                showDialog("시스템", "완벽하게 칼을 막아내고 엄마를 기절시켰습니다! 엄마방으로 진입합니다!"); 
+                                setTimeout(() => gotoFloor(1), 1800); 
+                            }},
+                            { text: "피한다", action: () => { clearQTE(); closeEvent(); triggerGameOver("피했지만 엄마가 뒤돌아 순식간에 붙잡혔습니다!"); } }
+                        ], 800); // 0.8초 제한시간
+                    }
+                },
+                interact: (obj) => {}
+            },
+            1: {
+                name: "1층 - 엄마방 (CCTV 관제실)",
+                hint: "1층 - 엄마방. CCTV 화면들로 그동안 올라온 층들이 보입니다. 최종 탈출을 감행하세요!",
+                setup: (objs) => {
+                    objs.push({ type: 'cctv_wall', x: 220, y: 150, width: 360, height: 160, label: 'CCTV 관제 모니터' });
+                    objs.push({ type: 'exit', x: 700, y: 250, width: 70, height: 120, label: '건물 밖으로 최종 탈출' });
+                },
+                interact: (obj) => {
+                    if (obj.type === 'cctv_wall') {
+                        showDialog("CCTV 관제실", "모니터 화면에 100층 내 방부터 90층 식당, 60층 놀이방, 10층 복도까지 당신이 헤쳐온 모든 발자취가 고스란히 담겨 있습니다.");
+                    } else if (obj.type === 'exit') {
+                        document.getElementById('screen-victory').classList.remove('hidden');
+                        sound.playSuccessSound();
+                    }
+                }
+            }
+        };
+
+        let floorObjects = [];
+
+        function initFloorObjects(floor) {
+            floorObjects = [];
+            if (SCENARIOS[floor] && SCENARIOS[floor].setup) {
+                SCENARIOS[floor].setup(floorObjects);
+            }
+            if (SCENARIOS[floor] && SCENARIOS[floor].hint) {
+                showHint(SCENARIOS[floor].hint);
+            }
+            if (SCENARIOS[floor] && SCENARIOS[floor].name) {
+                document.getElementById('floor-name-display').innerText = SCENARIOS[floor].name;
+            }
+        }
+
+        function clearQTE() {
+            if (gameState.qteTimer) {
+                clearInterval(gameState.qteTimer);
+                gameState.qteTimer = null;
+            }
+            if (gameState.timeoutId) {
+                clearTimeout(gameState.timeoutId);
+                gameState.timeoutId = null;
+            }
+        }
+
+        function drawBackground() {
+            let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            const floor = gameState.currentFloor;
+
+            // 층마다 고유한 테마 배경 컬러 설정
+            if (floor === 100) {
+                grad.addColorStop(0, '#1e1b4b');
+                grad.addColorStop(1, '#0f172a');
+            } else if (floor === 90) {
+                grad.addColorStop(0, '#451a03');
+                grad.addColorStop(1, '#1c1917');
+            } else if (floor === 81) {
+                grad.addColorStop(0, '#27272a');
+                grad.addColorStop(1, '#09090b');
+            } else if (floor === 60) {
+                grad.addColorStop(0, '#0f766e');
+                grad.addColorStop(1, '#042f2e');
+            } else if (floor === 50) {
+                grad.addColorStop(0, '#064e3b');
+                grad.addColorStop(1, '#022c22');
+            } else if (floor === 20) {
+                grad.addColorStop(0, '#334155');
+                grad.addColorStop(1, '#0f172a');
+            } else if (floor === 15) {
+                grad.addColorStop(0, '#14532d');
+                grad.addColorStop(1, '#052e16');
+            } else if (floor === 10) {
+                grad.addColorStop(0, '#7f1d1d');
+                grad.addColorStop(1, '#18181b');
+            } else {
+                grad.addColorStop(0, '#31103f');
+                grad.addColorStop(1, '#0f0518');
+            }
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 공통 창문 (각 방마다 배치)
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+            ctx.fillRect(100, 80, 80, 120);
+            ctx.strokeRect(100, 80, 80, 120);
+            // 창살
+            ctx.beginPath();
+            ctx.moveTo(140, 80); ctx.lineTo(140, 200);
+            ctx.moveTo(100, 140); ctx.lineTo(180, 140);
+            ctx.stroke();
+
+            // 층별 고유 디테일 및 소품 드로잉
+            if (floor === 100) {
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(190, 310, 110, 60);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillRect(200, 320, 95, 45);
+                ctx.fillStyle = '#f43f5e';
+                ctx.fillRect(210, 325, 30, 20);
+            } else if (floor === 90) {
+                ctx.fillStyle = '#92400e';
+                ctx.fillRect(290, 330, 200, 15);
+                ctx.fillStyle = '#d97706';
+                ctx.fillRect(320, 310, 40, 20);
+                ctx.fillRect(380, 310, 40, 20);
+            } else if (floor === 81) {
+                ctx.strokeStyle = '#d4d4d8';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(245, 155, 80, 90);
+                ctx.fillStyle = '#3f3f46';
+                ctx.fillRect(245, 155, 80, 90);
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(285, 190, 20, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (floor === 60) {
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 5;
+                ctx.strokeRect(190, 240, 140, 120);
+                ctx.beginPath();
+                ctx.moveTo(190, 300); ctx.lineTo(330, 300);
+                ctx.moveTo(260, 240); ctx.lineTo(260, 360);
+                ctx.stroke();
+            } else if (floor === 20) {
+                // 사무실 책상, 의자, 컴퓨터 렌더링
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(320, 300, 140, 70); // 책상
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(360, 250, 50, 50); // 컴퓨터 모니터
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(365, 255, 40, 35); // 화면 빛
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(340, 320, 30, 45); // 의자
+            } else if (floor === 1) {
+                ctx.strokeStyle = '#a855f7';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(230, 160, 100, 60);
+                ctx.strokeRect(350, 160, 100, 60);
+                ctx.strokeRect(470, 160, 100, 60);
+                ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
+                ctx.fillRect(230, 160, 100, 60);
+                ctx.fillRect(350, 160, 100, 60);
+                ctx.fillRect(470, 160, 100, 60);
+                
+                ctx.fillStyle = '#e9d5ff';
+                ctx.font = '9px Noto Sans KR';
+                ctx.fillText('CAM-100 (내방)', 235, 175);
+                ctx.fillText('CAM-050 (전산실)', 355, 175);
+                ctx.fillText('CAM-010 (복도)', 475, 175);
+            }
+
+            // 바닥 선
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 368, canvas.width, 82);
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(0, 368, canvas.width, 6);
+        }
+
+        function drawPlayer() {
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            ctx.fillStyle = '#fde68a';
+            ctx.beginPath();
+            ctx.arc(player.x + player.width / 2, player.y - 8, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '10px Noto Sans KR';
+            ctx.fillText('주인공', player.x - 4, player.y - 24);
+        }
+
+        function drawObjects() {
+            floorObjects.forEach(obj => {
+                ctx.lineWidth = 2;
+                if (obj.type === 'exit' || obj.type === 'door') {
+                    ctx.fillStyle = '#1e293b';
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+                    ctx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+                } else if (obj.type === 'slide') {
+                    ctx.fillStyle = '#b91c1c';
+                    ctx.beginPath();
+                    ctx.moveTo(obj.x, obj.y + obj.height);
+                    ctx.lineTo(obj.x + obj.width, obj.y + 20);
+                    ctx.lineTo(obj.x + obj.width, obj.y + obj.height);
+                    ctx.fill();
+                } else if (obj.type === 'memo') {
+                    ctx.fillStyle = '#fef08a';
+                    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+                } else if (obj.type === 'server') {
+                    ctx.fillStyle = '#334155';
+                    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+                    ctx.fillStyle = '#22c55e';
+                    ctx.fillRect(obj.x + 20, obj.y + 20, 10, 10);
+                } else if (obj.type === 'mascot') {
+                    ctx.fillStyle = '#ec4899';
+                    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '10px Noto Sans KR';
+                    ctx.fillText('인형탈', obj.x + 18, obj.y - 6);
+                } else if (obj.type === 'cctv_wall') {
+                    ctx.fillStyle = '#1e1b4b';
+                    ctx.strokeStyle = '#a855f7';
+                    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+                    ctx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+                }
+
+                if (obj.label) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '12px Noto Sans KR';
+                    ctx.fillText(`[Space] ${obj.label}`, obj.x - 10, obj.y - 10);
+                }
+            });
+        }
+
+        function update() {
+            if (!gameState.running || gameState.inEvent || gameState.dialogActive) return;
+
+            if (SCENARIOS[gameState.currentFloor] && SCENARIOS[gameState.currentFloor].update) {
+                SCENARIOS[gameState.currentFloor].update();
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            drawObjects();
+            drawPlayer();
+        }
+
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gotoFloor(floor) {
+            clearQTE();
+            gameState.currentFloor = floor;
+            gameState.inEvent = false;
+            gameState.dialogActive = false;
+            
+            document.getElementById('floor-display').innerText = `${floor}층`;
+            const progress = Math.min(100, Math.max(0, ((100 - floor) / 99) * 100));
+            document.getElementById('floor-progress').style.width = `${progress}%`;
+
+            player.x = 80;
+            initFloorObjects(floor);
+            sound.playSuccessSound();
+        }
+
+        function showEvent(title, desc, choices, timeLimitMs = null) {
+            clearQTE();
+            gameState.inEvent = true;
+            
+            const qteBox = document.getElementById('qte-container');
+            if (timeLimitMs) {
+                qteBox.classList.remove('hidden');
+                const initialSeconds = (timeLimitMs / 1000).toFixed(1);
+                document.getElementById('qte-countdown').innerText = initialSeconds;
+            } else {
+                qteBox.classList.add('hidden');
+            }
+
+            document.getElementById('event-title').innerText = title;
+            document.getElementById('event-desc').innerHTML = desc;
+            
+            const container = document.getElementById('event-choices');
+            container.innerHTML = '';
+            
+            choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.className = "bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition active:scale-95 text-sm";
+                btn.innerText = choice.text;
+                btn.onclick = () => { clearQTE(); sound.playItemSound(); choice.action(); };
+                container.appendChild(btn);
+            });
+            
+            document.getElementById('event-overlay').classList.remove('hidden');
+
+            if (timeLimitMs) {
+                let startTime = Date.now();
+                gameState.qteTimer = setInterval(() => {
+                    let elapsed = Date.now() - startTime;
+                    let remaining = Math.max(0, timeLimitMs - elapsed);
+                    let secSpan = document.getElementById('qte-countdown');
+                    if (secSpan) {
+                        secSpan.innerText = (remaining / 1000).toFixed(1);
+                    }
+                }, 50);
+
+                gameState.timeoutId = setTimeout(() => {
+                    clearQTE();
+                    if (gameState.inEvent) {
+                        closeEvent();
+                        triggerGameOver("시간 초과로 엄마에게 붙잡혔습니다!");
+                    }
+                }, timeLimitMs);
+            }
+        }
+
+        function closeEvent() {
+            clearQTE();
+            gameState.inEvent = false;
+            document.getElementById('event-overlay').classList.add('hidden');
+        }
+
+        function showDialog(speaker, text) {
+            gameState.dialogActive = true;
+            document.getElementById('dialog-name').innerText = speaker;
+            document.getElementById('dialog-text').innerText = text;
+            document.getElementById('dialog-overlay').classList.remove('translate-y-full', 'opacity-0', 'pointer-events-none');
+        }
+
+        function hideDialog() {
+            gameState.dialogActive = false;
+            document.getElementById('dialog-overlay').classList.add('translate-y-full', 'opacity-0', 'pointer-events-none');
+        }
+
+        function triggerGameOver(reason) {
+            gameState.running = false;
+            document.getElementById('gameover-reason').innerText = `"${reason}"`;
+            document.getElementById('final-floor').innerText = `${gameState.currentFloor}층`;
+            document.getElementById('screen-gameover').classList.remove('hidden');
+            sound.playAlertSound();
+        }
+
+        function restartCurrentFloor() {
+            gameState.running = true;
+            gameState.inEvent = false;
+            gameState.dialogActive = false;
+            document.getElementById('screen-gameover').classList.add('hidden');
+            gotoFloor(gameState.currentFloor);
+        }
+
+        function handleInteraction() {
+            if (gameState.dialogActive) {
+                hideDialog();
+                return;
+            }
+            if (gameState.inEvent) return;
+
+            floorObjects.forEach(obj => {
+                if (Math.abs((player.x + 16) - (obj.x + obj.width/2)) < 60) {
+                    if (SCENARIOS[gameState.currentFloor] && SCENARIOS[gameState.currentFloor].interact) {
+                        SCENARIOS[gameState.currentFloor].interact(obj);
+                    } else if (obj.type === 'exit') {
+                        gotoFloor(gameState.currentFloor - 1);
+                    }
+                }
+            });
+        }
+
+        function showHint(msg) {
+            document.getElementById('hint-text').innerText = msg;
+        }
+
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            sound.init();
+            keys[e.code] = true;
+            if (e.code === 'Space' || e.code === 'KeyE') {
+                handleInteraction();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        function handleInput() {
+            if (!gameState.running || gameState.inEvent || gameState.dialogActive) return;
+
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                player.x = Math.max(20, player.x - player.speed);
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                player.x = Math.min(740, player.x + player.speed);
+            }
+        }
+        setInterval(handleInput, 1000 / 60);
+
+        // Mobile Controls
+        const btnLeft = document.getElementById('m-btn-left');
+        const btnRight = document.getElementById('m-btn-right');
+        const btnAction = document.getElementById('m-btn-action');
+
+        let leftInterval, rightInterval;
+
+        btnLeft.addEventListener('touchstart', (e) => {
+            e.preventDefault(); sound.init();
+            leftInterval = setInterval(() => {
+                if (!gameState.inEvent && !gameState.dialogActive) {
+                    player.x = Math.max(20, player.x - player.speed * 1.5);
+                }
+            }, 30);
+        });
+        btnLeft.addEventListener('touchend', () => clearInterval(leftInterval));
+
+        btnRight.addEventListener('touchstart', (e) => {
+            e.preventDefault(); sound.init();
+            rightInterval = setInterval(() => {
+                if (!gameState.inEvent && !gameState.dialogActive) {
+                    player.x = Math.min(740, player.x + player.speed * 1.5);
+                }
+            }, 30);
+        });
+        btnRight.addEventListener('touchend', () => clearInterval(rightInterval));
+
+        btnAction.addEventListener('click', () => {
+            sound.init(); handleInteraction();
+        });
+
+        document.getElementById('btn-dialog-next').addEventListener('click', hideDialog);
+
+        function startGame() {
+            sound.init();
+            gameState.running = true;
+            gameState.inEvent = false;
+            gameState.dialogActive = false;
+
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('screen-victory').classList.add('hidden');
+
+            gotoFloor(100);
+            showDialog('시스템', '이동: 좌/우 방향키\n상호작용: 스페이스바(Space)');
+        }
+
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        document.getElementById('btn-restart').addEventListener('click', restartCurrentFloor);
+        document.getElementById('btn-restart-100').addEventListener('click', startGame);
+        document.getElementById('btn-victory-restart').addEventListener('click', startGame);
+
+        window.onload = () => {
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

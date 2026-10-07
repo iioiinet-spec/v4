@@ -1,0 +1,787 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CYBER NIGHTMARE 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#030817;color:white;font-family:Arial,sans-serif;user-select:none}
+#game{position:fixed;inset:0}
+#hud{position:fixed;inset:0;padding:12px;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.info{padding:10px 14px;background:#061b36eF;border:1px solid #16aaff;border-radius:12px;box-shadow:0 0 15px #008cff66;font-weight:bold}
+button{cursor:pointer;color:white;background:linear-gradient(135deg,#07529b,#081b43);border:1px solid #20baff;border-radius:12px;padding:11px 17px;font-weight:bold}
+button:active{filter:brightness(1.5)}
+#pause{pointer-events:auto}
+.bottom{display:flex;justify-content:space-between;align-items:end}
+.controls{display:flex;gap:9px;pointer-events:auto}
+.move{width:65px;height:65px;border-radius:50%;font-size:25px;background:#06234bdd;box-shadow:0 0 18px #00aaff88}
+.skills{display:flex;gap:7px;pointer-events:auto}
+.skills button{font-size:12px}
+#overlay{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse,#102b55bb,#01040ff5);padding:12px}
+.panel{width:min(650px,96vw);max-height:94vh;overflow:auto;text-align:center;padding:24px;border:1px solid #159dff;border-radius:20px;background:linear-gradient(145deg,#061a3bf5,#030817f7);box-shadow:0 0 35px #007bff77}
+.hidden{display:none!important}
+.logo{font-size:clamp(36px,7vw,62px);font-weight:1000;color:#e8faff;text-shadow:0 0 12px #00cfff,0 0 30px #087cff;margin:15px}
+.desc{color:#b6d8ef;line-height:1.8;margin:20px auto}
+.actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.primary{background:linear-gradient(135deg,#00baff,#174bff);border-color:#7ceaff}
+.danger{background:linear-gradient(135deg,#a31536,#f02c50)}
+.levels{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:20px 0}
+.level{min-height:65px}
+.level small{display:block;font-size:10px;color:#77dfff;margin-top:5px}
+.level.selected{outline:2px solid #ffe26a}
+.level:disabled{opacity:.3}
+#toast{position:fixed;z-index:8;top:18%;left:50%;transform:translateX(-50%);padding:12px 20px;border:1px solid #24dfff;border-radius:12px;background:#061b39;opacity:0;pointer-events:none;transition:.2s;font-weight:bold}
+@media(max-width:600px){
+.info{padding:7px 9px;font-size:12px}
+.move{width:55px;height:55px}
+.panel{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div id="game"></div>
+
+<div id="hud">
+ <div class="top">
+  <div class="stats">
+   <div class="info">🏆 <span id="stage">1단계</span></div>
+   <div class="info">💎 <span id="gems">0 / 5</span></div>
+   <div class="info">❤️ <span id="lives">3</span></div>
+  </div>
+  <div class="stats">
+   <div class="info">⚡ <span id="speed">1.2x</span></div>
+   <button id="pause">Ⅱ 중단</button>
+  </div>
+ </div>
+
+ <div class="bottom">
+  <div class="skills">
+   <button id="boost">⚡ 부스터</button>
+   <button id="shield">🛡 보호막</button>
+  </div>
+  <div class="controls">
+   <button class="move" id="left">◀</button>
+   <button class="move" id="jump">▲</button>
+   <button class="move" id="right">▶</button>
+  </div>
+ </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="overlay">
+
+ <div class="panel" id="menu">
+  <div style="color:#4beaff;letter-spacing:4px">3D DARK SCI-FI RUNNER</div>
+  <div class="logo">CYBER<br>NIGHTMARE</div>
+  <p class="desc">
+   붉은 달 아래 펼쳐진 악몽의 세계.<br>
+   장애물을 피하고 보석을 모아 10개의 단계를 돌파하세요!
+  </p>
+  <div class="actions">
+   <button class="primary" id="start">▶ 게임 시작</button>
+   <button id="choose">레벨 선택</button>
+   <button id="guide">조작 방법</button>
+  </div>
+  <p class="desc">키보드: ← → 이동 / ↑ 점프 / Shift 부스터</p>
+ </div>
+
+ <div class="panel hidden" id="levelPanel">
+  <h2>STAGE SELECT</h2>
+  <p class="desc">도전할 단계를 선택하세요.</p>
+  <div class="levels" id="levelGrid"></div>
+  <div class="actions">
+   <button id="levelBack">뒤로</button>
+   <button class="primary" id="levelStart">선택한 단계 시작</button>
+  </div>
+ </div>
+
+ <div class="panel hidden" id="pausePanel">
+  <div class="logo">PAUSED</div>
+  <div class="actions">
+   <button class="primary" id="resume">계속하기</button>
+   <button class="danger" id="retry">다시 시작</button>
+   <button id="toMenu">메인 메뉴</button>
+  </div>
+ </div>
+
+ <div class="panel hidden" id="resultPanel">
+  <div class="logo" id="resultTitle">STAGE CLEAR</div>
+  <p class="desc" id="resultDesc"></p>
+  <div class="actions">
+   <button class="primary" id="next">다음 단계</button>
+   <button id="resultMenu">메인 메뉴</button>
+  </div>
+ </div>
+
+ <div class="panel hidden" id="guidePanel">
+  <h2>조작 방법</h2>
+  <p class="desc">
+   ◀ ▶ : 좌우 이동<br>
+   ▲ : 점프<br>
+   ⚡ : 부스터<br>
+   🛡 : 보호막<br><br>
+   보석을 목표 개수만큼 모으면 다음 단계가 열립니다.
+  </p>
+  <button class="primary" id="guideBack">확인</button>
+ </div>
+
+</div>
+
+<script>
+(()=>{
+"use strict";
+
+const $=id=>document.getElementById(id);
+
+const stageNames=[
+ "잿빛 성채","얼음 망령","용암 지옥",
+ "버려진 도시","독안개 숲","기계 심연",
+ "폭풍 사원","우주 균열","피의 달","최종 보스"
+];
+
+const colors=[
+ 0xff3155,0x39ddff,0xff642b,0xff4777,0x70ff88,
+ 0xb76aff,0x65dfff,0xb47aff,0xff2455,0xff174b
+];
+
+let scene,camera,renderer,clock,player;
+let running=false,paused=false;
+let stage=1,unlocked=1,selected=1;
+let gems=0,lives=3;
+let lane=1,targetLane=1;
+let jumpY=0,jumpV=0,jumping=false;
+let speed=0.216,boostTime=0,shield=0;
+let spawnTimer=0;
+let hazards=[],pickups=[],tiles=[];
+const laneX=[-2.3,0,2.3];
+
+const goal=()=>stage*5;
+
+function material(color,emissive=0,intensity=0){
+ return new THREE.MeshStandardMaterial({
+  color,
+  emissive,
+  emissiveIntensity:intensity,
+  metalness:.4,
+  roughness:.4
+ });
+}
+
+function box(parent,w,h,d,mat,x,y,z){
+ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+ o.position.set(x,y,z);
+ o.castShadow=true;
+ o.receiveShadow=true;
+ parent.add(o);
+ return o;
+}
+
+function toast(text){
+ $("toast").textContent=text;
+ $("toast").style.opacity=1;
+ clearTimeout(toast.timer);
+ toast.timer=setTimeout(()=>$("toast").style.opacity=0,1300);
+}
+
+function show(id){
+ ["menu","levelPanel","pausePanel","resultPanel","guidePanel"]
+ .forEach(x=>$(x).classList.add("hidden"));
+ $("overlay").classList.remove("hidden");
+ $(id).classList.remove("hidden");
+}
+
+function hide(){
+ $("overlay").classList.add("hidden");
+}
+
+function updateHUD(){
+ $("stage").textContent=stage+"단계";
+ $("gems").textContent=gems+" / "+goal();
+ $("lives").textContent=lives;
+ $("speed").textContent=(speed/.18).toFixed(1)+"x";
+}
+
+function makePlayer(){
+ const g=new THREE.Group();
+ const armor=material(0x172d55,0x087bff,.8);
+ const cyan=material(0x16dfff,0x00dfff,1.5);
+ const dark=material(0x111827,0x192c55,.4);
+
+ box(g,.75,.9,.48,armor,0,1,0);
+ box(g,.55,.55,.52,dark,0,1.75,0);
+ box(g,.46,.13,.08,cyan,0,1.8,.29);
+ box(g,.24,.28,.1,cyan,0,1.05,.3);
+
+ box(g,.7,.9,.12,material(0x253c75,0x123cff,.6),0,.9,-.34);
+
+ for(const x of [-.52,.52]){
+  box(g,.24,.7,.25,armor,x,1,0);
+  box(g,.27,.65,.3,dark,x*.48,.35,0);
+ }
+
+ g.position.set(0,0,2);
+ scene.add(g);
+ return g;
+}
+
+function spike(x,z){
+ const g=new THREE.Group();
+
+ const cone=new THREE.Mesh(
+  new THREE.ConeGeometry(.5,1.3,5),
+  material(0xabb9ca,0xff174b,.8)
+ );
+ cone.position.y=.65;
+ g.add(cone);
+
+ const base=new THREE.Mesh(
+  new THREE.CylinderGeometry(.6,.6,.18,8),
+  material(0x272d40,0xff173a,.8)
+ );
+ base.position.y=.1;
+ g.add(base);
+
+ g.position.set(x,0,z);
+ scene.add(g);
+ return {mesh:g,type:"spike",hit:false};
+}
+
+function saw(x,z){
+ const g=new THREE.Group();
+
+ const hub=new THREE.Mesh(
+  new THREE.CylinderGeometry(.4,.4,.25,12),
+  material(0x30384a,0xff174b,1)
+ );
+ hub.rotation.x=Math.PI/2;
+ g.add(hub);
+
+ for(let i=0;i<10;i++){
+  const a=i*Math.PI/5;
+  const t=new THREE.Mesh(
+   new THREE.ConeGeometry(.19,.55,4),
+   material(0xc5d1df,0xff3155,.7)
+  );
+  t.position.set(Math.cos(a)*.55,Math.sin(a)*.55,0);
+  t.rotation.z=a-Math.PI/2;
+  g.add(t);
+ }
+
+ g.position.set(x,1,z);
+ scene.add(g);
+ return {mesh:g,type:"saw",hit:false};
+}
+
+function ghost(x,z){
+ const g=new THREE.Group();
+
+ const body=new THREE.Mesh(
+  new THREE.ConeGeometry(.7,2.1,7),
+  material(0x19162e,0x861344,.9)
+ );
+ body.position.y=1;
+ g.add(body);
+
+ const head=new THREE.Mesh(
+  new THREE.SphereGeometry(.4,12,12),
+  material(0x34384a,0x8b163c,.7)
+ );
+ head.position.y=2;
+ g.add(head);
+
+ for(const xEye of [-.17,.17]){
+  const eye=new THREE.Mesh(
+   new THREE.SphereGeometry(.07,8,8),
+   material(0xff3155,0xff0033,2)
+  );
+  eye.position.set(xEye,2.05,.34);
+  g.add(eye);
+ }
+
+ g.position.set(x,0,z);
+ scene.add(g);
+ return {mesh:g,type:"ghost",hit:false};
+}
+
+function clearObjects(){
+ for(const a of [...hazards,...pickups])scene.remove(a.mesh);
+ tiles.forEach(t=>scene.remove(t));
+ hazards=[];
+ pickups=[];
+ tiles=[];
+}
+
+function createWorld(){
+ scene=new THREE.Scene();
+ scene.background=new THREE.Color(0x101a36);
+ scene.fog=new THREE.FogExp2(0x101a36,.008);
+
+ camera=new THREE.PerspectiveCamera(
+  65,innerWidth/innerHeight,.1,250
+ );
+ camera.position.set(0,5.5,-8.5);
+
+ renderer=new THREE.WebGLRenderer({antialias:true});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+ renderer.setSize(innerWidth,innerHeight);
+ renderer.shadowMap.enabled=true;
+ renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+ renderer.outputEncoding=THREE.sRGBEncoding;
+
+ $("game").replaceChildren(renderer.domElement);
+
+ scene.add(new THREE.HemisphereLight(0xa8d8ff,0x201323,1.3));
+
+ const light=new THREE.DirectionalLight(0xd9efff,1.5);
+ light.position.set(-8,16,-5);
+ light.castShadow=true;
+ scene.add(light);
+
+ const red=new THREE.PointLight(colors[stage-1],2.5,60);
+ red.position.set(0,7,28);
+ scene.add(red);
+
+ // 먼 곳의 어두운 성채
+ const castle=new THREE.Group();
+ const stone=material(0x17192d,colors[stage-1],.5);
+
+ box(castle,9,9,2,stone,0,4.5,0);
+
+ for(let x=-4;x<=4;x+=2){
+  const tower=box(castle,1.1,13,1.2,stone,x,6.5,0);
+  tower.rotation.z=x<0?-.07:.07;
+ }
+
+ const eye=new THREE.Mesh(
+  new THREE.SphereGeometry(.75,16,16),
+  material(0xff164d,0xff0033,2)
+ );
+ eye.position.set(0,6,1.2);
+ castle.add(eye);
+ castle.position.z=53;
+ scene.add(castle);
+
+ // 공중에 떠 있는 바위섬
+ for(let i=0;i<16;i++){
+  const rock=new THREE.Mesh(
+   new THREE.DodecahedronGeometry(1.8+Math.random()*1.5,0),
+   material(0x25283c,colors[stage-1],.3)
+  );
+  rock.scale.y=.55;
+  rock.position.set(
+   (Math.random()-.5)*27,
+   1+Math.random()*4,
+   8+i*5
+  );
+  scene.add(rock);
+ }
+
+ player=makePlayer();
+
+ // 긴 다리
+ const road=material(0x30384c,colors[stage-1],.2);
+ const edge=material(0x252a3c,colors[stage-1],.9);
+ const line=material(0x76dfff,0x08aaff,1);
+
+ for(let i=0;i<14;i++){
+  const tile=new THREE.Group();
+
+  box(tile,8,.5,9,road,0,-.35,0);
+
+  for(const x of [-3.9,3.9]){
+   box(tile,.22,.25,9,edge,x,-.05,0);
+
+   for(let z=-3;z<=3;z+=2){
+    box(tile,.3,.08,.65,line,x,-.13,z);
+   }
+  }
+
+  for(const x of [-1.2,1.2]){
+   box(tile,.045,.03,9,line,x,-.08,0);
+  }
+
+  tile.position.z=i*9;
+  scene.add(tile);
+  tiles.push(tile);
+ }
+}
+
+function reset(n){
+ if(scene)clearObjects();
+
+ stage=n;
+ gems=0;
+ lives=3;
+ lane=1;
+ targetLane=1;
+ jumpY=0;
+ jumpV=0;
+ jumping=false;
+ spawnTimer=0;
+ boostTime=0;
+ shield=0;
+
+ // 기본 속도 20% 증가
+ speed=(.18+(stage-1)*.025)*1.2;
+
+ createWorld();
+ updateHUD();
+}
+
+function move(d){
+ if(!running||paused)return;
+ targetLane=Math.max(0,Math.min(2,targetLane+d));
+}
+
+function jump(){
+ if(!running||paused||jumping)return;
+ jumping=true;
+ jumpV=.30;
+}
+
+function spawnThings(){
+ spawnTimer++;
+
+ const interval=Math.max(30,75-stage*3);
+
+ if(spawnTimer%interval!==0)return;
+
+ const hazardLane=Math.floor(Math.random()*3);
+ const x=laneX[hazardLane];
+ const z=68;
+ const r=Math.random();
+
+ let h;
+
+ if(r<.4)h=spike(x,z);
+ else if(r<.75)h=saw(x,z);
+ else h=ghost(x,z);
+
+ hazards.push(h);
+
+ const other=[0,1,2].filter(n=>n!==hazardLane);
+ const gemLane=other[Math.floor(Math.random()*other.length)];
+
+ const gem=new THREE.Mesh(
+  new THREE.OctahedronGeometry(.45),
+  material(0x5cecff,0x00cfff,1.7)
+ );
+
+ gem.position.set(laneX[gemLane],1.2,z+2);
+ scene.add(gem);
+ pickups.push({mesh:gem});
+
+ // 높은 단계에는 추가 장애물
+ if(stage>=4&&Math.random()<.4){
+  const second=other.find(n=>n!==gemLane);
+  hazards.push(spike(laneX[second],z+12));
+ }
+}
+
+function hitCheck(){
+ for(let i=hazards.length-1;i>=0;i--){
+  const h=hazards[i];
+
+  h.mesh.position.z-=speed*(boostTime>0?2.7:1.6);
+
+  if(h.type==="saw")h.mesh.rotation.z+=.15;
+
+  if(h.type==="ghost"){
+   h.mesh.position.y=.08+Math.sin(performance.now()*.004)*.1;
+  }
+
+  const close=
+   Math.abs(h.mesh.position.z-player.position.z)<1.05&&
+   Math.abs(h.mesh.position.x-player.position.x)<.82;
+
+  if(close&&!h.hit){
+   h.hit=true;
+
+   if(h.type==="spike"&&jumpY>1.05){
+    toast("점프 회피 성공!");
+   }
+   else if(shield){
+    shield=0;
+    toast("보호막 발동!");
+   }
+   else{
+    lives--;
+    toast("충돌! 목숨 -1");
+    updateHUD();
+
+    if(lives<=0){
+     gameOver();
+     return;
+    }
+   }
+  }
+
+  if(h.mesh.position.z<-9){
+   scene.remove(h.mesh);
+   hazards.splice(i,1);
+  }
+ }
+
+ for(let i=pickups.length-1;i>=0;i--){
+  const g=pickups[i];
+
+  g.mesh.position.z-=speed*(boostTime>0?2.7:1.6);
+  g.mesh.rotation.y+=.08;
+
+  g.mesh.position.y=1.2+Math.sin(performance.now()*.004)*.15;
+
+  const close=
+   Math.abs(g.mesh.position.z-player.position.z)<1.2&&
+   Math.abs(g.mesh.position.x-player.position.x)<.9;
+
+  if(close){
+   scene.remove(g.mesh);
+   pickups.splice(i,1);
+   gems++;
+   updateHUD();
+
+   if(gems>=goal()){
+    stageClear();
+    return;
+   }
+  }
+  else if(g.mesh.position.z<-9){
+   scene.remove(g.mesh);
+   pickups.splice(i,1);
+  }
+ }
+}
+
+function stageClear(){
+ running=false;
+
+ unlocked=Math.max(unlocked,Math.min(10,stage+1));
+
+ $("resultTitle").textContent=
+  stage===10?"FINAL NIGHTMARE CLEAR!":"STAGE CLEAR!";
+
+ $("resultDesc").textContent=
+  stage===10
+  ?"모든 악몽을 정복했습니다!"
+  :`${stageNames[stage-1]} 클리어! 다음 지역은 ${stageNames[stage]}입니다.`;
+
+ $("next").textContent=stage===10?"처음부터 다시":"다음 단계";
+
+ $("next").onclick=()=>{
+  if(stage===10){
+   unlocked=1;
+   begin(1);
+  }else{
+   begin(stage+1);
+  }
+ };
+
+ show("resultPanel");
+}
+
+function gameOver(){
+ running=false;
+
+ $("resultTitle").textContent="GAME OVER";
+ $("resultDesc").textContent=
+  `${stageNames[stage-1]}에서 쓰러졌습니다. 보석 ${gems}개를 모았습니다.`;
+
+ $("next").textContent="다시 도전";
+ $("next").onclick=()=>begin(stage);
+
+ show("resultPanel");
+}
+
+function begin(n){
+ reset(n);
+ paused=false;
+ running=true;
+ hide();
+ toast(stageNames[stage-1]+" 입장!");
+}
+
+function buildLevels(){
+ $("levelGrid").replaceChildren();
+
+ stageNames.forEach((name,i)=>{
+  const n=i+1;
+  const b=document.createElement("button");
+
+  b.className="level"+(selected===n?" selected":"");
+  b.disabled=n>unlocked;
+  b.innerHTML=String(n).padStart(2,"0")+"<small>"+name+"</small>";
+
+  b.onclick=()=>{
+   selected=n;
+   buildLevels();
+  };
+
+  $("levelGrid").appendChild(b);
+ });
+}
+
+function pauseGame(){
+ if(!running)return;
+ running=false;
+ paused=true;
+ show("pausePanel");
+}
+
+function animate(){
+ requestAnimationFrame(animate);
+
+ if(!renderer||!scene)return;
+
+ clock.getDelta();
+
+ if(running&&!paused){
+
+  if(boostTime>0)boostTime--;
+
+  player.position.x+=(laneX[targetLane]-player.position.x)*.88;
+
+  if(jumping){
+   jumpY+=jumpV;
+   jumpV-=.014;
+
+   if(jumpY<=0){
+    jumpY=0;
+    jumping=false;
+   }
+  }
+
+  player.position.y=jumpY;
+
+  player.rotation.z+=
+   ((targetLane===0?-.1:targetLane===2?.1:0)-player.rotation.z)*.12;
+
+  const actualSpeed=speed*(boostTime>0?1.7:1);
+
+  tiles.forEach(t=>{
+   t.position.z-=actualSpeed*1.6;
+
+   if(t.position.z<-10){
+    t.position.z+=126;
+   }
+  });
+
+  spawnThings();
+  hitCheck();
+
+  $("speed").textContent=
+   (speed/.18*(boostTime>0?1.7:1)).toFixed(1)+"x";
+ }
+
+ if(player&&camera){
+  camera.position.x+=(player.position.x*.23-camera.position.x)*.05;
+  camera.lookAt(player.position.x*.15,1,11);
+ }
+
+ renderer.render(scene,camera);
+}
+
+function init(){
+
+ clock=new THREE.Clock();
+
+ reset(1);
+ animate();
+
+ $("start").onclick=()=>begin(1);
+
+ $("choose").onclick=()=>{
+  selected=1;
+  buildLevels();
+  show("levelPanel");
+ };
+
+ $("levelBack").onclick=()=>show("menu");
+ $("levelStart").onclick=()=>begin(selected);
+
+ $("pause").onclick=pauseGame;
+
+ $("resume").onclick=()=>{
+  paused=false;
+  running=true;
+  hide();
+ };
+
+ $("retry").onclick=()=>begin(stage);
+
+ $("toMenu").onclick=()=>{
+  paused=false;
+  running=false;
+  show("menu");
+ };
+
+ $("resultMenu").onclick=()=>show("menu");
+
+ $("guide").onclick=()=>show("guidePanel");
+ $("guideBack").onclick=()=>show("menu");
+
+ $("left").onpointerdown=e=>{
+  e.preventDefault();
+  move(-1);
+ };
+
+ $("right").onpointerdown=e=>{
+  e.preventDefault();
+  move(1);
+ };
+
+ $("jump").onpointerdown=e=>{
+  e.preventDefault();
+  jump();
+ };
+
+ $("boost").onclick=()=>{
+  if(running&&boostTime<=0){
+   boostTime=150;
+   toast("부스터 발동!");
+  }
+ };
+
+ $("shield").onclick=()=>{
+  if(running&&!shield){
+   shield=1;
+   toast("보호막 활성화!");
+  }
+ };
+
+ addEventListener("keydown",e=>{
+
+  if(["ArrowLeft","ArrowRight","ArrowUp"," ","Shift"].includes(e.key)){
+   e.preventDefault();
+  }
+
+  if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")move(-1);
+  if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")move(1);
+  if(e.key==="ArrowUp"||e.key===" "||e.key.toLowerCase()==="w")jump();
+
+  if(e.key==="Shift"&&running)boostTime=150;
+
+  if(e.key==="Escape")pauseGame();
+ });
+
+ addEventListener("resize",()=>{
+  if(!camera||!renderer)return;
+
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+ });
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>

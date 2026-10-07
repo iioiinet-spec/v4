@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마인크래프트 웹 게임 (최적화 버전)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="relative text-white">
+
+    <div id="canvas-container"></div>
+
+    <div id="crosshair" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none text-white text-2xl font-bold opacity-75">
+        +
+    </div>
+
+    <!-- Hotbar & HUD Container -->
+    <div id="hud" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center gap-2">
+        <div id="hotbar" class="flex bg-neutral-900/80 p-2 rounded-xl backdrop-blur-md border border-neutral-700 shadow-2xl gap-1.5">
+            <!-- Dynamically populated -->
+        </div>
+        <div class="flex gap-4 text-xs font-semibold text-neutral-400">
+            <span id="coords-display">X: 0, Y: 0, Z: 0</span>
+            <span id="fps-display">청크 거리: 최적화(2)</span>
+        </div>
+    </div>
+
+    <!-- Inventory Modal -->
+    <div id="inventory-modal" class="absolute inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center z-50">
+        <div class="bg-neutral-800 border border-neutral-700 p-6 rounded-2xl shadow-2xl w-[640px] flex flex-col gap-6 text-white relative">
+            <div class="flex justify-between items-center border-b border-neutral-700 pb-3">
+                <h2 class="text-xl font-bold flex items-center gap-2">🎒 인벤토리 & 2x2 제작대 (최대 99개 중첩)</h2>
+                <button id="close-inv" class="text-neutral-400 hover:text-white text-lg font-bold px-2 py-1 bg-neutral-700/50 rounded-lg">✕</button>
+            </div>
+
+            <div class="flex justify-between items-center">
+                <!-- Main 36 Inventory Slots -->
+                <div id="inv-grid" class="grid grid-cols-9 gap-1.5 bg-neutral-900/50 p-3 rounded-xl border border-neutral-700"></div>
+
+                <!-- 2x2 Crafting Grid -->
+                <div class="flex flex-col items-center gap-3 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700">
+                    <span class="text-xs font-bold text-neutral-400">2x2 제작</span>
+                    <div class="grid grid-cols-2 gap-1.5" id="craft-2x2-grid"></div>
+                    <div class="text-neutral-400 text-lg">➔</div>
+                    <div id="craft-2x2-output" class="w-12 h-12 bg-neutral-800 border-2 border-dashed border-neutral-600 rounded-lg flex items-center justify-center relative cursor-pointer hover:border-amber-400 transition"></div>
+                </div>
+            </div>
+
+            <!-- Hotbar inside inventory modal -->
+            <div class="flex flex-col gap-2">
+                <span class="text-xs font-bold text-neutral-400">핫바 (1~9)</span>
+                <div id="inv-hotbar-grid" class="grid grid-cols-9 gap-1.5 bg-neutral-900/50 p-3 rounded-xl border border-neutral-700"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workbench Modal -->
+    <div id="workbench-modal" class="absolute inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center z-50">
+        <div class="bg-neutral-800 border border-neutral-700 p-6 rounded-2xl shadow-2xl w-[650px] flex flex-col gap-6 text-white relative">
+            <div class="flex justify-between items-center border-b border-neutral-700 pb-3">
+                <h2 class="text-xl font-bold flex items-center gap-2">🪵 작업대 (3x3 제작)</h2>
+                <button id="close-wb" class="text-neutral-400 hover:text-white text-lg font-bold px-2 py-1 bg-neutral-700/50 rounded-lg">✕</button>
+            </div>
+
+            <div class="flex justify-between items-center">
+                <div class="flex flex-col items-center gap-3 bg-neutral-900/50 p-4 rounded-xl border border-neutral-700">
+                    <span class="text-xs font-bold text-neutral-400">3x3 조합 그리드</span>
+                    <div class="grid grid-cols-3 gap-1.5" id="craft-3x3-grid"></div>
+                </div>
+                <div class="text-neutral-400 text-2xl font-bold">➔</div>
+                <div id="craft-3x3-output" class="w-16 h-16 bg-neutral-800 border-2 border-dashed border-neutral-600 rounded-xl flex items-center justify-center relative cursor-pointer hover:border-amber-400 transition shadow-inner"></div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <span class="text-xs font-bold text-neutral-400">보유 인벤토리</span>
+                <div id="wb-inv-grid" class="grid grid-cols-9 gap-1.5 bg-neutral-900/50 p-3 rounded-xl border border-neutral-700"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute inset-0 bg-neutral-950/85 backdrop-blur-md flex flex-col items-center justify-center z-50 gap-6">
+        <div class="text-center">
+            <h1 class="text-5xl font-black text-amber-500 tracking-wider mb-2 drop-shadow-lg">MINECRAFT WEB</h1>
+            <p class="text-neutral-400 text-sm">렉 최소화 근접 청크 로딩, 단차 평평 지형, 나무 & 나뭇잎, 드래그 시점 전환</p>
+        </div>
+        <button id="start-btn" class="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black text-lg rounded-xl shadow-xl transition transform hover:scale-105 active:scale-95">
+            게임 시작하기
+        </button>
+        <div class="bg-neutral-900/80 border border-neutral-800 p-4 rounded-xl text-xs text-neutral-400 max-w-md flex flex-col gap-1.5">
+            <p>⌨ <b>이동:</b> W, A, S, D 또는 방향키 (바라보는 방향 정확히 반영)</p>
+            <p>🖱️ <b>시점 전환:</b> 마우스 왼쪽 버튼을 누른 채 드래그</p>
+            <p>⛏️ <b>상호작용:</b> 좌클릭 (파괴), 우클릭 (설치 / 작업대 열기)</p>
+            <p>🎒 <b>인벤토리:</b> E 또는 I 키 / 🔢 <b>핫바 선택:</b> 숫자키 1~9</p>
+        </div>
+    </div>
+
+    <script>
+        const CHUNK_SIZE = 16;
+        const CHUNK_HEIGHT = 64;
+        const RENDER_DISTANCE = 2; // Optimized for performance (reduced lag)
+        const MAX_STACK = 99;
+
+        const BLOCK = {
+            AIR: 0,
+            WOOD: 1,
+            LEAVES: 2,
+            GRASS: 3,
+            DIRT: 4,
+            STONE: 5,
+            DEEPSLATE: 6,
+            IRON: 7,
+            GOLD: 8,
+            DIAMOND: 9,
+            EMERALD: 10,
+            WATER: 11,
+            LAVA: 12,
+            PLANKS: 13,
+            STICK: 14,
+            WORKBENCH: 15,
+            WOOD_PICKAXE: 16
+        };
+
+        const BLOCK_NAMES = {
+            [BLOCK.WOOD]: "나무 기둥",
+            [BLOCK.LEAVES]: "나뭇잎",
+            [BLOCK.GRASS]: "잔디",
+            [BLOCK.DIRT]: "흙",
+            [BLOCK.STONE]: "돌",
+            [BLOCK.DEEPSLATE]: "심층암",
+            [BLOCK.IRON]: "철 광석",
+            [BLOCK.GOLD]: "금 광석",
+            [BLOCK.DIAMOND]: "다이아몬드",
+            [BLOCK.EMERALD]: "에메랄드",
+            [BLOCK.WATER]: "물",
+            [BLOCK.LAVA]: "용암",
+            [BLOCK.PLANKS]: "나무 판자",
+            [BLOCK.STICK]: "막대기",
+            [BLOCK.WORKBENCH]: "작업대",
+            [BLOCK.WOOD_PICKAXE]: "나무 곡괭이"
+        };
+
+        const BLOCK_COLORS = {
+            [BLOCK.WOOD]: 0x8B5A2B,
+            [BLOCK.LEAVES]: 0x2e8b57,
+            [BLOCK.GRASS]: 0x559933,
+            [BLOCK.DIRT]: 0x8B5A2B,
+            [BLOCK.STONE]: 0x7F7F7F,
+            [BLOCK.DEEPSLATE]: 0x3A3A3A,
+            [BLOCK.IRON]: 0xD8AF96,
+            [BLOCK.GOLD]: 0xE6D238,
+            [BLOCK.DIAMOND]: 0x33E6CC,
+            [BLOCK.EMERALD]: 0x33CC66,
+            [BLOCK.WATER]: 0x3366FF,
+            [BLOCK.LAVA]: 0xFF4500,
+            [BLOCK.PLANKS]: 0xBA8C5E,
+            [BLOCK.STICK]: 0x9c6b30,
+            [BLOCK.WORKBENCH]: 0x75522e,
+            [BLOCK.WOOD_PICKAXE]: 0xad824b
+        };
+
+        class SimpleNoise {
+            constructor(seed = 12345) {
+                this.seed = seed;
+            }
+            terraced(x, z) {
+                let raw = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2 + Math.sin(x * 0.04) * 1.5;
+                return Math.floor(raw); // Gentle steps
+            }
+            random(x, z) {
+                let xsin = Math.sin(x * 12.9898 + z * 78.233 + this.seed);
+                return xsin - Math.floor(xsin);
+            }
+        }
+
+        const noiseGen = new SimpleNoise(Math.floor(Math.random() * 10000));
+
+        let scene, camera, renderer;
+        let chunks = new Map();
+        let player = {
+            x: 0, y: 35, z: 0,
+            vx: 0, vy: 0, vz: 0,
+            speed: 0.1,
+            width: 0.6,
+            height: 1.8,
+            onGround: false
+        };
+
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let pitch = 0, yaw = 0;
+
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let selectedHotbarSlot = 0;
+
+        let inventory = Array(45).fill(null).map(() => ({ id: BLOCK.AIR, count: 0 }));
+        let craft2x2 = Array(4).fill(null).map(() => ({ id: BLOCK.AIR, count: 0 }));
+        let craft3x3 = Array(9).fill(null).map(() => ({ id: BLOCK.AIR, count: 0 }));
+
+        inventory[0] = { id: BLOCK.WOOD, count: 20 };
+        inventory[1] = { id: BLOCK.DIRT, count: 50 };
+        inventory[2] = { id: BLOCK.STONE, count: 30 };
+
+        const raycaster = new THREE.Raycaster();
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.02);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 40, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = false;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(50, 100, 50);
+            scene.add(dirLight);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function getChunkKey(cx, cz) {
+            return `${cx},${cz}`;
+        }
+
+        function generateChunkData(cx, cz) {
+            let data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+            const seaLevel = 18;
+            const deepslateOffset = 25;
+
+            for (let x = 0; x < CHUNK_SIZE; x++) {
+                for (let z = 0; z < CHUNK_SIZE; z++) {
+                    let worldX = cx * CHUNK_SIZE + x;
+                    let worldZ = cz * CHUNK_SIZE + z;
+                    let baseHeight = 22 + noiseGen.terraced(worldX, worldZ);
+
+                    for (let y = 0; y < CHUNK_HEIGHT; y++) {
+                        let index = x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_HEIGHT;
+
+                        if (y < baseHeight - 3) {
+                            if (y < deepslateOffset) {
+                                let r = noiseGen.random(worldX * 12.5, y * 3.1 + worldZ * 8.2);
+                                if (y < 8 && r < 0.025) data[index] = BLOCK.DIAMOND;
+                                else if (y < 12 && r < 0.035) data[index] = BLOCK.EMERALD;
+                                else if (r < 0.045) data[index] = BLOCK.GOLD;
+                                else if (r < 0.065) data[index] = BLOCK.IRON;
+                                else data[index] = BLOCK.DEEPSLATE;
+                            } else {
+                                let r = noiseGen.random(worldX * 7.1, y * 2.3 + worldZ * 4.9);
+                                if (r < 0.035) data[index] = BLOCK.IRON;
+                                else if (r < 0.02) data[index] = BLOCK.GOLD;
+                                else data[index] = BLOCK.STONE;
+                            }
+                        } else if (y < baseHeight) {
+                            data[index] = BLOCK.DIRT;
+                        } else if (y === baseHeight) {
+                            data[index] = (baseHeight <= seaLevel) ? BLOCK.DIRT : BLOCK.GRASS;
+                        } else if (y <= seaLevel && y > baseHeight) {
+                            data[index] = BLOCK.WATER;
+                        }
+
+                        if (y < 5 && noiseGen.random(worldX * 0.2, worldZ * 0.2) > 0.85) {
+                            data[index] = BLOCK.LAVA;
+                        }
+                    }
+
+                    // Trees with trunk and leaves
+                    if (baseHeight > seaLevel && noiseGen.random(worldX * 41, worldZ * 41) < 0.01) {
+                        let tHeight = 4;
+                        for (let th = 1; th <= tHeight; th++) {
+                            let ty = baseHeight + th;
+                            if (ty < CHUNK_HEIGHT) {
+                                data[x + ty * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_HEIGHT] = BLOCK.WOOD;
+                            }
+                        }
+                        let leafStart = baseHeight + tHeight - 1;
+                        for (let ly = leafStart; ly <= leafStart + 2; ly++) {
+                            let radius = (ly === leafStart + 2) ? 1 : 2;
+                            for (let lx = -radius; lx <= radius; lx++) {
+                                for (let lz = -radius; lz <= radius; lz++) {
+                                    if (x + lx >= 0 && x + lx < CHUNK_SIZE && z + lz >= 0 && z + lz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+                                        let lIndex = (x + lx) + ly * CHUNK_SIZE + (z + lz) * CHUNK_SIZE * CHUNK_HEIGHT;
+                                        if (data[lIndex] === BLOCK.AIR) {
+                                            data[lIndex] = BLOCK.LEAVES;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return data;
+        }
+
+        const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+        const blockMaterials = {};
+
+        function getBlockMaterial(id) {
+            if (blockMaterials[id]) return blockMaterials[id];
+            let color = BLOCK_COLORS[id] || 0xffffff;
+            let mat = new THREE.MeshLambertMaterial({
+                color: color,
+                transparent: id === BLOCK.WATER || id === BLOCK.LAVA || id === BLOCK.LEAVES,
+                opacity: id === BLOCK.WATER ? 0.6 : (id === BLOCK.LAVA ? 0.85 : (id === BLOCK.LEAVES ? 0.9 : 1.0))
+            });
+            blockMaterials[id] = mat;
+            return mat;
+        }
+
+        function createChunkMesh(cx, cz, data) {
+            const group = new THREE.Group();
+            for (let x = 0; x < CHUNK_SIZE; x++) {
+                for (let y = 0; y < CHUNK_HEIGHT; y++) {
+                    for (let z = 0; z < CHUNK_SIZE; z++) {
+                        let index = x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_HEIGHT;
+                        let blockId = data[index];
+                        if (blockId === BLOCK.AIR) continue;
+
+                        let mesh = new THREE.Mesh(blockGeo, getBlockMaterial(blockId));
+                        mesh.position.set(
+                            cx * CHUNK_SIZE + x + 0.5,
+                            y + 0.5,
+                            cz * CHUNK_SIZE + z + 0.5
+                        );
+                        mesh.userData = { cx, cz, x, y, z, blockId };
+                        group.add(mesh);
+                    }
+                }
+            }
+            group.userData = { cx, cz, data };
+            return group;
+        }
+
+        function updateChunks() {
+            let pChunkX = Math.floor(player.x / CHUNK_SIZE);
+            let pChunkZ = Math.floor(player.z / CHUNK_SIZE);
+            let needed = new Set();
+
+            for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
+                for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
+                    let cx = pChunkX + x;
+                    let cz = pChunkZ + z;
+                    let key = getChunkKey(cx, cz);
+                    needed.add(key);
+
+                    if (!chunks.has(key)) {
+                        let data = generateChunkData(cx, cz);
+                        let mesh = createChunkMesh(cx, cz, data);
+                        scene.add(mesh);
+                        chunks.set(key, { mesh, data });
+                    }
+                }
+            }
+
+            for (let [key, chunk] of chunks.entries()) {
+                if (!needed.has(key)) {
+                    scene.remove(chunk.mesh);
+                    chunks.delete(key);
+                }
+            }
+        }
+
+        function getBlockAt(wx, wy, wz) {
+            let cx = Math.floor(wx / CHUNK_SIZE);
+            let cz = Math.floor(wz / CHUNK_SIZE);
+            let chunk = chunks.get(getChunkKey(cx, cz));
+            if (!chunk) return BLOCK.AIR;
+
+            let lx = Math.floor(wx - cx * CHUNK_SIZE);
+            let lz = Math.floor(wz - cz * CHUNK_SIZE);
+            let ly = Math.floor(wy);
+
+            if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || ly < 0 || ly >= CHUNK_HEIGHT) {
+                return BLOCK.AIR;
+            }
+            return chunk.data[lx + ly * CHUNK_SIZE + lz * CHUNK_SIZE * CHUNK_HEIGHT];
+        }
+
+        function isSolid(blockId) {
+            return blockId !== BLOCK.AIR && blockId !== BLOCK.WATER && blockId !== BLOCK.LAVA;
+        }
+
+        function checkCollisionBox(minX, maxX, minY, maxY, minZ, maxZ) {
+            for (let x = Math.floor(minX); x <= Math.floor(maxX); x++) {
+                for (let y = Math.floor(minY); y <= Math.floor(maxY); y++) {
+                    for (let z = Math.floor(minZ); z <= Math.floor(maxZ); z++) {
+                        if (isSolid(getBlockAt(x, y, z))) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        const recipes2x2 = [
+            { input: { [BLOCK.WOOD]: 1 }, output: { id: BLOCK.PLANKS, count: 4 } },
+            { input: { [BLOCK.PLANKS]: 2 }, output: { id: BLOCK.STICK, count: 4 } },
+            { input: { [BLOCK.PLANKS]: 4 }, output: { id: BLOCK.WORKBENCH, count: 1 } }
+        ];
+
+        function checkCrafting2x2() {
+            let counts = {};
+            let total = 0;
+            for (let slot of craft2x2) {
+                if (slot.id !== BLOCK.AIR) {
+                    counts[slot.id] = (counts[slot.id] || 0) + slot.count;
+                    total += slot.count;
+                }
+            }
+            for (let rec of recipes2x2) {
+                let match = true;
+                for (let ing in rec.input) {
+                    if ((counts[ing] || 0) < rec.input[ing]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match && total === Object.values(rec.input).reduce((a,b)=>a+b,0)) {
+                    return rec.output;
+                }
+            }
+            return null;
+        }
+
+        function updateUI() {
+            let hotbarEl = document.getElementById('hotbar');
+            hotbarEl.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                let slot = inventory[i];
+                let isSelected = i === selectedHotbarSlot;
+                let div = document.createElement('div');
+                div.className = `w-12 h-12 rounded-lg flex flex-col items-center justify-center relative cursor-pointer border-2 transition ${
+                    isSelected ? 'border-amber-400 bg-neutral-800 scale-105' : 'border-neutral-700 bg-neutral-900/60 hover:border-neutral-500'
+                }`;
+                div.innerHTML = `
+                    <span class="absolute top-1 left-1.5 text-[10px] text-neutral-400">${i + 1}</span>
+                    <span class="text-xs font-bold text-neutral-200 mt-2 truncate max-w-[40px]">${slot.id !== BLOCK.AIR ? BLOCK_NAMES[slot.id].slice(0, 4) : ''}</span>
+                    ${slot.count > 1 ? `<span class="absolute bottom-1 right-1 text-[10px] font-bold text-amber-300">${slot.count}</span>` : ''}
+                `;
+                hotbarEl.appendChild(div);
+            }
+            document.getElementById('coords-display').innerText = `X: ${Math.floor(player.x)}, Y: ${Math.floor(player.y)}, Z: ${Math.floor(player.z)}`;
+        }
+
+        function renderInventoryModal() {
+            let invGrid = document.getElementById('inv-grid');
+            invGrid.innerHTML = '';
+            for (let i = 9; i < 45; i++) {
+                let slot = inventory[i];
+                let div = document.createElement('div');
+                div.className = "w-10 h-10 bg-neutral-800 border border-neutral-700 rounded-lg flex flex-col items-center justify-center relative cursor-pointer hover:border-amber-400";
+                div.innerHTML = `
+                    <span class="text-[9px] text-neutral-300 truncate max-w-[36px]">${slot.id !== BLOCK.AIR ? BLOCK_NAMES[slot.id].slice(0, 3) : ''}</span>
+                    ${slot.count > 1 ? `<span class="absolute bottom-0.5 right-1 text-[9px] text-amber-300 font-bold">${slot.count}</span>` : ''}
+                `;
+                invGrid.appendChild(div);
+            }
+
+            let invHotbar = document.getElementById('inv-hotbar-grid');
+            invHotbar.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                let slot = inventory[i];
+                let div = document.createElement('div');
+                div.className = "w-10 h-10 bg-neutral-800 border border-neutral-700 rounded-lg flex flex-col items-center justify-center relative cursor-pointer hover:border-amber-400";
+                div.innerHTML = `
+                    <span class="text-[9px] text-neutral-300 truncate max-w-[36px]">${slot.id !== BLOCK.AIR ? BLOCK_NAMES[slot.id].slice(0, 3) : ''}</span>
+                    ${slot.count > 1 ? `<span class="absolute bottom-0.5 right-1 text-[9px] text-amber-300 font-bold">${slot.count}</span>` : ''}
+                `;
+                invHotbar.appendChild(div);
+            }
+
+            let cGrid = document.getElementById('craft-2x2-grid');
+            cGrid.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                let slot = craft2x2[i];
+                let div = document.createElement('div');
+                div.className = "w-10 h-10 bg-neutral-800 border border-neutral-700 rounded-lg flex flex-col items-center justify-center relative cursor-pointer hover:border-amber-400";
+                div.innerHTML = `<span class="text-[9px] text-neutral-300">${slot.id !== BLOCK.AIR ? BLOCK_NAMES[slot.id].slice(0, 3) : ''}</span>`;
+                div.onclick = () => {
+                    let active = inventory[selectedHotbarSlot];
+                    if (active.id !== BLOCK.AIR) {
+                        craft2x2[i] = { id: active.id, count: 1 };
+                        active.count--;
+                        if (active.count <= 0) active.id = BLOCK.AIR;
+                        renderInventoryModal();
+                        updateUI();
+                    }
+                };
+                cGrid.appendChild(div);
+            }
+
+            let output = checkCrafting2x2();
+            let outputEl = document.getElementById('craft-2x2-output');
+            outputEl.innerHTML = output ? `<span class="text-xs font-bold text-amber-400">${BLOCK_NAMES[output.id].slice(0,4)} (${output.count})</span>` : '';
+            outputEl.onclick = () => {
+                if (output) {
+                    addItemToInventory(output.id, output.count);
+                    for(let i=0; i<4; i++) craft2x2[i] = { id: BLOCK.AIR, count: 0 };
+                    renderInventoryModal();
+                    updateUI();
+                }
+            };
+        }
+
+        function addItemToInventory(id, count) {
+            for (let i = 0; i < inventory.length; i++) {
+                if (inventory[i].id === id && inventory[i].count < MAX_STACK) {
+                    let space = MAX_STACK - inventory[i].count;
+                    let add = Math.min(space, count);
+                    inventory[i].count += add;
+                    count -= add;
+                    if (count === 0) return true;
+                }
+            }
+            for (let i = 0; i < inventory.length; i++) {
+                if (inventory[i].id === BLOCK.AIR) {
+                    inventory[i].id = id;
+                    inventory[i].count = Math.min(MAX_STACK, count);
+                    count -= inventory[i].count;
+                    if (count === 0) return true;
+                }
+            }
+            return false;
+        }
+
+        function initControls() {
+            const container = document.getElementById('canvas-container');
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    isDragging = true;
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                let deltaX = e.clientX - previousMousePosition.x;
+                let deltaY = e.clientY - previousMousePosition.y;
+
+                yaw -= deltaX * 0.003;
+                pitch -= deltaY * 0.003;
+                pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+
+                camera.rotation.order = 'YXZ';
+                camera.rotation.y = yaw;
+                camera.rotation.x = pitch;
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (e.button === 0) isDragging = false;
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = true;
+                if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = true;
+                if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = true;
+                if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = true;
+                if (e.code === 'Space' && player.onGround) {
+                    player.vy = 0.22;
+                    player.onGround = false;
+                }
+
+                if (e.code === 'KeyE' || e.code === 'KeyI') {
+                    let modal = document.getElementById('inventory-modal');
+                    if (modal.classList.contains('hidden')) {
+                        modal.classList.remove('hidden');
+                        renderInventoryModal();
+                    } else {
+                        modal.classList.add('hidden');
+                    }
+                }
+
+                if (e.code >= 'Digit1' && e.code <= 'Digit9') {
+                    selectedHotbarSlot = parseInt(e.code[5]) - 1;
+                    updateUI();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = false;
+                if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = false;
+                if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = false;
+                if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = false;
+            });
+
+            window.addEventListener('click', (e) => {
+                if (e.button !== 0) return;
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                let intersects = [];
+                for (let [key, chunk] of chunks.entries()) {
+                    let hits = raycaster.intersectObjects(chunk.mesh.children);
+                    intersects.push(...hits);
+                }
+
+                if (intersects.length > 0) {
+                    let hit = intersects[0];
+                    if (hit.distance <= 6) {
+                        let data = hit.object.userData;
+                        let blockId = data.blockId;
+                        let cx = data.cx, cz = data.cz, x = data.x, y = data.y, z = data.z;
+                        let index = x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_HEIGHT;
+
+                        let chunk = chunks.get(getChunkKey(cx, cz));
+                        if (chunk) {
+                            chunk.data[index] = BLOCK.AIR;
+                            scene.remove(chunk.mesh);
+                            chunk.mesh = createChunkMesh(cx, cz, chunk.data);
+                            scene.add(chunk.mesh);
+
+                            addItemToInventory(blockId, 1);
+                            updateUI();
+                        }
+                    }
+                }
+            });
+
+            window.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                let intersects = [];
+                for (let [key, chunk] of chunks.entries()) {
+                    let hits = raycaster.intersectObjects(chunk.mesh.children);
+                    intersects.push(...hits);
+                }
+
+                if (intersects.length > 0) {
+                    let hit = intersects[0];
+                    if (hit.distance <= 6) {
+                        let data = hit.object.userData;
+                        if (data.blockId === BLOCK.WORKBENCH) {
+                            document.getElementById('workbench-modal').classList.remove('hidden');
+                            return;
+                        }
+
+                        let activeItem = inventory[selectedHotbarSlot];
+                        if (activeItem.id === BLOCK.AIR || activeItem.count <= 0) return;
+
+                        let normal = hit.face.normal;
+                        let p = hit.point.clone().add(normal.clone().multiplyScalar(0.5));
+                        let placeX = Math.floor(p.x);
+                        let placeY = Math.floor(p.y);
+                        let placeZ = Math.floor(p.z);
+
+                        let hw = player.width / 2;
+                        if (placeX + 0.5 > player.x - hw && placeX - 0.5 < player.x + hw &&
+                            placeY + 0.5 > player.y - player.height && placeY - 0.5 < player.y &&
+                            placeZ + 0.5 > player.z - hw && placeZ - 0.5 < player.z + hw) {
+                            return;
+                        }
+
+                        let cx = Math.floor(placeX / CHUNK_SIZE);
+                        let cz = Math.floor(placeZ / CHUNK_SIZE);
+                        let localX = placeX - cx * CHUNK_SIZE;
+                        let localZ = placeZ - cz * CHUNK_SIZE;
+
+                        let chunk = chunks.get(getChunkKey(cx, cz));
+                        if (chunk && placeY >= 0 && placeY < CHUNK_HEIGHT) {
+                            let index = localX + placeY * CHUNK_SIZE + localZ * CHUNK_SIZE * CHUNK_HEIGHT;
+                            if (chunk.data[index] === BLOCK.AIR) {
+                                chunk.data[index] = activeItem.id;
+                                scene.remove(chunk.mesh);
+                                chunk.mesh = createChunkMesh(cx, cz, chunk.data);
+                                scene.add(chunk.mesh);
+
+                                activeItem.count--;
+                                if (activeItem.count <= 0) activeItem.id = BLOCK.AIR;
+                                updateUI();
+                            }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('start-btn').addEventListener('click', () => {
+                document.getElementById('start-screen').classList.add('hidden');
+            });
+
+            document.getElementById('close-inv').addEventListener('click', () => {
+                document.getElementById('inventory-modal').classList.add('hidden');
+            });
+
+            document.getElementById('close-wb').addEventListener('click', () => {
+                document.getElementById('workbench-modal').classList.add('hidden');
+            });
+        }
+
+        function updatePlayer() {
+            let speed = player.speed;
+            let forward = 0, right = 0;
+            if (moveForward) forward += 1;
+            if (moveBackward) forward -= 1;
+            if (moveRight) right += 1;
+            if (moveLeft) right -= 1;
+
+            let vx = 0, vz = 0;
+            if (forward !== 0 || right !== 0) {
+                let sinY = Math.sin(yaw);
+                let cosY = Math.cos(yaw);
+                
+                // Correct camera-relative movement calculation
+                let dirX = -sinY * forward + cosY * right;
+                let dirZ = -cosY * forward - sinY * right;
+                
+                let len = Math.sqrt(dirX * dirX + dirZ * dirZ);
+                if (len > 0) {
+                    vx = (dirX / len) * speed;
+                    vz = (dirZ / len) * speed;
+                }
+            }
+
+            let hw = player.width / 2;
+            let nextX = player.x + vx;
+            if (!checkCollisionBox(nextX - hw, nextX + hw, player.y - player.height, player.y, player.z - hw, player.z + hw)) {
+                player.x = nextX;
+            }
+
+            let nextZ = player.z + vz;
+            if (!checkCollisionBox(player.x - hw, player.x + hw, player.y - player.height, player.y, nextZ - hw, nextZ + hw)) {
+                player.z = nextZ;
+            }
+
+            player.vy -= 0.012;
+            let nextY = player.y + player.vy;
+
+            if (player.vy < 0) {
+                if (checkCollisionBox(player.x - hw, player.x + hw, nextY - player.height, nextY, player.z - hw, player.z + hw)) {
+                    player.y = Math.floor(nextY - player.height) + player.height + 1;
+                    player.vy = 0;
+                    player.onGround = true;
+                } else {
+                    player.y = nextY;
+                    player.onGround = false;
+                }
+            } else if (player.vy > 0) {
+                if (checkCollisionBox(player.x - hw, player.x + hw, nextY - player.height, nextY, player.z - hw, player.z + hw)) {
+                    player.vy = 0;
+                } else {
+                    player.y = nextY;
+                    player.onGround = false;
+                }
+            }
+
+            camera.position.set(player.x, player.y - 0.2, player.z);
+            updateChunks();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePlayer();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            initThree();
+            initControls();
+            updateChunks();
+            updateUI();
+            animate();
+        };
+    </script>
+</body>
+</html>

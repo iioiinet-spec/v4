@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Cuphead Ultimate + Floral Fury</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a120b;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #f4e8c1;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            flex-direction: column;
+        }
+        canvas {
+            border: 4px solid #f4e8c1;
+            background: #2b3d1f; /* 꽃 스테이지 풍의 짙은 초록빛 배경 */
+            box-shadow: 0 0 25px rgba(0,0,0,0.9);
+        }
+        .instructions {
+            margin-top: 10px;
+            font-size: 13px;
+            text-align: center;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+    <div class="instructions">
+        <strong>이동:</strong> 방향키(← →) | <strong>점프/패리:</strong> Z (공중에서 Z: 패리)<br>
+        <strong>대시:</strong> X | <strong>슈팅:</strong> C | <strong>필살기(슈퍼):</strong> 스페이스바<br>
+        <strong>무기 변경:</strong> [1] 기본탄 [2] 확산탄 [3] 유도탄 | <strong>보스 변경(Q):</strong> 슬라임 ➔ 개구리 ➔ 🌸꽃(카라네이션)
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let player = {
+            x: 100, y: 310, width: 35, height: 45,
+            vx: 0, vy: 0, speed: 5, jumpPower: -11,
+            isGrounded: false, canParry: true, facing: 'right',
+            maxHp: 3, hp: 3, isHit: false, hitTimer: 0,
+            weapon: 1, superMeter: 0
+        };
+
+        let bullets = [];
+        let superBeams = [];
+        let pinkObjects = [];
+        let bossProjectiles = []; // 보스 특수 공격 (꽃잎 등)
+        let gameState = 'PLAYING';
+
+        // 보스 타입 관리 (1: 슬라임, 2: 개구리, 3: 카라네이션/꽃)
+        let bossType = 1;
+        let boss = {
+            name: "GOOPY SLIME",
+            x: 600, y: 280, width: 70, height: 70,
+            maxHealth: 50, health: 50,
+            vx: -2, vy: 0, isGrounded: true, timer: 0, color: '#2ecc71'
+        };
+
+        let keys = {};
+
+        window.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            if (gameState !== 'PLAYING') return;
+
+            if (e.code === 'Digit1') player.weapon = 1;
+            if (e.code === 'Digit2') player.weapon = 2;
+            if (e.code === 'Digit3') player.weapon = 3;
+
+            // 보스 순환 변경 (1 ➔ 2 ➔ 3 ➔ 1)
+            if (e.code === 'KeyQ') {
+                bossType = bossType >= 3 ? 1 : bossType + 1;
+                bossProjectiles = []; // 투사체 초기화
+                if (bossType === 1) {
+                    boss.name = "GOOPY SLIME";
+                    boss.width = 70; boss.height = 70;
+                    boss.maxHealth = 50; boss.health = 50;
+                    boss.color = '#2ecc71';
+                } else if (bossType === 2) {
+                    boss.name = "FROG BROTHERS";
+                    boss.width = 80; boss.height = 80;
+                    boss.maxHealth = 70; boss.health = 70;
+                    boss.color = '#3498db';
+                } else if (bossType === 3) {
+                    boss.name = "CAGNEY CARNATION (꽃의 분노)";
+                    boss.width = 75; boss.height = 90;
+                    boss.maxHealth = 90; boss.health = 90;
+                    boss.color = '#e74c3c'; // 붉은 악마 같은 꽃
+                    boss.x = 620; boss.y = 265;
+                }
+            }
+
+            if (e.code === 'KeyZ') {
+                if (player.isGrounded) {
+                    player.vy = player.jumpPower;
+                    player.isGrounded = false;
+                    player.canParry = true;
+                } else if (player.canParry) {
+                    pinkObjects.forEach(obj => {
+                        let dist = Math.hypot((player.x + player.width/2) - obj.x, (player.y + player.height/2) - obj.y);
+                        if (dist < 45 && obj.active) {
+                            player.vy = -10;
+                            obj.active = false;
+                            player.canParry = false;
+                            player.superMeter = Math.min(100, player.superMeter + 25);
+                        }
+                    });
+                }
+            }
+            if (e.code === 'KeyX') {
+                player.vx = player.facing === 'right' ? 12 : -12;
+                setTimeout(() => { player.vx = 0; }, 150);
+            }
+            if (e.code === 'KeyC') {
+                let bx = player.facing === 'right' ? player.x + player.width : player.x - 10;
+                let by = player.y + 18;
+
+                if (player.weapon === 1) {
+                    bullets.push({ x: bx, y: by, vx: player.facing === 'right' ? 12 : -12, vy: 0, radius: 5, type: 1 });
+                } else if (player.weapon === 2) {
+                    let dir = player.facing === 'right' ? 1 : -1;
+                    bullets.push({ x: bx, y: by, vx: 12 * dir, vy: -2, radius: 4, type: 2 });
+                    bullets.push({ x: bx, y: by, vx: 12 * dir, vy: 0, radius: 4, type: 2 });
+                    bullets.push({ x: bx, y: by, vx: 12 * dir, vy: 2, radius: 4, type: 2 });
+                } else if (player.weapon === 3) {
+                    bullets.push({ x: bx, y: by, vx: player.facing === 'right' ? 6 : -6, vy: 0, radius: 5, type: 3 });
+                }
+            }
+
+            if (e.code === 'Space' && player.superMeter >= 100) {
+                player.superMeter = 0;
+                superBeams.push({
+                    x: player.facing === 'right' ? player.x + player.width : player.x - 200,
+                    y: player.y - 20,
+                    width: 200, height: 60,
+                    dir: player.facing,
+                    life: 30
+                });
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            keys[e.code] = false;
+        });
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            if (player.isHit) {
+                player.hitTimer++;
+                if (player.hitTimer > 60) { player.isHit = false; player.hitTimer = 0; }
+            }
+
+            if (!keys['KeyX']) {
+                if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = 'left'; }
+                else if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 'right'; }
+                else { player.vx = 0; }
+            }
+
+            player.x += player.vx;
+            player.vy += 0.5;
+            player.y += player.vy;
+
+            if (player.y + player.height > 355) {
+                player.y = 355 - player.height;
+                player.vy = 0;
+                player.isGrounded = true;
+                player.canParry = true;
+            }
+
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+
+            // 보스별 맞춤 패턴 AI
+            boss.timer++;
+            if (bossType === 1 || bossType === 2) {
+                // 슬라임 & 개구리: 점프 이동 패턴
+                if (boss.isGrounded && boss.timer > 70) {
+                    boss.vy = bossType === 1 ? -10 : -12;
+                    boss.vx = (player.x < boss.x) ? -3.5 : 3.5;
+                    boss.isGrounded = false;
+                    boss.timer = 0;
+                }
+                boss.vy += 0.45;
+                boss.x += boss.vx;
+                boss.y += boss.vy;
+
+                if (boss.y + boss.height > 355) {
+                    boss.y = 355 - boss.height;
+                    boss.vy = 0; boss.vx = 0;
+                    boss.isGrounded = true;
+                }
+                if (boss.x < 100) { boss.x = 100; boss.vx *= -1; }
+                if (boss.x > canvas.width - 100) { boss.x = canvas.width - 100; boss.vx *= -1; }
+
+            } else if (bossType === 3) {
+                // 🌸 카라네이션 (꽃): 제자리에 고정되어 원거리 공격 난사 (부메랑 꽃잎 & 가시 줄기)
+                boss.isGrounded = true;
+                boss.x = 650; boss.y = 265; // 고정 위치
+
+                // 주기적으로 부메랑 꽃잎 발사
+                if (boss.timer % 90 === 0) {
+                    bossProjectiles.push({
+                        x: boss.x, y: boss.y + 20,
+                        vx: -5, vy: -1, radius: 10, type: 'petal'
+                    });
+                }
+                // 주기적으로 플레이어 위치 아래에서 솟구치는 가시 줄기 생성
+                if (boss.timer % 120 === 0) {
+                    bossProjectiles.push({
+                        x: player.x, y: 355,
+                        width: 30, height: 0, maxHeight: 120,
+                        type: 'thorn', state: 'rising', timer: 0
+                    });
+                }
+            }
+
+            // 보스 투사체 업데이트
+            bossProjectiles.forEach((bp, pIdx) => {
+                if (bp.type === 'petal') {
+                    bp.x += bp.vx;
+                    bp.y += bp.vy;
+                    if (bp.x < 0) bossProjectiles.splice(pIdx, 1);
+                } else if (bp.type === 'thorn') {
+                    if (bp.state === 'rising') {
+                        bp.height += 6;
+                        if (bp.height >= bp.maxHeight) bp.state = 'stay';
+                    } else if (bp.state === 'stay') {
+                        bp.timer++;
+                        if (bp.timer > 40) bp.state = 'falling';
+                    } else if (bp.state === 'falling') {
+                        bp.height -= 6;
+                        if (bp.height <= 0) bossProjectiles.splice(pIdx, 1);
+                    }
+                }
+
+                // 플레이어와 투사체 충돌 체크
+                if (!player.isHit) {
+                    let hit = false;
+                    if (bp.type === 'petal') {
+                        hit = Math.hypot((player.x + player.width/2) - bp.x, (player.y + player.height/2) - bp.y) < bp.radius + 15;
+                    } else if (bp.type === 'thorn') {
+                        let thornY = 355 - bp.height;
+                        hit = (player.x < bp.x + bp.width && player.x + player.width > bp.x &&
+                               player.y + player.height > thornY && player.y < 355);
+                    }
+                    if (hit) {
+                        player.hp--;
+                        player.isHit = true;
+                        if (player.hp <= 0) { player.hp = 0; gameState = 'GAMEOVER'; }
+                    }
+                }
+            });
+
+            // 플레이어와 보스 몸체 충돌 체크
+            if (!player.isHit) {
+                let isColliding = (
+                    player.x < boss.x + boss.width &&
+                    player.x + player.width > boss.x &&
+                    player.y < boss.y + boss.height &&
+                    player.y + player.height > boss.y
+                );
+                if (isColliding) {
+                    player.hp--;
+                    player.isHit = true;
+                    if (player.hp <= 0) { player.hp = 0; gameState = 'GAMEOVER'; }
+                }
+            }
+
+            // 패리 오브젝트
+            if (Math.random() < 0.012 && pinkObjects.length === 0) {
+                pinkObjects.push({ x: 400, y: 170, radius: 14, vx: 2, active: true });
+            }
+            pinkObjects.forEach((obj, idx) => {
+                obj.x += obj.vx;
+                if (obj.x > canvas.width || obj.x < 0) pinkObjects.splice(idx, 1);
+            });
+
+            // 총알 처리
+            bullets.forEach((b, bIdx) => {
+                if (b.type === 3) {
+                    let targetAngle = Math.atan2((boss.y + boss.height/2) - b.y, (boss.x + boss.width/2) - b.x);
+                    b.vx = Math.cos(targetAngle) * 8;
+                    b.vy = Math.sin(targetAngle) * 8;
+                }
+                b.x += b.vx;
+                b.y += (b.vy || 0);
+
+                if (b.x > canvas.width || b.x < 0 || b.y < 0 || b.y > canvas.height) {
+                    bullets.splice(bIdx, 1);
+                    return;
+                }
+
+                if (b.x > boss.x && b.x < boss.x + boss.width &&
+                    b.y > boss.y && b.y < boss.y + boss.height) {
+                    if (boss.health > 0) {
+                        boss.health -= 1;
+                        player.superMeter = Math.min(100, player.superMeter + 2);
+                        if (boss.health <= 0) { boss.health = 0; gameState = 'VICTORY'; }
+                    }
+                    bullets.splice(bIdx, 1);
+                }
+            });
+
+            // 필살기 빔 처리
+            superBeams.forEach((beam, bIdx) => {
+                beam.life--;
+                if (beam.life <= 0) { superBeams.splice(bIdx, 1); return; }
+                let bxRange = beam.dir === 'right' ? [beam.x, beam.x + beam.width] : [beam.x - beam.width, beam.x];
+                if (boss.x < bxRange[1] && boss.x + boss.width > bxRange[0] &&
+                    boss.y < beam.y + beam.height && boss.y + boss.height > beam.y) {
+                    boss.health -= 0.5;
+                    if (boss.health <= 0) { boss.health = 0; gameState = 'VICTORY'; }
+                }
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 무대 배경
+            ctx.fillStyle = '#1e2b14';
+            ctx.fillRect(0, 355, canvas.width, 95);
+            ctx.strokeStyle = '#8bc34a';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 355); ctx.lineTo(canvas.width, 355);
+            ctx.stroke();
+
+            // 플레이어 렌더링
+            if (!player.isHit || Math.floor(player.hitTimer / 5) % 2 === 0) {
+                ctx.fillStyle = '#d9381e';
+                ctx.fillRect(player.x, player.y + 22, player.width, player.height - 22);
+                ctx.fillStyle = '#fdfdfd';
+                ctx.beginPath();
+                ctx.arc(player.x + player.width/2, player.y + 16, 16, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#d9381e';
+                ctx.fillRect(player.facing === 'right' ? player.x + 22 : player.x + 6, player.y - 6, 6, 18);
+            }
+
+            // 총알 렌더링
+            bullets.forEach(b => {
+                ctx.fillStyle = b.type === 1 ? '#f1c40f' : (b.type === 2 ? '#e67e22' : '#9b59b6');
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 필살기 빔
+            superBeams.forEach(beam => {
+                ctx.fillStyle = 'rgba(52, 152, 219, 0.8)';
+                let rx = beam.dir === 'right' ? beam.x : beam.x - beam.width;
+                ctx.fillRect(rx, beam.y, beam.width, beam.height);
+            });
+
+            // 보스 투사체 (꽃잎 및 가시 줄기)
+            bossProjectiles.forEach(bp => {
+                if (bp.type === 'petal') {
+                    ctx.fillStyle = '#ffeb3b';
+                    ctx.beginPath();
+                    ctx.arc(bp.x, bp.y, bp.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#e91e63';
+                    ctx.stroke();
+                } else if (bp.type === 'thorn') {
+                    ctx.fillStyle = '#8bc34a';
+                    let thornY = 355 - bp.height;
+                    ctx.fillRect(bp.x, thornY, bp.width, bp.height);
+                }
+            });
+
+            // 패리 오브젝트
+            pinkObjects.forEach(obj => {
+                if (!obj.active) return;
+                ctx.fillStyle = '#ff69b4';
+                ctx.beginPath();
+                ctx.arc(obj.x, obj.y, obj.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // 보스 렌더링 (꽃 형태 디자인 추가)
+            ctx.fillStyle = boss.color;
+            if (bossType === 3) {
+                // 카라네이션(꽃) 디자인
+                ctx.beginPath();
+                ctx.arc(boss.x + boss.width/2, boss.y + 30, 35, 0, Math.PI * 2);
+                ctx.fill();
+                // 줄기
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(boss.x + boss.width/2 - 6, boss.y + 50, 12, 45);
+            } else {
+                ctx.beginPath();
+                ctx.roundRect(boss.x, boss.y, boss.width, boss.height, [20, 20, 10, 10]);
+                ctx.fill();
+            }
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // UI (체력바)
+            ctx.fillStyle = '#444';
+            ctx.fillRect(200, 25, 400, 14);
+            ctx.fillStyle = '#e74c3c';
+            let healthPercent = Math.max(0, boss.health / boss.maxHealth);
+            ctx.fillRect(202, 27, 396 * healthPercent, 10);
+
+            ctx.fillStyle = '#f4e8c1';
+            ctx.font = 'bold 14px "Courier New"';
+            ctx.fillText(`BOSS: ${boss.name}`, 200, 18);
+
+            ctx.fillText("HP: ", 30, 35);
+            for (let i = 0; i < player.maxHp; i++) {
+                ctx.fillStyle = i < player.hp ? '#e74c3c' : '#555';
+                ctx.beginPath();
+                ctx.arc(65 + (i * 22), 30, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillText(`WEAPON: [${player.weapon}] ${player.weapon === 1 ? 'Peashooter' : (player.weapon === 2 ? 'Spread' : 'Chaser')}`, 30, 60);
+            ctx.fillText(`SUPER: ${Math.floor(player.superMeter)}% ${player.superMeter >= 100 ? '(READY! SPACE)' : ''}`, 30, 85);
+
+            if (gameState === 'VICTORY') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#f1c40f';
+                ctx.font = 'bold 48px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText("A KNOCKOUT!", canvas.width / 2, canvas.height / 2);
+                ctx.textAlign = 'left';
+            }
+            if (gameState === 'GAMEOVER') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = 'bold 48px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText("YOU DIED", canvas.width / 2, canvas.height / 2);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

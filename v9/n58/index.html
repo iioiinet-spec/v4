@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>2D 탑뷰 배틀로얄 - 보스 & 난전 에디션</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 5px; font-size: 24px; color: #ff4757; }
+        #ui {
+            font-size: 16px;
+            margin-bottom: 12px;
+            background: #2f3542;
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        canvas {
+            background-color: #2f3640;
+            border: 3px solid #718093;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            cursor: crosshair;
+            display: block;
+            margin: 0 auto;
+        }
+        .controls {
+            margin-top: 10px;
+            color: #a4b0be;
+            font-size: 14px;
+        }
+        .item-guide {
+            margin-top: 5px;
+            font-size: 13px;
+            color: #dfe4ea;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>BATTLE ROYALE: BOSS WARS</h1>
+    <div id="ui">
+        생존자: <span id="survivorCount">31</span>명 | 
+        체력: <span id="playerHp">150</span>/<span id="playerMaxHp">150</span> | 
+        보호막: <span id="playerShield">0</span> | 
+        공격력: <span id="playerDamage">25</span>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="controls">이동: W, A, S, D | 공격: 마우스 좌클릭</div>
+    <div class="item-guide">🎁 아이템 - 🟢 체력회복 | 🟠 공격력증가 | 🔵 보호막생성 (🟣 보스 처치 시 대량 드랍!)</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const survivorCountEl = document.getElementById('survivorCount');
+        const playerHpEl = document.getElementById('playerHp');
+        const playerMaxHpEl = document.getElementById('playerMaxHp');
+        const playerShieldEl = document.getElementById('playerShield');
+        const playerDamageEl = document.getElementById('playerDamage');
+
+        const WORLD_SIZE = 2000;
+
+        let player = {
+            x: WORLD_SIZE / 2,
+            y: WORLD_SIZE / 2,
+            radius: 12,
+            speed: 3.5,
+            hp: 150,
+            maxHp: 150,
+            shield: 0,
+            maxShield: 60,
+            damage: 25,
+            color: '#2ed573',
+            alive: true
+        };
+
+        let keys = { w: false, a: false, s: false, d: false };
+        let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, down: false };
+
+        let bullets = [];
+        let bots = [];
+        let items = [];
+
+        let zone = {
+            x: WORLD_SIZE / 2,
+            y: WORLD_SIZE / 2,
+            radius: 1000,
+            targetRadius: 150,
+            shrinkSpeed: 0.1
+        };
+
+        // 봇 생성 (30명 중 1명은 보스)
+        function initBots() {
+            bots = [];
+            for (let i = 0; i < 30; i++) {
+                let angle = Math.random() * Math.PI * 2;
+                let dist = 300 + Math.random() * 800;
+                let isBoss = (i === 0); // 첫 번째 봇을 보스로 설정
+
+                bots.push({
+                    id: i,
+                    x: WORLD_SIZE / 2 + Math.cos(angle) * dist,
+                    y: WORLD_SIZE / 2 + Math.sin(angle) * dist,
+                    radius: isBoss ? 20 : 12,
+                    speed: isBoss ? 1.1 : (1.4 + Math.random() * 0.9),
+                    hp: isBoss ? 200 : 50,
+                    maxHp: isBoss ? 200 : 50,
+                    damage: isBoss ? 20 : 12,
+                    isBoss: isBoss,
+                    color: isBoss ? '#9b59b6' : '#ff4757', // 보스는 보라색
+                    alive: true,
+                    shootTimer: Math.random() * 100
+                });
+            }
+        }
+
+        function dropItem(x, y, count = 1) {
+            for (let c = 0; c < count; c++) {
+                const types = ['heal', 'damage', 'shield'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                items.push({
+                    x: x + (Math.random() - 0.5) * 30,
+                    y: y + (Math.random() - 0.5) * 30,
+                    radius: 8,
+                    type: type
+                });
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'w' || e.key === 'W') keys.w = true;
+            if (e.key === 'a' || e.key === 'A') keys.a = true;
+            if (e.key === 's' || e.key === 'S') keys.s = true;
+            if (e.key === 'd' || e.key === 'D') keys.d = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'w' || e.key === 'W') keys.w = false;
+            if (e.key === 'a' || e.key === 'A') keys.a = false;
+            if (e.key === 's' || e.key === 'S') keys.s = false;
+            if (e.key === 'd' || e.key === 'D') keys.d = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            if (!player.alive) return;
+            shootBullet(player.x, player.y, mouse.worldX, mouse.worldY, 'player', player.damage);
+        });
+
+        function shootBullet(startX, startY, targetX, targetY, shooterType, dmg, shooterId = null) {
+            const angle = Math.atan2(targetY - startY, targetX - startX);
+            bullets.push({
+                x: startX,
+                y: startY,
+                vx: Math.cos(angle) * 8.5,
+                vy: Math.sin(angle) * 8.5,
+                shooterType: shooterType, // 'player' 또는 'bot'
+                shooterId: shooterId,
+                damage: dmg,
+                radius: 4,
+                range: 480,
+                traveled: 0
+            });
+        }
+
+        function update() {
+            if (!player.alive) return;
+
+            // 플레이어 이동
+            let dx = 0, dy = 0;
+            if (keys.w) dy -= 1;
+            if (keys.s) dy += 1;
+            if (keys.a) dx -= 1;
+            if (keys.d) dx += 1;
+
+            if (dx !== 0 && dy !== 0) {
+                dx *= 0.7071;
+                dy *= 0.7071;
+            }
+
+            player.x += dx * player.speed;
+            player.y += dy * player.speed;
+
+            player.x = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.y));
+
+            mouse.worldX = mouse.x + (player.x - canvas.width / 2);
+            mouse.worldY = mouse.y + (player.y - canvas.height / 2);
+
+            // 자기장 축소
+            if (zone.radius > zone.targetRadius) {
+                zone.radius -= zone.shrinkSpeed;
+            }
+
+            if (Math.hypot(player.x - zone.x, player.y - zone.y) > zone.radius) {
+                player.hp -= 0.15;
+            }
+
+            // 봇 AI 및 봇 간 전투 업데이트
+            bots.forEach(bot => {
+                if (!bot.alive) return;
+
+                // 가장 가까운 타겟 찾기 (플레이어 혹은 다른 살아있는 봇)
+                let targets = [];
+                if (player.alive) {
+                    targets.push({ x: player.x, y: player.y, type: 'player', dist: Math.hypot(player.x - bot.x, player.y - bot.y) });
+                }
+                bots.forEach(other => {
+                    if (other.alive && other.id !== bot.id) {
+                        targets.push({ x: other.x, y: other.y, type: 'bot', id: other.id, dist: Math.hypot(other.x - bot.x, other.y - bot.y) });
+                    }
+                });
+
+                // 가장 가까운 타겟 정렬
+                targets.sort((a, b) => a.dist - b.dist);
+
+                if (targets.length > 0 && targets[0].dist < 450) {
+                    let target = targets[0];
+                    let targetAngle = Math.atan2(target.y - bot.y, target.x - bot.x);
+                    
+                    // 사정거리 내에 있으면 이동하며 공격
+                    bot.shootTimer++;
+                    let fireRate = bot.isBoss ? 60 : 90; // 보스가 더 자주 공격
+                    if (bot.shootTimer > fireRate) {
+                        shootBullet(bot.x, bot.y, target.x, target.y, 'bot', bot.damage, bot.id);
+                        bot.shootTimer = 0;
+                    }
+
+                    // 타겟에게 접근
+                    bot.x += Math.cos(targetAngle) * bot.speed;
+                    bot.y += Math.sin(targetAngle) * bot.speed;
+                } else {
+                    // 주변에 타겟이 없으면 안전지대 중심 방향으로 이동
+                    let centerAngle = Math.atan2(zone.y - bot.y, zone.x - bot.x) + (Math.random() - 0.5) * 0.5;
+                    bot.x += Math.cos(centerAngle) * bot.speed;
+                    bot.y += Math.sin(centerAngle) * bot.speed;
+                }
+
+                // 자기장 대미지
+                if (Math.hypot(bot.x - zone.x, bot.y - zone.y) > zone.radius) {
+                    bot.hp -= 0.12;
+                    if (bot.hp <= 0) {
+                        bot.alive = false;
+                        dropItem(bot.x, bot.y, bot.isBoss ? 3 : 1);
+                    }
+                }
+            });
+
+            // 아이템 획득 체크
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                if (Math.hypot(player.x - item.x, player.y - item.y) < player.radius + item.radius + 5) {
+                    if (item.type === 'heal') player.hp = Math.min(player.maxHp, player.hp + 50);
+                    else if (item.type === 'damage') player.damage += 10;
+                    else if (item.type === 'shield') player.shield = Math.min(player.maxShield, player.shield + 30);
+                    items.splice(i, 1);
+                }
+            }
+
+            // 총알 업데이트 및 충돌 검사
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                b.traveled += Math.hypot(b.vx, b.vy);
+
+                if (b.traveled > b.range) {
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                if (b.shooterType === 'player') {
+                    // 플레이어 총알 -> 봇 피격
+                    let hit = false;
+                    for (let bot of bots) {
+                        if (bot.alive && Math.hypot(b.x - bot.x, b.y - bot.y) < bot.radius + b.radius) {
+                            bot.hp -= b.damage;
+                            if (bot.hp <= 0) {
+                                bot.alive = false;
+                                dropItem(bot.x, bot.y, bot.isBoss ? 3 : 1);
+                            }
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (hit) {
+                        bullets.splice(i, 1);
+                        continue;
+                    }
+                } else {
+                    // 봇 총알 -> 플레이어 피격
+                    if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) < player.radius + b.radius) {
+                        let incomingDamage = b.damage;
+                        if (player.shield > 0) {
+                            if (player.shield >= incomingDamage) {
+                                player.shield -= incomingDamage;
+                                incomingDamage = 0;
+                            } else {
+                                incomingDamage -= player.shield;
+                                player.shield = 0;
+                            }
+                        }
+                        player.hp -= incomingDamage;
+                        bullets.splice(i, 1);
+                        continue;
+                    }
+
+                    // 봇 총알 -> 다른 봇 피격 (봇끼리 교전!)
+                    let hitBot = false;
+                    for (let bot of bots) {
+                        if (bot.alive && bot.id !== b.shooterId && Math.hypot(b.x - bot.x, b.y - bot.y) < bot.radius + b.radius) {
+                            bot.hp -= b.damage;
+                            if (bot.hp <= 0) {
+                                bot.alive = false;
+                                dropItem(bot.x, bot.y, bot.isBoss ? 3 : 1);
+                            }
+                            hitBot = true;
+                            break;
+                        }
+                    }
+                    if (hitBot) {
+                        bullets.splice(i, 1);
+                        continue;
+                    }
+                }
+            }
+
+            if (player.hp <= 0) player.alive = false;
+
+            let aliveCount = bots.filter(b => b.alive).length + (player.alive ? 1 : 0);
+            survivorCountEl.innerText = aliveCount;
+            playerHpEl.innerText = Math.max(0, Math.ceil(player.hp));
+            playerMaxHpEl.innerText = player.maxHp;
+            playerShieldEl.innerText = Math.ceil(player.shield);
+            playerDamageEl.innerText = player.damage;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2 - player.x, canvas.height / 2 - player.y);
+
+            // 1. 그리드 배경
+            ctx.strokeStyle = '#353b48';
+            ctx.lineWidth = 1;
+            const gridSize = 100;
+            for (let x = 0; x <= WORLD_SIZE; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_SIZE); ctx.stroke();
+            }
+            for (let y = 0; y <= WORLD_SIZE; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_SIZE, y); ctx.stroke();
+            }
+
+            // 2. 자기장
+            ctx.strokeStyle = 'rgba(235, 77, 75, 0.6)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(235, 77, 75, 0.08)';
+            ctx.fill();
+
+            // 3. 아이템
+            items.forEach(item => {
+                ctx.beginPath();
+                ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                if (item.type === 'heal') ctx.fillStyle = '#2ed573';
+                else if (item.type === 'damage') ctx.fillStyle = '#ffa502';
+                else if (item.type === 'shield') ctx.fillStyle = '#1e90ff';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            });
+
+            // 4. 봇 (보스 및 일반 봇)
+            bots.forEach(bot => {
+                if (!bot.alive) return;
+                
+                // 보스일 경우 특별한 오라 표시
+                if (bot.isBoss) {
+                    ctx.strokeStyle = 'rgba(155, 89, 182, 0.6)';
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.arc(bot.x, bot.y, bot.radius + 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = bot.color;
+                ctx.beginPath();
+                ctx.arc(bot.x, bot.y, bot.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // 5. 플레이어
+            if (player.alive) {
+                if (player.shield > 0) {
+                    ctx.strokeStyle = 'rgba(30, 144, 255, 0.7)';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(player.x, player.y, player.radius + 4, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(mouse.worldX, mouse.worldY);
+                ctx.stroke();
+            }
+
+            // 6. 총알
+            ctx.fillStyle = '#fbc531';
+            bullets.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.restore();
+
+            // 게임 오버 / 승리 화면
+            let aliveCount = bots.filter(b => b.alive).length + (player.alive ? 1 : 0);
+            if (!player.alive) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff4757';
+                ctx.font = 'bold 48px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('패배했습니다!', canvas.width / 2, canvas.height / 2);
+            } else if (aliveCount === 1) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#2ed573';
+                ctx.font = 'bold 48px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('치킨이닭! (우승)', canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        initBots();
+        gameLoop();
+    </script>
+</body>
+</html>

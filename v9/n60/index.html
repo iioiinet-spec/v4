@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬스터: 컵헤드 에디션 v8</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background-color: #0c0a0f;
+            color: #f4eedb;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #game-wrapper {
+            position: relative;
+            width: 960px;
+            height: 560px;
+            border: 5px solid #d4af37;
+            border-radius: 10px;
+            box-shadow: 0 0 45px rgba(212, 175, 55, 0.45);
+            background: #171513;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #261f1c, #0e0b0a);
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(14, 11, 9, 0.96);
+            z-index: 10;
+        }
+        .hidden { display: none !important; }
+        h1 { font-size: 44px; color: #f4eedb; text-shadow: 3px 3px #4a2712; margin-bottom: 5px; }
+        h2 { font-size: 26px; color: #d4af37; margin-bottom: 15px; }
+        p { font-size: 15px; color: #d1c7bd; margin: 6px 0; }
+        .btn {
+            background: #990000;
+            color: #f4eedb;
+            border: 3px solid #d4af37;
+            padding: 10px 28px;
+            font-size: 18px;
+            font-family: 'Courier New', Courier, monospace;
+            cursor: pointer;
+            margin: 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            box-shadow: 0 4px #4a0000;
+            transition: transform 0.1s;
+        }
+        .btn:hover { background: #b30000; transform: scale(1.03); }
+        .btn:active { transform: translateY(2px); box-shadow: 0 2px #4a0000; }
+        .btn-alt { background: #1b3d2f; color: #98fb98; border-color: #32cd32; box-shadow: 0 4px #0d1a12; }
+        .btn-alt:hover { background: #24523f; }
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin: 15px 0;
+            max-height: 290px;
+            overflow-y: auto;
+            width: 720px;
+            padding: 5px;
+        }
+        .shop-card {
+            background: #231e1a;
+            border: 2px solid #d4af37;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: left;
+        }
+        .shop-card.selected { border-color: #00ffff; background: #1a3333; }
+        .shop-card h4 { margin: 0 0 5px 0; font-size: 16px; color: #d4af37; }
+        .shop-card p { font-size: 12px; margin: 3px 0; color: #c2b7a3; }
+        #hud {
+            position: absolute;
+            top: 12px; left: 15px; right: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 15px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 5;
+            text-shadow: 1px 1px 2px #000;
+        }
+        .controls-hint {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #9c9283;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <!-- 게임 렌더링 캔버스 -->
+        <canvas id="gameCanvas" width="960" height="560"></canvas>
+
+        <!-- 전투 HUD 상단 레이어 -->
+        <div id="hud" class="hidden">
+            <div id="hud-player">플레이어: 피카츄 | 체력: 6/6</div>
+            <div style="display:flex; flex-direction:column; align-items:center;">
+                <div id="hud-boss" style="color: #ff6b6b; font-size: 17px;">보스 체력: 100%</div>
+                <div id="hud-super" style="color: #00ffff; font-size: 13px; margin-top:2px;">슈퍼 미터: 0% (완충 시 K키)</div>
+            </div>
+            <div>
+                <button class="btn btn-alt" style="padding: 4px 10px; font-size:12px; pointer-events:auto;" onclick="goToMenu()">ESC: 메인메뉴</button>
+            </div>
+        </div>
+
+        <!-- 1. 메인 메뉴 화면 -->
+        <div id="screen-menu" class="overlay">
+            <h1>POKEMON: CUPHEAD</h1>
+            <h2>- 공식 스프라이트 & 이지 모드 -</h2>
+            <div style="margin-top: 15px;">
+                <button class="btn" onclick="openStageSelect()">게임 시작 (스테이지)</button><br>
+                <button class="btn btn-alt" onclick="openShop()">포켓몬 상점 / 캐릭터</button><br>
+                <button class="btn" style="background:#332922; border-color:#8c8273; color:#ccc;" onclick="openInfo()">조작법 및 게임 설명</button>
+            </div>
+            <p id="menu-coins" style="margin-top: 20px; color: #d4af37; font-size: 18px; font-weight:bold;">보유 코인: 0원</p>
+        </div>
+
+        <!-- 2. 스테이지 선택 화면 -->
+        <div id="screen-stages" class="overlay hidden">
+            <h2>보스 스테이지 선택 (이지 모드)</h2>
+            <div style="display: flex; gap: 15px; margin: 20px 0;">
+                <div class="shop-card" style="cursor: pointer; width: 220px; text-align:center;" onclick="startBattle(1)">
+                    <h4 style="color:#e0ac69; font-size:18px;">STAGE 1</h4>
+                    <p style="color:#fff; font-weight:bold; font-size:15px;">폭주 롱스톤</p>
+                    <p style="font-size:11px; margin-top:6px;">느긋한 유성 탄막 패턴</p>
+                </div>
+                <div class="shop-card" style="cursor: pointer; width: 220px; text-align:center;" onclick="startBattle(2)">
+                    <h4 style="color:#4682b4; font-size:18px;">STAGE 2</h4>
+                    <p style="color:#fff; font-weight:bold; font-size:15px;">거대 갸라도스</p>
+                    <p style="font-size:11px; margin-top:6px;">완만한 회전 물대포 탄막</p>
+                </div>
+                <div class="shop-card" style="cursor: pointer; width: 220px; text-align:center;" onclick="startBattle(3)">
+                    <h4 style="color:#9370db; font-size:18px;">STAGE 3</h4>
+                    <p style="color:#fff; font-weight:bold; font-size:15px;">뮤츠의 악몽</p>
+                    <p style="font-size:11px; margin-top:6px;">여유로운 초능력 소용돌이</p>
+                </div>
+            </div>
+            <button class="btn btn-alt" onclick="goToMenu()">메인 메뉴로</button>
+        </div>
+
+        <!-- 3. 포켓몬 상점 화면 -->
+        <div id="screen-shop" class="overlay hidden">
+            <h2>포켓몬 상점 및 캐릭터 선택</h2>
+            <p id="shop-coins" style="color: #d4af37; font-size: 16px; font-weight:bold; margin-bottom:5px;">보유 코인: 0원</p>
+            <div class="shop-grid" id="shop-container"></div>
+            <button class="btn btn-alt" onclick="goToMenu()">메인 메뉴로</button>
+        </div>
+
+        <!-- 4. 결과 화면 -->
+        <div id="screen-result" class="overlay hidden">
+            <h1 id="res-title" style="color: #ffd700;">VICTORY!</h1>
+            <p id="res-desc" style="font-size: 18px; margin: 15px 0;">보스를 물리쳤습니다!</p>
+            <button class="btn" onclick="openStageSelect()">스테이지 선택으로</button>
+            <button class="btn btn-alt" onclick="goToMenu()">메인 메뉴로</button>
+        </div>
+    </div>
+
+    <div class="controls-hint">
+        <strong>조작:</strong> 이동 (A / D 또는 방향키), 점프 & 넓은 패링 (W 또는 스페이스바), 공격 (J), 슈퍼 필살기 (K), 언제든 메뉴 (ESC)
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentScreen = 'menu';
+        let coins = 0;
+        let stageNum = 1;
+
+        // 포켓몬 공식 스프라이트 이미지 URL 매핑 (PokeAPI 공식 스프라이트 사용)
+        const SPRITE_URLS = {
+            pikachu: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png',
+            charmander: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png',
+            squirtle: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png',
+            bulbasaur: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png',
+            daewulu: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png', // 롱스톤 기반 듬직한 형태
+            wishiwashi: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/746.png',
+            snorlax: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/143.png',
+            boss1: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/95.png', // 롱스톤
+            boss2: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/130.png', // 갸라도스
+            boss3: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/150.png'  // 뮤츠
+        };
+
+        const loadedImages = {};
+        function preloadImages() {
+            for (let key in SPRITE_URLS) {
+                let img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.src = SPRITE_URLS[key];
+                loadedImages[key] = img;
+            }
+        }
+        preloadImages();
+
+        // 상점 캐릭터 데이터 (25배 가격 적용, 이지 모드 체력 대폭 상향)
+        const CHARACTERS = {
+            pikachu: { name: '피카츄 (기본)', hp: 6, cost: 0, unlocked: true, spriteKey: 'pikachu', color: '#ffd700' },
+            charmander: { name: '파이리', hp: 6, cost: 0, unlocked: true, spriteKey: 'charmander', color: '#ff4500' },
+            squirtle: { name: '꼬부기', hp: 6, cost: 0, unlocked: true, spriteKey: 'squirtle', color: '#1e90ff' },
+            bulbasaur: { name: '이상해씨', hp: 6, cost: 0, unlocked: true, spriteKey: 'bulbasaur', color: '#32cd32' },
+            daewulu: { name: '대어르', hp: 16, cost: 75, unlocked: false, spriteKey: 'daewulu', color: '#a0522d' },
+            wishiwashi: { name: '약어리', hp: 8, cost: 100, unlocked: false, spriteKey: 'wishiwashi', color: '#00ced1' },
+            snorlax: { name: '잠만보', hp: 12, cost: 125, unlocked: false, spriteKey: 'snorlax', color: '#8b4513' }
+        };
+        let selectedChar = 'pikachu';
+
+        let player = {
+            x: 120, y: 380, vx: 0, vy: 0, speed: 5.5, jumpPower: -13.5,
+            grounded: false, canDoubleJump: true, facing: 1, hp: 6, maxHp: 6,
+            superMeter: 0, lastShot: 0
+        };
+
+        const platforms = [
+            { x: 0, y: 480, w: 960, h: 80 },
+            { x: 130, y: 370, w: 220, h: 16 },
+            { x: 610, y: 370, w: 220, h: 16 },
+            { x: 370, y: 250, w: 220, h: 16 }
+        ];
+
+        let boss = {
+            x: 800, y: 280, vx: 1.6, vy: 1.0, radius: 52, hp: 110, maxHp: 110, stage: 1, timer: 0
+        };
+
+        let bullets = [];
+        let bossBullets = [];
+        let keys = {};
+
+        function showScreen(screenId) {
+            currentScreen = screenId;
+            ['screen-menu', 'screen-stages', 'screen-shop', 'screen-result', 'hud'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
+            if (screenId === 'menu') {
+                document.getElementById('screen-menu').classList.remove('hidden');
+                document.getElementById('menu-coins').innerText = `보유 코인: ${coins}원`;
+            } else if (screenId === 'stages') {
+                document.getElementById('screen-stages').classList.remove('hidden');
+            } else if (screenId === 'shop') {
+                document.getElementById('screen-shop').classList.remove('hidden');
+                renderShop();
+            } else if (screenId === 'battle') {
+                document.getElementById('hud').classList.remove('hidden');
+            } else if (screenId === 'result') {
+                document.getElementById('screen-result').classList.remove('hidden');
+            }
+        }
+
+        function goToMenu() { showScreen('menu'); }
+        function openStageSelect() { showScreen('stages'); }
+        function openShop() { showScreen('shop'); }
+        function openInfo() {
+            alert("포켓몬 컵헤드 에디션 (이지 & 스프라이트 버전) 안내:\n\n- 이동: A / D 또는 좌우 방향키\n- 점프: W 또는 스페이스바\n- 패링: 공중에서 분홍색 탄막 근처(초대형 판정 95픽셀!)에서 점프키를 누르면 패링 성공 및 슈퍼미터 50% 충전!\n- 공격: J\n- 슈퍼 필살기: 슈퍼 미터 100% 도달 시 K 키 입력!\n- 난이도: 이지 모드 적용 (보스 체력 대폭 감소, 플레이어 체력 대폭 증가)\n- 언제든 ESC 키를 누르면 메인 메뉴로 안전하게 복귀 가능합니다.");
+        }
+
+        function renderShop() {
+            document.getElementById('shop-coins').innerText = `보유 코인: ${coins}원`;
+            let container = document.getElementById('shop-container');
+            container.innerHTML = '';
+
+            for (let key in CHARACTERS) {
+                let c = CHARACTERS[key];
+                let isSel = (selectedChar === key);
+                let div = document.createElement('div');
+                div.className = `shop-card ${isSel ? 'selected' : ''}`;
+                div.innerHTML = `
+                    <h4>✨ ${c.name} ${isSel ? '(장착 중)' : ''}</h4>
+                    <p>체력(목숨): ${c.hp}</p>
+                    <div style="margin-top: 8px; text-align: right;">
+                        ${c.unlocked ? 
+                            `<button class="btn btn-alt" style="padding: 4px 10px; font-size:11px;" onclick="selectChar('${key}')">선택</button>` :
+                            `<button class="btn" style="padding: 4px 10px; font-size:11px;" onclick="buyChar('${key}')">구매 (${c.cost}원)</button>`
+                        }
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function selectChar(key) {
+            selectedChar = key;
+            renderShop();
+        }
+
+        function buyChar(key) {
+            let c = CHARACTERS[key];
+            if (coins >= c.cost) {
+                coins -= c.cost;
+                c.unlocked = true;
+                selectedChar = key;
+                renderShop();
+                document.getElementById('menu-coins').innerText = `보유 코인: ${coins}원`;
+            } else {
+                alert("코인이 부족합니다! 보스를 물리치고 코인을 모아보세요.");
+            }
+        }
+
+        function startBattle(sNum) {
+            stageNum = sNum;
+            let cInfo = CHARACTERS[selectedChar];
+            player.hp = cInfo.hp;
+            player.maxHp = cInfo.hp;
+            player.superMeter = 0;
+            player.x = 120;
+            player.y = 380;
+
+            let bossHp = 100 + sNum * 35; // 이지 모드 낮은 보스 체력
+            boss = {
+                x: 800, y: 280, vx: (sNum === 1 ? 1.5 : (sNum === 2 ? 2.0 : 2.5)),
+                vy: 0.9, radius: 52, hp: bossHp, maxHp: bossHp, stage: sNum, timer: 0
+            };
+            bullets = [];
+            bossBullets = [];
+            showScreen('battle');
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.repeat) return;
+            keys[e.key] = true;
+
+            if (e.key === 'Escape') {
+                goToMenu();
+                return;
+            }
+
+            // 점프 및 패링 (초대형 패링 판정: 95픽셀)
+            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                if (currentScreen === 'battle') {
+                    if (player.grounded) {
+                        player.vy = player.jumpPower;
+                        player.grounded = false;
+                        player.canDoubleJump = true;
+                    } else {
+                        let parried = false;
+                        bossBullets.forEach(bb => {
+                            if (bb.isPink && Math.hypot(bb.x - player.x, bb.y - (player.y - 15)) < 95) {
+                                bb.parried = true;
+                                player.superMeter = Math.min(100, player.superMeter + 50);
+                                player.vy = player.jumpPower * 0.92;
+                                parried = true;
+                            }
+                        });
+                        if (!parried && player.canDoubleJump) {
+                            player.vy = player.jumpPower * 0.85;
+                            player.canDoubleJump = false;
+                        }
+                    }
+                }
+            }
+
+            // 슈퍼 필살기 발동 (K키)
+            if (e.key === 'k' || e.key === 'K') {
+                if (currentScreen === 'battle' && player.superMeter >= 100) {
+                    player.superMeter = 0;
+                    boss.hp -= 50;
+                    bossBullets = [];
+                    bullets.push({ x: player.x, y: player.y, vx: 18 * player.facing, vy: 0, color: '#00ffff', size: 22, isSpecial: true });
+                }
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        function updateGame() {
+            if (currentScreen !== 'battle') return;
+
+            player.vx = 0;
+            if (keys['a'] || keys['A'] || keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
+            if (keys['d'] || keys['D'] || keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
+
+            player.vy += 0.62;
+            player.x += player.vx;
+            player.y += player.vy;
+
+            player.grounded = false;
+            platforms.forEach(p => {
+                if (player.x + 18 > p.x && player.x - 18 < p.x + p.w &&
+                    player.y >= p.y && player.y - player.vy <= p.y + 12 && player.vy > 0) {
+                    player.y = p.y;
+                    player.vy = 0;
+                    player.grounded = true;
+                    player.canDoubleJump = true;
+                }
+            });
+
+            player.x = Math.max(25, Math.min(canvas.width - 25, player.x));
+
+            // 기본 공격 (J키)
+            if (keys['j'] || keys['J']) {
+                let now = Date.now();
+                if (now - player.lastShot > 130) {
+                    bullets.push({
+                        x: player.x + 22 * player.facing, y: player.y - 15,
+                        vx: 15 * player.facing, vy: 0, color: CHARACTERS[selectedChar].color, size: 8
+                    });
+                    player.lastShot = now;
+                }
+            }
+
+            bullets.forEach(b => b.x += b.vx);
+            bullets = bullets.filter(b => b.x > 0 && b.x < canvas.width);
+
+            // 이지 모드 보스 AI 및 느긋한 탄막 패턴 (60% 확률의 분홍 패링 탄막)
+            boss.timer++;
+            if (boss.stage === 1) {
+                boss.x += boss.vx;
+                boss.y = 280 + Math.sin(boss.timer * 0.03) * 65;
+                if (boss.x < 560 || boss.x > 880) boss.vx *= -1;
+
+                if (boss.timer % 55 === 0) {
+                    let angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+                    let isPink = Math.random() < 0.6;
+                    bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle) * 3.5, vy: Math.sin(angle) * 3.5, isPink: isPink, color: isPink ? '#ff69b4' : '#e0ac69', parried: false });
+                }
+            } else if (boss.stage === 2) {
+                boss.x = 750 + Math.cos(boss.timer * 0.025) * 95;
+                boss.y = 250 + Math.sin(boss.timer * 0.04) * 75;
+
+                if (boss.timer % 48 === 0) {
+                    for (let i = -1; i <= 1; i++) {
+                        let angle = Math.atan2(player.y - boss.y, player.x - boss.x) + i * 0.3;
+                        let isPink = Math.random() < 0.6;
+                        bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle) * 3.8, vy: Math.sin(angle) * 3.8, isPink: isPink, color: isPink ? '#ff69b4' : '#1e90ff', parried: false });
+                    }
+                }
+            } else if (boss.stage === 3) {
+                if (boss.timer % 180 === 0) {
+                    boss.x = 300 + Math.random() * 520;
+                    boss.y = 130 + Math.random() * 180;
+                }
+                if (boss.timer % 40 === 0) {
+                    let angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+                    let isPink = Math.random() < 0.6;
+                    bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle) * 4.0, vy: Math.sin(angle) * 4.0, isPink: isPink, color: isPink ? '#ff69b4' : '#9370db', parried: false });
+                }
+            }
+
+            // 피격 판정
+            bossBullets.forEach(bb => {
+                if (bb.parried) return;
+                bb.x += bb.vx;
+                bb.y += bb.vy;
+                if (Math.hypot(bb.x - player.x, bb.y - (player.y - 15)) < 22) {
+                    player.hp--;
+                    bossBullets = bossBullets.filter(b => b !== bb);
+                    if (player.hp <= 0) {
+                        currentScreen = 'result';
+                        document.getElementById('res-title').innerText = "GAME OVER";
+                        document.getElementById('res-title').style.color = "#ff4444";
+                        document.getElementById('res-desc').innerText = "체력을 모두 소모하여 쓰러졌습니다...";
+                        showScreen('result');
+                    }
+                }
+            });
+            bossBullets = bossBullets.filter(bb => bb.x > 0 && bb.x < canvas.width && bb.y > 0 && bb.y < canvas.height && !bb.parried);
+
+            // 플레이어 탄막 vs 보스
+            bullets.forEach(b => {
+                if (Math.hypot(b.x - boss.x, b.y - boss.y) < boss.radius) {
+                    boss.hp -= (b.isSpecial ? 10 : 1);
+                    player.superMeter = Math.min(100, player.superMeter + 5);
+                    bullets = bullets.filter(bullet => bullet !== b);
+                    if (boss.hp <= 0) {
+                        coins += 60;
+                        currentScreen = 'result';
+                        document.getElementById('res-title').innerText = "VICTORY!";
+                        document.getElementById('res-title').style.color = "#ffd700";
+                        document.getElementById('res-desc').innerText = `보스를 격파했습니다! (+60 코인 획득, 현재 코인: ${coins}원)`;
+                        showScreen('result');
+                    }
+                }
+            });
+
+            let cInfo = CHARACTERS[selectedChar];
+            document.getElementById('hud-player').innerText = `플레이어: ${cInfo.name} | 체력: ${player.hp}/${player.maxHp}`;
+            document.getElementById('hud-boss').innerText = `보스 체력: ${Math.max(0, Math.floor((boss.hp / boss.maxHp) * 100))}%`;
+            document.getElementById('hud-super').innerText = `슈퍼 미터: ${player.superMeter}% ${player.superMeter >= 100 ? '✨ [K키 필살기 준비 완료!]' : ''}`;
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (currentScreen === 'battle') {
+                // 플랫폼 렌더링
+                platforms.forEach(p => {
+                    ctx.fillStyle = p.y === 480 ? '#2b221d' : '#423326';
+                    ctx.fillRect(p.x, p.y, p.w, p.h);
+                    ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, p.h);
+                });
+
+                // 보스 스프라이트 렌더링
+                let bossSpriteKey = boss.stage === 1 ? 'boss1' : (boss.stage === 2 ? 'boss2' : 'boss3');
+                let bImg = loadedImages[bossSpriteKey];
+                if (bImg && bImg.complete && bImg.naturalWidth !== 0) {
+                    ctx.drawImage(bImg, boss.x - 45, boss.y - 45, 90, 90);
+                } else {
+                    ctx.fillStyle = '#ff4500';
+                    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+                // 보스 체력 바
+                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(280, 42, 400, 16);
+                ctx.fillStyle = '#32cd32'; ctx.fillRect(280, 42, Math.max(0, (boss.hp / boss.maxHp) * 400), 16);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(280, 42, 400, 16);
+
+                // 플레이어 포켓몬 스프라이트 렌더링
+                let cInfo = CHARACTERS[selectedChar];
+                let pImg = loadedImages[cInfo.spriteKey];
+                if (pImg && pImg.complete && pImg.naturalWidth !== 0) {
+                    ctx.drawImage(pImg, player.x - 30, player.y - 50, 60, 60);
+                } else {
+                    ctx.fillStyle = cInfo.color;
+                    ctx.beginPath(); ctx.arc(player.x, player.y - 18, 22, 0, Math.PI * 2); ctx.fill();
+                }
+
+                // 플레이어 탄막
+                bullets.forEach(b => {
+                    ctx.fillStyle = b.color;
+                    ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2); ctx.fill();
+                });
+
+                // 보스 탄막 (분홍색 패링 가능 탄막)
+                bossBullets.forEach(bb => {
+                    ctx.fillStyle = bb.color;
+                    ctx.beginPath(); ctx.arc(bb.x, bb.y, bb.isPink ? 13 : 9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = bb.isPink ? '#ffffff' : '#444'; ctx.lineWidth = bb.isPink ? 3 : 1; ctx.stroke();
+                });
+            }
+        }
+
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function() {
+            showScreen('menu');
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

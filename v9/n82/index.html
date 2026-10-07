@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 오픈월드 액션 RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0b0f19; font-family: 'Inter', sans-serif; user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        .hud-panel { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glow-btn { transition: all 0.2s ease; box-shadow: 0 0 15px rgba(217, 119, 6, 0.4); }
+        .glow-btn:hover { transform: translateY(-2px); box-shadow: 0 0 25px rgba(245, 158, 11, 0.8); }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- 상단 HUD 영역 -->
+    <div class="absolute top-4 left-4 z-10 flex gap-4 pointer-events-none">
+        <div class="hud-panel p-4 rounded-xl pointer-events-auto shadow-2xl min-w-[280px]">
+            <h1 id="regionTitle" class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                <span>🛡️</span> 초록 평원 (안전지대)
+            </h1>
+            <div class="mt-2 space-y-1 text-sm text-slate-300">
+                <div class="flex justify-between"><span>레벨:</span> <span id="playerLv" class="font-bold text-white">1</span></div>
+                <div class="flex justify-between"><span>체력:</span> <span id="playerHp" class="font-bold text-emerald-400">100/100</span></div>
+                <div class="flex justify-between"><span>경험치:</span> <span id="playerExp" class="font-bold text-cyan-400">0 / 50</span></div>
+                <div class="flex justify-between"><span>골드:</span> <span id="playerGold" class="font-bold text-yellow-400">100 G</span></div>
+            </div>
+            <!-- 체력바 -->
+            <div class="w-full bg-slate-700 h-2.5 rounded-full mt-3 overflow-hidden">
+                <div id="hpBarFill" class="bg-emerald-500 h-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 우측 상단 컨트롤 버튼 그룹 -->
+    <div class="absolute top-4 right-4 z-10 flex gap-3">
+        <button onclick="toggleCameraView()" class="hud-panel px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-300 glow-btn flex items-center gap-2 cursor-pointer">
+            📹 시점 전환 (<span id="camModeText">탑뷰</span>)
+        </button>
+        <button onclick="toggleShop()" class="hud-panel px-4 py-2.5 rounded-xl text-sm font-semibold text-emerald-300 glow-btn flex items-center gap-2 cursor-pointer">
+            🛒 상점 (B)
+        </button>
+    </div>
+
+    <!-- 하단 조작 안내 -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+        <div class="hud-panel px-6 py-2.5 rounded-full text-xs text-slate-400 shadow-xl border border-slate-700 flex gap-4">
+            <span>이동: <strong class="text-white">W, A, S, D</strong></span>
+            <span>공격: <strong class="text-amber-400">SPACE</strong></span>
+            <span>시점: <strong class="text-cyan-400">C</strong></span>
+            <span>상점: <strong class="text-emerald-400">B</strong></span>
+        </div>
+    </div>
+
+    <!-- 알림 메시지 배너 -->
+    <div id="msgBanner" class="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-all duration-300 opacity-0 scale-95">
+        <div id="msgText" class="bg-amber-500/90 text-slate-950 font-extrabold px-6 py-2.5 rounded-full shadow-2xl backdrop-blur">
+            지역 이동!
+        </div>
+    </div>
+
+    <!-- 상점 모달창 -->
+    <div id="shopModal" class="hidden absolute inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
+        <div class="hud-panel p-6 rounded-2xl w-[480px] border border-slate-600 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">🛠️ 장비 & 물약 상점</h2>
+                <button onclick="toggleShop()" class="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <div id="shopItemList" class="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+                <!-- 동적 렌더링 -->
+            </div>
+            <button onclick="toggleShop()" class="mt-5 w-full py-2.5 bg-rose-600 hover:bg-rose-500 font-bold rounded-xl transition cursor-pointer">상점 닫기</button>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- 게임 상태 변수 ---
+        let scene, camera, renderer;
+        let playerMesh, weaponMesh;
+        let keys = {};
+        let cameraMode = 'top'; // 'top' (탑뷰/쿼터뷰) 또는 'tps' (3인칭 비하인드뷰)
+
+        let player = {
+            x: 0, z: 0, speed: 0.12,
+            hp: 100, maxHp: 100, atk: 20,
+            level: 1, exp: 0, maxExp: 50, gold: 100,
+            weapon: "목검", armor: "천 갑옷", def: 0
+        };
+
+        let currentRegionKey = 'plains';
+        let monsters = [];
+        let boss = null;
+        let portals = [];
+        let environmentMeshes = [];
+        let isShopOpen = false;
+
+        // 지역 데이터 설정
+        const regions = {
+            plains: {
+                name: "초록 평원 (안전지대)", color: 0x1e3a1e, floorColor: 0x2d5a27,
+                safe: true,
+                monsters: [{ name: "슬라임", hp: 30, maxHp: 30, atk: 6, color: 0x4ade80, exp: 15, gold: 12, speed: 0.04, size: 0.8 }],
+                boss: null
+            },
+            forest: {
+                name: "위험한 숲", color: 0x112e2e, floorColor: 0x1b3b2b,
+                safe: false,
+                monsters: [{ name: "고블린", hp: 70, maxHp: 70, atk: 14, color: 0xfacc15, exp: 35, gold: 25, speed: 0.05, size: 1.0 }],
+                boss: { name: "숲의 고블린 킹", hp: 400, maxHp: 400, atk: 28, color: 0xca8a04, exp: 180, gold: 200, speed: 0.03, size: 2.2, alive: true }
+            },
+            volcano: {
+                name: "화산 지대", color: 0x3a1e1e, floorColor: 0x4a1c1c,
+                safe: false,
+                monsters: [{ name: "오크 전사", hp: 130, maxHp: 130, atk: 24, color: 0xf97316, exp: 60, gold: 45, speed: 0.045, size: 1.4 }],
+                boss: { name: "화산 마왕 오크로드", hp: 800, maxHp: 800, atk: 45, color: 0xc2410c, exp: 350, gold: 450, speed: 0.025, size: 2.8, alive: true }
+            },
+            dungeon: {
+                name: "어둠의 던전", color: 0x181824, floorColor: 0x1e1e2f,
+                safe: false,
+                monsters: [{ name: "해골 전사", hp: 180, maxHp: 180, atk: 35, color: 0xe2e8f0, exp: 90, gold: 75, speed: 0.06, size: 1.2 }],
+                boss: { name: "언데드 리치 드래곤", hp: 1500, maxHp: 1500, atk: 70, color: 0x9333ea, exp: 800, gold: 1200, speed: 0.02, size: 3.5, alive: true }
+            }
+        };
+
+        const shopItems = [
+            { name: "철제 검", type: "weapon", atkBonus: 15, cost: 120, desc: "공격력 +15 증가" },
+            { name: "기사의 대검", type: "weapon", atkBonus: 35, cost: 300, desc: "공격력 +35 증가" },
+            { name: "가죽 갑옷", type: "armor", defBonus: 8, cost: 150, desc: "방어력 +8 증가" },
+            { name: "판금 갑옷", type: "armor", defBonus: 20, cost: 400, desc: "방어력 +20 증가" },
+            { name: "체력 포션", type: "potion", heal: 60, cost: 40, desc: "체력 60 즉시 회복" }
+        ];
+
+        // --- 초기화 함수 ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(regions.plains.color);
+            scene.fog = new THREE.FogExp2(regions.plains.color, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // 조명 설정
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(20, 40, 20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            createPlayer();
+            loadRegion('plains');
+
+            // 이벤트 리스너 등록
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'Space') { e.preventDefault(); playerAttack(); }
+                if (e.code === 'KeyB') { toggleShop(); }
+                if (e.code === 'KeyC') { toggleCameraView(); }
+            });
+            window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+            animate();
+        }
+
+        // --- 플레이어 생성 ---
+        function createPlayer() {
+            const group = new THREE.Group();
+
+            // 몸통
+            const bodyGeo = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.6;
+            body.castShadow = true;
+            group.add(body);
+
+            // 머리
+            const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.4 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.4;
+            head.castShadow = true;
+            group.add(head);
+
+            // 무기
+            const swordGeo = new THREE.BoxGeometry(0.2, 1.2, 0.1);
+            const swordMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+            weaponMesh = new THREE.Mesh(swordGeo, swordMat);
+            weaponMesh.position.set(0.6, 0.8, 0.3);
+            weaponMesh.rotation.z = -Math.PI / 6;
+            group.add(weaponMesh);
+
+            playerMesh = group;
+            playerMesh.position.set(0, 0, 0);
+            scene.add(playerMesh);
+        }
+
+        // --- 지역 로드 및 변경 ---
+        function loadRegion(key) {
+            currentRegionKey = key;
+            const reg = regions[key];
+
+            scene.background.setHex(reg.color);
+            scene.fog.color.setHex(reg.color);
+
+            document.getElementById('regionTitle').innerHTML = `<span>🌍</span> ${reg.name}`;
+            showBanner(`[ ${reg.name} ] 진입!`);
+
+            // 기존 환경물 및 몬스터 제거
+            environmentMeshes.forEach(m => scene.remove(m));
+            environmentMeshes = [];
+            monsters.forEach(m => scene.remove(m.mesh));
+            monsters = [];
+            if (boss && boss.mesh) scene.remove(boss.mesh);
+            boss = null;
+            portals.forEach(p => scene.remove(p.mesh));
+            portals = [];
+
+            // 바닥 생성
+            const floorGeo = new THREE.PlaneGeometry(120, 120);
+            const floorMat = new THREE.MeshStandardMaterial({ color: reg.floorColor, roughness: 0.9 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+            environmentMeshes.push(floor);
+
+            // 안전지대 표시 (평원인 경우)
+            if (reg.safe) {
+                const safeGeo = new THREE.RingGeometry(0, 12, 32);
+                const safeMat = new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
+                const safeZone = new THREE.Mesh(safeGeo, safeMat);
+                safeZone.rotation.x = -Math.PI / 2;
+                safeZone.position.set(0, 0.05, 0);
+                scene.add(safeZone);
+                environmentMeshes.push(safeZone);
+            }
+
+            // 장애물 (나무 또는 바위) 배치
+            for (let i = 0; i < 15; i++) {
+                let x = (Math.random() - 0.5) * 80;
+                let z = (Math.random() - 0.5) * 80;
+                if (Math.hypot(x, z) < 10) continue; // 중앙 보호
+
+                if (key === 'plains' || key === 'forest') {
+                    // 나무
+                    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+                    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+                    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                    trunk.position.set(x, 1, z);
+                    trunk.castShadow = true;
+                    scene.add(trunk);
+                    environmentMeshes.push(trunk);
+
+                    const leavesGeo = new THREE.ConeGeometry(1.5, 3, 8);
+                    const leavesMat = new THREE.MeshStandardMaterial({ color: key === 'forest' ? 0x0f5132 : 0x166534 });
+                    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                    leaves.position.set(x, 2.8, z);
+                    leaves.castShadow = true;
+                    scene.add(leaves);
+                    environmentMeshes.push(leaves);
+                } else {
+                    // 화산/던전 바위
+                    const rockGeo = new THREE.DodecahedronGeometry(1.2 + Math.random() * 1.5);
+                    const rockMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+                    const rock = new THREE.Mesh(rockGeo, rockMat);
+                    rock.position.set(x, 1, z);
+                    rock.castShadow = true;
+                    scene.add(rock);
+                    environmentMeshes.push(rock);
+                }
+            }
+
+            // 포탈 생성
+            if (key === 'plains') {
+                createPortal(35, 0, 'forest', '숲으로 이동');
+            } else if (key === 'forest') {
+                createPortal(-35, 0, 'plains', '평원으로');
+                createPortal(35, 0, 'volcano', '화산으로');
+            } else if (key === 'volcano') {
+                createPortal(-35, 0, 'forest', '숲으로');
+                createPortal(35, 0, 'dungeon', '던전으로');
+            } else if (key === 'dungeon') {
+                createPortal(-35, 0, 'volcano', '화산으로');
+            }
+
+            // 몬스터 소환
+            for (let i = 0; i < 6; i++) {
+                spawnMonster();
+            }
+
+            // 보스 생성
+            if (reg.boss) {
+                spawnBoss(reg.boss);
+            }
+        }
+
+        function createPortal(x, z, targetRegion, label) {
+            const portalGeo = new THREE.CylinderGeometry(2, 2, 0.2, 32);
+            const portalMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+            const portalMesh = new THREE.Mesh(portalGeo, portalMat);
+            portalMesh.position.set(x, 0.1, z);
+            scene.add(portalMesh);
+            portals.push({ mesh: portalMesh, target: targetRegion, x, z });
+        }
+
+        function spawnMonster() {
+            const reg = regions[currentRegionKey];
+            if (reg.monsters.length === 0) return;
+            const template = reg.monsters[Math.floor(Math.random() * reg.monsters.length)];
+
+            const geo = new THREE.BoxGeometry(template.size, template.size, template.size);
+            const mat = new THREE.MeshStandardMaterial({ color: template.color, roughness: 0.4 });
+            const mesh = new THREE.Mesh(geo, mat);
+
+            let x = (Math.random() - 0.5) * 60;
+            let z = (Math.random() - 0.5) * 60;
+            if (Math.hypot(x, z) < 12) x += 15;
+
+            mesh.position.set(x, template.size / 2, z);
+            mesh.castShadow = true;
+            scene.add(mesh);
+
+            monsters.push({
+                ...template,
+                mesh,
+                x, z,
+                maxHp: template.hp
+            });
+        }
+
+        function spawnBoss(bData) {
+            const geo = new THREE.SphereGeometry(bData.size, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({ color: bData.color, roughness: 0.3, emissive: 0x221100 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(0, bData.size / 2, -25);
+            mesh.castShadow = true;
+            scene.add(mesh);
+
+            boss = {
+                ...bData,
+                mesh,
+                x: 0, z: -25,
+                maxHp: bData.hp
+            };
+        }
+
+        // --- 상호작용 및 전투 로직 ---
+        function playerAttack() {
+            if (isShopOpen) return;
+
+            // 일반 몬스터 피격 판정
+            monsters.forEach((m, idx) => {
+                const dist = Math.hypot(playerMesh.position.x - m.x, playerMesh.position.z - m.z);
+                if (dist < 3.5) {
+                    m.hp -= player.atk;
+                    showDamageText(m.mesh.position, player.atk);
+                    if (m.hp <= 0) {
+                        scene.remove(m.mesh);
+                        monsters.splice(idx, 1);
+                        gainReward(m.exp, m.gold);
+                        setTimeout(spawnMonster, 4000);
+                    }
+                }
+            });
+
+            // 보스 피격 판정
+            if (boss && boss.alive) {
+                const dist = Math.hypot(playerMesh.position.x - boss.x, playerMesh.position.z - boss.z);
+                if (dist < 4.5) {
+                    boss.hp -= player.atk;
+                    showDamageText(boss.mesh.position, player.atk);
+                    if (boss.hp <= 0) {
+                        boss.alive = false;
+                        scene.remove(boss.mesh);
+                        gainReward(boss.exp, boss.gold);
+                        showBanner("🎉 보스 처치 성공!");
+                    }
+                }
+            }
+        }
+
+        function gainReward(expVal, goldVal) {
+            player.exp += expVal;
+            player.gold += goldVal;
+            if (player.exp >= player.maxExp) {
+                player.level++;
+                player.exp -= player.maxExp;
+                player.maxExp = Math.floor(player.maxExp * 1.5);
+                player.maxHp += 25;
+                player.hp = player.maxHp;
+                player.atk += 6;
+                showBanner(`✨ 레벨 업! LV.${player.level}`);
+            }
+            updateHUD();
+        }
+
+        function toggleCameraView() {
+            cameraMode = (cameraMode === 'top') ? 'tps' : 'top';
+            document.getElementById('camModeText').innerText = cameraMode === 'top' ? '탑뷰' : '3인칭';
+        }
+
+        function toggleShop() {
+            isShopOpen = !isShopOpen;
+            const modal = document.getElementById('shopModal');
+            modal.classList.toggle('hidden', !isShopOpen);
+            if (isShopOpen) renderShopItems();
+        }
+
+        function renderShopItems() {
+            const list = document.getElementById('shopItemList');
+            list.innerHTML = "";
+            shopItems.forEach((item, idx) => {
+                list.innerHTML += `
+                    <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-amber-400">${item.name}</div>
+                            <div class="text-xs text-slate-400">${item.desc} | 가격: <strong class="text-yellow-400">${item.cost}G</strong></div>
+                        </div>
+                        <button onclick="buyItem(${idx})" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-bold transition cursor-pointer">구매</button>
+                    </div>
+                `;
+            });
+        }
+
+        function buyItem(idx) {
+            const item = shopItems[idx];
+            if (player.gold < item.cost) {
+                showBanner("❌ 골드가 부족합니다!");
+                return;
+            }
+            player.gold -= item.cost;
+            if (item.type === 'weapon') {
+                player.weapon = item.name;
+                player.atk = 20 + item.atkBonus;
+            } else if (item.type === 'armor') {
+                player.armor = item.name;
+                player.def = item.defBonus;
+            } else if (item.type === 'potion') {
+                player.hp = Math.min(player.maxHp, player.hp + item.heal);
+            }
+            updateHUD();
+            renderShopItems();
+            showBanner(`🎁 ${item.name} 구매 완료!`);
+        }
+
+        function updateHUD() {
+            document.getElementById('playerLv').innerText = player.level;
+            document.getElementById('playerHp').innerText = `${Math.ceil(player.hp)}/${player.maxHp}`;
+            document.getElementById('playerExp').innerText = `${player.exp} / ${player.maxExp}`;
+            document.getElementById('playerGold').innerText = `${player.gold} G`;
+            const hpPct = Math.max(0, (player.hp / player.maxHp) * 100);
+            document.getElementById('hpBarFill').style.width = `${hpPct}%`;
+        }
+
+        function showBanner(text) {
+            const banner = document.getElementById('msgBanner');
+            const txt = document.getElementById('msgText');
+            txt.innerText = text;
+            banner.classList.remove('opacity-0', 'scale-95');
+            banner.classList.add('opacity-100', 'scale-100');
+            setTimeout(() => {
+                banner.classList.remove('opacity-100', 'scale-100');
+                banner.classList.add('opacity-0', 'scale-95');
+            }, 2500);
+        }
+
+        function showDamageText(pos, dmg) {
+            // 간단한 시각 효과 대용 배너
+        }
+
+        // --- 메인 루프 ---
+        function update() {
+            if (isShopOpen) return;
+
+            // 이동 처리
+            let moveX = 0, moveZ = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const len = Math.hypot(moveX, moveZ);
+                playerMesh.position.x += (moveX / len) * player.speed;
+                playerMesh.position.z += (moveZ / len) * player.speed;
+
+                // 회전각 계산
+                playerMesh.rotation.y = Math.atan2(moveX, moveZ);
+            }
+
+            // 영역 이탈 방지
+            playerMesh.position.x = Math.max(-55, Math.min(55, playerMesh.position.x));
+            playerMesh.position.z = Math.max(-55, Math.min(55, playerMesh.position.z));
+
+            player.x = playerMesh.position.x;
+            player.z = playerMesh.position.z;
+
+            // 안전지대 체력 회복
+            const reg = regions[currentRegionKey];
+            if (reg.safe && Math.hypot(player.x, player.z) < 12) {
+                if (player.hp < player.maxHp) {
+                    player.hp = Math.min(player.maxHp, player.hp + 0.1);
+                    updateHUD();
+                }
+            } else if (!reg.safe) {
+                // 일반 몬스터 AI 추적
+                monsters.forEach(m => {
+                    const angle = Math.atan2(player.x - m.x, player.z - m.z);
+                    m.x += Math.sin(angle) * m.speed;
+                    m.z += Math.cos(angle) * m.speed;
+                    m.mesh.position.set(m.x, m.size / 2, m.z);
+
+                    // 플레이어 피격
+                    if (Math.hypot(player.x - m.x, player.z - m.z) < 1.5) {
+                        const damage = Math.max(1, m.atk - player.def) * 0.03;
+                        player.hp -= damage;
+                        updateHUD();
+                        if (player.hp <= 0) {
+                            showBanner("💀 체력이 다해 안전지대로 부활합니다.");
+                            player.hp = player.maxHp;
+                            playerMesh.position.set(0, 0, 0);
+                        }
+                    }
+                });
+
+                // 보스 AI 추적
+                if (boss && boss.alive) {
+                    const angle = Math.atan2(player.x - boss.x, player.z - boss.z);
+                    boss.x += Math.sin(angle) * boss.speed;
+                    boss.z += Math.cos(angle) * boss.speed;
+                    boss.mesh.position.set(boss.x, boss.size / 2, boss.z);
+
+                    if (Math.hypot(player.x - boss.x, player.z - boss.z) < 2.5) {
+                        const damage = Math.max(2, boss.atk - player.def) * 0.05;
+                        player.hp -= damage;
+                        updateHUD();
+                    }
+                }
+            }
+
+            // 포탈 충돌 체크
+            portals.forEach(p => {
+                if (Math.hypot(player.x - p.x, player.z - p.z) < 2.5) {
+                    loadRegion(p.target);
+                    playerMesh.position.set(0, 0, 0);
+                }
+            });
+
+            // 카메라 위치 업데이트 (시점 모드에 따라 전환)
+            if (cameraMode === 'top') {
+                camera.position.set(player.x, 22, player.z + 16);
+                camera.lookAt(player.x, 0, player.z - 2);
+            } else {
+                // TPS 3인칭 모드
+                const tpsX = player.x - Math.sin(playerMesh.rotation.y) * 6;
+                const tpsZ = player.z - Math.cos(playerMesh.rotation.y) * 6;
+                camera.position.set(tpsX, playerMesh.position.y + 3.5, tpsZ);
+                camera.lookAt(player.x, player.y + 1, player.z);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

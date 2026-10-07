@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 근육 고라니 - 주한고라니 이어 만들어봐</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            pointer-events: none;
+            user-select: none;
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 22px;
+            color: #ff9d00;
+        }
+        p {
+            margin: 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+        /* 대사 말풍선 스타일 */
+        #speech-bubble {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -100%) scale(0);
+            background: #ffffff;
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            pointer-events: none;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+            z-index: 100;
+        }
+        #speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 15px 15px 0;
+            border-style: solid;
+            border-color: #ffffff transparent;
+            display: block;
+            width: 0;
+        }
+        #speech-bubble.active {
+            transform: translate(-50%, -120%) scale(1);
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>🎬 주한고라니 이어 만들어봐</h1>
+        <p>[스페이스바] 벌크업 고라니 폭발 → 착지하며 인간 선생님으로 복귀 후 "아임 고라니선생님!"</p>
+    </div>
+
+    <!-- 말풍선 UI -->
+    <div id="speech-bubble">아임 고라니선생님! 🫰✨</div>
+
+    <script>
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const speech = new SpeechSynthesisUtterance(text);
+                speech.lang = 'ko-KR';
+                speech.pitch = 1.0;
+                speech.rate = 1.0;
+                window.speechSynthesis.speak(speech);
+            }
+        }
+
+        // 1. 씬 및 카메라 설정
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1c23);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const originalCamPos = new THREE.Vector3(0, 4, 16);
+        camera.position.copy(originalCamPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 2.5, 0);
+
+        // 조명
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        mainLight.position.set(5, 12, 8);
+        mainLight.castShadow = true;
+        scene.add(mainLight);
+
+        // 기본 재질들
+        const goraniColor = new THREE.Color(0x8b5a2b);   // 고라니 갈색
+        const humanSkinColor = new THREE.Color(0xffdbac); // 인간 피부색
+        const shirtColor = new THREE.Color(0x3b82f6);     // 선생님 셔츠 파란색
+        const pantsColor = new THREE.Color(0x1e293b);     // 선생님 슬랙스 네이비
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const pecMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.4 });
+        const skinMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const legMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const fangMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+
+        // 2. 고라니 / 선생님 모델 생성
+        let rightArmGroup, rightHand;
+        let leftPecMesh, rightPecMesh;
+        let leftEarMesh, rightEarMesh;
+        let leftFangMesh, rightFangMesh;
+
+        function createGoraniModel(scale = 1, isMain = false) {
+            const gorani = new THREE.Group();
+
+            // 몸통
+            const torsoGeo = new THREE.CylinderGeometry(0.8, 0.5, 1.8, 12);
+            const torso = new THREE.Mesh(torsoGeo, isMain ? bodyMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            torso.position.y = 1.5;
+            gorani.add(torso);
+
+            // 가슴 근육
+            const pecGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const leftPec = new THREE.Mesh(pecGeo, isMain ? pecMat : new THREE.MeshStandardMaterial({ color: 0x5c3a1e }));
+            leftPec.position.set(-0.3, 1.8, 0.4);
+            const rightPec = new THREE.Mesh(pecGeo, isMain ? pecMat : new THREE.MeshStandardMaterial({ color: 0x5c3a1e }));
+            rightPec.position.set(0.3, 1.8, 0.4);
+            gorani.add(leftPec, rightPec);
+
+            // 머리
+            const headGroup = new THREE.Group();
+            headGroup.position.set(0, 2.6, 0.2);
+            const headGeo = new THREE.SphereGeometry(0.4, 12, 12);
+            const head = new THREE.Mesh(headGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            headGroup.add(head);
+
+            // 송곳니
+            const fangGeo = new THREE.ConeGeometry(0.04, 0.3, 8);
+            const leftFang = new THREE.Mesh(fangGeo, fangMat);
+            leftFang.position.set(-0.12, -0.2, 0.35);
+            leftFang.rotation.x = 0.2;
+            const rightFang = new THREE.Mesh(fangGeo, fangMat);
+            rightFang.position.set(0.12, -0.2, 0.35);
+            rightFang.rotation.x = 0.2;
+            headGroup.add(leftFang, rightFang);
+
+            // 귀
+            const earGeo = new THREE.ConeGeometry(0.15, 0.6, 8);
+            const leftEar = new THREE.Mesh(earGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            leftEar.position.set(-0.3, 0.4, -0.1);
+            leftEar.rotation.z = 0.5;
+            const rightEar = new THREE.Mesh(earGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            rightEar.position.set(0.3, 0.4, -0.1);
+            rightEar.rotation.z = -0.5;
+            headGroup.add(leftEar, rightEar);
+
+            gorani.add(headGroup);
+
+            // 팔/다리
+            const armGeo = new THREE.CylinderGeometry(0.2, 0.15, 1.2, 8);
+            const leftArm = new THREE.Mesh(armGeo, isMain ? bodyMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            leftArm.position.set(-0.9, 1.8, 0);
+            leftArm.rotation.z = 0.4;
+            gorani.add(leftArm);
+
+            if (isMain) {
+                leftPecMesh = leftPec; rightPecMesh = rightPec;
+                leftEarMesh = leftEar; rightEarMesh = rightEar;
+                leftFangMesh = leftFang; rightFangMesh = rightFang;
+
+                rightArmGroup = new THREE.Group();
+                rightArmGroup.position.set(0.9, 2.2, 0);
+
+                const armMesh = new THREE.Mesh(armGeo, bodyMat);
+                armMesh.position.set(0, -0.5, 0);
+                rightArmGroup.add(armMesh);
+
+                rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), skinMat);
+                rightHand.position.set(0, -1.1, 0.2);
+                rightArmGroup.add(rightHand);
+
+                gorani.add(rightArmGroup);
+            } else {
+                const rightArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+                rightArm.position.set(0.9, 1.8, 0);
+                rightArm.rotation.z = -0.4;
+                gorani.add(rightArm);
+            }
+
+            const legGeo = new THREE.CylinderGeometry(0.25, 0.18, 1.2, 8);
+            const leftLeg = new THREE.Mesh(legGeo, isMain ? legMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            leftLeg.position.set(-0.4, 0.6, 0);
+            const rightLeg = new THREE.Mesh(legGeo, isMain ? legMat : new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+            rightLeg.position.set(0.4, 0.6, 0);
+            gorani.add(leftLeg, rightLeg);
+
+            gorani.scale.set(scale, scale, scale);
+            return gorani;
+        }
+
+        const baseScale = 1.2;
+        const maxScale = 2.6;
+        const mainGorani = createGoraniModel(baseScale, true);
+        scene.add(mainGorani);
+
+        // 바닥
+        const floorGeo = new THREE.CylinderGeometry(8, 8, 0.2, 32);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x22222a });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.position.y = -0.1;
+        scene.add(floor);
+
+        // 발사체 및 이펙트
+        const projectiles = [];
+        const shockwaves = [];
+
+        function spawnGoraniCannon(position, velocity) {
+            const pGorani = createGoraniModel(0.25);
+            pGorani.position.copy(position);
+            scene.add(pGorani);
+            projectiles.push({ 
+                mesh: pGorani, 
+                vel: velocity, 
+                rotSpeed: new THREE.Vector3(Math.random()*0.5, Math.random()*0.5, Math.random()*0.5),
+                life: 80 
+            });
+        }
+
+        function triggerShockwave(pos) {
+            const ringGeo = new THREE.RingGeometry(0.2, 1.2, 32);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xff3300, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos);
+            ring.rotation.x = Math.PI / 2;
+            scene.add(ring);
+            shockwaves.push({ mesh: ring, scale: 1, opacity: 1 });
+        }
+
+        function explodeGoraniBurst(pos) {
+            for (let i = 0; i < 40; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const speed = 0.4 + Math.random() * 0.4;
+
+                const vx = speed * Math.sin(phi) * Math.cos(theta);
+                const vy = speed * Math.cos(phi) + 0.15;
+                const vz = speed * Math.sin(phi) * Math.sin(theta);
+
+                spawnGoraniCannon(pos.clone(), new THREE.Vector3(vx, vy, vz));
+            }
+            triggerShockwave(pos);
+        }
+
+        const sparkGroup = new THREE.Group();
+        for (let i = 0; i < 8; i++) {
+            const spark = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), sparkMat);
+            sparkGroup.add(spark);
+        }
+        sparkGroup.visible = false;
+        scene.add(sparkGroup);
+
+        function triggerSpark(pos) {
+            sparkGroup.position.copy(pos);
+            sparkGroup.visible = true;
+            sparkGroup.children.forEach(s => {
+                s.position.set((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8);
+            });
+            setTimeout(() => { sparkGroup.visible = false; }, 300);
+        }
+
+        // 상태 변수
+        let isJumping = false;
+        let jumpVelocity = 0;
+        const gravity = -0.012;
+        let poseState = 'idle'; 
+        let snapTimer = 0;
+        let shakeIntensity = 0;
+        let hasExploded = false;
+
+        const bubbleEl = document.getElementById('speech-bubble');
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isJumping && poseState === 'idle') {
+                isJumping = true;
+                poseState = 'launching';
+                jumpVelocity = 0.45;
+                hasExploded = false;
+                bubbleEl.classList.remove('active');
+            }
+        });
+
+        // 메인 루프
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isJumping) {
+                mainGorani.position.y += jumpVelocity;
+                jumpVelocity += gravity;
+
+                mainGorani.rotation.y += 0.4;
+
+                // 1. 상승 중: 벌크업
+                if (jumpVelocity > 0) {
+                    const heightProgress = Math.min(Math.max(mainGorani.position.y / 5.0, 0), 1);
+                    const currentScale = THREE.MathUtils.lerp(baseScale, maxScale, heightProgress);
+                    mainGorani.scale.set(currentScale, currentScale, currentScale);
+
+                    const pecScale = THREE.MathUtils.lerp(1.0, 1.8, heightProgress);
+                    leftPecMesh.scale.set(pecScale, pecScale, pecScale);
+                    rightPecMesh.scale.set(pecScale, pecScale, pecScale);
+                } 
+                // 2. 하강 중: 변신 해제
+                else {
+                    const fallProgress = Math.min(Math.max(1.0 - (mainGorani.position.y / 5.0), 0), 1);
+                    
+                    const currentScale = THREE.MathUtils.lerp(maxScale, baseScale, fallProgress);
+                    mainGorani.scale.set(currentScale, currentScale, currentScale);
+
+                    const pecScale = THREE.MathUtils.lerp(1.8, 0.8, fallProgress);
+                    leftPecMesh.scale.set(pecScale, pecScale, pecScale);
+                    rightPecMesh.scale.set(pecScale, pecScale, pecScale);
+
+                    const earScale = THREE.MathUtils.lerp(1.0, 0.0, fallProgress);
+                    leftEarMesh.scale.set(earScale, earScale, earScale);
+                    rightEarMesh.scale.set(earScale, earScale, earScale);
+
+                    const fangScale = THREE.MathUtils.lerp(1.0, 0.0, fallProgress);
+                    leftFangMesh.scale.set(fangScale, fangScale, fangScale);
+                    rightFangMesh.scale.set(fangScale, fangScale, fangScale);
+
+                    bodyMat.color.lerpColors(goraniColor, shirtColor, fallProgress);
+                    skinMat.color.lerpColors(goraniColor, humanSkinColor, fallProgress);
+                    legMat.color.lerpColors(goraniColor, pantsColor, fallProgress);
+                    pecMat.color.lerpColors(new THREE.Color(0x5c3a1e), shirtColor, fallProgress);
+                }
+
+                // 최고점 폭발
+                if (jumpVelocity <= 0.05 && !hasExploded) {
+                    hasExploded = true;
+                    const burstPos = mainGorani.position.clone().add(new THREE.Vector3(0, 2.5, 0));
+                    explodeGoraniBurst(burstPos);
+                    shakeIntensity = 0.4;
+                }
+
+                // 착지 완료
+                if (mainGorani.position.y <= 0) {
+                    mainGorani.position.y = 0;
+                    mainGorani.rotation.y = 0;
+                    mainGorani.scale.set(baseScale, baseScale, baseScale);
+
+                    leftEarMesh.scale.set(0, 0, 0); rightEarMesh.scale.set(0, 0, 0);
+                    leftFangMesh.scale.set(0, 0, 0); rightFangMesh.scale.set(0, 0, 0);
+                    bodyMat.color.copy(shirtColor);
+                    skinMat.color.copy(humanSkinColor);
+                    legMat.color.copy(pantsColor);
+                    pecMat.color.copy(shirtColor);
+
+                    isJumping = false;
+                    poseState = 'snapping';
+                    snapTimer = 0;
+                }
+            } 
+
+            // 착지 후 손가락 튕기기
+            if (poseState === 'snapping') {
+                snapTimer += 0.05;
+
+                if (snapTimer < 1.0) {
+                    rightArmGroup.rotation.z = THREE.MathUtils.lerp(rightArmGroup.rotation.z, -1.2, 0.2);
+                    rightArmGroup.rotation.x = THREE.MathUtils.lerp(rightArmGroup.rotation.x, 0.8, 0.2);
+                } else if (snapTimer < 1.2) {
+                    if (!bubbleEl.classList.contains('active')) {
+                        rightArmGroup.rotation.z = -0.8;
+                        
+                        const handWorldPos = new THREE.Vector3();
+                        rightHand.getWorldPosition(handWorldPos);
+                        triggerSpark(handWorldPos);
+
+                        bubbleEl.classList.add('active');
+                        speakText("아임 고라니선생님");
+                    }
+                } else if (snapTimer > 3.0) {
+                    rightArmGroup.rotation.z = THREE.MathUtils.lerp(rightArmGroup.rotation.z, 0, 0.1);
+                    rightArmGroup.rotation.x = THREE.MathUtils.lerp(rightArmGroup.rotation.x, 0, 0.1);
+                    if (snapTimer > 4.0) {
+                        poseState = 'idle';
+                        bubbleEl.classList.remove('active');
+
+                        bodyMat.color.copy(goraniColor);
+                        skinMat.color.copy(goraniColor);
+                        legMat.color.copy(goraniColor);
+                        pecMat.setHex(0x5c3a1e);
+                        leftEarMesh.scale.set(1, 1, 1); rightEarMesh.scale.set(1, 1, 1);
+                        leftFangMesh.scale.set(1, 1, 1); rightFangMesh.scale.set(1, 1, 1);
+                    }
+                }
+            } else if (poseState === 'idle') {
+                rightArmGroup.rotation.z = -0.4;
+                rightArmGroup.rotation.x = 0;
+            }
+
+            // 발사체 및 충격파 업데이트
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.mesh.position.add(p.vel);
+                p.mesh.rotation.x += p.rotSpeed.x;
+                p.mesh.rotation.y += p.rotSpeed.y;
+                p.mesh.rotation.z += p.rotSpeed.z;
+                p.life -= 1;
+
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.scale += 0.8;
+                sw.mesh.scale.set(sw.scale, sw.scale, sw.scale);
+                sw.opacity -= 0.035;
+                sw.mesh.material.opacity = sw.opacity;
+
+                if (sw.opacity <= 0) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            // 카메라 셰이크
+            if (shakeIntensity > 0) {
+                camera.position.x = originalCamPos.x + (Math.random() - 0.5) * shakeIntensity;
+                camera.position.y = originalCamPos.y + (Math.random() - 0.5) * shakeIntensity;
+                camera.position.z = originalCamPos.z + (Math.random() - 0.5) * shakeIntensity;
+                shakeIntensity -= 0.02;
+            } else {
+                camera.position.copy(originalCamPos);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

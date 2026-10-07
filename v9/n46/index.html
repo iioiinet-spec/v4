@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>죽림고수 : 무사의 전설</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #020502;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: white;
+            font-family: 'Malgun Gothic', sans-serif;
+            overflow: hidden;
+        }
+        h1 {
+            margin: 2px 0 6px 0;
+            font-size: 22px;
+            color: #a5d6a7;
+            text-shadow: 0 0 15px rgba(165, 214, 167, 0.8);
+            letter-spacing: 2px;
+        }
+        #game-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(76, 175, 80, 0.4);
+            border: 4px solid #2e7d32;
+            background: radial-gradient(circle, #0e2a0e 0%, #020502 100%);
+        }
+        canvas {
+            display: block;
+        }
+        #side-panel {
+            width: 220px;
+            background: #081208;
+            border: 2px solid #2e7d32;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.7);
+        }
+        .panel-section {
+            margin-bottom: 14px;
+        }
+        .panel-section h3 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            color: #a5d6a7;
+            border-bottom: 1px solid #163818;
+            padding-bottom: 4px;
+        }
+        .panel-section p {
+            margin: 4px 0;
+            font-size: 13px;
+            color: #e0e0e0;
+        }
+        .info-bottom {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #90a4ae;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎋 죽림고수 : 무사의 전설</h1>
+    
+    <div id="game-wrapper">
+        <!-- 게임 맵 컨테이너 -->
+        <div id="game-container" style="border-radius: 12px;">
+            <canvas id="gameCanvas" width="760" height="760"></canvas>
+        </div>
+
+        <!-- 우측 정보 패널 -->
+        <div id="side-panel">
+            <div class="panel-section">
+                <h3>📊 생존 정보</h3>
+                <p>생존 시간: <span id="ui-score" style="color:#ffeb3b; font-weight:bold;">0.0초</span></p>
+                <p>현재 직업: <span id="ui-job" style="color:#81c784; font-weight:bold;">선택중</span></p>
+                <p>탄막 페이즈: <span id="ui-phase" style="color:#ff7043; font-weight:bold;">1단계</span></p>
+                <p>최고 기록: <span id="ui-highscore" style="color:#ffa726; font-weight:bold;">0.0초</span></p>
+            </div>
+            <div class="panel-section" id="ultimate-box" style="display:none;">
+                <h3>🔥 특수 능력</h3>
+                <p id="ui-ultimate" style="color:#66bb6a; font-weight:bold;">준비 완료 [SPACE]</p>
+            </div>
+            <div class="panel-section">
+                <h3>📜 히든 조건</h3>
+                <p style="font-size:11px; color:#ffeb3b;">• 40초 생존 시<br>&nbsp;&nbsp;전설의 <b>[무림맹주]</b> 해금!</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="info-bottom">조작법: WASD 또는 방향키 | 특수 능력: <b>SPACE</b> 또는 <b>J</b></div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const gameContainer = document.getElementById('game-container');
+
+let gameState = 'SELECT';
+let score = 0;
+let highScore = 0;
+let gameTime = 0;
+let arrowSpawnTimer = 0;
+let ultimateCooldown = 0;
+let hasUnlockedHidden = false;
+
+let isAlmostDead = false;
+let almostDeadTimer = 0;
+let hasRevived = false;
+
+let windBarrierTimer = 0; 
+let windBarrierCooldown = 0; 
+
+let shellyDashTimer = 0; 
+let shellyDashCooldown = 0; 
+let shellyDashVx = 0;
+let shellyDashVy = 0;
+
+let leonStealthTimer = 0;
+let leonStealthCooldown = 0;
+
+let busterShieldTimer = 0;
+let busterShieldCooldown = 0;
+
+let edgarBuffTimer = 0;
+let edgarBuffCooldown = 0;
+
+let pamStation = null;
+let pamStationCooldown = 0;
+
+let kazeDashTimer = 0;
+let kazeDashCooldown = 0;
+let kazeStealthTimer = 0;
+let kazeDashVx = 0;
+let kazeDashVy = 0;
+
+const mapCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+const mapRadius = 350;
+
+// 캐릭터 배치 (3줄 구조로 5개씩 균등 분할)
+const characterRows = [
+    [
+        { name: '인간', speed: 4.8, color: '#ffeb3b', desc: '균형 잡힌 무사' },
+        { name: '거북무사', speed: 4.0, color: '#26a69a', desc: '단단하고 안정적' },
+        { name: '황금무사', speed: 5.8, color: '#ffd700', desc: '초고속 스피드형' },
+        { name: '고라니', speed: 5.2, color: '#66bb6a', desc: '화살 파괴 소리 궁극기' },
+        { name: '더그', speed: 6.5, color: '#ff7043', desc: '죽기 1초전 스페이스 부활' }
+    ],
+    [
+        { name: '하드코어', speed: 5.6, color: '#d32f2f', desc: '초고속 탄막 극한의난이도' },
+        { name: '미나', speed: 5.0, color: '#29b6f6', desc: '바람 장벽 (2초무적/10초쿨)' },
+        { name: '쉘리', speed: 5.2, color: '#ab47bc', desc: '0.45초 돌진 (닿으면즉사/8초쿨)' },
+        { name: '레온', speed: 5.5, color: '#26a69a', desc: '4초 은신 & 화살감소/15초쿨' },
+        { name: '버스터', speed: 4.5, color: '#ffa726', desc: '4초 360도 화살 반사/15초쿨' }
+    ],
+    [
+        { name: '에드거', speed: 5.3, color: '#546e7a', desc: '중앙점프 후 4초간 둔화/덜옴' },
+        { name: '팸', speed: 4.7, color: '#ec407a', desc: '힐링팩터 설치 (범위내 3회방어)' },
+        { name: '카제', speed: 5.4, color: '#78909c', desc: '0.26초 무적돌진 & 3초 은신(7초쿨)' },
+        { name: '코스모', speed: 5.0, color: '#7e57c2', desc: '화살 끌어당김 (4초후소멸)' },
+        { name: '무림맹주', speed: 6.2, color: '#00e5ff', desc: '초고속 전설의지배자', hidden: true }
+    ]
+];
+
+let selectedRow = 0;
+let selectedCol = 0;
+
+const player = {
+    x: mapCenter.x,
+    y: mapCenter.y,
+    radius: 11,
+    baseSpeed: 4.8,
+    speed: 4.8,
+    job: '인간',
+    color: '#ffeb3b',
+    animAngle: 0,
+    lastMoveX: 0,
+    lastMoveY: -1
+};
+
+const keys = {
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+    w: false, s: false, a: false, d: false, W: false, S: false, A: false, D: false,
+    Space: false, j: false, J: false
+};
+
+let arrows = [];
+let particles = [];
+let floatingTexts = [];
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.ArrowUp = true;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.ArrowDown = true;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.ArrowLeft = true;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.ArrowRight = true;
+    
+    if (e.key === ' ' || e.key === 'j' || e.key === 'J') {
+        keys.Space = true;
+        
+        if (isAlmostDead && !hasRevived) {
+            triggerAlmostDeadRevive();
+        } else {
+            triggerUltimate();
+        }
+    }
+
+    if (gameState === 'SELECT') {
+        let currentRowCols = characterRows[selectedRow].length;
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+            selectedCol = (selectedCol - 1 + currentRowCols) % currentRowCols;
+        } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+            selectedCol = (selectedCol + 1) % currentRowCols;
+        } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+            selectedRow = Math.max(0, selectedRow - 1);
+            if (selectedCol >= characterRows[selectedRow].length) {
+                selectedCol = characterRows[selectedRow].length - 1;
+            }
+        } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+            selectedRow = Math.min(characterRows.length - 1, selectedRow + 1);
+            if (selectedCol >= characterRows[selectedRow].length) {
+                selectedCol = characterRows[selectedRow].length - 1;
+            }
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            if (isAlmostDead) return;
+            let chosen = characterRows[selectedRow][selectedCol];
+            if (chosen.hidden && !hasUnlockedHidden) {
+                addFloatingText("🔒 아직 해금되지 않은 히든 캐릭터입니다!", mapCenter.x, mapCenter.y - 60, '#ff5252');
+                return;
+            }
+            startGameWithCharacter(chosen);
+        }
+    } else if (gameState === 'GAMEOVER') {
+        if (e.key === 'Enter' || e.key === ' ') {
+            gameState = 'SELECT';
+            gameContainer.style.borderRadius = '12px';
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.ArrowUp = false;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.ArrowDown = false;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.ArrowLeft = false;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.ArrowRight = false;
+    if (e.key === ' ' || e.key === 'j' || e.key === 'J') keys.Space = false;
+});
+
+function startGameWithCharacter(charInfo) {
+    gameState = 'PLAYING';
+    gameContainer.style.borderRadius = '50%';
+    score = 0;
+    gameTime = 0;
+    arrows = [];
+    particles = [];
+    floatingTexts = [];
+    player.x = mapCenter.x;
+    player.y = mapCenter.y;
+    player.job = charInfo.name;
+    player.baseSpeed = charInfo.speed;
+    player.speed = charInfo.speed;
+    player.color = charInfo.color;
+    arrowSpawnTimer = 0;
+    ultimateCooldown = 0;
+    isAlmostDead = false;
+    hasRevived = false;
+    windBarrierTimer = 0;
+    windBarrierCooldown = 0;
+    shellyDashTimer = 0;
+    shellyDashCooldown = 0;
+    leonStealthTimer = 0;
+    leonStealthCooldown = 0;
+    busterShieldTimer = 0;
+    busterShieldCooldown = 0;
+    edgarBuffTimer = 0;
+    edgarBuffCooldown = 0;
+    pamStation = null;
+    pamStationCooldown = 0;
+    kazeDashTimer = 0;
+    kazeDashCooldown = 0;
+    kazeStealthTimer = 0;
+    kazeDashVx = 0;
+    kazeDashVy = 0;
+    player.lastMoveX = 0;
+    player.lastMoveY = -1;
+
+    let hasUlt = true;
+    document.getElementById('ultimate-box').style.display = hasUlt ? 'block' : 'none';
+
+    if (player.job === '고라니') {
+        addFloatingText("꺄아아악! 미친 고라니 강림!", mapCenter.x, mapCenter.y - 40, '#66bb6a');
+    } else if (player.job === '무림맹주') {
+        addFloatingText("👑 전설의 무림맹주가 강림하셨다!", mapCenter.x, mapCenter.y - 40, '#00e5ff');
+    } else if (player.job === '더그') {
+        addFloatingText("🦆 불사신 더그 출격! (죽기 1초전 SPACE)", mapCenter.x, mapCenter.y - 40, '#ff7043');
+    } else if (player.job === '미나') {
+        addFloatingText("🌪️ 바람의 요정 미나 출격! (2초 장벽/10초쿨)", mapCenter.x, mapCenter.y - 40, '#29b6f6');
+    } else if (player.job === '쉘리') {
+        addFloatingText("🟣 쉘리 출격! (0.45초 돌진/닿으면즉사/8초쿨)", mapCenter.x, mapCenter.y - 40, '#ab47bc');
+    } else if (player.job === '레온') {
+        addFloatingText("🟢 레온 출격! (4초 은신 & 화살감소/15초쿨)", mapCenter.x, mapCenter.y - 40, '#26a69a');
+    } else if (player.job === '버스터') {
+        addFloatingText("🟠 버스터 출격! (4초 360도 반사/15초쿨)", mapCenter.x, mapCenter.y - 40, '#ffa726');
+    } else if (player.job === '에드거') {
+        addFloatingText("🧣 에드거 출격! (중앙점프 & 화살 둔화·감소)", mapCenter.x, mapCenter.y - 40, '#546e7a');
+    } else if (player.job === '팸') {
+        addFloatingText("💖 팸 출격! (힐링팩터 설치 & 3회 방어)", mapCenter.x, mapCenter.y - 40, '#ec407a');
+    } else if (player.job === '카제') {
+        addFloatingText("⚡ 카제 출격! (0.26초 무적돌진 & 3초 은신)", mapCenter.x, mapCenter.y - 40, '#78909c');
+    } else if (player.job === '하드코어') {
+        addFloatingText("💀 하드코어 출격! (극한의 탄막 지옥)", mapCenter.x, mapCenter.y - 40, '#d32f2f');
+    } else if (player.job === '코스모') {
+        addFloatingText("🌌 코스모 출격! (화살 끌어당김 & 4초소멸)", mapCenter.x, mapCenter.y - 40, '#7e57c2');
+    }
+}
+
+function triggerUltimate() {
+    if (gameState !== 'PLAYING') return;
+
+    if (player.job === '고라니') {
+        if (ultimateCooldown > 0) return;
+        for (let i = 0; i < 70; i++) {
+            let angle = (Math.PI * 2 / 70) * i;
+            particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 10, vy: Math.sin(angle) * 10, radius: 5, alpha: 1, color: '#a5d6a7' });
+        }
+        addFloatingText("⚡ 고라니 고함 발사!!! (화살 초토화)", player.x, player.y - 30, '#ffeb3b');
+        arrows = [];
+        ultimateCooldown = 900;
+    } else if (player.job === '무림맹주') {
+        if (ultimateCooldown > 0) return;
+        for (let i = 0; i < 90; i++) {
+            let angle = (Math.PI * 2 / 90) * i;
+            particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 12, vy: Math.sin(angle) * 12, radius: 6, alpha: 1, color: '#00e5ff' });
+        }
+        addFloatingText("🌀 맹주의 기파 폭발!!! (전 화면 정화)", player.x, player.y - 30, '#00e5ff');
+        arrows = [];
+        ultimateCooldown = 600;
+    } else if (player.job === '미나') {
+        if (windBarrierCooldown > 0) return;
+        windBarrierTimer = 120; 
+        windBarrierCooldown = 600; 
+        addFloatingText("🌪️ 바람의 장벽 전개! (2초간 화살 차단)", player.x, player.y - 30, '#29b6f6');
+        
+        for (let a of arrows) {
+            let dx = a.x - player.x;
+            let dy = a.y - player.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 120) {
+                a.vx *= -1.5;
+                a.vy *= -1.5;
+            }
+        }
+    } else if (player.job === '쉘리') {
+        if (shellyDashCooldown > 0) return;
+        shellyDashTimer = 27; 
+        shellyDashCooldown = 480; 
+        
+        let dX = player.lastMoveX;
+        let dY = player.lastMoveY;
+        if (dX === 0 && dY === 0) dY = -1;
+        
+        let length = Math.sqrt(dX * dX + dY * dY);
+        shellyDashVx = (dX / length) * 16; 
+        shellyDashVy = (dY / length) * 16;
+        
+        addFloatingText("💨 슉! 쉘리 돌진 (위험 주의!)", player.x, player.y - 30, '#ab47bc');
+    } else if (player.job === '레온') {
+        if (leonStealthCooldown > 0) return;
+        leonStealthTimer = 240; 
+        leonStealthCooldown = 900; 
+        addFloatingText("👤 레온 은신 발동! (화살이 덜 날아옴)", player.x, player.y - 30, '#26a69a');
+    } else if (player.job === '버스터') {
+        if (busterShieldCooldown > 0) return;
+        busterShieldTimer = 240; 
+        busterShieldCooldown = 900; 
+        addFloatingText("🟠 버스터 장막 전개! (4초간 360도 반사)", player.x, player.y - 30, '#ffa726');
+    } else if (player.job === '에드거') {
+        if (edgarBuffCooldown > 0) return;
+        for (let i = 0; i < 40; i++) {
+            let angle = (Math.PI * 2 / 40) * i;
+            particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8, radius: 5, alpha: 1, color: '#546e7a' });
+        }
+        player.x = mapCenter.x;
+        player.y = mapCenter.y;
+        for (let i = 0; i < 40; i++) {
+            let angle = (Math.PI * 2 / 40) * i;
+            particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 10, vy: Math.sin(angle) * 10, radius: 6, alpha: 1, color: '#78909c' });
+        }
+        edgarBuffTimer = 240; 
+        edgarBuffCooldown = 900; 
+        addFloatingText("🧣 에드거 중앙 착지! 화살 둔화 및 감소 발동!", player.x, player.y - 30, '#90a4ae');
+    } else if (player.job === '팸') {
+        if (pamStationCooldown > 0) return;
+        pamStation = {
+            x: player.x,
+            y: player.y,
+            radius: 130,
+            shieldCount: 3,
+            maxShield: 3,
+            timer: 600 
+        };
+        pamStationCooldown = 900; 
+        addFloatingText("💖 힐링팩터 소환! 범위 안에서 화살 3회 방어!", player.x, player.y - 30, '#ec407a');
+    } else if (player.job === '카제') {
+        if (kazeDashCooldown > 0) return;
+        kazeDashTimer = 16; 
+        kazeDashCooldown = 420; 
+        
+        let dX = player.lastMoveX;
+        let dY = player.lastMoveY;
+        if (dX === 0 && dY === 0) dY = -1;
+        
+        let length = Math.sqrt(dX * dX + dY * dY);
+        kazeDashVx = (dX / length) * 18; 
+        kazeDashVy = (dY / length) * 18;
+        
+        addFloatingText("⚡ 카제 질풍돌진! (0.26초 무적)", player.x, player.y - 30, '#00e5ff');
+    } else if (player.job === '하드코어') {
+        if (ultimateCooldown > 0) return;
+        windBarrierTimer = 120; 
+        ultimateCooldown = 900;
+        addFloatingText("💀 하드코어 각성! (2초간 긴급 무적)", player.x, player.y - 30, '#ff5252');
+    } else if (player.job === '코스모') {
+        if (ultimateCooldown > 0) return;
+        for (let i = 0; i < 60; i++) {
+            let angle = (Math.PI * 2 / 60) * i;
+            particles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8, radius: 5, alpha: 1, color: '#7e57c2' });
+        }
+        addFloatingText("🌌 코스모 블랙홀 흡수! (화살 정화)", player.x, player.y - 30, '#b388ff');
+        arrows = [];
+        ultimateCooldown = 750;
+    }
+}
+
+function triggerAlmostDeadRevive() {
+    hasRevived = true;
+    isAlmostDead = false;
+    gameState = 'PLAYING';
+    arrows = []; 
+    addFloatingText("✨ 불사신 기적 발동! 위기 탈출!", player.x, player.y - 30, '#ffeb3b');
+}
+
+function addFloatingText(text, x, y, color) {
+    floatingTexts.push({ text, x, y, alpha: 1, color, vy: -1.0 });
+}
+
+function spawnAdvancedPatterns() {
+    let seconds = gameTime / 60;
+    let speed = 3.0 + Math.min(seconds / 20, 3.8);
+    if (player.job === '하드코어') speed *= 1.25;
+    if (player.job === '에드거' && edgarBuffTimer > 0) speed *= 0.35; 
+
+    if ((player.job === '레온' && leonStealthTimer > 0) || (player.job === '카제' && kazeStealthTimer > 0)) {
+        if (Math.random() < 0.6) return; 
+    }
+
+    if (seconds < 20) {
+        const angle = Math.random() * Math.PI * 2;
+        const x = mapCenter.x + Math.cos(angle) * (mapRadius + 30);
+        const y = mapCenter.y + Math.sin(angle) * (mapRadius + 30);
+        const dx = player.x - x;
+        const dy = player.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        arrows.push({ x, y, vx: (dx/dist)*speed, vy: (dy/dist)*speed, radius: 4.5, isHoming: false, life: 0 });
+    }
+    else if (seconds < 40) {
+        let pattern = Math.random();
+        if (pattern < 0.22) {
+            const angle = Math.random() * Math.PI * 2;
+            const x = mapCenter.x + Math.cos(angle) * (mapRadius + 30);
+            const y = mapCenter.y + Math.sin(angle) * (mapRadius + 30);
+            let initAngle = Math.atan2(player.y - y, player.x - x);
+            arrows.push({ 
+                x, y, 
+                vx: Math.cos(initAngle) * (speed * 0.75), 
+                vy: Math.sin(initAngle) * (speed * 0.75), 
+                radius: 5, 
+                isHoming: true, 
+                homingTimer: 120, 
+                speed: speed * 0.8,
+                life: 0 
+            });
+        } else {
+            const baseAngle = Math.random() * Math.PI * 2;
+            const x = mapCenter.x + Math.cos(baseAngle) * (mapRadius + 30);
+            const y = mapCenter.y + Math.sin(baseAngle) * (mapRadius + 30);
+            for (let i = -1; i <= 1; i++) {
+                let targetAngle = Math.atan2(player.y - y, player.x - x) + (i * 0.22);
+                arrows.push({ x, y, vx: Math.cos(targetAngle) * speed, vy: Math.sin(targetAngle) * speed, radius: 4.5, isHoming: false, life: 0 });
+            }
+        }
+    }
+    else {
+        let pattern = Math.random();
+        if (pattern < 0.25) {
+            let count = 10;
+            let startAngle = Math.random() * Math.PI * 2;
+            for (let i = 0; i < count; i++) {
+                let angle = startAngle + (i * (Math.PI * 2 / count));
+                let x = mapCenter.x + Math.cos(angle) * (mapRadius + 30);
+                let y = mapCenter.y + Math.sin(angle) * (mapRadius + 30);
+                let dx = mapCenter.x - x;
+                let dy = mapCenter.y - y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                arrows.push({ x, y, vx: (dx/dist)*(speed*0.75), vy: (dy/dist)*(speed*0.75), radius: 4, isHoming: false, life: 0 });
+            }
+        } else if (pattern < 0.45) {
+            const angle = Math.random() * Math.PI * 2;
+            const x = mapCenter.x + Math.cos(angle) * (mapRadius + 30);
+            const y = mapCenter.y + Math.sin(angle) * (mapRadius + 30);
+            let initAngle = Math.atan2(player.y - y, player.x - x);
+            arrows.push({ 
+                x, y, 
+                vx: Math.cos(initAngle) * (speed * 0.75), 
+                vy: Math.sin(initAngle) * (speed * 0.75), 
+                radius: 5, 
+                isHoming: true, 
+                homingTimer: 120, 
+                speed: speed * 0.85,
+                life: 0 
+            });
+        } else {
+            const angle = Math.random() * Math.PI * 2;
+            const x = mapCenter.x + Math.cos(angle) * (mapRadius + 30);
+            const y = mapCenter.y + Math.sin(angle) * (mapRadius + 30);
+            const dx = player.x - x;
+            const dy = player.y - y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            arrows.push({ x, y, vx: (dx/dist)*speed, vy: (dy/dist)*speed, radius: 4.5, isHoming: false, life: 0 });
+        }
+    }
+}
+
+function update() {
+    if (gameState === 'ALMOST_DEAD') {
+        almostDeadTimer--;
+        if (almostDeadTimer <= 0) {
+            gameState = 'GAMEOVER';
+            isAlmostDead = false;
+            if (Number(score) > Number(highScore)) highScore = score;
+        }
+        return;
+    }
+
+    if (gameState !== 'PLAYING') return;
+
+    gameTime++;
+    score = (gameTime / 60).toFixed(1);
+    player.animAngle += 0.12;
+
+    if (ultimateCooldown > 0) ultimateCooldown--;
+    if (windBarrierTimer > 0) windBarrierTimer--;
+    if (windBarrierCooldown > 0) windBarrierCooldown--;
+    if (shellyDashCooldown > 0) shellyDashCooldown--;
+    if (leonStealthTimer > 0) leonStealthTimer--;
+    if (leonStealthCooldown > 0) leonStealthCooldown--;
+    if (busterShieldTimer > 0) busterShieldTimer--;
+    if (busterShieldCooldown > 0) busterShieldCooldown--;
+    if (edgarBuffTimer > 0) edgarBuffTimer--;
+    if (edgarBuffCooldown > 0) edgarBuffCooldown--;
+    if (pamStationCooldown > 0) pamStationCooldown--;
+
+    if (kazeDashCooldown > 0) kazeDashCooldown--;
+    if (kazeStealthTimer > 0) kazeStealthTimer--;
+
+    if (pamStation) {
+        pamStation.timer--;
+        if (pamStation.timer <= 0 || pamStation.shieldCount <= 0) {
+            pamStation = null;
+        }
+    }
+
+    let currentSeconds = gameTime / 60;
+    if (currentSeconds >= 40 && !hasUnlockedHidden) {
+        hasUnlockedHidden = true;
+        addFloatingText("🎉 [무림맹주] 히든 캐릭터 해금 완료!", mapCenter.x, mapCenter.y - 60, '#00e5ff');
+    }
+
+    let moveX = 0;
+    let moveY = 0;
+    if (keys.ArrowUp) moveY -= 1;
+    if (keys.ArrowDown) moveY += 1;
+    if (keys.ArrowLeft) moveX -= 1;
+    if (keys.ArrowRight) moveX += 1;
+
+    if (moveX !== 0 || moveY !== 0) {
+        player.lastMoveX = moveX;
+        player.lastMoveY = moveY;
+    }
+
+    if (moveX !== 0 && moveY !== 0) {
+        moveX *= 0.7071;
+        moveY *= 0.7071;
+    }
+
+    if (shellyDashTimer > 0) {
+        shellyDashTimer--;
+        player.x += shellyDashVx;
+        player.y += shellyDashVy;
+        particles.push({ x: player.x, y: player.y, vx: 0, vy: 0, radius: 8, alpha: 0.6, color: '#ab47bc' });
+    } else if (kazeDashTimer > 0) {
+        kazeDashTimer--;
+        player.x += kazeDashVx;
+        player.y += kazeDashVy;
+        particles.push({ x: player.x, y: player.y, vx: 0, vy: 0, radius: 8, alpha: 0.7, color: '#00e5ff' });
+        if (kazeDashTimer === 0) {
+            kazeStealthTimer = 180; 
+            addFloatingText("👤 카제 은신 모드 진입!", player.x, player.y - 25, '#b0bec5');
+        }
+    } else {
+        player.x += moveX * player.speed;
+        player.y += moveY * player.speed;
+    }
+
+    let distFromCenter = Math.sqrt((player.x - mapCenter.x) ** 2 + (player.y - mapCenter.y) ** 2);
+    if (distFromCenter > mapRadius - player.radius) {
+        let angle = Math.atan2(player.y - mapCenter.y, player.x - mapCenter.x);
+        player.x = mapCenter.x + Math.cos(angle) * (mapRadius - player.radius);
+        player.y = mapCenter.y + Math.sin(angle) * (mapRadius - player.radius);
+    }
+
+    arrowSpawnTimer++;
+    let baseSpawnInterval = Math.max(12, 42 - Math.floor(currentSeconds * 0.5));
+    if (player.job === '하드코어') baseSpawnInterval = Math.max(8, Math.floor(baseSpawnInterval * 0.75));
+    if (player.job === '에드거' && edgarBuffTimer > 0) baseSpawnInterval = Math.floor(baseSpawnInterval * 2.5);
+    
+    if (arrowSpawnTimer >= baseSpawnInterval) {
+        spawnAdvancedPatterns();
+        arrowSpawnTimer = 0;
+    }
+
+    for (let i = arrows.length - 1; i >= 0; i--) {
+        let a = arrows[i];
+
+        if (player.job === '에드거' && edgarBuffTimer > 0) {
+            a.vx *= 0.94;
+            a.vy *= 0.94;
+        }
+
+        if (player.job === '코스모') {
+            let dxP = player.x - a.x;
+            let dyP = player.y - a.y;
+            let distP = Math.sqrt(dxP * dxP + dyP * dyP);
+            if (distP > 1) {
+                a.vx += (dxP / distP) * 0.05;
+                a.vy += (dyP / distP) * 0.05;
+            }
+            a.life = (a.life || 0) + 1;
+            if (a.life > 240) { 
+                arrows.splice(i, 1);
+                continue;
+            }
+        }
+
+        if (a.isHoming) {
+            if (a.homingTimer > 0) {
+                a.homingTimer--;
+                let angleToPlayer = Math.atan2(player.y - a.y, player.x - a.x);
+                a.vx += Math.cos(angleToPlayer) * 0.04;
+                a.vy += Math.sin(angleToPlayer) * 0.04;
+                let currentSpeed = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+                if (currentSpeed > a.speed) {
+                    a.vx = (a.vx / currentSpeed) * a.speed;
+                    a.vy = (a.vy / currentSpeed) * a.speed;
+                }
+            } else {
+                a.isHoming = false;
+            }
+        }
+
+        a.x += a.vx;
+        a.y += a.vy;
+
+        let dCenter = Math.sqrt((a.x - mapCenter.x) ** 2 + (a.y - mapCenter.y) ** 2);
+        if (dCenter > mapRadius + 80) {
+            arrows.splice(i, 1);
+            continue;
+        }
+
+        if (player.job === '버스터' && busterShieldTimer > 0) {
+            let dxB = player.x - a.x;
+            let dyB = player.y - a.y;
+            let distB = Math.sqrt(dxB * dxB + dyB * dyB);
+            if (distB < 75) {
+                a.vx = -a.vx * 1.5;
+                a.vy = -a.vy * 1.5;
+                particles.push({ x: a.x, y: a.y, vx: 0, vy: 0, radius: 8, alpha: 0.8, color: '#ffa726' });
+                continue;
+            }
+        }
+
+        if (player.job === '미나' && windBarrierTimer > 0) {
+            let dxB = player.x - a.x;
+            let dyB = player.y - a.y;
+            let distB = Math.sqrt(dxB * dxB + dyB * dyB);
+            if (distB < 85) {
+                a.vx = -a.vx * 1.2;
+                a.vy = -a.vy * 1.2;
+                particles.push({ x: a.x, y: a.y, vx: 0, vy: 0, radius: 8, alpha: 0.8, color: '#29b6f6' });
+                continue;
+            }
+        }
+
+        let dx = player.x - a.x;
+        let dy = player.y - a.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < player.radius + a.radius) {
+            if (player.job === '카제' && kazeDashTimer > 0) {
+                continue;
+            }
+
+            if (windBarrierTimer > 0 && player.job === '하드코어') {
+                continue;
+            }
+
+            if (player.job === '팸' && pamStation) {
+                let distToStation = Math.sqrt((player.x - pamStation.x) ** 2 + (player.y - pamStation.y) ** 2);
+                if (distToStation <= pamStation.radius && pamStation.shieldCount > 0) {
+                    pamStation.shieldCount--;
+                    arrows.splice(i, 1);
+                    for (let p = 0; p < 15; p++) {
+                        let pAngle = Math.random() * Math.PI * 2;
+                        particles.push({ x: player.x, y: player.y, vx: Math.cos(pAngle) * 5, vy: Math.sin(pAngle) * 5, radius: 4, alpha: 1, color: '#ec407a' });
+                    }
+                    addFloatingText(`💖 힐링팩터 방어! (남은 보호: ${pamStation.shieldCount}회)`, player.x, player.y - 25, '#ec407a');
+                    continue;
+                }
+            }
+
+            if (player.job === '더그' && !hasRevived) {
+                gameState = 'ALMOST_DEAD';
+                isAlmostDead = true;
+                almostDeadTimer = 60; 
+            } else {
+                gameState = 'GAMEOVER';
+                if (Number(score) > Number(highScore)) highScore = score;
+            }
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.025;
+        if (p.alpha <= 0) particles.splice(i, 1);
+    }
+
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        let ft = floatingTexts[i];
+        ft.y += ft.vy;
+        ft.alpha -= 0.02;
+        if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+    }
+
+    document.getElementById('ui-score').innerText = `${score}초`;
+    document.getElementById('ui-job').innerText = player.job;
+    let phaseName = currentSeconds < 20 ? "1단계 (일반)" : currentSeconds < 40 ? "2단계 (2초유도)" : "3단계 (360도 링폭격!)";
+    if (player.job === '하드코어') phaseName += " [EXTREME]";
+    document.getElementById('ui-phase').innerText = phaseName;
+    document.getElementById('ui-highscore').innerText = `${highScore}초`;
+    
+    let ultText = "";
+    if (player.job === '고라니' || player.job === '무림맹주' || player.job === '코스모') {
+        ultText = ultimateCooldown === 0 ? "🔥 준비 완료! [SPACE]" : `쿨타임 ${(ultimateCooldown/60).toFixed(1)}초`;
+    } else if (player.job === '더그') {
+        ultText = !hasRevived ? "🦆 불사신 대기중 (죽기 1초전)" : "부활 완료됨";
+    } else if (player.job === '미나' || player.job === '하드코어') {
+        if (windBarrierTimer > 0) ultText = `🛡️ 효과 유지중! (${(windBarrierTimer/60).toFixed(1)}초)`;
+        else if (windBarrierCooldown > 0) ultText = `쿨타임 ${(windBarrierCooldown/60).toFixed(1)}초`;
+        else ultText = "🛡️ 능력 준비 완료 [SPACE]";
+    } else if (player.job === '쉘리') {
+        ultText = shellyDashCooldown === 0 ? "💨 돌진 준비 완료 [SPACE]" : `쿨타임 ${(shellyDashCooldown/60).toFixed(1)}초`;
+    } else if (player.job === '레온') {
+        if (leonStealthTimer > 0) ultText = `👤 은신 유지중! (${(leonStealthTimer/60).toFixed(1)}초)`;
+        else if (leonStealthCooldown > 0) ultText = `쿨타임 ${(leonStealthCooldown/60).toFixed(1)}초`;
+        else ultText = "👤 은신 준비 완료 [SPACE]";
+    } else if (player.job === '버스터') {
+        if (busterShieldTimer > 0) ultText = `🟠 반사막 유지중! (${(busterShieldTimer/60).toFixed(1)}초)`;
+        else if (busterShieldCooldown > 0) ultText = `쿨타임 ${(busterShieldCooldown/60).toFixed(1)}초`;
+        else ultText = "🟠 반사막 준비 완료 [SPACE]";
+    } else if (player.job === '에드거') {
+        if (edgarBuffTimer > 0) ultText = `🧣 둔화/감소 유지중! (${(edgarBuffTimer/60).toFixed(1)}초)`;
+        else if (edgarBuffCooldown > 0) ultText = `쿨타임 ${(edgarBuffCooldown/60).toFixed(1)}초`;
+        else ultText = "🧣 중앙점프 준비 완료 [SPACE]";
+    } else if (player.job === '팸') {
+        if (pamStation) ultText = `💖 힐링팩터 작동중 (보호 ${pamStation.shieldCount}회)`;
+        else if (pamStationCooldown > 0) ultText = `쿨타임 ${(pamStationCooldown/60).toFixed(1)}초`;
+        else ultText = "💖 힐링팩터 준비 완료 [SPACE]";
+    } else if (player.job === '카제') {
+        if (kazeDashTimer > 0) ultText = `⚡ 돌진 무적중!`;
+        else if (kazeStealthTimer > 0) ultText = `👤 은신 모드중! (${(kazeStealthTimer/60).toFixed(1)}초)`;
+        else if (kazeDashCooldown > 0) ultText = `쿨타임 ${(kazeDashCooldown/60).toFixed(1)}초`;
+        else ultText = "⚡ 돌진/은신 준비 완료 [SPACE]";
+    }
+    document.getElementById('ui-ultimate').innerText = ultText;
+}
+
+function drawCharacter(ctx, x, y, job, color, anim) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    if ((job === '레온' && leonStealthTimer > 0) || (job === '카제' && kazeStealthTimer > 0)) {
+        ctx.globalAlpha = 0.35;
+    }
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.fillStyle = job === '무림맹주' ? 'rgba(0, 229, 255, 0.3)' : 'rgba(255, 255, 255, 0.2)';
+    ctx.fill();
+
+    if (job === '버스터' && busterShieldTimer > 0) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 65 + Math.sin(anim * 4) * 4, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 167, 38, 0.8)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([5, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    if ((job === '미나' || job === '하드코어') && windBarrierTimer > 0) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 80 + Math.sin(anim * 3) * 5, 0, Math.PI * 2);
+        ctx.strokeStyle = job === '하드코어' ? 'rgba(255, 82, 82, 0.8)' : 'rgba(41, 182, 246, 0.7)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    if (job === '인간') {
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#222';
+        ctx.beginPath(); ctx.ellipse(0, -10, 14, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(-2, -17, 4, 7);
+    } else if (job === '거북무사') {
+        ctx.fillStyle = '#004d40';
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '황금무사') {
+        let gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
+        gradient.addColorStop(0, '#fffde7');
+        gradient.addColorStop(1, '#ff8f00');
+        ctx.fillStyle = gradient;
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '고라니') {
+        ctx.fillStyle = '#66bb6a';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#81c784';
+        ctx.beginPath();
+        ctx.ellipse(-7, -11, 4, 8, -0.3, 0, Math.PI * 2);
+        ctx.ellipse(7, -11, 4, 8, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff1744';
+        ctx.beginPath(); ctx.arc(-3, -2, 2, 0, Math.PI * 2); ctx.arc(3, -2, 2, 0, Math.PI * 2); ctx.fill();
+    } else if (job === '더그') {
+        ctx.fillStyle = '#ff7043';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffccbc';
+        ctx.beginPath(); ctx.arc(4, -2, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '미나') {
+        ctx.fillStyle = '#29b6f6';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e1f5fe';
+        ctx.beginPath(); ctx.arc(0, -3, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '쉘리') {
+        ctx.fillStyle = '#ab47bc';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f3e5f5';
+        ctx.beginPath(); ctx.arc(0, -4, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '레온') {
+        ctx.fillStyle = '#26a69a';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#004d40';
+        ctx.beginPath(); ctx.arc(0, -4, 7, Math.PI, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '버스터') {
+        ctx.fillStyle = '#ffa726';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff3e0';
+        ctx.beginPath(); ctx.arc(0, -4, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '에드거') {
+        ctx.fillStyle = '#546e7a';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#263238';
+        ctx.beginPath(); ctx.arc(0, -2, 7, 0, Math.PI); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '팸') {
+        ctx.fillStyle = '#ec407a';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f8bbd0';
+        ctx.beginPath(); ctx.arc(0, -3, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '카제') {
+        ctx.fillStyle = '#78909c';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        if (kazeStealthTimer > 0) {
+            ctx.fillStyle = '#b0bec5';
+            ctx.beginPath(); ctx.arc(0, -3, 7, 0, Math.PI); ctx.fill();
+            ctx.strokeStyle = '#00e5ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = '#37474f';
+            ctx.beginPath(); ctx.arc(0, -3, 6, 0, Math.PI); ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    } else if (job === '하드코어') {
+        ctx.fillStyle = '#b71c1c';
+        ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff5252';
+        ctx.beginPath(); ctx.arc(0, -3, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '코스모') {
+        let grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 13);
+        grad.addColorStop(0, '#e1bee7');
+        grad.addColorStop(1, '#512da8');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#b388ff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (job === '무림맹주') {
+        let gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 16);
+        gradient.addColorStop(0, '#e0f7fa');
+        gradient.addColorStop(1, '#00838f');
+        ctx.fillStyle = gradient;
+        ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath();
+        ctx.moveTo(-7, -14); ctx.lineTo(-3, -22); ctx.lineTo(0, -15); ctx.lineTo(3, -22); ctx.lineTo(7, -14);
+        ctx.closePath(); ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'SELECT') {
+        ctx.fillStyle = '#020502';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#a5d6a7';
+        ctx.font = 'bold 22px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚔️ 플레이할 무사 캐릭터를 선택하세요 ⚔️', canvas.width / 2, 35);
+
+        // 3줄 정렬을 위한 카드 크기 및 간격 설정
+        let cardWidth = 84;
+        let cardHeight = 155;
+        let cardGapX = 8;
+        let cardGapY = 10;
+
+        for (let r = 0; r < characterRows.length; r++) {
+            let rowItems = characterRows[r];
+            let totalWidth = (rowItems.length * cardWidth) + ((rowItems.length - 1) * cardGapX);
+            let startX = (canvas.width - totalWidth) / 2;
+            let startY = 60 + r * (cardHeight + cardGapY);
+
+            for (let c = 0; c < rowItems.length; c++) {
+                let charInfo = rowItems[c];
+                let cx = startX + c * (cardWidth + cardGapX);
+                let cy = startY;
+                let isSelected = (r === selectedRow && c === selectedCol);
+                let isLocked = charInfo.hidden && !hasUnlockedHidden;
+
+                ctx.fillStyle = isSelected ? '#122612' : '#081208';
+                ctx.strokeStyle = isSelected ? '#00e5ff' : '#2e7d32';
+                ctx.lineWidth = isSelected ? 3 : 1;
+                ctx.fillRect(cx, cy, cardWidth, cardHeight);
+                ctx.strokeRect(cx, cy, cardWidth, cardHeight);
+
+                ctx.fillStyle = isLocked ? '#757575' : charInfo.color;
+                ctx.font = 'bold 11px Malgun Gothic';
+                ctx.textAlign = 'center';
+                ctx.fillText(charInfo.name, cx + cardWidth / 2, cy + 20);
+
+                if (!isLocked) {
+                    drawCharacter(ctx, cx + cardWidth / 2, cy + 55, charInfo.name, charInfo.color, 0);
+                } else {
+                    ctx.fillStyle = '#bdbdbd';
+                    ctx.font = 'bold 22px Malgun Gothic';
+                    ctx.fillText('🔒', cx + cardWidth / 2, cy + 60);
+                }
+
+                ctx.fillStyle = isLocked ? '#9e9e9e' : '#ccc';
+                ctx.font = '10px Malgun Gothic';
+                let desc = isLocked ? '40초 생존 시 해금' : charInfo.desc;
+                let words = desc.split(' ');
+                let line1 = words.slice(0, 2).join(' ');
+                let line2 = words.slice(2, 4).join(' ');
+                let line3 = words.slice(4).join(' ');
+
+                ctx.fillText(line1, cx + cardWidth / 2, cy + 96);
+                if(line2) ctx.fillText(line2, cx + cardWidth / 2, cy + 110);
+                if(line3) ctx.fillText(line3, cx + cardWidth / 2, cy + 124);
+
+                if (isSelected) {
+                    ctx.fillStyle = '#ffeb3b';
+                    ctx.font = 'bold 11px Malgun Gothic';
+                    ctx.fillText('▶선택됨◀', cx + cardWidth / 2, cy + 142);
+                }
+            }
+        }
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.fillText('방향키(↑ ↓ ← →)로 캐릭터 선택 후 [ENTER] 또는 [SPACE]를 누르세요!', canvas.width / 2, 575);
+        
+        if (!hasUnlockedHidden) {
+            ctx.fillStyle = '#ffb74d';
+            ctx.font = '13px Malgun Gothic';
+            ctx.fillText('🔒 40초 이상 생존하면 아랫줄의 히든 캐릭터 [무림맹주]가 해금됩니다!', canvas.width / 2, 605);
+        } else {
+            ctx.fillStyle = '#00e5ff';
+            ctx.font = '13px Malgun Gothic';
+            ctx.fillText('✨ 히든 캐릭터 [무림맹주] 해금 완료! 선택 가능합니다!', canvas.width / 2, 605);
+        }
+        return;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(mapCenter.x, mapCenter.y, mapRadius, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a1c0a';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#4CAF50';
+    ctx.stroke();
+    ctx.clip();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 2;
+    for (let i = -mapRadius; i < mapRadius; i += 45) {
+        ctx.beginPath();
+        ctx.moveTo(mapCenter.x + i, mapCenter.y - mapRadius);
+        ctx.lineTo(mapCenter.x + i, mapCenter.y + mapRadius);
+        ctx.stroke();
+    }
+
+    if (pamStation) {
+        ctx.beginPath();
+        ctx.arc(pamStation.x, pamStation.y, pamStation.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(236, 64, 122, 0.18)';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(236, 64, 122, 0.7)';
+        ctx.setLineDash([8, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#ec407a';
+        ctx.beginPath();
+        ctx.arc(pamStation.x, pamStation.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.fillText(`♥${pamStation.shieldCount}`, pamStation.x, pamStation.y + 4);
+    }
+
+    for (let a of arrows) {
+        ctx.fillStyle = a.isHoming ? '#ff1744' : '#ff5252';
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = a.isHoming ? '#ffeb3b' : '#ffffff';
+        ctx.lineWidth = a.isHoming ? 2 : 1;
+        ctx.stroke();
+    }
+
+    for (let p of particles) {
+        ctx.fillStyle = `rgba(255, 167, 38, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawCharacter(ctx, player.x, player.y, player.job, player.color, player.animAngle);
+
+    ctx.restore();
+
+    for (let ft of floatingTexts) {
+        ctx.fillStyle = ft.color;
+        ctx.font = 'bold 16px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = ft.alpha;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.globalAlpha = 1.0;
+    }
+
+    if (gameState === 'ALMOST_DEAD') {
+        ctx.fillStyle = 'rgba(255, 69, 0, 0.35)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ffeb3b';
+        ctx.font = 'bold 32px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚠️ 위기! 1초 안에 [SPACE]를 누르세요! ⚠️', canvas.width / 2, canvas.height / 2 - 30);
+
+        ctx.fillStyle = '#ff7043';
+        ctx.font = 'bold 26px Malgun Gothic';
+        ctx.fillText(`남은 시간: ${(almostDeadTimer / 60).toFixed(1)}초`, canvas.width / 2, canvas.height / 2 + 15);
+    }
+
+    if (gameState === 'GAMEOVER') {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 36px Malgun Gothic';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+
+        ctx.fillStyle = '#ccc';
+        ctx.font = '16px Malgun Gothic';
+        ctx.fillText(`사용한 캐릭터: ${player.job} (최종 생존: ${score}초)`, canvas.width / 2, canvas.height / 2 + 5);
+        ctx.fillText('캐릭터 선택 화면으로 돌아가려면 [ENTER]를 누르세요', canvas.width / 2, canvas.height / 2 + 45);
+    }
+}
+
+function safeLoop() {
+    update();
+    draw();
+    requestAnimationFrame(safeLoop);
+}
+safeLoop();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>* WAVE CHALLENGE</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#000;color:#fff;font-family:"Courier New","Malgun Gothic",monospace;font-weight:bold;display:flex;justify-content:center;align-items:center;min-height:100vh;user-select:none}
+#wrap{position:relative;width:min(96vw,calc((100vh - 80px)*1.7778))}
+canvas{width:100%;display:block;touch-action:none;background:#000;outline:3px solid #fff}
+#ov{position:absolute;left:0;right:0;top:0;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,.88);text-align:center;padding:12px}
+#ov[hidden],#bar[hidden]{display:none}
+h1{margin:0;font-size:clamp(26px,5vw,54px);letter-spacing:.06em;color:#fff}
+h2{margin:0;font-size:clamp(22px,4vw,40px)}
+p{margin:0;opacity:.8;font-size:clamp(12px,1.7vw,16px)}
+button,select{font:inherit;color:#fff;background:#000;border:3px solid #fff;border-radius:0;padding:6px 12px;cursor:pointer}
+button:hover{color:#ff0;border-color:#ff0}button.on{background:#ff0;color:#000;border-color:#ff0}
+.lv{display:grid;grid-template-columns:repeat(5,minmax(0,112px));gap:8px}
+.lv button{display:flex;flex-direction:column;gap:2px;padding:8px}
+.lv b{font-size:15px}.lv small{opacity:.75}.lv .ok{border-color:#ff0;color:#ff0}
+#bar{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;justify-content:center}
+textarea{width:min(80%,520px);height:46%;background:#000;color:#fff;border:3px solid #fff;font:12px monospace}
+#sc{width:72px;height:72px}
+</style></head><body>
+<div id="wrap">
+<canvas id="c" width="960" height="540"></canvas>
+<div id="ov"></div>
+<div id="bar" hidden>
+ <button data-t="0">지우개</button><button data-t="1">블록</button><button data-t="2">가시 ▲</button><button data-t="3">가시 ▼</button><button data-t="4">별날</button><button data-t="5">1.5배</button><button data-t="6">1배</button><button data-t="10">2.1배</button><button data-t="11">2.5배</button><button data-t="7">중력</button><button data-t="8">미니</button><button data-t="9">일반</button>
+ <button onclick="ch(20)">길이 +</button><button onclick="ch(-20)">길이 −</button>
+ <select id="spd" onchange="E.sp=+this.value"><option value="300">느림</option><option value="360">보통</option><option value="440">빠름</option></select>
+ <button onclick="testMap()">테스트</button><button onclick="saveMap()">저장</button><button onclick="ioMap()">내보내기/가져오기</button><button onclick="toMenu()">메뉴</button>
+</div>
+</div>
+<script>
+const S=30,R=18,W=960,H=540,cv=document.getElementById('c'),ctx=cv.getContext('2d'),$=id=>document.getElementById(id);
+const CH=' #^v*FSGMNYZ';
+const LV=[
+ {n:'입문',gap:10,seg:[5,9],sp:270,hz:0},
+ {n:'워밍업',gap:9,seg:[4,8],sp:290,hz:0},
+ {n:'지그재그',gap:8,seg:[4,7],sp:300,hz:.04,pt:.02,sx:1.5},
+ {n:'좁은 길',gap:8,seg:[3,6],sp:310,hz:.06,saw:1,pt:.03,sx:1.5},
+ {n:'가시밭',gap:7,seg:[3,6],sp:320,hz:.08,saw:1,pt:.04,sx:1.5},
+ {n:'별 숲',gap:7,seg:[3,5],sp:330,hz:.1,saw:1,pt:.05,sx:1.5},
+ {n:'급커브',gap:7,seg:[2,5],sp:340,hz:.1,saw:1,pt:.05,sx:2.1},
+ {n:'스피드',gap:6,seg:[3,5],sp:340,hz:.1,saw:1,pt:.06,sx:2.1},
+ {n:'좁은 문',gap:6,seg:[3,5],sp:350,hz:.1,saw:1,pt:.07,sx:2.1},
+ {n:'미니 입문',gap:7,seg:[4,6],sp:300,hz:.04,pt:.05,mi:2,sx:1.5},
+ {n:'작은 하트',gap:7,seg:[3,6],sp:310,hz:.06,saw:1,pt:.06,mi:1,sx:1.5},
+ {n:'좁은 미로',gap:6,seg:[3,5],sp:320,hz:.08,saw:1,pt:.07,mi:1,sx:2.1},
+ {n:'번개',gap:6,seg:[3,5],sp:330,hz:.1,saw:1,pt:.08,mi:1,sx:2.5},
+ {n:'뒤집힌 세계',gap:6,seg:[2,4],sp:340,hz:.1,saw:1,pt:.09,mi:1,sx:2.5},
+ {n:'최종 관문',gap:5,seg:[2,4],sp:350,hz:.1,saw:1,pt:.1,mi:1,sx:2.5}];
+let mode='menu',L=null,G={},cur=0,att=1,testing=0,held=false,rawHeld=false,inputQ=[],simT=performance.now()*1000,menuX=0,tool=1,hov=null,painting=0;
+let E={cols:80,sp:360,scroll:0,g:new Uint8Array(80*R)};
+const ls={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+/* ---------- 맵 ---------- */
+function build(i){
+ const p=LV[i],r=rng(i*7919+13),cols=120+i*12,g=new Uint8Array(cols*R),sx=p.sx||1.5;
+ let cy=0,dir=r()<.5?-1:1,left=0,lastH=-9,lastP=0,gm=1,gf=1,mini=0,sy=0,fy=0;
+ for(let c=0;c<cols;c++){
+  const gap=p.gap+(mini?1:0)+(gm>2.4?2:gm>2?1:0),h=gap>>1,mn=1+h,mx=R-1-gap+h,flat=c<12||c>cols-9;
+  if(c==0)cy=(mn+mx)>>1;
+  if(!flat){cy+=dir*(mini?2:1);left--;if(cy<=mn){cy=mn;dir=1}if(cy>=mx){cy=mx;dir=-1}
+   if(left<=0){dir=r()<.5?-1:1;left=Math.round((p.seg[0]+(r()*(p.seg[1]-p.seg[0]+1)|0))*(gm>1?gm:1))}}
+  cy=Math.max(mn,Math.min(mx,cy));
+  const top=cy-h,bot=top+gap-1;
+  if(c==0)sy=(top+gap/2)*S;
+  fy=(bot+1)*S;
+  for(let y=0;y<R;y++)if(y<top||y>bot)g[c*R+y]=1;
+  if(!flat&&p.pt&&c>14&&c-lastP>10+8*gm&&r()<p.pt*2){
+   const ops=[];
+   if(gf>0){if(gm!=1.5)ops.push(5);if(sx>=2.1&&!mini&&gm!=2.1)ops.push(10);if(sx>=2.5&&!mini&&gm!=2.5)ops.push(11,11)}
+   if(gm>1)ops.push(6);
+   if(gf<0||gm==1)ops.push(7);
+   if(p.mi){if(mini)ops.push(9);else if(gm<2.1)ops.push(8)}
+   const t=(p.mi==2&&!lastP)?8:ops[r()*ops.length|0];
+   lastP=c;lastH=c;
+   if(t==5)gm=1.5;if(t==6)gm=1;if(t==10)gm=2.1;if(t==11)gm=2.5;if(t==7)gf=-gf;if(t==8)mini=1;if(t==9)mini=0;
+   for(let y=top;y<=bot;y++)g[c*R+y]=t}
+  if(!flat&&p.hz&&gap>3&&gm<2&&c-lastH>4&&r()<p.hz){lastH=c;const up=r()<.5;
+   if(p.saw&&r()<.4)g[c*R+(up?top:bot)]=4;else if(up)g[c*R+bot]=2;else g[c*R+top]=3}
+ }
+ return{cols,g,sp:p.sp,sy,fy};
+}
+function blankMap(cols){const g=new Uint8Array(cols*R);for(let c=0;c<cols;c++){g[c*R]=1;g[c*R+R-1]=1}return g}
+function encode(){let s='S'+E.sp;for(let r=0;r<R;r++){s+='\n';for(let c=0;c<E.cols;c++)s+=CH[E.g[c*R+r]]}return s}
+function decode(txt){
+ const ln=txt.replace(/\r/g,'').split('\n'),sp=+ln[0].slice(1)||360,rows=ln.slice(1,1+R);
+ const cols=Math.max(40,...rows.map(l=>l.length)),g=new Uint8Array(cols*R);
+ rows.forEach((l,r)=>[...l].forEach((ch,c)=>{const t=CH.indexOf(ch);if(t>0)g[c*R+r]=t}));
+ E={cols,sp,scroll:0,g};
+}
+
+/* ---------- 충돌 ---------- */
+function pit(px,py,ax,ay,bx,by,cx,cy){
+ const d=(x1,y1,x2,y2,x3,y3)=>(x1-x3)*(y2-y3)-(x2-x3)*(y1-y3);
+ const a=d(px,py,ax,ay,bx,by),b=d(px,py,bx,by,cx,cy),c=d(px,py,cx,cy,ax,ay);
+ return !((a<0||b<0||c<0)&&(a>0||b>0||c>0));
+}
+function hit(x,y){
+ const b=G.mini?3:5,e=b-2,c0=Math.floor((x-b)/S),c1=Math.floor((x+b)/S),r0=Math.floor((y-b)/S),r1=Math.floor((y+b)/S);
+ for(let c=c0;c<=c1;c++)for(let r=r0;r<=r1;r++){
+  if(c<0||c>=L.cols||r<0||r>=R)continue;
+  const t=L.g[c*R+r];if(!t)continue;
+  if(t>4){if(G.pc!==c){G.pc=c;if(t==5)G.mul=1.5;else if(t==6)G.mul=1;else if(t==7)G.flip*=-1;else if(t<10)G.mini=t==8?1:0;else G.mul=t==10?2.1:2.5}continue}
+  if(t==1)return 1;
+  if(t==4){const dx=x-(c+.5)*S,dy=y-(r+.5)*S;if(dx*dx+dy*dy<(S*.4+3)**2)return 1;continue}
+  const pts=[[x,y],[x-e,y],[x+e,y],[x,y-e],[x,y+e]];
+  for(const[q,w]of pts){
+   if(t==2&&(pit(q,w,c*S+3,(r+1)*S,c*S+15,(r+1)*S,c*S+9,r*S+5)||pit(q,w,c*S+15,(r+1)*S,c*S+27,(r+1)*S,c*S+21,r*S+5)))return 1;
+   if(t==3&&(pit(q,w,c*S+3,r*S,c*S+15,r*S,c*S+9,(r+1)*S-5)||pit(q,w,c*S+15,r*S,c*S+27,r*S,c*S+21,(r+1)*S-5)))return 1;
+  }
+ }
+ return 0;
+}
+
+/* ---------- 진행 ---------- */
+function restart(){const sx=3*S+1, sy=Math.max(8,Math.min(H-8,L.sy));G={px:sx,py:sy,dir:1,mul:1,flip:1,mini:0,pc:-1,trail:[[sx,sy]],dead:0,deadT:0,won:0,parts:[]};held=false;rawHeld=false;inputQ.length=0;simT=performance.now()}
+function pct(){return Math.max(0,Math.min(100,Math.round((G.px-3*S)/((L.cols-2)*S-3*S)*100)))}
+function saveBest(p){if(cur<0)return;const b=ls.get('wc_best')||{};if((b[cur]||0)<p){b[cur]=p;ls.set('wc_best',b)}}
+function die(){
+ G.dead=1;G.deadT=0;att++;saveBest(pct());
+ for(let i=0;i<22;i++){const a=Math.random()*6.28,s=80+Math.random()*260;G.parts.push({x:G.px,y:G.py,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:.7})}
+}
+function moveWave(dt){
+ if(dt<=0||G.dead||G.won)return;
+ const n=Math.max(1,Math.ceil(dt*L.sp*G.mul*(G.mini?2:1)/5)),sd=dt/n;
+ for(let i=0;i<n&&!G.dead&&!G.won;i++){
+  const d=(held?-1:1)*G.flip,v=L.sp*G.mul;
+  G.px+=v*sd;G.py=Math.max(0,Math.min(H,G.py+d*v*(G.mini?2:1)*sd));
+  if(d!==G.dir){G.dir=d;G.trail.push([G.px,G.py])}
+  if(hit(G.px,G.py)){die();break}
+  if(G.px>=(L.cols-2)*S){win();break}
+ }
+}
+
+function update(dt,now){
+ if(mode!=='play'){menuX+=dt*220;simT=now;inputQ.length=0;return}
+ if(G.dead){G.deadT+=dt;G.parts.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.l-=dt});if(G.deadT>.7)restart();return}
+ if(G.won)return;
+
+ // 이벤트가 여러 번 들어와도 각각의 시점을 기준으로 이동시킨다.
+ while(inputQ.length && inputQ[0].t<=now){
+  const ev=inputQ.shift();
+  const seg=Math.max(0,(ev.t-simT)/1000);
+  moveWave(seg);
+  if(G.dead||G.won)return;
+  simT=ev.t;
+  held=ev.value;
+ }
+ moveWave(Math.max(0,(now-simT)/1000));
+ simT=now;
+ while(G.trail.length>2&&G.trail[1][0]<G.px-320)G.trail.shift();
+}
+
+function win(){
+ G.won=1;saveBest(100);
+ const nx=!testing&&cur>=0&&cur<LV.length-1;
+ panel(`<h2>클리어!</h2><p>시도 ${att}회</p><div>${nx?`<button onclick="startLv(${cur+1})">다음 단계</button> `:''}<button onclick="${testing?'openEdit()':cur<0?'playCustom()':'startLv(cur)'}">${testing?'에디터로':'다시 하기'}</button> <button onclick="toMenu()">메뉴</button></div>`);
+}
+
+/* ---------- 화면 전환 ---------- */
+function panel(h){$('ov').innerHTML=h;$('ov').hidden=false}
+function toMenu(){
+ mode='menu';testing=0;$('bar').hidden=true;
+ const b=ls.get('wc_best')||{};
+ panel(`<h1>* WAVE CHALLENGE</h1><p>누르고 있으면 올라가고, 떼면 내려갑니다. (스페이스 / ↑ / 마우스 / 터치)</p>
+ <div class="lv">${LV.map((l,i)=>`<button class="${b[i]==100?'ok':''}" onclick="startLv(${i})"><b>${i+1}단계</b><span>${l.n}</span><small>${b[i]==100?'클리어':'최고 '+(b[i]||0)+'%'}</small></button>`).join('')}</div>
+ <div><button onclick="openEdit()">맵 만들기</button> <button onclick="playCustom()">내 맵 플레이</button></div>`);
+}
+function startLv(i){mode='play';testing=0;cur=i;L=build(i);att=1;restart();$('ov').hidden=true;$('bar').hidden=true}
+function playCustom(){mode='play';testing=0;cur=-1;L={cols:E.cols,g:E.g,sp:E.sp,sy:9*S};att=1;restart();$('ov').hidden=true;$('bar').hidden=true}
+function openEdit(){mode='edit';testing=0;$('ov').hidden=true;$('bar').hidden=false;$('spd').value=E.sp;selTool(tool)}
+function testMap(){mode='play';testing=1;cur=-1;L={cols:E.cols,g:E.g,sp:E.sp,sy:9*S};att=1;restart();$('ov').hidden=true;$('bar').hidden=true}
+function saveMap(){ls.set('wc_map',encode());flash('저장했습니다')}
+function ch(d){
+ const nc=Math.max(40,E.cols+d),g=new Uint8Array(nc*R);g.set(E.g.subarray(0,Math.min(E.g.length,nc*R)));
+ if(d>0)for(let c=E.cols;c<nc;c++){g[c*R]=1;g[c*R+R-1]=1}
+ E.g=g;E.cols=nc;
+}
+function ioMap(){
+ panel(`<h2>맵 내보내기 / 가져오기</h2><p>아래 글자가 맵 데이터입니다. 복사해서 공유하거나, 붙여넣고 가져오세요. ( # 블록, ^ 가시▲, v 가시▼, * 톱날 )</p><textarea id="io" spellcheck="false">${encode()}</textarea>
+ <div><button onclick="decode($('io').value);openEdit()">가져오기</button> <button onclick="openEdit()">닫기</button></div>`);
+}
+let msg='',msgT=0;function flash(m){msg=m;msgT=1.5}
+function selTool(t){tool=t;document.querySelectorAll('#bar [data-t]').forEach(b=>b.classList.toggle('on',+b.dataset.t===t))}
+document.querySelectorAll('#bar [data-t]').forEach(b=>b.onclick=()=>selTool(+b.dataset.t));
+{const m=ls.get('wc_map');if(m)decode(m);else E.g=blankMap(80)}
+
+/* ---------- 입력 ---------- */
+const UP=k=>k===' '||k==='ArrowUp'||k==='w'||k==='W';
+function queueHeld(v){
+ rawHeld=v;
+ const t=performance.now();
+ // 같은 상태의 중복 이벤트는 넣지 않는다.
+ if(inputQ.length && inputQ[inputQ.length-1].value===v)return;
+ inputQ.push({t,value:v});
+}
+addEventListener('keydown',e=>{
+ if(e.target.tagName==='TEXTAREA')return;
+ if(UP(e.key)){if(!rawHeld)queueHeld(true);e.preventDefault()}
+ if(e.key==='Escape'){if(mode==='play')testing?openEdit():toMenu();else if(mode==='edit')toMenu()}
+ if(mode==='edit'){const m=E.cols*S-W;if(e.key==='ArrowRight'||e.key==='d')E.scroll=Math.min(m,E.scroll+120);if(e.key==='ArrowLeft'||e.key==='a')E.scroll=Math.max(0,E.scroll-120)}
+});
+addEventListener('keyup',e=>{if(UP(e.key)&&rawHeld)queueHeld(false)});
+addEventListener('blur',()=>{if(rawHeld)queueHeld(false)});
+addEventListener('pointerup',()=>{if(rawHeld)queueHeld(false);painting=0});
+const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]};
+function paint(e){
+ const[x,y]=pos(e),c=Math.floor((x+E.scroll)/S),r=Math.floor(y/S);hov=[c,r];
+ if(painting&&c>=0&&c<E.cols&&r>=0&&r<R)E.g[c*R+r]=(e.buttons&2)?0:tool;
+}
+cv.addEventListener('pointerdown',e=>{if(mode==='play'){if(!rawHeld)queueHeld(true)}else if(mode==='edit'){painting=1;paint(e)}});
+cv.addEventListener('pointermove',e=>{if(mode==='edit')paint(e)});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{if(mode==='edit'){e.preventDefault();E.scroll=Math.max(0,Math.min(E.cols*S-W,E.scroll+e.deltaY+e.deltaX))}},{passive:false});
+
+/* ---------- 그리기 ---------- */
+function drawBlock(c,r,Lv){
+ const x=c*S,y=r*S,o=(a,b)=>a>=0&&a<Lv.cols&&b>=0&&b<R&&Lv.g[a*R+b]==1;
+ ctx.fillStyle='#141414';ctx.fillRect(x,y,S,S);
+ ctx.strokeStyle='#2c2c2c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+S);ctx.lineTo(x+S,y);ctx.moveTo(x,y+S/2);ctx.lineTo(x+S/2,y);ctx.moveTo(x+S/2,y+S);ctx.lineTo(x+S,y+S/2);ctx.stroke();
+ ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();
+ if(!o(c,r-1)){ctx.moveTo(x,y+1.5);ctx.lineTo(x+S,y+1.5)}
+ if(!o(c,r+1)){ctx.moveTo(x,y+S-1.5);ctx.lineTo(x+S,y+S-1.5)}
+ if(!o(c-1,r)){ctx.moveTo(x+1.5,y);ctx.lineTo(x+1.5,y+S)}
+ if(!o(c+1,r)){ctx.moveTo(x+S-1.5,y);ctx.lineTo(x+S-1.5,y+S)}
+ ctx.stroke();
+}
+function drawPortal(c,r,t){
+ const x=(c+.5)*S,y=(r+.5)*S,col=['#ffd400','#3fd0ff','#e040ff','#7dff6a','#fff','#ff8a00','#ff3b3b'][t-5];
+ ctx.fillStyle=col;ctx.globalAlpha=.22;ctx.fillRect(c*S,r*S,S,S);ctx.globalAlpha=1;
+ ctx.strokeStyle=col;ctx.lineWidth=2.5;
+ if(t==7){ctx.beginPath();ctx.moveTo(x,y-10);ctx.lineTo(x-6,y-2);ctx.lineTo(x+6,y-2);ctx.fill();ctx.beginPath();ctx.moveTo(x,y+10);ctx.lineTo(x-6,y+2);ctx.lineTo(x+6,y+2);ctx.fill()}
+ else if(t==8||t==9){const b=t==8?9:3,k=t==8?3:9;ctx.beginPath();ctx.moveTo(x-b,y-6);ctx.lineTo(x-k,y);ctx.lineTo(x-b,y+6);ctx.fill();ctx.beginPath();ctx.moveTo(x+b,y-6);ctx.lineTo(x+k,y);ctx.lineTo(x+b,y+6);ctx.fill()}
+ else{const n={5:2,6:1,10:3,11:4}[t];for(let i=0;i<n;i++){const o=(i-(n-1)/2)*6;ctx.beginPath();ctx.moveTo(x+o-3,y-7);ctx.lineTo(x+o+2,y);ctx.lineTo(x+o-3,y+7);ctx.stroke()}}
+}
+function zoinkWave(x,y,dir,mn){
+ ctx.save();ctx.translate(x,y);ctx.rotate(dir>0?Math.PI/4:-Math.PI/4);const k=mn?.6:1;ctx.scale(k,k);
+ ctx.lineJoin='miter';ctx.lineWidth=2.5;ctx.strokeStyle='#000';
+ ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-10,-10);ctx.lineTo(-4,0);ctx.lineTo(-10,10);ctx.closePath();
+ ctx.fillStyle='#00ffff';ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(-4,-5);ctx.lineTo(-1,0);ctx.lineTo(-4,5);ctx.closePath();
+ ctx.fillStyle='#fff';ctx.fill();
+ ctx.restore();
+}
+function drawSpike(c,r,up){
+ const x=c*S,y=r*S,a=up?y+S:y,b=up?y+5:y+S-5;
+ ctx.beginPath();ctx.moveTo(x+2,a);ctx.lineTo(x+9,b);ctx.lineTo(x+15,a);ctx.lineTo(x+21,b);ctx.lineTo(x+28,a);ctx.closePath();
+ ctx.fillStyle='#ff3b1f';ctx.fill();ctx.strokeStyle='#ffd2c8';ctx.lineWidth=1.5;ctx.stroke();
+}
+function drawSaw(c,r){
+ const t=performance.now()/1000;
+ ctx.save();ctx.translate((c+.5)*S,(r+.5)*S);ctx.rotate(t*7);
+ ctx.beginPath();for(let i=0;i<8;i++){const a=i*Math.PI/4,d=i%2?6:15;ctx.lineTo(Math.cos(a)*d,Math.sin(a)*d)}
+ ctx.closePath();ctx.fillStyle='#ff8a00';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+ ctx.beginPath();ctx.arc(0,0,3,0,6.3);ctx.fillStyle='#000';ctx.fill();ctx.restore();
+}
+function draw(){
+ const edit=mode==='edit',cam=edit?E.scroll:mode==='play'?G.px-220:menuX;
+ const gr='#000';
+ ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+ ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();
+ for(let x=-(cam%S);x<W;x+=S){ctx.moveTo(x,0);ctx.lineTo(x,H)}
+ for(let y=0;y<=H;y+=S){ctx.moveTo(0,y);ctx.lineTo(W,y)}
+ ctx.stroke();
+ const Lv=edit?E:mode==='play'?L:null;
+ if(Lv){
+  ctx.save();ctx.translate(-cam,0);
+  const c0=Math.max(0,Math.floor(cam/S)),c1=Math.min(Lv.cols-1,c0+W/S+1|0);
+  for(let c=c0;c<=c1;c++)for(let r=0;r<R;r++){
+   const t=Lv.g[c*R+r];
+   if(t==1)drawBlock(c,r,Lv);else if(t==2)drawSpike(c,r,1);else if(t==3)drawSpike(c,r,0);else if(t==4)drawSaw(c,r);else if(t>4)drawPortal(c,r,t);
+  }
+  ctx.fillStyle='#ff0';ctx.globalAlpha=.5;ctx.fillRect((Lv.cols-2)*S,0,4,H);ctx.globalAlpha=1;
+  if(edit){
+   ctx.strokeStyle='#0ff';ctx.setLineDash([6,6]);ctx.strokeRect(3*S,9*S-6,12,12);ctx.setLineDash([]);
+   if(hov){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(hov[0]*S,hov[1]*S,S,S)}
+  }
+  ctx.restore();
+ }
+ if(mode==='play'){
+  const d=G.dir;
+  ctx.save();ctx.translate(-cam,0);
+  if(!G.dead){
+   ctx.lineJoin='miter';ctx.lineWidth=G.mini?3.5:6;ctx.strokeStyle='rgba(0,255,255,.75)';ctx.shadowColor='#0ff';ctx.shadowBlur=10;
+   ctx.beginPath();G.trail.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.lineTo(G.px,G.py);ctx.stroke();
+   ctx.shadowBlur=0;zoinkWave(G.px,G.py,G.dir,G.mini);
+   
+   
+  }else{
+   ctx.fillStyle='#0ff';G.parts.forEach(q=>{if(q.l>0){ctx.globalAlpha=q.l/.7;ctx.fillRect(q.x-3,q.y-3,6,6)}});
+  }
+  ctx.restore();
+  ctx.globalAlpha=1;
+  const p=pct();
+  ctx.fillStyle='#c00';ctx.fillRect(220,10,290,10);
+  ctx.fillStyle='#ff0';ctx.fillRect(220,10,290*p/100,10);
+  ctx.fillStyle='#fff';ctx.font='bold 15px "Courier New",monospace';ctx.textAlign='left';
+  ctx.fillText(testing?'테스트 (Esc: 에디터)':cur<0?'내 맵':`${cur+1}단계 · ${LV[cur].n}`,14,20);
+  ctx.textAlign='right';ctx.fillText(`${p}%  ·  시도 ${att}  ·  x${G.mul.toFixed(2)}${G.flip<0?' · 반전':''}${G.mini?' · 미니':''}`,W-14,20);
+ }
+ if(edit){
+  ctx.fillStyle='rgba(5,8,24,.7)';ctx.fillRect(0,0,W,26);ctx.fillStyle='#e8ecff';ctx.font='13px sans-serif';ctx.textAlign='left';
+  ctx.fillText(`클릭/드래그: 배치 · 우클릭: 지우기 · 휠/←→: 이동 · 길이 ${E.cols}칸 · 점선 사각형이 시작 위치`,10,17);
+  if(msgT>0){ctx.fillStyle='#ffb703';ctx.textAlign='right';ctx.fillText(msg,W-10,17)}
+ }
+}
+let last=0;
+function loop(t){const dt=Math.min((t-last)/1000,.05);last=t;if(msgT>0)msgT-=dt;update(dt,t);draw();requestAnimationFrame(loop)}
+toMenu();requestAnimationFrame(loop);
+</script></body></html>

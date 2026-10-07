@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ko"> <!-- 한국어 문서 설정 -->
+<head>
+    <meta charset="UTF-8"> <!-- 문자 인코딩을 UTF-8로 지정 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 모바일 화면 대응 뷰포트 설정 -->
+    <title>원형 시간표와 월별 나무 키우기</title> <!-- 웹페이지 브라우저 탭 제목 -->
+    <script src="https://cdn.tailwindcss.com"></script> <!-- 스타일링을 위한 Tailwind CSS CDN 로드 -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif; /* 기본 폰트 설정 */
+            background-color: #f4f7f4; /* 전체 배경색 설정 */
+        }
+        .timetable-container {
+            border: 8px solid #4A7C59; /* 외곽 녹차색 테두리 설정 */
+            background-color: #FFF380; /* 안쪽 개나리색 배경 설정 */
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800 flex flex-col items-center p-4"> <!-- 전체 화면 플렉스박스 및 정렬 -->
+
+    <!-- 1) 화면 위쪽에 D-Day 카운터: 목표 이름과 남은 날짜를 크게 표시 -->
+    <header class="w-full max-w-4xl bg-white shadow-md rounded-2xl p-6 mb-6 text-center border border-green-200">
+        <h1 id="dday-title" class="text-3xl font-extrabold text-green-800 mb-2">목표 이름 loading...</h1> <!-- 목표 이름 표시 제목 -->
+        <div id="dday-counter" class="text-5xl font-black text-amber-600 tracking-wider">D-00</div> <!-- 남은 디데이 크게 표시 -->
+        <p id="dday-date-info" class="text-sm text-gray-500 mt-2">목표 날짜: YYYY-MM-DD</p> <!-- 목표 상세 날짜 표시 -->
+    </header>
+
+    <main class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6"> <!-- 메인 콘텐츠 2분할 그리드 -->
+
+        <!-- 왼쪽 영역: 원형 시간표 및 일정 관리 -->
+        <section class="bg-white p-6 rounded-2xl shadow-md flex flex-col items-center">
+            <h2 class="text-xl font-bold text-gray-700 mb-4">⏰ 30분 간격 원형 시간표</h2> <!-- 시간표 섹션 제목 -->
+            
+            <!-- 시간표 본체: 녹차색 테두리, 개나리색 내부, 원 모양 -->
+            <div class="timetable-container relative w-72 h-72 rounded-full flex items-center justify-center shadow-inner overflow-hidden mb-4">
+                <canvas id="timetable-canvas" width="288" height="288" class="w-full h-full"></canvas> <!-- 시간표 렌더링 캔버스 -->
+                <div class="absolute text-center pointer-events-none">
+                    <span id="current-time-text" class="text-xs font-bold bg-white/80 px-2 py-1 rounded shadow">현재 시간</span> <!-- 현재 시간 표시 -->
+                </div>
+            </div>
+
+            <div class="w-full text-sm text-center mb-4 text-gray-600">
+                <p>💡 30분마다 반시계 방향으로 회전하며 진행됩니다.</p> <!-- 시간표 설명 1 -->
+                <p>내일 일정을 미리 작성하고, 밤 8시~12시에 검토하세요!</p> <!-- 시간표 설명 2 -->
+            </div>
+
+            <!-- 일정 입력 및 검토 버튼 영역 -->
+            <div class="w-full space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">내일 일정 작성 (미리 쓰기)</label> <!-- 일정 입력 라벨 -->
+                    <input type="text" id="schedule-input" placeholder="예: 09:00 영어 공부" class="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"> <!-- 일정 입력 필드 -->
+                    <button onclick="saveSchedule()" class="mt-2 w-full bg-green-700 text-white py-2 rounded-lg text-sm font-bold hover:bg-green-800 transition">내일 일정 등록하기</button> <!-- 일정 등록 버튼 -->
+                </div>
+
+                <div class="pt-2 border-t">
+                    <button onclick="reviewDay()" id="review-btn" class="w-full bg-amber-500 text-white py-2 rounded-lg text-sm font-bold hover:bg-amber-600 transition shadow">🌙 어제 일정 검토하고 물 1방울 받기 (20시~24시)</button> <!-- 일정 검토 버튼 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 오른쪽 영역: 나무 키우기 및 도감 -->
+        <section class="bg-white p-6 rounded-2xl shadow-md flex flex-col items-center justify-between">
+            <div class="w-full text-center">
+                <h2 id="tree-month-title" class="text-xl font-bold text-gray-700 mb-1">🌲 이달의 나무</h2> <!-- 나무 타이틀 -->
+                <p id="tree-status-desc" class="text-xs text-gray-500 mb-4">물을 주어 나무를 무럭무럭 키워보세요!</p> <!-- 나무 설명 -->
+
+                <!-- 나무 캔버스 렌더링 영역 (고퀄리티 일러스트 느낌) -->
+                <div class="w-64 h-64 mx-auto bg-sky-50 rounded-2xl border border-sky-100 flex items-center justify-center relative shadow-inner overflow-hidden mb-4">
+                    <canvas id="tree-canvas" width="256" height="256" class="w-full h-full"></canvas> <!-- 나무 캔버스 -->
+                </div>
+
+                <!-- 보유 물 및 상태 정보 -->
+                <div class="flex justify-around items-center bg-gray-50 p-3 rounded-xl mb-4 border text-sm">
+                    <div>💧 물: <span id="water-count" class="font-extrabold text-blue-600">0</span>방울</div> <!-- 보유 물방울 -->
+                    <div>🔥 연속 생존: <span id="streak-count" class="font-extrabold text-green-600">0</span>일</div> <!-- 연속 생존일 -->
+                    <div>💀 물 안 준 지: <span id="no-water-days" class="font-extrabold text-red-500">0</span>일</div> <!-- 물 미지급 일수 -->
+                </div>
+
+                <button onclick="waterTree()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow mb-2">🌱 나무에 물 주기 (물 1방울 소모)</button> <!-- 물 주기 버튼 -->
+            </div>
+
+            <!-- 테스트 및 도감 바로가기 버튼 -->
+            <div class="w-full pt-4 border-t space-y-2">
+                <div class="flex gap-2">
+                    <button onclick="testNextDay()" class="flex-1 bg-purple-600 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-purple-700 transition">⏩ 날짜 하루 넘기기(테스트)</button> <!-- 테스트 날짜 넘기기 버튼 -->
+                    <button onclick="openEncyclopedia()" class="flex-1 bg-emerald-700 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-800 transition">📖 도감 / 숲 보기</button> <!-- 도감 버튼 -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 도감 및 숲 모달창 -->
+    <div id="encyclopedia-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 class="text-xl font-bold text-green-800">📖 나무 도감 및 내 숲</h3> <!-- 도감 모달 제목 -->
+                <button onclick="closeEncyclopedia()" class="text-gray-500 font-bold text-lg hover:text-black">✕</button> <!-- 닫기 버튼 -->
+            </div>
+            <div id="encyclopedia-content" class="grid grid-cols-3 sm:grid-cols-4 gap-4 mb-6">
+                <!-- 자바스크립트로 도감 카드 동적 생성 -->
+            </div>
+            <div id="my-forest-section" class="hidden border-t pt-4">
+                <h4 class="text-lg font-bold text-amber-700 mb-2">🌲 나의 맞춤 숲 (도감 완성 개방!)</h4> <!-- 숲 섹션 제목 -->
+                <p class="text-xs text-gray-500 mb-3">원하는 나무를 골라 숲에 심어보세요.</p> <!-- 숲 설명 -->
+                <div id="forest-canvas-container" class="w-full h-48 bg-emerald-50 rounded-xl border flex items-center justify-center">
+                    <canvas id="forest-canvas" width="500" height="180" class="w-full h-full"></canvas> <!-- 숲 캔버스 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5줄 이내 설명 영역 -->
+    <footer class="w-full max-w-4xl mt-6 bg-white p-4 rounded-xl shadow text-xs text-gray-600 text-center border">
+        <p>1. 상단에서 목표 디데이와 30분 간격 반시계 방향 원형 시간표를 확인하고 일정을 관리합니다.</p> <!-- 설명 1줄 -->
+        <p>2. 매일 밤 8시~12시에 일정을 검토하여 물방울을 얻고, 월별 특색 있는 12가지 나무를 키울 수 있습니다.</p> <!-- 설명 2줄 -->
+        <p>3. 물을 5일간 주지 않으면 나무가 시들어 죽으며, 한 달간 무사히 키우면 도감에 등록됩니다.</p> <!-- 설명 3줄 -->
+        <p>4. 12개월 도감을 모두 완성하면 '내 숲'이 개방되어 원하는 나무를 자유롭게 심고 가꿀 수 있습니다.</p> <!-- 설명 4줄 -->
+        <p>5. 테스트 버튼을 통한 날짜 넘기기 시 나무 사망 패널티가 면제되어 안전하게 성장 테스트가 가능합니다.</p> <!-- 설명 5줄 -->
+    </footer>
+
+    <script>
+        // ==========================================
+        // [여기만 고치세요] 사용자 설정 상수 모음
+        // ==========================================
+        const CONFIG = {
+            targetName: "목표 달성 대작전", // 목표 이름 설정
+            targetDate: "2026-12-31",      // 목표 날짜 설정 (YYYY-MM-DD)
+            initialWater: 3,               // 시작할 때 주어지는 물방울 개수 설정
+            testModeDateOverride: null     // 테스트용 강제 날짜 설정 (null이면 실제 시스템 날짜 사용)
+        };
+
+        // 월별 나무 데이터 정의 (1월~12월)
+        const TREE_DATA = {
+            1: { name: "눈 덮인 나무", desc: "새하얀 눈이 소복이 쌓인 겨울의 상징" },
+            2: { name: "소나무", desc: "사계절 내내 푸르른 꿋꿋한 소나무" },
+            3: { name: "벚나무", desc: "화사하게 피어나는 봄날의 벚꽃 나무" },
+            4: { name: "참나무", desc: "튼튼하고 웅장하게 자라나는 참나무" },
+            5: { name: "자작나무", desc: "하얀 껍질이 매력적인 신비로운 자작나무" },
+            6: { name: "반딧불이 가득 나무", desc: "밤마다 초록빛 반딧불이가 모여드는 환상적인 나무" },
+            7: { name: "대나무", desc: "쭉쭉 곧게 뻗어 올라가는 푸른 대나무 숲" },
+            8: { name: "야자나무", desc: "뜨거운 태양 아래 시원한 그늘을 주는 야자나무" },
+            9: { name: "밤나무", desc: "가을 햇살을 받고 토실토실 밤송이가 열리는 나무" },
+            10: { name: "으스스한 버드나무", desc: "신비롭고 묘한 분위기를 풍기는 가을 버드나무" },
+            11: { name: "가문비나무", desc: "늦가을 짙은 녹음을 뿜어내는 가문비나무" },
+            12: { name: "크리스마스 트리", desc: "반짝이는 오너먼트가 장식된 축복의 트리" }
+        };
+
+        // 게임 상태 관리 변수 (브라우저 로컬 스토리지 연동)
+        let gameState = JSON.parse(localStorage.getItem('my_tree_game_state')) || {
+            water: CONFIG.initialWater,       // 보유한 물방울 수
+            streak: 0,                        // 연속 성공일
+            noWaterDays: 0,                   // 물을 주지 않은 누적 일수
+            currentMonthTreeGrowth: 0,        // 현재 달 나무 성장 단계 (0 ~ 5단계)
+            isTreeDead: false,                // 현재 나무가 죽었는지 여부
+            encyclopedia: [],                 // 도감에 등록된 월 목록
+            schedules: {},                    // 날짜별 일정 데이터
+            simulatedDate: null               // 테스트용 가상 날짜 (string YYYY-MM-DD)
+        };
+
+        // 현재 날짜 객체 가져오기 함수 (가상 날짜 우선 적용)
+        function getTodayDateObj() {
+            if (gameState.simulatedDate) {
+                return new Date(gameState.simulatedDate);
+            }
+            if (CONFIG.testModeDateOverride) {
+                return new Date(CONFIG.testModeDateOverride);
+            }
+            return new Date();
+        }
+
+        // 날짜를 YYYY-MM-DD 형식 문자열로 변환하는 함수
+        function formatDateString(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        // D-Day 카운터 계산 및 화면 반영 함수
+        function updateDDayCounter() {
+            const today = getTodayDateObj();
+            today.setHours(0,0,0,0);
+            
+            const target = new Date(CONFIG.targetDate);
+            target.setHours(0,0,0,0);
+
+            const diffTime = target - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            document.getElementById('dday-title').innerText = CONFIG.targetName;
+            const counterEl = document.getElementById('dday-counter');
+            
+            if (diffDays > 0) {
+                counterEl.innerText = `D - ${diffDays}`;
+            } else if (diffDays === 0) {
+                counterEl.innerText = `D - DAY 🎉`;
+            } else {
+                counterEl.innerText = `D + ${Math.abs(diffDays)} (목표일 지남)`;
+            }
+            document.getElementById('dday-date-info').innerText = `목표 날짜: ${CONFIG.targetDate} (현재 가상날짜: ${formatDateString(today)})`;
+        }
+
+        // 30분 간격 반시계 방향 원형 시간표 그리기 함수
+        function drawTimetable() {
+            const canvas = document.getElementById('timetable-canvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = width / 2 - 15;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const totalSlices = 48; // 24시간을 30분 단위로 나눈 48조각
+            const anglePerSlice = (Math.PI * 2) / totalSlices;
+
+            const now = getTodayDateObj();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const currentTotalMinutes = currentHour * 60 + currentMinute;
+            const currentSliceIndex = Math.floor(currentTotalMinutes / 30);
+
+            // 반시계 방향으로 30분 간격 칸 그리기 반복문
+            for (let i = 0; i < totalSlices; i++) {
+                const startAngle = -i * anglePerSlice;
+                const endAngle = -(i + 1) * anglePerSlice;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle, true); // 반시계 방향 설정
+                ctx.closePath();
+
+                if (i === currentSliceIndex) {
+                    ctx.fillStyle = '#FFEB3B'; // 현재 진행 중인 시간대 강조 색상
+                } else if (i % 2 === 0) {
+                    ctx.fillStyle = '#FFF8DC'; // 번갈아가며 색상 적용 1
+                } else {
+                    ctx.fillStyle = '#FFFACD'; // 번갈아가며 색상 적용 2
+                }
+                ctx.fill();
+
+                ctx.strokeStyle = '#4A7C59'; // 녹차색 테두리선
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // 안쪽 개나리색 심장부 원 그리기
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.45, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFF380';
+            ctx.fill();
+            ctx.strokeStyle = '#4A7C59';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const timeString = String(currentHour).padStart(2, '0') + ":" + String(currentMinute).padStart(2, '0');
+            document.getElementById('current-time-text').innerText = timeString;
+        }
+
+        // 월별 맞춤형 고품질 나무 그리기 함수 (HTML5 Canvas 일러스트)
+        function drawTreeIllustration() {
+            const canvas = document.getElementById('tree-canvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const now = getTodayDateObj();
+            const month = now.getMonth() + 1; // 현재 월 (1 ~ 12)
+            const growth = gameState.isTreeDead ? 0 : gameState.currentMonthTreeGrowth; // 성장 단계 (0~5)
+
+            // 하늘 배경 그라데이션 설정
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+            skyGrad.addColorStop(0, '#E0F7FA');
+            skyGrad.addColorStop(1, '#FFFFFF');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            // 땅 그리기
+            ctx.fillStyle = '#8D6E63';
+            ctx.fillRect(0, height - 30, width, 30);
+            ctx.fillStyle = '#66BB6A';
+            ctx.fillRect(0, height - 30, width, 8);
+
+            // 나무가 죽었을 경우 시든 나무 표현
+            if (gameState.isTreeDead) {
+                ctx.strokeStyle = '#5D4037';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(width / 2, height - 30);
+                ctx.lineTo(width / 2, height - 100);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(width / 2, height - 80);
+                ctx.lineTo(width / 2 - 20, height - 100);
+                ctx.moveTo(width / 2, height - 70);
+                ctx.lineTo(width / 2 + 25, height - 90);
+                ctx.stroke();
+
+                ctx.fillStyle = '#D32F2F';
+                ctx.font = 'bold 13px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText("💀 나무가 죽었습니다 (다음 달 새 나무)", width / 2, 30);
+                return;
+            }
+
+            // 나무 기둥 그리기
+            const trunkHeight = 20 + growth * 15;
+            const trunkWidth = 8 + growth * 4;
+            ctx.fillStyle = '#5D4037';
+            ctx.fillRect(width / 2 - trunkWidth / 2, height - 30 - trunkHeight, trunkWidth, trunkHeight);
+
+            const canopyRadius = 15 + growth * 18;
+            const canopyY = height - 30 - trunkHeight;
+
+            ctx.save();
+            switch (month) {
+                case 1: // 1월: 눈 덮인 나무
+                    ctx.fillStyle = '#33691E';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY - canopyRadius * 0.3, canopyRadius * 0.7, Math.PI, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 2: // 2월: 소나무
+                    ctx.fillStyle = '#1B5E20';
+                    ctx.beginPath();
+                    ctx.moveTo(width / 2, canopyY - canopyRadius * 1.5);
+                    ctx.lineTo(width / 2 - canopyRadius, canopyY + canopyRadius * 0.5);
+                    ctx.lineTo(width / 2 + canopyRadius, canopyY + canopyRadius * 0.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
+                case 3: // 3월: 벚나무
+                    ctx.fillStyle = '#FF80AB';
+                    for (let i = 0; i < 5 + growth * 3; i++) {
+                        const offsetX = (Math.sin(i * 3) * canopyRadius * 0.8);
+                        const offsetY = (Math.cos(i * 2) * canopyRadius * 0.8);
+                        ctx.beginPath();
+                        ctx.arc(width / 2 + offsetX, canopyY + offsetY, canopyRadius * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    break;
+                case 4: // 4월: 참나무
+                    ctx.fillStyle = '#2E7D32';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius * 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 5: // 5월: 자작나무
+                    ctx.fillStyle = '#E0E0E0';
+                    ctx.fillRect(width / 2 - trunkWidth / 2, height - 30 - trunkHeight, trunkWidth, trunkHeight);
+                    ctx.fillStyle = '#212121';
+                    ctx.fillRect(width / 2 - trunkWidth / 2, height - 30 - trunkHeight + 10, trunkWidth, 3);
+                    ctx.fillRect(width / 2 - trunkWidth / 2, height - 30 - trunkHeight + 25, trunkWidth, 3);
+                    ctx.fillStyle = '#81C784';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 6: // 6월: 반딧불이 가득 나무
+                    ctx.fillStyle = '#004D40';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#76FF03';
+                    ctx.shadowColor = '#76FF03';
+                    ctx.shadowBlur = 10;
+                    for(let i=0; i<growth * 3; i++) {
+                        ctx.beginPath();
+                        ctx.arc(width / 2 + (i % 3 === 0 ? 15 : -15), canopyY + (i * 8 - 20), 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    break;
+                case 7: // 7월: 대나무
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.fillRect(width / 2 - 15, height - 30 - trunkHeight * 1.5, 6, trunkHeight * 1.5);
+                    ctx.fillRect(width / 2 + 5, height - 30 - trunkHeight * 1.2, 6, trunkHeight * 1.2);
+                    break;
+                case 8: // 8월: 야자나무
+                    ctx.fillStyle = '#00796B';
+                    ctx.beginPath();
+                    ctx.ellipse(width / 2 - 20, canopyY, canopyRadius, 8, -Math.PI / 4, 0, Math.PI * 2);
+                    ctx.ellipse(width / 2 + 20, canopyY, canopyRadius, 8, Math.PI / 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 9: // 9월: 밤나무
+                    ctx.fillStyle = '#558B2F';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#795548';
+                    ctx.beginPath();
+                    ctx.arc(width / 2 - 10, canopyY, 8, 0, Math.PI * 2);
+                    ctx.arc(width / 2 + 10, canopyY + 5, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 10: // 10월: 으스스한 버드나무
+                    ctx.fillStyle = '#424242';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY, canopyRadius * 0.9, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#616161';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(width / 2 - 15, canopyY);
+                    ctx.quadraticCurveTo(width / 2 - 30, canopyY + 30, width / 2 - 20, canopyY + 50);
+                    ctx.stroke();
+                    break;
+                case 11: // 11월: 가문비나무
+                    ctx.fillStyle = '#263238';
+                    ctx.beginPath();
+                    ctx.moveTo(width / 2, canopyY - canopyRadius * 1.2);
+                    ctx.lineTo(width / 2 - canopyRadius * 0.9, canopyY + canopyRadius * 0.8);
+                    ctx.lineTo(width / 2 + canopyRadius * 0.9, canopyY + canopyRadius * 0.8);
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
+                case 12: // 12월: 크리스마스 트리
+                    ctx.fillStyle = '#1B5E20';
+                    ctx.beginPath();
+                    ctx.moveTo(width / 2, canopyY - canopyRadius);
+                    ctx.lineTo(width / 2 - canopyRadius, canopyY + canopyRadius);
+                    ctx.lineTo(width / 2 + canopyRadius, canopyY + canopyRadius);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(width / 2, canopyY - canopyRadius, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+            }
+            ctx.restore();
+
+            const treeInfo = TREE_DATA[month];
+            document.getElementById('tree-month-title').innerText = `${month}월: ${treeInfo.name}`;
+            document.getElementById('tree-status-desc').innerText = `${treeInfo.desc} (성장 단계: ${growth}/5)`;
+        }
+
+        // 내일 일정 미리 저장하기 함수
+        function saveSchedule() {
+            const inputVal = document.getElementById('schedule-input').value.trim();
+            if (!inputVal) {
+                return; // 입력값이 없을 경우 리턴
+            }
+            const today = getTodayDateObj();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const tomorrowStr = formatDateString(tomorrow);
+
+            gameState.schedules[tomorrowStr] = inputVal;
+            saveStateToStorage();
+            document.getElementById('schedule-input').value = "";
+        }
+
+        // 밤 8시~12시 검토 버튼 및 물방울 획득 로직
+        function reviewDay() {
+            const now = getTodayDateObj();
+            const hour = now.getHours();
+
+            // 밤 8시(20시) ~ 밤 12시(24시) 시간 제약 검사
+            if (hour < 20 && !gameState.simulatedDate && !CONFIG.testModeDateOverride) {
+                return; // 시간대가 아닐 경우 동작 안 함
+            }
+
+            gameState.water += 1;
+            gameState.streak += 1;
+            gameState.noWaterDays = 0; // 물을 받음으로써 미지급 일수 초기화
+            saveStateToStorage();
+            updateUI();
+        }
+
+        // 나무에 물 주기 함수 (성장 증가)
+        function waterTree() {
+            if (gameState.isTreeDead) {
+                return; // 시든 나무일 경우 물 주기 불가
+            }
+            if (gameState.water <= 0) {
+                return; // 물이 부족할 경우 물 주기 불가
+            }
+
+            gameState.water -= 1;
+            gameState.currentMonthTreeGrowth += 1;
+
+            const now = getTodayDateObj();
+            const currentMonth = now.getMonth() + 1;
+
+            // 5단계 도달 시 도감에 자동 등록
+            if (gameState.currentMonthTreeGrowth >= 5) {
+                if (!gameState.encyclopedia.includes(currentMonth)) {
+                    gameState.encyclopedia.push(currentMonth);
+                }
+            }
+
+            saveStateToStorage();
+            updateUI();
+        }
+
+        // 테스트용: 날짜 하루 넘기기 기능 (알림창 및 죽음 패널티 면제 적용)
+        function testNextDay() {
+            let baseDate = getTodayDateObj();
+            baseDate.setDate(baseDate.getDate() + 1);
+            gameState.simulatedDate = formatDateString(baseDate);
+
+            // [수정사항 반영] 테스트 모드 날짜 넘기기 시 죽음 카운터(noWaterDays) 및 사망 패널티 면제 처리 (증가시키지 않음)
+
+            saveStateToStorage();
+            updateUI(); // 조용히 화면 즉시 갱신
+        }
+
+        // 상태 로컬스토리지 저장 함수
+        function saveStateToStorage() {
+            localStorage.setItem('my_tree_game_state', JSON.stringify(gameState));
+        }
+
+        // UI 전체 갱신 함수
+        function updateUI() {
+            document.getElementById('water-count').innerText = gameState.water;
+            document.getElementById('streak-count').innerText = gameState.streak;
+            document.getElementById('no-water-days').innerText = gameState.noWaterDays;
+            updateDDayCounter();
+            drawTimetable();
+            drawTreeIllustration();
+        }
+
+        // 도감 모달 열기 함수
+        function openEncyclopedia() {
+            const modal = document.getElementById('encyclopedia-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const container = document.getElementById('encyclopedia-content');
+            container.innerHTML = '';
+
+            // 1월부터 12월까지 도감 카드 동적 생성 반복문
+            for (let m = 1; m <= 12; m++) {
+                const isRegistered = gameState.encyclopedia.includes(m);
+                const treeInfo = TREE_DATA[m];
+                
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border text-center flex flex-col items-center justify-between ${isRegistered ? 'bg-emerald-50 border-emerald-300' : 'bg-gray-100 border-gray-300 opacity-60'}`;
+                card.innerHTML = `
+                    <div class="font-bold text-sm text-green-800 mb-1">${m}월</div>
+                    <div class="text-xs font-semibold mb-1">${treeInfo.name}</div>
+                    <div class="text-[10px] px-2 py-0.5 rounded ${isRegistered ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'}">${isRegistered ? '등록됨 완료' : '미등록'}</div>
+                `;
+                container.appendChild(card);
+            }
+
+            const forestSection = document.getElementById('my-forest-section');
+            if (gameState.encyclopedia.length >= 12) {
+                forestSection.classList.remove('hidden');
+                drawMyForest();
+            } else {
+                forestSection.classList.add('hidden');
+            }
+        }
+
+        // 도감 모달 닫기 함수
+        function closeEncyclopedia() {
+            const modal = document.getElementById('encyclopedia-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        // 나의 숲 캔버스 그리기 함수 (도감 12개 완성 시 개방)
+        function drawMyForest() {
+            const canvas = document.getElementById('forest-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#C8E6C9';
+            ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+
+            for (let i = 0; i < 6; i++) {
+                const x = 50 + i * 80;
+                const y = canvas.height - 40;
+                ctx.fillStyle = '#4E342E';
+                ctx.fillRect(x - 5, y - 40, 10, 40);
+                ctx.fillStyle = i % 2 === 0 ? '#2E7D32' : '#388E3C';
+                ctx.beginPath();
+                ctx.arc(x, y - 50, 25, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 페이지 로드 완료 시 초기화 및 1분마다 시계 갱신 타이머 실행
+        window.onload = function() {
+            updateUI();
+            setInterval(drawTimetable, 60000); // 1분 간격 시간표 재렌더링
+        };
+    </script>
+</body>
+</html>

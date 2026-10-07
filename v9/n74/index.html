@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 비행기 시뮬레이터</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        /* 로비 화면 스타일 */
+        #lobby {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(10, 25, 50, 0.95), rgba(0, 0, 0, 0.98));
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #lobby h1 {
+            font-size: 42px;
+            margin-bottom: 5px;
+            color: #00ffcc;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.6);
+            letter-spacing: 2px;
+        }
+        #lobby p {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 25px;
+        }
+        .plane-select-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .plane-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            width: 180px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .plane-card:hover {
+            border-color: #00ffcc;
+            background: rgba(0, 255, 204, 0.1);
+            transform: translateY(-5px);
+        }
+        .plane-card.selected {
+            border-color: #00ffcc;
+            background: rgba(0, 255, 204, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        .plane-card h3 {
+            margin: 0 0 10px 0;
+            color: #00ffcc;
+            font-size: 18px;
+        }
+        .plane-card p {
+            font-size: 13px;
+            color: #ccc;
+            margin: 0;
+        }
+        .start-btn {
+            background-color: #00ffcc;
+            color: #000;
+            font-size: 20px;
+            font-weight: bold;
+            padding: 14px 40px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
+            transition: all 0.3s ease;
+        }
+        .start-btn:hover {
+            background-color: #00cca3;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.8);
+        }
+        .instructions {
+            margin-top: 25px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 13px;
+            line-height: 1.5;
+            color: #ddd;
+            max-width: 500px;
+        }
+
+        /* 게임 UI 스타일 */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffcc;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            border: 1px solid #00ffcc;
+            pointer-events: none;
+            font-size: 15px;
+            line-height: 1.5;
+            text-shadow: 0 0 5px #00ffcc;
+            display: none;
+            z-index: 2;
+        }
+        
+        /* 운전 화면 우측 상단 로비 복귀 버튼 */
+        #lobby-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 50, 50, 0.8);
+            color: #fff;
+            border: 1px solid #ff6666;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            display: none;
+            z-index: 5;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.4);
+            transition: all 0.2s ease;
+        }
+        #lobby-btn:hover {
+            background: rgba(255, 0, 0, 1);
+            transform: scale(1.05);
+        }
+
+        /* 운전 화면 조작법 패널 */
+        #game-controls-hud {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 204, 0.4);
+            pointer-events: none;
+            font-size: 13px;
+            line-height: 1.6;
+            display: none;
+            z-index: 2;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
+            margin: -20px 0 0 -20px;
+            border: 2px solid rgba(0, 255, 204, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            box-sizing: border-box;
+            display: none;
+            z-index: 2;
+        }
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            top: 18px;
+            left: 18px;
+            width: 4px;
+            height: 4px;
+            background-color: #00ffcc;
+            border-radius: 50%;
+        }
+        #message-box {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff3333;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #ff0000;
+            display: none;
+            pointer-events: none;
+            text-align: center;
+            z-index: 3;
+        }
+    </style>
+    <!-- Three.js 라이브러리 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <!-- 로비 화면 -->
+    <div id="lobby">
+        <h1>3D FLIGHT SIMULATOR</h1>
+        <p>원하는 비행기를 선택하고 오픈월드를 탐험하세요!</p>
+        
+        <div class="plane-select-container">
+            <div class="plane-card selected" id="card-prop" onclick="selectPlane('prop')">
+                <h3>🛩️ Propeller</h3>
+                <p><b>프로펠러기</b><br>안정적이고 조종하기 쉬운 기본 비행기</p>
+            </div>
+            <div class="plane-card" id="card-jet" onclick="selectPlane('jet')">
+                <h3>✈️ Fighter Jet</h3>
+                <p><b>고속 제트기</b><br>날렵하고 최고 속도가 빠른 전투기</p>
+            </div>
+            <div class="plane-card" id="card-cargo" onclick="selectPlane('cargo')">
+                <h3>🛸 Cargo Plane</h3>
+                <p><b>대형 화물기</b><br>묵직하고 웅장한 대형 비행기</p>
+            </div>
+        </div>
+
+        <button class="start-btn" onclick="startGame()">비행 시작하기</button>
+        
+        <div class="instructions">
+            <b>[조작법]</b> 방향키 ↑/↓ (속도 조절) | W/S (기수 숙이기/들기) | A/D (좌우 기울이기)<br>
+            Q/E (방향전환 Yaw) | <b>G (랜딩 기어)</b> | <b>ESC (로비로 돌아가기)</b>
+        </div>
+    </div>
+
+    <div id="hud">
+        비행기: <span id="plane-name">프로펠러기</span><br>
+        속도: <span id="speed">0</span> 노트 | 고도: <span id="altitude">0</span> m<br>
+        스로틀: <span id="throttle">0</span>% | 랜딩 기어: <span id="gear-status" style="color: #00ff00;">DOWN</span><br>
+        점수: <span id="score">0</span>
+    </div>
+
+    <!-- 로비 복귀 버튼 -->
+    <button id="lobby-btn" onclick="returnToLobby()">🏠 로비로 가기</button>
+
+    <!-- 운전 화면 조작키 가이드 -->
+    <div id="game-controls-hud">
+        <b>[조작 가이드]</b><br>
+        • 스로틀(속도): <b>↑ / ↓</b><br>
+        • 피치(기수): <b>W / S</b><br>
+        • 롤(기울이기): <b>A / D</b><br>
+        • 야우(방향전환): <b>Q / E</b><br>
+        • 랜딩 기어: <b>G</b> | 로비: <b>ESC</b>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="message-box">CRASH! 공항에서 다시 시작합니다.</div>
+
+    <script>
+        let gameStarted = false;
+        let selectedPlaneType = 'prop';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+        scene.fog = new THREE.FogExp2(0x87ceeb, 0.0012);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 300, 100);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        let airplane = new THREE.Group();
+        let propGroup = null;
+        let landingGearGroup = null;
+
+        function createAirplaneModel(type) {
+            scene.remove(airplane);
+            airplane = new THREE.Group();
+            propGroup = new THREE.Group();
+            landingGearGroup = new THREE.Group();
+
+            if (type === 'prop') {
+                const fuselageGeo = new THREE.ConeGeometry(1.1, 9, 12);
+                fuselageGeo.rotateX(Math.PI / 2);
+                const fuselageMat = new THREE.MeshStandardMaterial({ color: 0x2255cc, roughness: 0.2, metalness: 0.3 });
+                airplane.add(new THREE.Mesh(fuselageGeo, fuselageMat));
+
+                const canopyGeo = new THREE.SphereGeometry(0.7, 8, 8);
+                canopyGeo.scale(0.8, 1, 1.8);
+                const canopyMat = new THREE.MeshStandardMaterial({ color: 0x112233, roughness: 0.1, transparent: true, opacity: 0.7 });
+                const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+                canopy.position.set(0, 0.6, 0.8);
+                airplane.add(canopy);
+
+                const wingGeo = new THREE.BoxGeometry(15, 0.18, 2.2);
+                const wingMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4 });
+                airplane.add(new THREE.Mesh(wingGeo, wingMat));
+
+                const tailGeo = new THREE.BoxGeometry(4.5, 0.15, 1.5);
+                const tail = new THREE.Mesh(tailGeo, wingMat);
+                tail.position.set(0, 0.4, -4);
+                airplane.add(tail);
+
+                const vertTailGeo = new THREE.BoxGeometry(0.15, 1.8, 1.6);
+                vertTailGeo.rotateX(0.2);
+                const vertTail = new THREE.Mesh(vertTailGeo, wingMat);
+                vertTail.position.set(0, 0.9, -4);
+                airplane.add(vertTail);
+
+                const bladeGeo = new THREE.BoxGeometry(2.2, 0.15, 0.05);
+                const bladeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                const b1 = new THREE.Mesh(bladeGeo, bladeMat);
+                const b2 = new THREE.Mesh(bladeGeo, bladeMat);
+                b2.rotateZ(Math.PI / 2);
+                propGroup.add(b1, b2);
+                propGroup.position.set(0, 0, -4.6);
+                airplane.add(propGroup);
+
+                const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12);
+                wheelGeo.rotateZ(Math.PI / 2);
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                const strutMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+
+                const fStrut = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.9, 0.18), strutMat);
+                fStrut.position.set(0, -0.7, 2.5);
+                const fWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                fWheel.position.set(0, -1.15, 2.5);
+                landingGearGroup.add(fStrut, fWheel);
+
+                const lStrut = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.9, 0.18), strutMat);
+                lStrut.position.set(-1.4, -0.7, -1.2);
+                const lWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                lWheel.position.set(-1.4, -1.15, -1.2);
+
+                const rStrut = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.9, 0.18), strutMat);
+                rStrut.position.set(1.4, -0.7, -1.2);
+                const rWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                rWheel.position.set(1.4, -1.15, -1.2);
+                landingGearGroup.add(lStrut, lWheel, rStrut, rWheel);
+
+            } else if (type === 'jet') {
+                const fuselageGeo = new THREE.ConeGeometry(0.9, 11, 8);
+                fuselageGeo.rotateX(Math.PI / 2);
+                const fuselageMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.2, metalness: 0.5 });
+                airplane.add(new THREE.Mesh(fuselageGeo, fuselageMat));
+
+                const wingGeo = new THREE.BoxGeometry(11, 0.1, 4);
+                const wingMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3 });
+                const wing = new THREE.Mesh(wingGeo, wingMat);
+                wing.position.set(0, 0, -0.5);
+                airplane.add(wing);
+
+                const tailGeo = new THREE.BoxGeometry(3.5, 0.1, 1.2);
+                const tail = new THREE.Mesh(tailGeo, wingMat);
+                tail.position.set(0, 0.3, -5);
+                airplane.add(tail);
+
+                const vertTailGeo = new THREE.BoxGeometry(0.1, 1.5, 1.5);
+                vertTailGeo.rotateX(0.3);
+                const vertTail = new THREE.Mesh(vertTailGeo, wingMat);
+                vertTail.position.set(0, 0.8, -5);
+                airplane.add(vertTail);
+
+                const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+                wheelGeo.rotateZ(Math.PI / 2);
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                const strutMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+
+                const fStrut = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15), strutMat);
+                fStrut.position.set(0, -0.6, 3);
+                const fWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                fWheel.position.set(0, -1.0, 3);
+                landingGearGroup.add(fStrut, fWheel);
+
+                const lStrut = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15), strutMat);
+                lStrut.position.set(-1.2, -0.6, -1);
+                const lWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                lWheel.position.set(-1.2, -1.0, -1);
+
+                const rStrut = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.15), strutMat);
+                rStrut.position.set(1.2, -0.6, -1);
+                const rWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                rWheel.position.set(1.2, -1.0, -1);
+                landingGearGroup.add(lStrut, lWheel, rStrut, rWheel);
+
+            } else if (type === 'cargo') {
+                const fuselageGeo = new THREE.BoxGeometry(2.5, 2.5, 12);
+                const fuselageMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4 });
+                const fuselage = new THREE.Mesh(fuselageGeo, fuselageMat);
+                airplane.add(fuselage);
+
+                const noseGeo = new THREE.ConeGeometry(1.25, 3, 8);
+                noseGeo.rotateX(Math.PI / 2);
+                const nose = new THREE.Mesh(noseGeo, fuselageMat);
+                nose.position.set(0, 0, 6);
+                airplane.add(nose);
+
+                const wingGeo = new THREE.BoxGeometry(22, 0.3, 3);
+                const wing = new THREE.Mesh(wingGeo, fuselageMat);
+                wing.position.set(0, 0.5, 0);
+                airplane.add(wing);
+
+                const tailGeo = new THREE.BoxGeometry(7, 0.2, 2);
+                const tail = new THREE.Mesh(tailGeo, fuselageMat);
+                tail.position.set(0, 1.2, -5.5);
+                airplane.add(tail);
+
+                const vertTailGeo = new THREE.BoxGeometry(0.3, 2.5, 2);
+                const vertTail = new THREE.Mesh(vertTailGeo, fuselageMat);
+                vertTail.position.set(0, 2.2, -5.5);
+                airplane.add(vertTail);
+
+                const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 12);
+                wheelGeo.rotateZ(Math.PI / 2);
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                const strutMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+
+                const fStrut = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 0.3), strutMat);
+                fStrut.position.set(0, -1.5, 4);
+                const fWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                fWheel.position.set(0, -2.1, 4);
+                landingGearGroup.add(fStrut, fWheel);
+
+                const lStrut = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 0.3), strutMat);
+                lStrut.position.set(-2.5, -1.5, -1);
+                const lWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                lWheel.position.set(-2.5, -2.1, -1);
+
+                const rStrut = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 0.3), strutMat);
+                rStrut.position.set(2.5, -1.5, -1);
+                const rWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                rWheel.position.set(2.5, -2.1, -1);
+                landingGearGroup.add(lStrut, lWheel, rStrut, rWheel);
+            }
+
+            airplane.add(landingGearGroup);
+            scene.add(airplane);
+        }
+
+        function selectPlane(type) {
+            selectedPlaneType = type;
+            document.querySelectorAll('.plane-card').forEach(card => card.classList.remove('selected'));
+            document.getElementById('card-' + type).classList.add('selected');
+        }
+
+        let speed = 0;
+        let throttle = 0; 
+        const minSpeed = 0.0;
+        let maxSpeed = 2.4;
+        let landingGearDown = true; 
+        const rotationSpeed = 0.025;
+        let score = 0;
+        let isCrashed = false;
+
+        const activeBuildings = [];
+        const spawnPos = new THREE.Vector3(0, 5.5, 0);
+
+        function resetToAirport() {
+            createAirplaneModel(selectedPlaneType);
+            
+            if (selectedPlaneType === 'prop') {
+                maxSpeed = 2.4;
+                document.getElementById('plane-name').innerText = '프로펠러기';
+            } else if (selectedPlaneType === 'jet') {
+                maxSpeed = 3.8;
+                document.getElementById('plane-name').innerText = '고속 제트기';
+            } else if (selectedPlaneType === 'cargo') {
+                maxSpeed = 2.0;
+                document.getElementById('plane-name').innerText = '대형 화물기';
+            }
+
+            airplane.position.copy(spawnPos);
+            airplane.rotation.set(0, 0, 0);
+            speed = 0;
+            throttle = 0;
+            landingGearDown = true;
+            landingGearGroup.visible = true;
+            document.getElementById('gear-status').innerText = 'DOWN';
+            document.getElementById('gear-status').style.color = '#00ff00';
+            
+            isCrashed = false;
+            document.getElementById('message-box').style.display = 'none';
+        }
+
+        function startGame() {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('lobby-btn').style.display = 'block';
+            document.getElementById('game-controls-hud').style.display = 'block';
+            document.getElementById('crosshair').style.display = 'block';
+            resetToAirport();
+            gameStarted = true;
+        }
+
+        function returnToLobby() {
+            gameStarted = false;
+            document.getElementById('lobby').style.display = 'flex';
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('lobby-btn').style.display = 'none';
+            document.getElementById('game-controls-hud').style.display = 'none';
+            document.getElementById('crosshair').style.display = 'none';
+            document.getElementById('message-box').style.display = 'none';
+        }
+
+        const keys = { ArrowUp: false, ArrowDown: false, w: false, s: false, a: false, d: false, q: false, e: false };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                returnToLobby();
+                return;
+            }
+
+            if (!gameStarted) return;
+            const k = e.key.toLowerCase();
+            if (keys.hasOwnProperty(k)) keys[k] = true;
+            if (e.key === 'ArrowUp') keys.ArrowUp = true;
+            if (e.key === 'ArrowDown') keys.ArrowDown = true;
+
+            if (k === 'g') {
+                landingGearDown = !landingGearDown;
+                landingGearGroup.visible = landingGearDown;
+                const statusEl = document.getElementById('gear-status');
+                if (landingGearDown) {
+                    statusEl.innerText = 'DOWN';
+                    statusEl.style.color = '#00ff00';
+                } else {
+                    statusEl.innerText = 'UP';
+                    statusEl.style.color = '#ff9900';
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (!gameStarted) return;
+            const k = e.key.toLowerCase();
+            if (keys.hasOwnProperty(k)) keys[k] = false;
+            if (e.key === 'ArrowUp') keys.ArrowUp = false;
+            if (e.key === 'ArrowDown') keys.ArrowDown = false;
+        });
+
+        const terrainChunks = new Map();
+        const chunkSize = 400;
+        const chunkSegments = 25;
+
+        function getTerrainHeight(x, z) {
+            if (Math.abs(x) < 250 && Math.abs(z) < 300) {
+                return 4.0;
+            }
+            let h = Math.sin(x * 0.002) * Math.cos(z * 0.002) * 90;
+            h += Math.sin(x * 0.008) * Math.sin(z * 0.008) * 35;
+            return Math.max(h, 4); 
+        }
+
+        const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+        buildingGeo.translate(0, 0.5, 0);
+
+        function createChunk(chunkX, chunkZ) {
+            const key = `${chunkX},${chunkZ}`;
+            if (terrainChunks.has(key)) return;
+
+            const chunkGroup = new THREE.Group();
+
+            const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, chunkSegments, chunkSegments);
+            geo.rotateX(-Math.PI / 2);
+
+            const pos = geo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const px = pos.getX(i) + chunkX * chunkSize;
+                const pz = pos.getZ(i) + chunkZ * chunkSize;
+                pos.setY(i, getTerrainHeight(px, pz));
+            }
+            geo.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0x3b8a3b, 
+                roughness: 0.9,
+                flatShading: true
+            });
+            const terrainMesh = new THREE.Mesh(geo, mat);
+            chunkGroup.add(terrainMesh);
+
+            if (chunkX === 0 && chunkZ === 0) {
+                const runwayGeo = new THREE.PlaneGeometry(35, 250);
+                runwayGeo.rotateX(-Math.PI / 2);
+                const runwayMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+                const runway = new THREE.Mesh(runwayGeo, runwayMat);
+                runway.position.set(0, 4.1, 0);
+                chunkGroup.add(runway);
+
+                const lineGeo = new THREE.PlaneGeometry(1.5, 220);
+                lineGeo.rotateX(-Math.PI / 2);
+                const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const line = new THREE.Mesh(lineGeo, lineMat);
+                line.position.set(0, 4.12, 0);
+                chunkGroup.add(line);
+            } else {
+                const buildingMat = new THREE.MeshStandardMaterial({ color: 0x888899, roughness: 0.4 });
+                const seed = Math.sin(chunkX * 12.9898 + chunkZ * 78.233) * 43758.5453;
+                if (seed - Math.floor(seed) > 0.3) {
+                    for (let b = 0; b < 6; b++) {
+                        const bx = (Math.sin(b * 99 + chunkX) * 0.45) * chunkSize;
+                        const bz = (Math.cos(b * 33 + chunkZ) * 0.45) * chunkSize;
+                        const globalX = chunkX * chunkSize + bx;
+                        const globalZ = chunkZ * chunkSize + bz;
+
+                        if (Math.abs(globalX) > 200 || Math.abs(globalZ) > 250) {
+                            const groundH = getTerrainHeight(globalX, globalZ);
+                            if (groundH < 30) {
+                                const bw = 15 + Math.abs(Math.sin(b)) * 18;
+                                const bh = 30 + Math.abs(Math.cos(b)) * 60;
+                                const bd = 15 + Math.abs(Math.sin(b * 2)) * 18;
+
+                                const bMesh = new THREE.Mesh(buildingGeo, buildingMat);
+                                bMesh.scale.set(bw, bh, bd);
+                                bMesh.position.set(globalX, groundH, globalZ);
+                                
+                                scene.add(bMesh);
+                                activeBuildings.push({
+                                    mesh: bMesh,
+                                    x: globalX,
+                                    z: globalZ,
+                                    width: bw,
+                                    depth: bd,
+                                    height: bh,
+                                    ground: groundH
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            chunkGroup.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
+            scene.add(chunkGroup);
+            terrainChunks.set(key, chunkGroup);
+        }
+
+        const rings = [];
+        const ringGeo = new THREE.TorusGeometry(14, 1.5, 8, 24);
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0xaa00ff, emissive: 0x330055 });
+
+        function spawnRing(x, y, z) {
+            const ring = new THREE.Mesh(ringGeo, ringMat.clone());
+            ring.position.set(x, y, z);
+            ring.rotation.y = Math.random() * Math.PI;
+            scene.add(ring);
+            rings.push(ring);
+        }
+
+        for(let i=0; i<15; i++) {
+            spawnRing(
+                (Math.random() - 0.5) * 2500,
+                120 + Math.random() * 120,
+                (Math.random() - 0.5) * 2500
+            );
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameStarted && !isCrashed) {
+                if (propGroup && selectedPlaneType === 'prop') {
+                    propGroup.rotateZ(speed * 0.5);
+                }
+
+                if (keys.ArrowUp) throttle = Math.min(100, throttle + 0.6);
+                if (keys.ArrowDown) throttle = Math.max(0, throttle - 0.6);
+                
+                const targetSpeed = minSpeed + (throttle / 100) * (maxSpeed - minSpeed);
+                speed += (targetSpeed - speed) * 0.05;
+
+                if (keys.w) airplane.rotateX(-rotationSpeed);
+                if (keys.s) airplane.rotateX(rotationSpeed);
+                if (keys.a) airplane.rotateZ(rotationSpeed);
+                if (keys.d) airplane.rotateZ(-rotationSpeed);
+                if (keys.q) airplane.rotateY(rotationSpeed);
+                if (keys.e) airplane.rotateY(-rotationSpeed);
+
+                if (!keys.a && !keys.d) {
+                    airplane.rotation.z *= 0.98;
+                }
+
+                const dir = new THREE.Vector3(0, 0, -1);
+                dir.applyQuaternion(airplane.quaternion);
+                airplane.position.addScaledVector(dir, speed * 3.5);
+
+                const pX = airplane.position.x;
+                const pY = airplane.position.y;
+                const pZ = airplane.position.z;
+                const groundHeight = getTerrainHeight(pX, pZ);
+                const clearance = landingGearDown ? 1.4 : 0.8;
+
+                const isOnRunway = Math.abs(pX) < 16 && Math.abs(pZ) < 120;
+                if (pY < groundHeight + clearance) {
+                    if (isOnRunway && landingGearDown && speed < 1.2) {
+                        airplane.position.y = groundHeight + clearance;
+                        speed *= 0.95;
+                    } else {
+                        triggerCrash();
+                    }
+                }
+
+                for (let i = 0; i < activeBuildings.length; i++) {
+                    const b = activeBuildings[i];
+                    if (Math.abs(pX - b.x) < b.width / 2 + 1.5 && 
+                        Math.abs(pZ - b.z) < b.depth / 2 + 1.5) {
+                        if (pY >= b.ground && pY <= b.ground + b.height + 1.0) {
+                            triggerCrash();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const idealOffset = new THREE.Vector3(0, 5, 18).applyQuaternion(airplane.quaternion);
+            const idealLookat = airplane.position.clone().add(new THREE.Vector3(0, 1, 0).applyQuaternion(airplane.quaternion));
+            camera.position.lerp(airplane.position.clone().add(idealOffset), 0.1);
+            camera.lookAt(idealLookat);
+
+            const pChunkX = Math.floor(airplane.position.x / chunkSize);
+            const pChunkZ = Math.floor(airplane.position.z / chunkSize);
+
+            for (let x = -2; x <= 2; x++) {
+                for (let z = -2; z <= 2; z++) {
+                    createChunk(pChunkX + x, pChunkZ + z);
+                }
+            }
+
+            rings.forEach((ring) => {
+                const dist = ring.position.distanceTo(airplane.position);
+                if (dist < 18) {
+                    score += 100;
+                    ring.material.color.setHex(0x00ff00);
+                    setTimeout(() => {
+                        ring.position.set(
+                            airplane.position.x + (Math.random() - 0.5) * 2000,
+                            100 + Math.random() * 150,
+                            airplane.position.z + (Math.random() - 0.5) * 2000
+                        );
+                        ring.material.color.setHex(0xaa00ff);
+                    }, 500);
+                }
+            });
+
+            document.getElementById('speed').innerText = Math.round(speed * 110);
+            document.getElementById('altitude').innerText = Math.round(airplane.position.y);
+            document.getElementById('throttle').innerText = Math.round(throttle);
+            document.getElementById('score').innerText = score;
+
+            renderer.render(scene, camera);
+        }
+
+        function triggerCrash() {
+            if (isCrashed) return;
+            isCrashed = true;
+            document.getElementById('message-box').style.display = 'block';
+
+            setTimeout(() => {
+                resetToAirport();
+            }, 2000);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        createChunk(0, 0);
+        createAirplaneModel('prop');
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Puyo Puyo Arcade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', monospace;
+            background: radial-gradient(circle, #2b1055 0%, #7597de 100%);
+            color: #fff;
+            touch-action: none;
+            overflow: hidden;
+        }
+        .arcade-cabinet {
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.2);
+            border: 4px solid #ff007f;
+        }
+        .glow-text {
+            text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff, 0 0 30px #00ffff;
+        }
+        @keyframes comboPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+        .animate-combo {
+            animation: comboPop 1.2s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center select-none">
+
+    <!-- Top 3 Scrolling Marquee Bars -->
+    <div class="fixed top-0 left-0 w-full z-50 pointer-events-none flex flex-col space-y-1">
+        <div class="bg-pink-900/90 border-b border-yellow-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee text-yellow-300 text-xs font-bold tracking-widest">
+                💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임
+            </div>
+        </div>
+        <div class="bg-purple-900/90 border-b border-cyan-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee-reverse text-cyan-300 text-xs font-bold tracking-widest">
+                ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요!
+            </div>
+        </div>
+        <div class="bg-indigo-900/90 border-b-2 border-pink-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee text-pink-300 text-xs font-bold tracking-widest">
+                🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-4xl p-4 my-auto">
+        
+        <!-- Left Panel: Title & Controls Info -->
+        <div class="flex flex-col items-center md:items-start text-center md:text-left space-y-4">
+            <h1 class="text-2xl md:text-3xl text-yellow-300 glow-text tracking-widest">POOP POOP</h1>
+            <div class="bg-black/40 p-4 rounded-xl border border-pink-500/50 text-[10px] leading-relaxed space-y-2 max-w-[220px]">
+                <p class="text-pink-400 font-bold">CONTROLS:</p>
+                <p>← / → : Move</p>
+                <p>↑ / X : Rotate</p>
+                <p>↓ : Soft Drop</p>
+                <p>Space : Hard Drop</p>
+                <p class="text-yellow-400 pt-2">Connect 4+ of the same color 💩 to pop & chain!</p>
+            </div>
+        </div>
+
+        <!-- Center Panel: Game Board & Arcade Cabinet -->
+        <div class="relative arcade-cabinet bg-slate-900/90 rounded-2xl p-4 flex flex-col items-center">
+            
+            <!-- Top Status Bar -->
+            <div class="flex justify-between w-full mb-3 text-xs text-cyan-300 px-2 font-bold">
+                <div>SCORE: <span id="score-val" class="text-white">0</span></div>
+                <div>CHAIN: <span id="chain-val" class="text-yellow-400">0</span></div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="relative bg-black/80 rounded-lg border-2 border-cyan-500 overflow-hidden shadow-inner">
+                <canvas id="gameCanvas" width="240" height="480" class="block"></canvas>
+                
+                <!-- Combo Popup Notification Overlay -->
+                <div id="combo-popup" class="absolute inset-0 flex items-center justify-center pointer-events-none hidden z-30">
+                    <span id="combo-text" class="text-2xl md:text-3xl font-extrabold text-yellow-300 glow-text tracking-wider text-center drop-shadow-[0_0_15px_rgba(255,255,0,0.8)]"></span>
+                </div>
+
+                <!-- Game Over / Start Overlay -->
+                <div id="overlay" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-center p-4 z-40">
+                    <h2 id="overlay-title" class="text-xl text-yellow-400 mb-4 glow-text">POOP POOP</h2>
+                    <p id="overlay-sub" class="text-xs text-slate-300 mb-6 leading-relaxed">Match 4 or more 💩 to score!</p>
+                    <button id="start-btn" class="px-6 py-3 bg-pink-600 hover:bg-pink-500 text-white text-xs rounded-lg shadow-lg border-b-4 border-pink-800 active:border-b-0 active:translate-y-1 transition-all">
+                        START GAME
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Next Puyo Preview & Toilet Infomercial Ad -->
+        <div class="flex flex-col items-center space-y-4">
+            <div class="flex flex-col items-center bg-black/40 p-4 rounded-xl border border-purple-500/50 space-y-3 w-36">
+                <span class="text-xs text-purple-300 font-bold">NEXT</span>
+                <div class="bg-black/60 rounded-lg border border-purple-400/40 p-3 flex flex-col items-center justify-center w-20 h-36">
+                    <canvas id="nextCanvas" width="60" height="100"></canvas>
+                </div>
+                <button id="sound-btn" class="mt-2 text-[9px] px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded border border-slate-600 text-slate-300 w-full">
+                    SOUND: ON
+                </button>
+            </div>
+
+            <!-- Fake Toilet Infomercial Advertisement Panel -->
+            <div class="bg-gradient-to-br from-blue-950 via-slate-900 to-indigo-950 p-4 rounded-xl border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)] w-40 flex flex-col items-center text-center space-y-2 relative overflow-hidden">
+                <!-- Glowing Sale Badge -->
+                <div class="absolute -right-8 -top-8 bg-red-600 text-white font-bold text-[8px] px-8 py-3 rotate-45 shadow-md">
+                    HOT SALE
+                </div>
+
+                <div class="text-[10px] text-cyan-300 font-bold tracking-widest uppercase">🚽 프리미엄 비데 특가</div>
+                
+                <div class="bg-white p-2 rounded-lg shadow-inner border border-cyan-500/40 w-full flex flex-col items-center">
+                    <span class="text-2xl animate-bounce">🚽✨</span>
+                    <span class="text-[9px] text-slate-800 font-extrabold mt-1">슈퍼 럭셔리 쾌변기 X-9000</span>
+                </div>
+
+                <!-- Limited Quantity Alert -->
+                <div class="bg-red-950/80 border border-red-500 text-red-300 font-extrabold text-[9px] py-1 px-2 rounded w-full animate-pulse">
+                    🔥 한정수량 100개! 매진 임박! 🔥
+                </div>
+
+                <div class="text-[9px] text-slate-300 space-y-1 text-left w-full px-1">
+                    <p class="text-yellow-300 flex items-center gap-1">✓ 온열 시트 & 온수 샤워</p>
+                    <p class="text-green-300 flex items-center gap-1">✓ 완벽한 똥 처리 시스템</p>
+                    <p class="text-pink-300 flex items-center gap-1">✓ 100% 무소음 제트건조</p>
+                </div>
+
+                <div class="w-full pt-1">
+                    <div class="text-[8px] text-slate-400 line-through">₩890,000</div>
+                    <div class="text-xs text-yellow-400 font-extrabold animate-pulse">₩299,000 (특가!)</div>
+                </div>
+
+                <button onclick="window.alert('돈이 부족합니다.')" class="w-full py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-[9px] font-bold rounded shadow-md border border-cyan-300 active:scale-95 transition-all">
+                    지금 바로 구매!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom 3 Scrolling Marquee Bars -->
+    <div class="fixed bottom-0 left-0 w-full z-50 pointer-events-none flex flex-col space-y-1">
+        <div class="bg-indigo-900/90 border-t-2 border-pink-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee text-pink-300 text-xs font-bold tracking-widest">
+                🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전 🔥 연쇄 폭발 대작전
+            </div>
+        </div>
+        <div class="bg-purple-900/90 border-t border-cyan-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee-reverse text-cyan-300 text-xs font-bold tracking-widest">
+                ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요! ✨ 4개 모으면 팡팡 터져요!
+            </div>
+        </div>
+        <div class="bg-pink-900/90 border-t border-yellow-400 overflow-hidden py-1">
+            <div class="whitespace-nowrap animate-marquee text-yellow-300 text-xs font-bold tracking-widest">
+                💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임 💩 뿌요뿌요 똥게임
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+        }
+        @keyframes marquee-reverse {
+            0% { transform: translateX(-50%); }
+            100% { transform: translateX(0%); }
+        }
+        .animate-marquee {
+            display: inline-block;
+            animation: marquee 15s linear infinite;
+        }
+        .animate-marquee-reverse {
+            display: inline-block;
+            animation: marquee-reverse 15s linear infinite;
+        }
+    </style>
+
+    <script>
+        // Audio Synthesizer using Web Audio API
+        class SoundEngine {
+            constructor() {
+                this.enabled = true;
+                this.ctx = null;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            }
+            playRotate() {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+            playDrop() {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+            playPop(chainCount = 1) {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                const baseFreq = 220 * Math.pow(1.15, Math.min(chainCount, 15));
+                osc.frequency.setValueAtTime(baseFreq, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 2, this.ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+            playGameOver() {
+                if (!this.enabled) return;
+                this.init();
+                const notes = [200, 180, 160, 130];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.15);
+                    gain.gain.setValueAtTime(0.1, this.ctx.currentTime + idx * 0.15);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.15 + 0.15);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + idx * 0.15);
+                    osc.stop(this.ctx.currentTime + idx * 0.15 + 0.15);
+                });
+            }
+        }
+
+        const COLS = 6;
+        const ROWS = 12;
+        const BLOCK_SIZE = 40;
+        
+        const COLOR_FILTERS = [
+            null,
+            'hue-rotate(0deg) saturate(3)',      // Red 💩
+            'hue-rotate(90deg) saturate(3)',     // Green 💩
+            'hue-rotate(200deg) saturate(3)',    // Blue 💩
+            'hue-rotate(45deg) saturate(4)',     // Yellow 💩
+            'hue-rotate(280deg) saturate(3)'     // Purple 💩
+        ];
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('nextCanvas');
+        const nextCtx = nextCanvas.getContext('2d');
+
+        const sound = new SoundEngine();
+
+        let board = Array(ROWS).fill(0).map(() => Array(COLS).fill(0));
+        let score = 0;
+        let chain = 0;
+        let gameOver = false;
+        let gameStarted = false;
+        let isProcessingChain = false;
+
+        let currentPair = null;
+        let nextPair = null;
+
+        let dropInterval = 800; // ms
+        let dropTimer = 0;
+        let lastTime = 0;
+
+        function getRandomColor() {
+            return Math.floor(Math.random() * 5) + 1;
+        }
+
+        function createPair() {
+            return {
+                x: 2,
+                y: 0,
+                color1: getRandomColor(),
+                color2: getRandomColor(),
+                rotation: 0 // 0: up, 1: right, 2: down, 3: left
+            };
+        }
+
+        function getRelativeCoords(pair) {
+            let x2 = pair.x;
+            let y2 = pair.y;
+            if (pair.rotation === 0) y2 -= 1;
+            else if (pair.rotation === 1) x2 += 1;
+            else if (pair.rotation === 2) y2 += 1;
+            else if (pair.rotation === 3) x2 -= 1;
+            
+            return [
+                { x: pair.x, y: pair.y, color: pair.color1 },
+                { x: x2, y: y2, color: pair.color2 }
+            ];
+        }
+
+        function isValidPosition(pair) {
+            const coords = getRelativeCoords(pair);
+            for (let c of coords) {
+                if (c.x < 0 || c.x >= COLS || c.y >= ROWS) return false;
+                if (c.y >= 0 && board[c.y][c.x] !== 0) return false;
+            }
+            return true;
+        }
+
+        function showComboPopup(chainCount) {
+            const popup = document.getElementById('combo-popup');
+            const textElem = document.getElementById('combo-text');
+            
+            let msg = '';
+            if (chainCount === 2) msg = '2 combo!';
+            else if (chainCount === 3) msg = '3 combo!';
+            else if (chainCount === 5) msg = 'Five combo!';
+            else if (chainCount === 10) msg = 'Ten combo!';
+            else if (chainCount > 1) msg = `${chainCount} combo!`;
+            else return;
+
+            textElem.innerText = msg;
+            popup.classList.remove('hidden');
+            popup.classList.remove('animate-combo');
+            void popup.offsetWidth; // trigger reflow
+            popup.classList.add('animate-combo');
+
+            setTimeout(() => {
+                popup.classList.add('hidden');
+            }, 1200);
+        }
+
+        function startGame() {
+            board = Array(ROWS).fill(0).map(() => Array(COLS).fill(0));
+            score = 0;
+            chain = 0;
+            gameOver = false;
+            gameStarted = true;
+            isProcessingChain = false;
+            document.getElementById('score-val').innerText = score;
+            document.getElementById('chain-val').innerText = chain;
+            document.getElementById('overlay').classList.add('hidden');
+            
+            currentPair = createPair();
+            nextPair = createPair();
+            lastTime = performance.now();
+            requestAnimationFrame(update);
+        }
+
+        async function processChainStep() {
+            isProcessingChain = true;
+            
+            // 1. Gravity drop for existing pieces
+            let droppedAny = false;
+            for (let r = ROWS - 2; r >= 0; r--) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] !== 0 && board[r + 1][c] === 0) {
+                        let currR = r;
+                        while (currR + 1 < ROWS && board[currR + 1][c] === 0) {
+                            board[currR + 1][c] = board[currR][c];
+                            board[currR][c] = 0;
+                            currR++;
+                            droppedAny = true;
+                        }
+                    }
+                }
+            }
+
+            if (droppedAny) {
+                sound.playDrop();
+                draw();
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            // 2. Check for matches (4 or more connected)
+            let visited = Array(ROWS).fill(0).map(() => Array(COLS).fill(false));
+            let puyosToPop = [];
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] !== 0 && !visited[r][c]) {
+                        let color = board[r][c];
+                        let group = [];
+                        let queue = [{r, c}];
+                        visited[r][c] = true;
+
+                        let head = 0;
+                        while(head < queue.length) {
+                            let curr = queue[head++];
+                            group.push(curr);
+
+                            const neighbors = [
+                                {r: curr.r - 1, c: curr.c},
+                                {r: curr.r + 1, c: curr.c},
+                                {r: curr.r, c: curr.c - 1},
+                                {r: curr.r, c: curr.c + 1}
+                            ];
+
+                            for (let n of neighbors) {
+                                if (n.r >= 0 && n.r < ROWS && n.c >= 0 && n.c < COLS) {
+                                    if (!visited[n.r][n.c] && board[n.r][n.c] === color) {
+                                        visited[n.r][n.c] = true;
+                                        queue.push(n);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (group.length >= 4) {
+                            puyosToPop.push(...group);
+                        }
+                    }
+                }
+            }
+
+            if (puyosToPop.length > 0) {
+                chain++;
+                document.getElementById('chain-val').innerText = chain;
+                sound.playPop(chain);
+                showComboPopup(chain);
+
+                // Clear matched puyos
+                for (let p of puyosToPop) {
+                    board[p.r][p.c] = 0;
+                }
+
+                // Add score
+                score += puyosToPop.length * 10 * chain;
+                document.getElementById('score-val').innerText = score;
+
+                draw();
+                await new Promise(r => setTimeout(r, 300));
+
+                // Recursive chain step
+                await processChainStep();
+            } else {
+                // Chain finished
+                isProcessingChain = false;
+                chain = 0;
+                document.getElementById('chain-val').innerText = chain;
+
+                // Check Game Over condition (top row filled in column 2)
+                if (board[0][2] !== 0) {
+                    gameOver = true;
+                    gameStarted = false;
+                    sound.playGameOver();
+                    document.getElementById('overlay-title').innerText = "GAME OVER";
+                    document.getElementById('overlay-sub').innerText = `Final Score: ${score}`;
+                    document.getElementById('start-btn').innerText = "PLAY AGAIN";
+                    document.getElementById('overlay').classList.remove('hidden');
+                } else {
+                    currentPair = nextPair;
+                    nextPair = createPair();
+                    if (!isValidPosition(currentPair)) {
+                        gameOver = true;
+                        gameStarted = false;
+                        sound.playGameOver();
+                        document.getElementById('overlay-title').innerText = "GAME OVER";
+                        document.getElementById('overlay-sub').innerText = `Final Score: ${score}`;
+                        document.getElementById('start-btn').innerText = "PLAY AGAIN";
+                        document.getElementById('overlay').classList.remove('hidden');
+                    }
+                }
+            }
+        }
+
+        function drawPuyo(context, x, y, colorIndex, size = BLOCK_SIZE) {
+            if (!colorIndex) return;
+            const filter = COLOR_FILTERS[colorIndex];
+            
+            context.save();
+            context.translate(x * size, y * size);
+
+            const cx = size / 2;
+            const cy = size / 2;
+
+            // Apply color tint filter for emoji
+            context.filter = filter;
+            context.font = `${size * 0.85}px sans-serif`;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText('💩', cx, cy + 2);
+
+            context.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid background lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    ctx.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                }
+            }
+
+            // Draw placed board puyos
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] !== 0) {
+                        drawPuyo(ctx, c, r, board[r][c]);
+                    }
+                }
+            }
+
+            // Draw current falling pair
+            if (currentPair && gameStarted && !isProcessingChain) {
+                const coords = getRelativeCoords(currentPair);
+                for (let c of coords) {
+                    if (c.y >= 0) {
+                        drawPuyo(ctx, c.x, c.y, c.color);
+                    }
+                }
+            }
+
+            // Draw Next Puyo preview
+            nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+            if (nextPair) {
+                drawPuyo(nextCtx, 0.5, 0.2, nextPair.color1, 35);
+                drawPuyo(nextCtx, 0.5, 1.8, nextPair.color2, 35);
+            }
+        }
+
+        function lockPair() {
+            const coords = getRelativeCoords(currentPair);
+            for (let c of coords) {
+                if (c.y >= 0 && c.y < ROWS && c.x >= 0 && c.x < COLS) {
+                    board[c.y][c.x] = c.color;
+                }
+            }
+            sound.playDrop();
+        }
+
+        async function update(time) {
+            if (!gameStarted || gameOver) return;
+
+            const delta = time - lastTime;
+            lastTime = time;
+
+            if (!isProcessingChain) {
+                dropTimer += delta;
+                if (dropTimer > dropInterval) {
+                    dropTimer = 0;
+                    currentPair.y++;
+                    if (!isValidPosition(currentPair)) {
+                        currentPair.y--;
+                        lockPair();
+                        await processChainStep();
+                    }
+                }
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // Keyboard Controls
+        window.addEventListener('keydown', (e) => {
+            if (!gameStarted || gameOver || isProcessingChain) return;
+
+            let moved = false;
+            if (e.key === 'ArrowLeft') {
+                currentPair.x--;
+                if (!isValidPosition(currentPair)) currentPair.x++;
+                else moved = true;
+            } else if (e.key === 'ArrowRight') {
+                currentPair.x++;
+                if (!isValidPosition(currentPair)) currentPair.x--;
+                else moved = true;
+            } else if (e.key === 'ArrowDown') {
+                currentPair.y++;
+                if (!isValidPosition(currentPair)) {
+                    currentPair.y--;
+                    lockPair();
+                    processChainStep();
+                } else {
+                    dropTimer = 0;
+                    moved = true;
+                }
+            } else if (e.key === 'ArrowUp' || e.key === 'x' || e.key === 'X') {
+                let oldRotation = currentPair.rotation;
+                currentPair.rotation = (currentPair.rotation + 1) % 4;
+                if (!isValidPosition(currentPair)) {
+                    // Wall kick test
+                    currentPair.x--;
+                    if (!isValidPosition(currentPair)) {
+                        currentPair.x += 2;
+                        if (!isValidPosition(currentPair)) {
+                            currentPair.x--;
+                            currentPair.rotation = oldRotation;
+                        } else {
+                            sound.playRotate();
+                        }
+                    } else {
+                        sound.playRotate();
+                    }
+                } else {
+                    sound.playRotate();
+                }
+            } else if (e.key === ' ') {
+                // Hard drop
+                while (isValidPosition(currentPair)) {
+                    currentPair.y++;
+                }
+                currentPair.y--;
+                lockPair();
+                processChainStep();
+                e.preventDefault();
+            }
+
+            if (moved) draw();
+        });
+
+        // Button Listeners
+        document.getElementById('start-btn').addEventListener('click', () => {
+            startGame();
+        });
+
+        const soundBtn = document.getElementById('sound-btn');
+        soundBtn.addEventListener('click', () => {
+            sound.enabled = !sound.enabled;
+            soundBtn.innerText = `SOUND: ${sound.enabled ? 'ON' : 'OFF'}`;
+        });
+
+        // Initial preview render
+        nextPair = createPair();
+        draw();
+    </script>
+</body>
+</html>

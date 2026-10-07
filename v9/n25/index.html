@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>중앙 고정 2D 서바이버 게임</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #game-canvas {
+            display: block;
+            background-color: #0b0f19;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .skill-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .skill-card:hover {
+            transform: translateY(-4px) scale(1.02);
+            border-color: #6366f1;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden flex flex-col items-center justify-center">
+
+    <!-- Main Game Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Top HUD Bar -->
+    <div class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-10">
+        <!-- Player Status (HP & EXP) -->
+        <div class="glass-panel p-4 rounded-xl w-72 sm:w-80 shadow-2xl flex flex-col gap-2 pointer-events-auto">
+            <div class="flex justify-between items-center text-white text-sm font-bold">
+                <span class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-indigo-400"></i> 생존자</span>
+                <span id="level-text" class="text-amber-400 text-base font-extrabold">LV. 1</span>
+            </div>
+            
+            <!-- HP Bar -->
+            <div class="relative w-full bg-slate-800 h-4 rounded-full overflow-hidden border border-slate-700">
+                <div id="hp-bar" class="h-full bg-gradient-to-r from-red-600 to-rose-400 transition-all duration-150" style="width: 100%;"></div>
+                <span id="hp-text" class="absolute inset-0 text-[10px] text-white font-black flex items-center justify-center drop-shadow">100 / 100</span>
+            </div>
+
+            <!-- EXP Bar -->
+            <div class="relative w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                <div id="exp-bar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-300 transition-all duration-150" style="width: 0%;"></div>
+                <span id="exp-text" class="absolute inset-0 text-[9px] text-white font-bold flex items-center justify-center drop-shadow">0 / 100</span>
+            </div>
+        </div>
+
+        <!-- Score & Timer -->
+        <div class="glass-panel px-5 py-3 rounded-xl shadow-2xl flex gap-5 text-white text-center pointer-events-auto">
+            <div>
+                <div class="text-[11px] text-slate-400 font-semibold">처치 수</div>
+                <div id="kill-count" class="text-xl font-black text-amber-400">0</div>
+            </div>
+            <div class="w-[1px] bg-slate-700"></div>
+            <div>
+                <div class="text-[11px] text-slate-400 font-semibold">생존 시간</div>
+                <div id="time-text" class="text-xl font-black text-sky-400">00:00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Skills List (Bottom Left) -->
+    <div class="absolute bottom-4 left-4 z-10 pointer-events-none">
+        <div class="text-xs text-slate-400 mb-2 font-bold tracking-wide">보유 스킬 (최대 4개)</div>
+        <div id="active-skills-list" class="flex flex-wrap gap-2 pointer-events-auto">
+            <!-- Dynamic Skill Icons -->
+        </div>
+    </div>
+
+    <!-- Controls Overlay Info -->
+    <div class="hidden sm:flex absolute bottom-4 right-4 glass-panel p-3 rounded-xl text-slate-300 text-xs z-10 pointer-events-none flex-col gap-1">
+        <div><span class="bg-slate-700 px-1.5 py-0.5 rounded text-white font-bold">WASD</span> / <span class="bg-slate-700 px-1.5 py-0.5 rounded text-white font-bold">방향키</span> : 이동</div>
+        <div class="text-slate-400 text-[11px]">* 스킬은 가장 가까운 적에게 자동으로 발사됩니다</div>
+    </div>
+
+    <!-- Level Up Modal Window -->
+    <div id="levelup-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel border-indigo-500/30 p-6 sm:p-8 rounded-2xl max-w-2xl w-full text-center flex flex-col items-center shadow-2xl">
+            <h2 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-angles-up animate-bounce"></i> 레벨 업!
+            </h2>
+            <p class="text-slate-300 text-xs sm:text-sm mb-6">스킬을 강화하거나 새로운 스킬을 습득하세요.</p>
+
+            <!-- Skill Choice Cards -->
+            <div id="skill-options-container" class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 w-full mb-2">
+                <!-- Dynamically generated choice cards -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal Window -->
+    <div id="gameover-modal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+        <div class="glass-panel border-red-500/30 p-8 rounded-2xl max-w-md w-full text-center flex flex-col items-center shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center text-3xl mb-4">
+                <i class="fa-solid fa-skull"></i>
+            </div>
+            <h2 class="text-3xl font-black text-red-500 mb-2">게임 오버</h2>
+            <p class="text-slate-400 text-sm mb-6">몬스터 군단에게 패배했습니다.</p>
+
+            <div class="bg-slate-900/60 rounded-xl p-4 w-full mb-6 text-left space-y-2 border border-slate-800">
+                <div class="flex justify-between text-sm"><span class="text-slate-400">생존 시간:</span><span id="final-time" class="text-white font-bold">00:00</span></div>
+                <div class="flex justify-between text-sm"><span class="text-slate-400">처치한 적:</span><span id="final-kills" class="text-amber-400 font-bold">0</span></div>
+                <div class="flex justify-between text-sm"><span class="text-slate-400">최종 레벨:</span><span id="final-level" class="text-indigo-400 font-bold">LV. 1</span></div>
+            </div>
+
+            <button id="restart-btn" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> 다시 도전하기
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Web Audio Synthesizer
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioContext();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'hit') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'levelup') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(600, now + 0.2);
+                    osc.frequency.exponentialRampToValueAtTime(900, now + 0.35);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'shoot') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(350, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.12);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                } else if (type === 'gem') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'lightning') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(120, now);
+                    osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                }
+            } catch (e) {}
+        }
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let windowWidth = window.innerWidth;
+        let windowHeight = window.innerHeight;
+
+        function resizeCanvas() {
+            windowWidth = window.innerWidth;
+            windowHeight = window.innerHeight;
+            canvas.width = windowWidth;
+            canvas.height = windowHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Keyboard Controls
+        const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+        window.addEventListener('keydown', (e) => {
+            initAudio();
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            if (e.key === 'w' || e.key === 'W') keys.w = true;
+            if (e.key === 'a' || e.key === 'A') keys.a = true;
+            if (e.key === 's' || e.key === 'S') keys.s = true;
+            if (e.key === 'd' || e.key === 'D') keys.d = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            if (e.key === 'w' || e.key === 'W') keys.w = false;
+            if (e.key === 'a' || e.key === 'A') keys.a = false;
+            if (e.key === 's' || e.key === 'S') keys.s = false;
+            if (e.key === 'd' || e.key === 'D') keys.d = false;
+        });
+
+        // Touch Control Support
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchMoveX = 0;
+        let touchMoveY = 0;
+        let isTouching = false;
+
+        window.addEventListener('touchstart', (e) => {
+            initAudio();
+            if (e.touches.length > 0) {
+                isTouching = true;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchMoveX = 0;
+                touchMoveY = 0;
+            }
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (isTouching && e.touches.length > 0) {
+                touchMoveX = e.touches[0].clientX - touchStartX;
+                touchMoveY = e.touches[0].clientY - touchStartY;
+            }
+        });
+
+        window.addEventListener('touchend', () => {
+            isTouching = false;
+            touchMoveX = 0;
+            touchMoveY = 0;
+        });
+
+        const ALL_SKILLS = [
+            {
+                id: 'arrow',
+                name: '관통 화살',
+                icon: 'fa-location-arrow',
+                color: '#3b82f6',
+                description: '가장 가까운 적에게 강력한 관통 화살을 지속 발사합니다.',
+                maxLevel: 5
+            },
+            {
+                id: 'lightning',
+                name: '낙뢰 폭풍',
+                icon: 'fa-bolt',
+                color: '#eab308',
+                description: '가장 가까운 적에게 내리쳐 지면 스파크와 광역 피해를 줍니다.',
+                maxLevel: 5
+            },
+            {
+                id: 'blade',
+                name: '회전 수리검',
+                icon: 'fa-fan',
+                color: '#ec4899',
+                description: '플레이어 주변을 고속 회전하는 수리검을 소환하여 접근하는 적을 벱니다.',
+                maxLevel: 5
+            },
+            {
+                id: 'ice_nova',
+                name: '서리 폭발',
+                icon: 'fa-snowflake',
+                color: '#06b6d4',
+                description: '주기적으로 한기 충격파를 발생시켜 근접한 적을 감속시킵니다.',
+                maxLevel: 5
+            },
+            {
+                id: 'heal',
+                name: '생명력 재생',
+                icon: 'fa-heart',
+                color: '#ef4444',
+                description: '최대 체력을 증가시키고 초당 체력을 자동으로 회복합니다.',
+                maxLevel: 5
+            },
+            {
+                id: 'speed',
+                name: '신속의 신발',
+                icon: 'fa-shoe-prints',
+                color: '#10b981',
+                description: '플레이어의 이동 속도를 대폭 상승시킵니다.',
+                maxLevel: 5
+            }
+        ];
+
+        let gameState = {
+            paused: false,
+            gameOver: false,
+            startTime: Date.now(),
+            elapsedSeconds: 0,
+            kills: 0,
+            maxActiveSkills: 4
+        };
+
+        // Player State
+        const player = {
+            worldX: 0,
+            worldY: 0,
+            radius: 18,
+            hp: 100,
+            maxHp: 100,
+            exp: 0,
+            maxExp: 100,
+            level: 1,
+            speed: 3.8,
+            hpRegen: 0,
+            skills: {
+                arrow: 1 // Start with Penetrating Arrow Lv 1
+            },
+            timers: {
+                arrow: 0,
+                lightning: 0,
+                iceNova: 0,
+                regen: 0
+            }
+        };
+
+        // World Entities
+        let enemies = [];
+        let expGems = [];
+        let projectiles = [];
+        let particles = [];
+        let damageTexts = [];
+        let iceEffects = [];
+        let lightningEffects = [];
+        let bladeRotationAngle = 0;
+        let screenShake = 0;
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function createDamageText(worldX, worldY, text, color = '#ffffff') {
+            damageTexts.push({
+                worldX, worldY, text, color,
+                opacity: 1,
+                vy: -1.2,
+                life: 30
+            });
+        }
+
+        function createParticles(worldX, worldY, color, count = 8) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 3 + 1;
+                particles.push({
+                    worldX, worldY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 3 + 2,
+                    color,
+                    life: 20 + Math.random() * 10
+                });
+            }
+        }
+
+        let enemySpawnTimer = 0;
+        function spawnEnemy() {
+            const spawnDistance = Math.max(windowWidth, windowHeight) / 2 + 120;
+            const angle = Math.random() * Math.PI * 2;
+
+            const worldX = player.worldX + Math.cos(angle) * spawnDistance;
+            const worldY = player.worldY + Math.sin(angle) * spawnDistance;
+
+            const rand = Math.random();
+            let hp = 28 + gameState.elapsedSeconds * 0.9;
+            let speed = 1.9 + Math.random() * 0.4;
+            let radius = 14;
+            let color = '#22c55e'; // Goblin green
+            let exp = 15;
+
+            if (gameState.elapsedSeconds > 30 && rand > 0.6) {
+                hp = 65 + gameState.elapsedSeconds * 1.3;
+                speed = 2.3;
+                radius = 16;
+                color = '#cbd5e1'; // Skeleton grey
+                exp = 30;
+            } else if (gameState.elapsedSeconds > 80 && rand > 0.85) {
+                hp = 160 + gameState.elapsedSeconds * 2.8;
+                speed = 1.3;
+                radius = 24;
+                color = '#ef4444'; // Orc red
+                exp = 75;
+            }
+
+            enemies.push({ worldX, worldY, hp, maxHp: hp, speed, radius, color, exp, slowTimer: 0 });
+        }
+
+        function getNearestEnemy() {
+            if (enemies.length === 0) return null;
+            let closest = null;
+            let minDistSq = Infinity;
+            enemies.forEach(e => {
+                const dx = e.worldX - player.worldX;
+                const dy = e.worldY - player.worldY;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < minDistSq) {
+                    minDistSq = distSq;
+                    closest = e;
+                }
+            });
+            return closest;
+        }
+
+        function updateGame() {
+            if (gameState.paused || gameState.gameOver) return;
+
+            gameState.elapsedSeconds = (Date.now() - gameState.startTime) / 1000;
+            document.getElementById('time-text').innerText = formatTime(gameState.elapsedSeconds);
+
+            // 1. PLAYER MOVEMENT
+            let moveX = 0;
+            let moveY = 0;
+
+            if (keys.w || keys.ArrowUp) moveY -= 1;
+            if (keys.s || keys.ArrowDown) moveY += 1;
+            if (keys.a || keys.ArrowLeft) moveX -= 1;
+            if (keys.d || keys.ArrowRight) moveX += 1;
+
+            if (isTouching) {
+                const dist = Math.hypot(touchMoveX, touchMoveY);
+                if (dist > 10) {
+                    moveX = touchMoveX / dist;
+                    moveY = touchMoveY / dist;
+                }
+            } else if (moveX !== 0 && moveY !== 0) {
+                moveX *= 0.7071;
+                moveY *= 0.7071;
+            }
+
+            player.worldX += moveX * player.speed;
+            player.worldY += moveY * player.speed;
+
+            // Health Regen
+            if (player.hpRegen > 0) {
+                player.timers.regen++;
+                if (player.timers.regen >= 60) {
+                    player.hp = Math.min(player.maxHp, player.hp + player.hpRegen);
+                    player.timers.regen = 0;
+                    updateHUD();
+                }
+            }
+
+            // 2. SKILL LOGIC
+            // A. Arrow Skill
+            if (player.skills.arrow > 0) {
+                player.timers.arrow++;
+                const cooldown = Math.max(12, 42 - player.skills.arrow * 5);
+                if (player.timers.arrow >= cooldown) {
+                    player.timers.arrow = 0;
+                    const target = getNearestEnemy();
+                    let targetAngle = Math.random() * Math.PI * 2;
+                    if (target) {
+                        targetAngle = Math.atan2(target.worldY - player.worldY, target.worldX - player.worldX);
+                    }
+                    const speed = 8.5;
+                    const dmg = 22 + player.skills.arrow * 8;
+                    const pierce = Math.floor(1 + player.skills.arrow * 0.8);
+
+                    projectiles.push({
+                        worldX: player.worldX,
+                        worldY: player.worldY,
+                        vx: Math.cos(targetAngle) * speed,
+                        vy: Math.sin(targetAngle) * speed,
+                        radius: 5,
+                        damage: dmg,
+                        pierce: pierce,
+                        color: '#3b82f6',
+                        life: 180
+                    });
+                    playSound('shoot');
+                }
+            }
+
+            // B. Blade rotation speed
+            if (player.skills.blade > 0) {
+                bladeRotationAngle += 0.05 + player.skills.blade * 0.008;
+            }
+
+            // C. Lightning Skill (Target nearest enemy)
+            if (player.skills.lightning > 0) {
+                player.timers.lightning++;
+                const cooldown = Math.max(30, 90 - player.skills.lightning * 10);
+                if (player.timers.lightning >= cooldown) {
+                    player.timers.lightning = 0;
+                    const targetEnemy = getNearestEnemy();
+                    if (targetEnemy) {
+                        const aoeRadius = 65 + player.skills.lightning * 15;
+                        const baseDmg = 38 + player.skills.lightning * 16;
+
+                        // Create lightning visual segments from sky to target
+                        const startX = targetEnemy.worldX + (Math.random() - 0.5) * 100;
+                        const startY = targetEnemy.worldY - 500;
+                        const segments = [{ x: startX, y: startY }];
+                        const steps = 8;
+                        for (let k = 1; k < steps; k++) {
+                            const ratio = k / steps;
+                            const curX = startX + (targetEnemy.worldX - startX) * ratio + (Math.random() - 0.5) * 40;
+                            const curY = startY + (targetEnemy.worldY - startY) * ratio;
+                            segments.push({ x: curX, y: curY });
+                        }
+                        segments.push({ x: targetEnemy.worldX, y: targetEnemy.worldY });
+
+                        lightningEffects.push({
+                            worldX: targetEnemy.worldX,
+                            worldY: targetEnemy.worldY,
+                            aoeRadius: aoeRadius,
+                            segments: segments,
+                            life: 18,
+                            maxLife: 18
+                        });
+
+                        screenShake = 12;
+
+                        // AOE Damage
+                        enemies.forEach(e => {
+                            const dist = Math.hypot(e.worldX - targetEnemy.worldX, e.worldY - targetEnemy.worldY);
+                            if (dist <= aoeRadius) {
+                                const dmgMult = 1 - (dist / aoeRadius) * 0.35;
+                                const finalDmg = Math.round(baseDmg * dmgMult);
+                                e.hp -= finalDmg;
+                                createDamageText(e.worldX, e.worldY - 15, finalDmg, '#facc15');
+                                createParticles(e.worldX, e.worldY, '#facc15', 5);
+                            }
+                        });
+
+                        createParticles(targetEnemy.worldX, targetEnemy.worldY, '#fef08a', 14);
+                        playSound('lightning');
+                    }
+                }
+            }
+
+            // D. Ice Nova Skill
+            if (player.skills.ice_nova > 0) {
+                player.timers.iceNova++;
+                const cooldown = Math.max(60, 140 - player.skills.ice_nova * 18);
+                if (player.timers.iceNova >= cooldown) {
+                    player.timers.iceNova = 0;
+                    const radius = 100 + player.skills.ice_nova * 30;
+
+                    // 방사형 얼음 가시(Spikes) 생성
+                    const spikeCount = 10 + player.skills.ice_nova * 2;
+                    const iceSpikes = [];
+                    for (let s = 0; s < spikeCount; s++) {
+                        iceSpikes.push({
+                            angle: (s * Math.PI * 2 / spikeCount) + (Math.random() - 0.5) * 0.15,
+                            length: 18 + Math.random() * 22,
+                            width: 8 + Math.random() * 8
+                        });
+                    }
+
+                    iceEffects.push({ 
+                        worldX: player.worldX, 
+                        worldY: player.worldY, 
+                        radius: 10, 
+                        maxRadius: radius, 
+                        opacity: 1,
+                        spikes: iceSpikes
+                    });
+
+                    // 서리 및 얼음 파티클 방출
+                    for (let p = 0; p < 22; p++) {
+                        const pAngle = Math.random() * Math.PI * 2;
+                        const pSpeed = Math.random() * 4.5 + 2;
+                        particles.push({
+                            worldX: player.worldX,
+                            worldY: player.worldY,
+                            vx: Math.cos(pAngle) * pSpeed,
+                            vy: Math.sin(pAngle) * pSpeed,
+                            radius: Math.random() * 3.5 + 2,
+                            color: Math.random() > 0.5 ? '#a5f3fc' : '#38bdf8',
+                            life: 25 + Math.random() * 15
+                        });
+                    }
+
+                    enemies.forEach(e => {
+                        const dist = Math.hypot(e.worldX - player.worldX, e.worldY - player.worldY);
+                        if (dist <= radius) {
+                            const dmg = 18 + player.skills.ice_nova * 10;
+                            e.hp -= dmg;
+                            e.slowTimer = 120;
+                            createDamageText(e.worldX, e.worldY - 10, Math.round(dmg), '#06b6d4');
+                            createParticles(e.worldX, e.worldY, '#a5f3fc', 4);
+                        }
+                    });
+                }
+            }
+
+            // 3. PROJECTILES UPDATES
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.worldX += p.vx;
+                p.worldY += p.vy;
+                p.life--;
+
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    const dist = Math.hypot(p.worldX - e.worldX, p.worldY - e.worldY);
+                    if (dist < p.radius + e.radius) {
+                        e.hp -= p.damage;
+                        createDamageText(e.worldX, e.worldY - 10, Math.round(p.damage), p.color);
+                        createParticles(e.worldX, e.worldY, p.color, 4);
+                        p.pierce--;
+                        if (p.pierce <= 0) {
+                            projectiles.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+
+                if (p && p.life <= 0) projectiles.splice(i, 1);
+            }
+
+            // 4. ROTATING BLADES COLLISION
+            if (player.skills.blade > 0) {
+                const bladeCount = player.skills.blade;
+                const orbitRadius = 75 + player.skills.blade * 8;
+                const bladeDamage = 2.2 + player.skills.blade * 1.2;
+
+                for (let i = 0; i < bladeCount; i++) {
+                    const angle = bladeRotationAngle + (i * Math.PI * 2 / bladeCount);
+                    const bX = player.worldX + Math.cos(angle) * orbitRadius;
+                    const bY = player.worldY + Math.sin(angle) * orbitRadius;
+
+                    enemies.forEach(e => {
+                        const dist = Math.hypot(bX - e.worldX, bY - e.worldY);
+                        if (dist < 14 + e.radius) {
+                            e.hp -= bladeDamage;
+                            if (Math.random() < 0.25) createDamageText(e.worldX, e.worldY - 10, Math.round(bladeDamage * 4), '#ec4899');
+                            createParticles(bX, bY, '#ec4899', 1);
+                        }
+                    });
+                }
+            }
+
+            // 5. ENEMY UPDATES & SPAWNING
+            enemySpawnTimer++;
+            const spawnInterval = Math.max(12, 55 - Math.floor(gameState.elapsedSeconds / 6));
+            if (enemySpawnTimer >= spawnInterval) {
+                enemySpawnTimer = 0;
+                spawnEnemy();
+            }
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+
+                let currentSpeed = e.speed;
+                if (e.slowTimer > 0) {
+                    e.slowTimer--;
+                    currentSpeed *= 0.5;
+                }
+
+                const angle = Math.atan2(player.worldY - e.worldY, player.worldX - e.worldX);
+                e.worldX += Math.cos(angle) * currentSpeed;
+                e.worldY += Math.sin(angle) * currentSpeed;
+
+                const distToPlayer = Math.hypot(player.worldX - e.worldX, player.worldY - e.worldY);
+                if (distToPlayer < player.radius + e.radius) {
+                    player.hp -= 0.6;
+                    playSound('hit');
+                    updateHUD();
+                    if (player.hp <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+
+                if (e.hp <= 0) {
+                    gameState.kills++;
+                    expGems.push({ worldX: e.worldX, worldY: e.worldY, exp: e.exp, radius: 6 });
+                    createParticles(e.worldX, e.worldY, e.color, 9);
+                    enemies.splice(i, 1);
+                    document.getElementById('kill-count').innerText = gameState.kills;
+                }
+            }
+
+            // 6. EXP GEMS COLLECTION
+            for (let i = expGems.length - 1; i >= 0; i--) {
+                const gem = expGems[i];
+                const dist = Math.hypot(player.worldX - gem.worldX, player.worldY - gem.worldY);
+
+                if (dist < 130) {
+                    const angle = Math.atan2(player.worldY - gem.worldY, player.worldX - gem.worldX);
+                    gem.worldX += Math.cos(angle) * 7;
+                    gem.worldY += Math.sin(angle) * 7;
+                }
+
+                if (dist < player.radius + gem.radius) {
+                    player.exp += gem.exp;
+                    playSound('gem');
+                    expGems.splice(i, 1);
+
+                    if (player.exp >= player.maxExp) {
+                        levelUp();
+                    }
+                    updateHUD();
+                }
+            }
+
+            // 7. PARTICLES & EFFECTS CLEANUP
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.worldX += p.vx;
+                p.worldY += p.vy;
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            for (let i = damageTexts.length - 1; i >= 0; i--) {
+                const dt = damageTexts[i];
+                dt.worldY += dt.vy;
+                dt.opacity -= 0.035;
+                dt.life--;
+                if (dt.life <= 0) damageTexts.splice(i, 1);
+            }
+
+            for (let i = iceEffects.length - 1; i >= 0; i--) {
+                const ice = iceEffects[i];
+                ice.radius += 5.5;
+                ice.opacity -= 0.028;
+                if (ice.opacity <= 0) iceEffects.splice(i, 1);
+            }
+
+            for (let i = lightningEffects.length - 1; i >= 0; i--) {
+                const lt = lightningEffects[i];
+                lt.life--;
+                if (lt.life <= 0) lightningEffects.splice(i, 1);
+            }
+
+            if (screenShake > 0) {
+                screenShake *= 0.85;
+                if (screenShake < 0.5) screenShake = 0;
+            }
+        }
+
+        function render() {
+            ctx.save();
+
+            if (screenShake > 0) {
+                const shakeX = (Math.random() - 0.5) * screenShake;
+                const shakeY = (Math.random() - 0.5) * screenShake;
+                ctx.translate(shakeX, shakeY);
+            }
+
+            // Clear Background
+            ctx.fillStyle = '#0b0f19';
+            ctx.fillRect(-20, -20, windowWidth + 40, windowHeight + 40);
+
+            const centerX = windowWidth / 2;
+            const centerY = windowHeight / 2;
+
+            function toScreenX(worldX) { return worldX - player.worldX + centerX; }
+            function toScreenY(worldY) { return worldY - player.worldY + centerY; }
+
+            // A. BACKGROUND MOVING GRID
+            const gridSize = 90;
+            const offsetX = -player.worldX % gridSize;
+            const offsetY = -player.worldY % gridSize;
+
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for (let x = offsetX; x < windowWidth; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, windowHeight);
+                ctx.stroke();
+            }
+            for (let y = offsetY; y < windowHeight; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(windowWidth, y);
+                ctx.stroke();
+            }
+
+            // B. ICE NOVA EFFECTS
+            iceEffects.forEach(ice => {
+                const sx = toScreenX(ice.worldX);
+                const sy = toScreenY(ice.worldY);
+                const alpha = ice.opacity;
+
+                ctx.save();
+                
+                // 1. 방사형 서리 아우라 (Radial Ice Bloom)
+                const grad = ctx.createRadialGradient(sx, sy, Math.max(0, ice.radius - 30), sx, sy, ice.radius + 15);
+                grad.addColorStop(0, `rgba(165, 243, 252, ${alpha * 0.4})`);
+                grad.addColorStop(0.5, `rgba(6, 182, 212, ${alpha * 0.25})`);
+                grad.addColorStop(1, `rgba(2, 132, 199, 0)`);
+
+                ctx.beginPath();
+                ctx.arc(sx, sy, ice.radius + 15, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // 2. 메인 발광 얼음 충격파 링
+                ctx.beginPath();
+                ctx.arc(sx, sy, ice.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(165, 243, 252, ${alpha})`;
+                ctx.lineWidth = 4;
+                ctx.shadowColor = '#06b6d4';
+                ctx.shadowBlur = 14;
+                ctx.stroke();
+
+                // 내부 하이라이트 링
+                ctx.beginPath();
+                ctx.arc(sx, sy, Math.max(0, ice.radius - 8), 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.85})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 3. 테두리에 돋아나는 뾰족한 얼음 가시(Ice Spikes)
+                if (ice.spikes) {
+                    ice.spikes.forEach(spike => {
+                        const spikeAngle = spike.angle;
+                        const outerR = ice.radius;
+                        const tipX = sx + Math.cos(spikeAngle) * (outerR + spike.length);
+                        const tipY = sy + Math.sin(spikeAngle) * (outerR + spike.length);
+
+                        const leftAngle = spikeAngle - 0.15;
+                        const rightAngle = spikeAngle + 0.15;
+                        const baseLeftX = sx + Math.cos(leftAngle) * (outerR - 5);
+                        const baseLeftY = sy + Math.sin(leftAngle) * (outerR - 5);
+                        const baseRightX = sx + Math.cos(rightAngle) * (outerR - 5);
+                        const baseRightY = sy + Math.sin(rightAngle) * (outerR - 5);
+
+                        ctx.beginPath();
+                        ctx.moveTo(tipX, tipY);
+                        ctx.lineTo(baseLeftX, baseLeftY);
+                        ctx.lineTo(baseRightX, baseRightY);
+                        ctx.closePath();
+
+                        ctx.fillStyle = `rgba(224, 242, 254, ${alpha * 0.95})`;
+                        ctx.fill();
+                        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    });
+                }
+
+                ctx.restore();
+            });
+
+            // C. LIGHTNING EFFECTS
+            lightningEffects.forEach(lt => {
+                const progress = lt.life / lt.maxLife;
+                const alpha = Math.min(1, progress * 1.5);
+                const impactSx = toScreenX(lt.worldX);
+                const impactSy = toScreenY(lt.worldY);
+
+                // AOE Ring
+                ctx.beginPath();
+                ctx.arc(impactSx, impactSy, lt.aoeRadius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(234, 179, 8, ${alpha * 0.15})`;
+                ctx.fill();
+
+                // Zigzag Beam
+                if (lt.segments && lt.segments.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(toScreenX(lt.segments[0].x), toScreenY(lt.segments[0].y));
+                    for (let i = 1; i < lt.segments.length; i++) {
+                        ctx.lineTo(toScreenX(lt.segments[i].x), toScreenY(lt.segments[i].y));
+                    }
+                    ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+                    ctx.lineWidth = 7 * progress;
+                    ctx.stroke();
+
+                    // Inner Beam Core
+                    ctx.beginPath();
+                    ctx.moveTo(toScreenX(lt.segments[0].x), toScreenY(lt.segments[0].y));
+                    for (let i = 1; i < lt.segments.length; i++) {
+                        ctx.lineTo(toScreenX(lt.segments[i].x), toScreenY(lt.segments[i].y));
+                    }
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.lineWidth = 2.5 * progress;
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.arc(impactSx, impactSy, 20 * progress, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+
+            // D. EXP GEMS
+            expGems.forEach(gem => {
+                const sx = toScreenX(gem.worldX);
+                const sy = toScreenY(gem.worldY);
+                ctx.beginPath();
+                ctx.arc(sx, sy, gem.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#10b981';
+                ctx.shadowColor = '#10b981';
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // E. ENEMIES
+            enemies.forEach(e => {
+                const sx = toScreenX(e.worldX);
+                const sy = toScreenY(e.worldY);
+
+                ctx.beginPath();
+                ctx.arc(sx, sy, e.radius, 0, Math.PI * 2);
+                ctx.fillStyle = e.slowTimer > 0 ? '#06b6d4' : e.color;
+                ctx.fill();
+
+                if (e.hp < e.maxHp) {
+                    const barWidth = e.radius * 2;
+                    const barHeight = 4;
+                    const hpPercent = Math.max(0, e.hp / e.maxHp);
+                    ctx.fillStyle = '#334155';
+                    ctx.fillRect(sx - barWidth / 2, sy - e.radius - 8, barWidth, barHeight);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(sx - barWidth / 2, sy - e.radius - 8, barWidth * hpPercent, barHeight);
+                }
+            });
+
+            // F. PROJECTILES
+            projectiles.forEach(p => {
+                const sx = toScreenX(p.worldX);
+                const sy = toScreenY(p.worldY);
+                ctx.beginPath();
+                ctx.arc(sx, sy, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // G. ROTATING SHURIKENS (수리검 모양 렌더링)
+            if (player.skills.blade > 0) {
+                const bladeCount = player.skills.blade;
+                const orbitRadius = 75 + player.skills.blade * 8;
+                const outerRadius = 14;
+                const innerRadius = outerRadius * 0.35;
+                const points = 4;
+
+                for (let i = 0; i < bladeCount; i++) {
+                    const angle = bladeRotationAngle + (i * Math.PI * 2 / bladeCount);
+                    const bX = player.worldX + Math.cos(angle) * orbitRadius;
+                    const bY = player.worldY + Math.sin(angle) * orbitRadius;
+
+                    const sx = toScreenX(bX);
+                    const sy = toScreenY(bY);
+
+                    ctx.save();
+                    ctx.translate(sx, sy);
+                    ctx.rotate(angle * 2.5); // 고속 회전 효과
+
+                    ctx.shadowColor = '#ec4899';
+                    ctx.shadowBlur = 10;
+
+                    // 수리검 날개
+                    ctx.beginPath();
+                    for (let p = 0; p < points * 2; p++) {
+                        const r = (p % 2 === 0) ? outerRadius : innerRadius;
+                        const a = (p * Math.PI) / points;
+                        const curveOffset = (p % 2 === 0) ? 0.2 : 0;
+                        const px = Math.cos(a + curveOffset) * r;
+                        const py = Math.sin(a + curveOffset) * r;
+                        if (p === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+
+                    const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, outerRadius);
+                    grad.addColorStop(0, '#ffffff');
+                    grad.addColorStop(0.4, '#f472b6');
+                    grad.addColorStop(0.8, '#ec4899');
+                    grad.addColorStop(1, '#831843');
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#fbcfe8';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+
+                    // 수리검 입체 선
+                    ctx.shadowBlur = 0;
+                    ctx.beginPath();
+                    for (let p = 0; p < points; p++) {
+                        const a = (p * 2 * Math.PI) / points;
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(Math.cos(a + 0.2) * outerRadius, Math.sin(a + 0.2) * outerRadius);
+                    }
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // 중앙 구멍
+                    ctx.beginPath();
+                    ctx.arc(0, 0, outerRadius * 0.25, 0, Math.PI * 2);
+                    ctx.fillStyle = '#0b0f19';
+                    ctx.fill();
+                    ctx.strokeStyle = '#f472b6';
+                    ctx.lineWidth = 1.2;
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+
+            // H. PLAYER (ALWAYS AT CENTER)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#6366f1';
+            ctx.shadowColor = '#818cf8';
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // I. PARTICLES & DAMAGE TEXTS
+            particles.forEach(p => {
+                const sx = toScreenX(p.worldX);
+                const sy = toScreenY(p.worldY);
+                ctx.beginPath();
+                ctx.arc(sx, sy, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+            });
+
+            damageTexts.forEach(dt => {
+                const sx = toScreenX(dt.worldX);
+                const sy = toScreenY(dt.worldY);
+                ctx.font = 'bold 13px sans-serif';
+                ctx.fillStyle = dt.color;
+                ctx.globalAlpha = Math.max(0, dt.opacity);
+                ctx.fillText(dt.text, sx - 8, sy);
+                ctx.globalAlpha = 1;
+            });
+
+            ctx.restore();
+        }
+
+        function getUpgradeDetail(skillId, nextLevel) {
+            switch(skillId) {
+                case 'arrow':
+                    return `공격력 +8 (피해량: ${22 + (nextLevel-1)*8} → ${22 + nextLevel*8}), 발사 속도 증가`;
+                case 'lightning':
+                    return `공격력 +16, 폭발 범위 +15, 재사용 대기시간 감소`;
+                case 'blade':
+                    return `수리검 +1개 추가 (총 ${nextLevel}개), 회전 속도 및 피해량 증가`;
+                case 'ice_nova':
+                    return `피해량 +10, 서리 범위 +30, 발사 주기 단축`;
+                case 'heal':
+                    return `최대 체력 +20 (체력 20 회복), 초당 체력 재생 +0.35`;
+                case 'speed':
+                    return `이동 속도 추가 상승`;
+                default:
+                    return '';
+            }
+        }
+
+        function levelUp() {
+            gameState.paused = true;
+            player.level++;
+            player.exp -= player.maxExp;
+            player.maxExp = Math.floor(player.maxExp * 1.3);
+
+            playSound('levelup');
+
+            const availableSkills = ALL_SKILLS.filter(skill => {
+                const currentLevel = player.skills[skill.id] || 0;
+                if (currentLevel >= skill.maxLevel) return false;
+
+                const equippedCount = Object.keys(player.skills).length;
+                if (currentLevel === 0 && equippedCount >= gameState.maxActiveSkills) {
+                    return false;
+                }
+                return true;
+            });
+
+            const shuffled = [...availableSkills].sort(() => 0.5 - Math.random());
+            const options = shuffled.slice(0, 3);
+
+            const container = document.getElementById('skill-options-container');
+            container.innerHTML = '';
+
+            if (options.length === 0) {
+                container.innerHTML = `<div class="col-span-3 text-amber-400 font-bold p-4">모든 스킬을 최고 레벨까지 마스터했습니다!</div>`;
+                player.hp = player.maxHp;
+                setTimeout(() => {
+                    gameState.paused = false;
+                    document.getElementById('levelup-modal').classList.add('hidden');
+                }, 1200);
+            } else {
+                options.forEach(skill => {
+                    const currentLvl = player.skills[skill.id] || 0;
+                    const nextLvl = currentLvl + 1;
+                    
+                    // 신규 습득 시에는 기존 기본 설명, 업그레이드 시에는 상승 능력치 표기
+                    const descriptionText = currentLvl === 0 
+                        ? skill.description 
+                        : `<span class="text-amber-300 font-bold block mb-1"><i class="fa-solid fa-circle-arrow-up text-[10px] mr-1"></i>강화 효과</span>${getUpgradeDetail(skill.id, nextLvl)}`;
+
+                    const card = document.createElement('div');
+                    card.className = 'skill-card glass-panel border-slate-700 p-4 sm:p-5 rounded-xl text-left cursor-pointer flex flex-col justify-between hover:bg-slate-800/80';
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl text-white shadow-lg" style="background-color: ${skill.color}">
+                                    <i class="fa-solid ${skill.icon}"></i>
+                                </div>
+                                <span class="text-xs font-bold px-2 py-1 bg-slate-800 text-slate-300 rounded border border-slate-700">
+                                    ${currentLvl === 0 ? '신규' : `LV. ${currentLvl} → ${nextLvl}`}
+                                </span>
+                            </div>
+                            <h3 class="text-base font-bold text-white mb-1">${skill.name}</h3>
+                            <p class="text-xs text-slate-300 leading-relaxed">${descriptionText}</p>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-slate-800/80 text-right text-xs font-bold text-indigo-400">
+                            선택하기 <i class="fa-solid fa-chevron-right ml-1"></i>
+                        </div>
+                    `;
+
+                    card.onclick = () => selectSkill(skill.id);
+                    container.appendChild(card);
+                });
+            }
+
+            document.getElementById('levelup-modal').classList.remove('hidden');
+            updateHUD();
+        }
+
+        function selectSkill(skillId) {
+            const currentLvl = player.skills[skillId] || 0;
+            player.skills[skillId] = currentLvl + 1;
+
+            if (skillId === 'speed') {
+                player.speed = 3.8 + player.skills.speed * 0.65;
+            } else if (skillId === 'heal') {
+                player.maxHp = 100 + player.skills.heal * 20;
+                player.hp = Math.min(player.maxHp, player.hp + 20);
+                player.hpRegen = player.skills.heal * 0.35;
+            }
+
+            document.getElementById('levelup-modal').classList.add('hidden');
+            gameState.paused = false;
+            updateHUD();
+        }
+
+        function updateHUD() {
+            document.getElementById('level-text').innerText = `LV. ${player.level}`;
+            document.getElementById('hp-bar').style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+            document.getElementById('hp-text').innerText = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+
+            document.getElementById('exp-bar').style.width = `${Math.min(100, (player.exp / player.maxExp) * 100)}%`;
+            document.getElementById('exp-text').innerText = `${player.exp} / ${player.maxExp}`;
+
+            const list = document.getElementById('active-skills-list');
+            list.innerHTML = '';
+
+            Object.keys(player.skills).forEach(skillId => {
+                const lvl = player.skills[skillId];
+                const info = ALL_SKILLS.find(s => s.id === skillId);
+                if (!info) return;
+
+                const item = document.createElement('div');
+                item.className = 'glass-panel p-1.5 sm:p-2 rounded-lg flex items-center gap-2 text-white border-slate-700';
+                item.innerHTML = `
+                    <div class="w-6 h-6 sm:w-7 sm:h-7 rounded flex items-center justify-center text-xs text-white" style="background-color: ${info.color}">
+                        <i class="fa-solid ${info.icon}"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] sm:text-[11px] font-bold leading-none mb-0.5">${info.name}</div>
+                        <div class="text-[9px] text-amber-400 font-bold">LV.${lvl}/${info.maxLevel}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function gameOver() {
+            gameState.gameOver = true;
+            document.getElementById('final-time').innerText = formatTime(gameState.elapsedSeconds);
+            document.getElementById('final-kills').innerText = gameState.kills;
+            document.getElementById('final-level').innerText = `LV. ${player.level}`;
+            document.getElementById('gameover-modal').classList.remove('hidden');
+        }
+
+        document.getElementById('restart-btn').onclick = () => {
+            gameState.paused = false;
+            gameState.gameOver = false;
+            gameState.startTime = Date.now();
+            gameState.elapsedSeconds = 0;
+            gameState.kills = 0;
+
+            player.worldX = 0;
+            player.worldY = 0;
+            player.hp = 100;
+            player.maxHp = 100;
+            player.exp = 0;
+            player.maxExp = 100;
+            player.level = 1;
+            player.speed = 3.8;
+            player.hpRegen = 0;
+            player.skills = { arrow: 1 };
+
+            enemies = [];
+            expGems = [];
+            projectiles = [];
+            particles = [];
+            damageTexts = [];
+            iceEffects = [];
+            lightningEffects = [];
+
+            document.getElementById('kill-count').innerText = '0';
+            document.getElementById('gameover-modal').classList.add('hidden');
+            updateHUD();
+        };
+
+        function gameLoop() {
+            updateGame();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        updateHUD();
+        window.onload = () => {
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

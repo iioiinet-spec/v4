@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mechanical Keyboard Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        @keyframes press {
+            0% { transform: translateY(0); box-shadow: 0 6px 0 #cbd5e1, 0 10px 15px rgba(0,0,0,0.2); }
+            50% { transform: translateY(4px); box-shadow: 0 2px 0 #cbd5e1, 0 4px 6px rgba(0,0,0,0.1); }
+            100% { transform: translateY(0); box-shadow: 0 6px 0 #cbd5e1, 0 10px 15px rgba(0,0,0,0.2); }
+        }
+        .key-active {
+            animation: press 0.1s ease-in-out;
+            background: linear-gradient(to bottom, #fde047, #facc15) !important;
+            border-color: #ca8a04 !important;
+            box-shadow: 0 2px 0 #ca8a04 !important;
+            transform: translateY(4px);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 select-none">
+
+    <!-- 상단 다운로드 버튼 (타이틀 글씨 제거됨) -->
+    <header class="w-full max-w-4xl flex justify-end items-center py-2">
+        <button onclick="downloadCode()" class="bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-xl shadow-lg transition transform active:scale-95 flex items-center gap-2 cursor-pointer text-sm">
+            💾 index.html 다운로드
+        </button>
+    </header>
+
+    <!-- 메인 키보드 컨테이너 -->
+    <main class="w-full max-w-4xl bg-slate-800/90 backdrop-blur-md p-6 rounded-3xl shadow-2xl border border-slate-700 flex flex-col gap-3 my-auto">
+        
+        <!-- 통계 및 메모장 영역 -->
+        <div class="flex justify-between items-center bg-slate-900/60 px-4 py-3 rounded-2xl border border-slate-700/50 mb-2">
+            <div class="flex gap-6 text-sm">
+                <div>타건 횟수: <span id="count" class="font-bold text-amber-400 text-base">0</span>회</div>
+                <div>CPM: <span id="cpm" class="font-bold text-emerald-400 text-base">0</span></div>
+            </div>
+            <div class="text-xs text-slate-400">키보드를 누르거나 타이핑 해보세요!</div>
+        </div>
+
+        <!-- 단일 키보드 레이아웃 -->
+        <div id="keyboard" class="flex flex-col gap-2.5 items-center justify-center p-2"></div>
+    </main>
+
+    <!-- 하단 제작 정보 -->
+    <footer class="text-xs text-slate-500 py-3">
+        Cream Cheese Switch Mechanical Keyboard Simulator
+    </footer>
+
+    <script>
+        // Web Audio API 사운드 합성기 (크림치즈축 도각도각 소리)
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playCreamCheeseSound() {
+            initAudio();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime;
+
+            // 1. 바텀아웃 로우피치 노이즈 (묵직한 서걱임)
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(140, now);
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.08);
+
+            gainNode.gain.setValueAtTime(0.4, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.08);
+
+            // 2. 클래식 포론/스위치 하우징 부딪힘 하이피치 클리커
+            const clickOsc = audioCtx.createOscillator();
+            const clickGain = audioCtx.createGain();
+
+            clickOsc.type = 'sine';
+            clickOsc.frequency.setValueAtTime(800, now);
+            clickOsc.frequency.exponentialRampToValueAtTime(300, now + 0.03);
+
+            clickGain.gain.setValueAtTime(0.2, now);
+            clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+            clickOsc.connect(clickGain);
+            clickGain.connect(audioCtx.destination);
+
+            clickOsc.start(now);
+            clickOsc.stop(now + 0.03);
+        }
+
+        // 키보드 레이아웃 데이터 (단일 1개 키보드)
+        const keyLayout = [
+            [
+                {k: '`', w: 1}, {k: '1', w: 1}, {k: '2', w: 1}, {k: '3', w: 1}, {k: '4', w: 1}, 
+                {k: '5', w: 1}, {k: '6', w: 1}, {k: '7', w: 1}, {k: '8', w: 1}, {k: '9', w: 1}, 
+                {k: '0', w: 1}, {k: '-', w: 1}, {k: '=', w: 1}, {k: 'Backspace', w: 2}
+            ],
+            [
+                {k: 'Tab', w: 1.5}, {k: 'q', w: 1}, {k: 'w', w: 1}, {k: 'e', w: 1}, {k: 'r', w: 1}, 
+                {k: 't', w: 1}, {k: 'y', w: 1}, {k: 'u', w: 1}, {k: 'i', w: 1}, {k: 'o', w: 1}, 
+                {k: 'p', w: 1}, {k: '[', w: 1}, {k: ']', w: 1}, {k: '\\', w: 1.5}
+            ],
+            [
+                {k: 'Caps', w: 1.8}, {k: 'a', w: 1}, {k: 's', w: 1}, {k: 'd', w: 1}, {k: 'f', w: 1}, 
+                {k: 'g', w: 1}, {k: 'h', w: 1}, {k: 'j', w: 1}, {k: 'k', w: 1}, {k: 'l', w: 1}, 
+                {k: ';', w: 1}, {k: "'", w: 1}, {k: 'Enter', w: 2.2}
+            ],
+            [
+                {k: 'Shift', w: 2.4}, {k: 'z', w: 1}, {k: 'x', w: 1}, {k: 'c', w: 1}, {k: 'v', w: 1}, 
+                {k: 'b', w: 1}, {k: 'n', w: 1}, {k: 'm', w: 1}, {k: ',', w: 1}, {k: '.', w: 1}, 
+                {k: '/', w: 1}, {k: 'Shift', w: 2.6}
+            ],
+            [
+                {k: 'Space', w: 6}
+            ]
+        ];
+
+        const keyElementMap = {};
+        let totalStrokes = 0;
+        let startTime = Date.now();
+
+        function buildKeyboard() {
+            const kbContainer = document.getElementById('keyboard');
+            kbContainer.innerHTML = '';
+
+            keyLayout.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'flex gap-1.5 justify-center w-full';
+
+                row.forEach(item => {
+                    const keyEl = document.createElement('div');
+                    let widthClass = 'w-10 sm:w-12';
+                    if (item.w === 1.5) widthClass = 'w-14 sm:w-16';
+                    if (item.w === 1.8) widthClass = 'w-16 sm:w-20';
+                    if (item.w === 2) widthClass = 'w-20 sm:w-24';
+                    if (item.w === 2.2) widthClass = 'w-22 sm:w-26';
+                    if (item.w === 2.4) widthClass = 'w-24 sm:w-28';
+                    if (item.w === 2.6) widthClass = 'w-26 sm:w-32';
+                    if (item.w === 6) widthClass = 'w-64 sm:w-96';
+
+                    keyEl.className = `${widthClass} h-11 sm:h-12 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-xl flex items-center justify-center text-xs sm:text-sm font-semibold text-slate-200 shadow-[0_6px_0_#334155] transition-all cursor-pointer select-none`;
+                    
+                    let displayKey = item.k.toUpperCase();
+                    if (item.k === 'Space') displayKey = ' ';
+                    keyEl.innerText = displayKey;
+
+                    // 마우스 클릭 이벤트
+                    keyEl.addEventListener('mousedown', () => {
+                        triggerKeyAction(item.k);
+                    });
+
+                    rowEl.appendChild(keyEl);
+
+                    // 매핑 저장
+                    const mapKeys = [item.k, item.k.toLowerCase(), item.k.toUpperCase()];
+                    mapKeys.forEach(mk => {
+                        keyElementMap[mk] = keyEl;
+                    });
+                });
+
+                kbContainer.appendChild(rowEl);
+            });
+        }
+
+        function triggerKeyAction(keyName) {
+            playCreamCheeseSound();
+            totalStrokes++;
+            document.getElementById('count').innerText = totalStrokes;
+
+            // CPM 계산
+            const minutes = (Date.now() - startTime) / 60000;
+            if (minutes > 0) {
+                document.getElementById('cpm').innerText = Math.round(totalStrokes / minutes);
+            }
+
+            // 시각적 효과
+            const target = keyElementMap[keyName] || keyElementMap[keyName.toLowerCase()] || keyElementMap[keyName.toUpperCase()];
+            if (target) {
+                target.classList.add('key-active');
+                setTimeout(() => {
+                    target.classList.remove('key-active');
+                }, 100);
+            }
+        }
+
+        // 키보드 입력 이벤트 리스너
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return; // 반복 입력 방지
+            triggerKeyAction(e.key);
+        });
+
+        // 다운로드 함수
+        function downloadCode() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'index.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 초기화 실행
+        window.onload = () => {
+            buildKeyboard();
+        };
+    </script>
+</body>
+</html>
