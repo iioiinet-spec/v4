@@ -941,6 +941,29 @@ function ceilingAbove(x,z,headY,rad){
 }
 
 /* 발밑에서 디딜 수 있는 가장 높은 면 */
+/* 맵이 생성되는 동안의 시작 지점 — 소품이 그 위에 떨어지지 않게 한다 */
+let buildSpawn = null;
+
+function farFromSpawn(x,z,pad){
+    if(!buildSpawn) return true;
+    const d = pad === undefined ? 12 : pad;
+    return Math.hypot(x-buildSpawn.x, z-buildSpawn.z) > d;
+}
+
+/* 구조물 안에 끼었을 때 빠져나갈 가장 가까운 빈 자리 */
+function freeSpot(x,z,y,rad){
+    const r = rad === undefined ? .4 : rad;
+    const base = y === undefined ? 1.7 : y;
+    if(!blocked(x, base, z, r)) return { x, z };
+    for(let i=1;i<=90;i++){
+        const a = i*2.39996, d = .8 + i*.42;
+        const nx = x + Math.cos(a)*d, nz = z + Math.sin(a)*d;
+        if(currentMap && currentMap.inBounds && !currentMap.inBounds(nx,nz)) continue;
+        if(!blocked(nx, base, nz, r)) return { x:nx, z:nz };
+    }
+    return null;
+}
+
 function supportHeight(x,z,feetY,step){
     let best = 0;
     const tol = step === undefined ? .5 : step;
@@ -966,7 +989,7 @@ const player = {
     hp:100, kills:0,
     speed:0.24, gravity:0.018, jumpPower:0.42,
     yaw:0, pitch:0, floor:0,
-    wallJumpCooldown:0, shootCooldown:0,
+    wallJumpCooldown:0, shootCooldown:0, stuckFrames:0,
     reload:false, reloadTimer:0,
     weapon:1,
     inCar:false, car:null, riding:false
@@ -2974,6 +2997,18 @@ function updatePlayer(){
     if(player.riding){ updateFloorHUD(); return; }
     if(player.inCar){ updateCar(); return; }
 
+    /* 소품·구조물이 몸 위에 겹친 상태인지 — 갇히면 조작이 먹지 않으므로 따로 처리한다 */
+    const stuckIn = blocked(player.x, player.y, player.z);
+    if(stuckIn){
+        if(++player.stuckFrames > 24){
+            const out = freeSpot(player.x, player.z, player.y);
+            if(out){ player.x = out.x; player.z = out.z; player.vy = 0; }
+            player.stuckFrames = 0;
+        }
+    }else{
+        player.stuckFrames = 0;
+    }
+
     const input = new THREE.Vector3();
     if(keys.w) input.z -= 1;
     if(keys.s) input.z += 1;
@@ -2999,8 +3034,14 @@ function updatePlayer(){
         const nx = player.x + movement.x*player.speed;
         const nz = player.z + movement.z*player.speed;
 
-        if(!blocked(nx, player.y, player.z)) player.x = nx;
-        if(!blocked(player.x, player.y, nz)) player.z = nz;
+        if(stuckIn){
+            /* 이미 구조물 안에 끼어 있다 — 충돌 판정을 풀어 걸어 나올 수 있게 한다 */
+            player.x = nx;
+            player.z = nz;
+        }else{
+            if(!blocked(nx, player.y, player.z)) player.x = nx;
+            if(!blocked(player.x, player.y, nz)) player.z = nz;
+        }
     }
 
     const headBefore = player.y;
@@ -5218,6 +5259,7 @@ function clearWorld(){
     for(const b of blastPool){ b.t = 0; b.mesh.visible = false; }
     document.getElementById("hazardHUD").style.display = "none";
 
+    buildSpawn = null;
     darkZones.length = 0;
     darkKeepOut.length = 0;
     miniSolids.length = 0;
@@ -5958,7 +6000,11 @@ function buildMall(){
         addSolid(-9.5, 0, 38, 1.2, 4.4, 13);
         addSolid( 9.5, 0, 38, 1.2, 4.4, 13);
         signBoard(g, 11, 2.6, 0, 6.2, 31.3, signCanvas("#e0b45a","EXIT  CLOSED"), 0);
-        for(const cx of [-7.4, 7.4, -6.8]) crate(cx, 0, rand(35,43), rand(1,1.8), rand(.9,1.5), rand(1,1.8), matCarton);
+        for(const cx of [-7.4, 7.4, -6.8]){
+            const cz = rand(35,43);
+            if(!farFromSpawn(cx, cz, 5)) continue;
+            crate(cx, 0, cz, rand(1,1.8), rand(.9,1.5), rand(1,1.8), matCarton);
+        }
     })();
 
     /* ---- 중앙 광장 (1층) ---- */
@@ -6096,6 +6142,7 @@ function buildMall(){
         const x = rand(M.x0+8, M.x1-8), z = rand(M.z0+8, M.z1-8);
         if(x > M.ax0-3 && x < M.ax1+3 && z > M.az0-3 && z < M.az1+3 && y > 0) continue;
         if(Math.abs(x) > 11 && Math.abs(x) < 21 && Math.abs(z) < 18) continue;
+        if(y === 0 && !farFromSpawn(x,z,7)) continue;
         const h = rand(.9,1.6);
         crate(x, y, z, rand(1.1,2), h, rand(1.1,2), matCarton);
         if(Math.random()<.5) crate(x+rand(-.4,.4), y+h, z+rand(-.4,.4), 1.2, 1.1, 1.2, matCarton);
@@ -6443,7 +6490,10 @@ function buildFactory(){
     /* ---- 야적장 ---- */
     const containerColors = [0x7a4a3a, 0x3a5a6a, 0x5a6a3a, 0x6a5a3a, 0x4a4a52];
     for(let i=0;i<14;i++){
-        const x = rand(-72,72), z = rand(50,112);
+        let x = rand(-72,72), z = rand(50,112);
+        /* 시작 지점 위에 떨어지면 플레이어가 갇힌다 — 자리를 다시 고른다 */
+        for(let t=0; t<30 && !farFromSpawn(x,z,15); t++){ x = rand(-72,72); z = rand(50,112); }
+        if(!farFromSpawn(x,z,15)) continue;
         const rot = Math.random()<.5 ? 0 : Math.PI/2;
         const cmat = own(new THREE.MeshStandardMaterial({
             map: colorTex(steelCanvas("#555f58",true),3,1),
@@ -6505,7 +6555,9 @@ function buildFactory(){
 
     /* 야적장 드럼통 · 팔레트 */
     for(let i=0;i<8;i++){
-        const x = rand(-70,70), z = rand(48,110);
+        let x = rand(-70,70), z = rand(48,110);
+        for(let t=0; t<30 && !farFromSpawn(x,z,9); t++){ x = rand(-70,70); z = rand(48,110); }
+        if(!farFromSpawn(x,z,9)) continue;
         const g = new THREE.Group(); g.position.set(x,0,z); world.add(g);
         for(let k=0;k<3;k++){
             const b = new THREE.Mesh(new THREE.CylinderGeometry(.62,.58,1.5,10), matRust);
@@ -6918,6 +6970,7 @@ function startGame(key, diff){
         zoomFov = 75;
         resetAmmo(DIFF.ammoScale);
 
+        buildSpawn = currentMap.spawn;
         const built = currentMap.build();
         currentMap.state = Object.assign(
             { lastAmbush:-Infinity, lastForest:-Infinity, wasInForest:false },
@@ -6925,9 +6978,12 @@ function startGame(key, diff){
 
         applyMapLook(currentMap);
 
-        player.x = currentMap.spawn.x;
+        /* 시작 지점이 막혀 있으면 가장 가까운 빈 자리에서 시작한다 */
+        const start = freeSpot(currentMap.spawn.x, currentMap.spawn.z, currentMap.spawn.y)
+                   || { x:currentMap.spawn.x, z:currentMap.spawn.z };
+        player.x = start.x;
         player.y = currentMap.spawn.y;
-        player.z = currentMap.spawn.z;
+        player.z = start.z;
         player.yaw = currentMap.spawn.yaw || 0;
         player.pitch = 0;
 
