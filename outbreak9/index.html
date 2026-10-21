@@ -3,13 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OUTBREAK · 감염구역 : 최후의 생존자</title>
+<title>OUTBREAK · 감염구역 : 최후의 생존자 — CINEMATIC 3D</title>
 
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;background:#05070a;color:#e6ecee;font-family:"Trebuchet MS",Arial,sans-serif}
 canvas{display:block}
 
+/* ====== CINEMATIC 3D · 색 보정과 세련된 HUD ====== */
+:root{--neon:#ff6652;--gold:#edca84}
+#grain{opacity:.055!important}
+#scan{opacity:.032!important}
+#vignette{background:radial-gradient(ellipse at center,transparent 33%,rgba(0,0,0,.23) 72%,rgba(0,0,0,.68) 100%)!important}
+.panel{box-shadow:0 8px 30px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.045);backdrop-filter:blur(7px)!important}
+.mapCard{box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 8px 18px rgba(0,0,0,.25)}
+#hud .title{color:#ff8268!important}
+#weaponName{color:#f5d88e!important;text-shadow:0 0 16px rgba(238,173,72,.17)}
+#crosshair .dot{box-shadow:0 0 9px rgba(255,108,82,.62)}
+.qualityTag{display:inline-block;margin:3px 0 8px;padding:5px 11px;border:1px solid rgba(207,150,113,.35);background:rgba(26,20,19,.65);color:#dbc6a7;letter-spacing:.16em;font-size:11px}
 /* ====== 영화풍 화면 오버레이 ====== */
 #grain,#vignette,#scan,#bloodVig,#acidVig,#damageFlash{position:fixed;inset:0;pointer-events:none}
 #acidVig{z-index:25;opacity:0;background:radial-gradient(ellipse at center,rgba(120,200,40,0) 24%,rgba(126,200,36,.4) 72%,rgba(44,86,10,.8) 100%);transition:opacity .25s}
@@ -186,7 +197,7 @@ body.mapOpen #floorHUD{top:576px}
       <i class="drop" style="left:84%;top:100%;animation-delay:3.3s"></i>
     </h1>
 
-    <div class="sub">최후의 생존자</div>
+    <div class="sub">최후의 생존자</div><div class="qualityTag">CINEMATIC 3D · 고품질 그래픽 · 감염체 밀도 +30%</div>
     <div class="rule"></div>
 
     <div class="secLabel">작전 구역 <b>선택</b></div>
@@ -356,7 +367,9 @@ function colorTex(canvas,rx,ry){
     t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     if(rx) t.repeat.set(rx, ry===undefined?rx:ry);
-    t.anisotropy = 4;
+    t.anisotropy = 8;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
     return t;
 }
 
@@ -631,6 +644,29 @@ function facadeMaterial(base, frame, litChance){
     });
 }
 
+/* ---- 절차적 고주파 표면 요철: 실제 3D PBR 범프 텍스처 ---- */
+const reliefCanvasCache = new WeakMap();
+function reliefTex(src, rx=1, ry=rx){
+    let relief = reliefCanvasCache.get(src);
+    if(!relief){
+        relief = cvs(src.width, src.height);
+        const c = relief.getContext('2d');
+        c.drawImage(src,0,0);
+        const im = c.getImageData(0,0,src.width,src.height);
+        const a = im.data;
+        for(let i=0;i<a.length;i+=4){
+            const lum=(a[i]*.27+a[i+1]*.65+a[i+2]*.08);
+            const v = Math.max(0,Math.min(255,lum));
+            a[i]=a[i+1]=a[i+2]=v;a[i+3]=255;
+        }
+        c.putImageData(im,0,0);
+        reliefCanvasCache.set(src,relief);
+    }
+    const t = colorTex(relief,rx,ry);
+    t.colorSpace = THREE.NoColorSpace;
+    return t;
+}
+
 /* ---- 부드러운 원형(안개 · 먼지 · 불꽃) ---- */
 function softTex(inner,outer){
     const c = cvs(128), g = c.getContext("2d");
@@ -702,12 +738,13 @@ scene.add(camera);
 
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.85));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.32;
+renderer.toneMappingExposure = 1.28;
+renderer.physicallyCorrectLights = true;
 document.body.appendChild(renderer.domElement);
 
 /* ---- 하늘 돔 ---- */
@@ -716,10 +753,10 @@ const skyMat = (function(){
     const c = cvs(512), g = c.getContext("2d");
     const grad = g.createLinearGradient(0,0,0,512);
     grad.addColorStop(0,   "#060a0e");
-    grad.addColorStop(.38, "#141d24");
-    grad.addColorStop(.63, "#2a3338");
-    grad.addColorStop(.80, "#4a4136");
-    grad.addColorStop(.90, "#2e3539");
+    grad.addColorStop(.38, "#101d2a");
+    grad.addColorStop(.63, "#1b2936");
+    grad.addColorStop(.80, "#393a3b");
+    grad.addColorStop(.90, "#27323b");
     grad.addColorStop(1,   "#1b2124");
     g.fillStyle = grad; g.fillRect(0,0,512,512);
 
@@ -767,12 +804,16 @@ sun.position.set(-110, 160, 80);
 sun.castShadow = true;
 sun.shadow.mapSize.width = 2048;
 sun.shadow.mapSize.height = 2048;
-sun.shadow.camera.left = -120; sun.shadow.camera.right = 120;
-sun.shadow.camera.top = 120;   sun.shadow.camera.bottom = -120;
-sun.shadow.camera.far = 480;   sun.shadow.bias = -0.0005;
-scene.add(sun);
+// 집중형 섀도 카메라: 넓고 흐릿한 그림자 대신 플레이어 주변 세밀한 그림자
+sun.shadow.camera.left = -62; sun.shadow.camera.right = 62;
+sun.shadow.camera.top = 62;   sun.shadow.camera.bottom = -62;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 340;
+sun.shadow.bias = -0.00045;
+sun.shadow.normalBias = .025;
+sun.shadow.radius = 1.4;
+scene.add(sun);scene.add(sun.target);
 
-const rim = new THREE.DirectionalLight(0x7ea6c6, 0.5);
+const rim = new THREE.DirectionalLight(0x83afd9, 0.55);
 rim.position.set(100, 70, -130);
 scene.add(rim);
 
@@ -1053,6 +1094,15 @@ const DIFFS = {
                  desc:"압도적인 밀도와 속도. 러너가 주력이고 특수 개체가 쉴 새 없이 밀려옵니다." }
 };
 
+// 웨이브별 기대 수량을 정확히 원본의 1.30배로 조정.
+// 동시 존재 상한과 특수 개체 지원군도 함께 1.30배 확대한다.
+const ZOMBIE_DENSITY_MULTIPLIER = 1.30;
+for(const profile of Object.values(DIFFS)){
+    profile.first *= ZOMBIE_DENSITY_MULTIPLIER;
+    profile.per *= ZOMBIE_DENSITY_MULTIPLIER;
+    profile.cap = Math.ceil(profile.cap * ZOMBIE_DENSITY_MULTIPLIER);
+    profile.callIn = Math.round(profile.callIn * ZOMBIE_DENSITY_MULTIPLIER);
+}
 let DIFF = DIFFS.normal;
 let diffKey = "normal";
 
@@ -1639,7 +1689,8 @@ function spawnWeapon(type,x,y,z){
 ========================================================= */
 
 const zombieMat = new THREE.MeshStandardMaterial({
-    map: zombieGrungeTex, vertexColors:true, roughness:1
+    map:zombieGrungeTex, bumpMap:zombieGrungeTex, bumpScale:.055,
+    vertexColors:true, roughness:.84, metalness:.015
 });
 const zEyeGreen = new THREE.MeshStandardMaterial({ color:0xd4e493, emissive:0xb7d055, emissiveIntensity:1.6 });
 const zEyeRed   = new THREE.MeshStandardMaterial({ color:0xffb089, emissive:0xff4318, emissiveIntensity:2.6 });
@@ -1652,7 +1703,7 @@ const zSacPale  = new THREE.MeshStandardMaterial({ color:0xcbb79a, emissive:0x7a
 const zSacAcid  = new THREE.MeshStandardMaterial({ color:0x93c93f, emissive:0x5fae1c, emissiveIntensity:.95, roughness:.5 });
 
 /* ---- 레퍼런스 시트 기준 색 ---- */
-const Z_SKIN  = [0x8d9686, 0x7c8678, 0x98a092, 0x727e6e, 0x95997e, 0x848d7b];
+const Z_SKIN  = [0x9aab90, 0x8d9780, 0xa2ae9f, 0x758d74, 0xa7a18b, 0x929c88];
 const Z_SHADE = [0x66705f, 0x5a6456, 0x707a6b, 0x515b4d, 0x6b6d58, 0x5d6657];
 const Z_HAIR  = [0x1b1915, 0x29231b, 0x372e26, 0x463f36, 0x131210, 0x2f2a22];
 
@@ -2143,6 +2194,7 @@ function rollKind(){
 let packSlotSeq = 0;
 
 function createZombie(spawnX, spawnZ, kind){
+    if(zombies.length >= DIFF.cap) return null;
     let x, z;
 
     if(Number.isFinite(spawnX) && Number.isFinite(spawnZ)){
@@ -2262,6 +2314,21 @@ function createZombie(spawnX, spawnZ, kind){
     zombies.push(created);
     if(runner) runnerCount++;
     return created;
+}
+
+/* 30% 확률로 기습 개체 1마리 추가 — 일반 웨이브뿐 아니라 골목·매장도 증원 */
+function spawnAmbushBonus(x,z,kind,floorY=null){
+    if(Math.random() >= .30 || zombies.length >= DIFF.cap) return;
+    for(let i=0;i<5;i++){
+        const a=Math.random()*Math.PI*2;
+        const r=1.5+Math.random()*2.6;
+        const nx=x+Math.cos(a)*r,nz=z+Math.sin(a)*r;
+        if(!blocked(nx,1.7,nz)){
+            const extra=createZombie(nx,nz,kind||undefined);
+            if(extra && floorY!==null) extra.y=floorY;
+            break;
+        }
+    }
 }
 
 function queueZombies(n, kind){
@@ -3335,8 +3402,6 @@ function enterCar(car){
     player.x = car.mesh.position.x;
     player.z = car.mesh.position.z;
     player.y = 2.5;
-    player.yaw = car.rotation;                  /* 시점을 차체와 맞춰 준다 */
-    player.pitch = 0;
 }
 
 function exitCar(){
@@ -3361,9 +3426,8 @@ function updateCar(){
     car.speed *= 0.97;
     car.speed = Math.max(-0.25, Math.min(0.55, car.speed));
 
-    /* 헤드라이트가 있는 앞면(로컬 -z)으로 달린다 */
-    const nx = car.mesh.position.x - Math.sin(car.rotation)*car.speed;
-    const nz = car.mesh.position.z - Math.cos(car.rotation)*car.speed;
+    const nx = car.mesh.position.x + Math.sin(car.rotation)*car.speed;
+    const nz = car.mesh.position.z + Math.cos(car.rotation)*car.speed;
 
     if(!blocked(nx, 1.7, nz, 1.3)){
         car.mesh.position.x = nx;
@@ -5114,7 +5178,7 @@ function updateDarkZone(){
 function seedLurkers(zone){
     if(zone.seeded) return;
     zone.seeded = true;
-    const n = Math.round(zone.lurkers * (DIFF.spd > 1.1 ? 1.4 : 1));
+    const n = Math.round(zone.lurkers * ZOMBIE_DENSITY_MULTIPLIER * (DIFF.spd > 1.1 ? 1.4 : 1));
     for(let i=0;i<n;i++){
         const a = i/n*6.283 + Math.random();
         const r = 6 + Math.random()*Math.min(zone.x1-zone.x0, zone.z1-zone.z0)*.38;
@@ -5423,8 +5487,6 @@ function mountBike(bike){
     player.x = bike.mesh.position.x;
     player.z = bike.mesh.position.z;
     player.y = 2.05;
-    player.yaw = bike.rotation;                 /* 시점을 차체와 맞춰 준다 */
-    player.pitch = 0;
     if(bike.light) bike.light.intensity = 2.4;
     bikeStart();
     updateHUD();
@@ -5520,9 +5582,8 @@ function updateBike(){
     bike.rotation += steer * (bike.speed >= 0 ? 1 : -1);
     bike.lean += (steer*9 - bike.lean)*.12;
 
-    /* 차체 앞머리는 로컬 -z — 진행 방향도 그쪽이어야 한다 */
-    const nx = bike.mesh.position.x - Math.sin(bike.rotation)*bike.speed;
-    const nz = bike.mesh.position.z - Math.cos(bike.rotation)*bike.speed;
+    const nx = bike.mesh.position.x + Math.sin(bike.rotation)*bike.speed;
+    const nz = bike.mesh.position.z + Math.cos(bike.rotation)*bike.speed;
 
     if(!blocked(nx, 1.7, nz, .75)){
         bike.mesh.position.x = nx;
@@ -5546,15 +5607,15 @@ function updateBike(){
     for(const w of bike.wheels) w.rotation.x -= bike.speed*1.6;
     if(bike.light){
         bike.light.position.set(
-            bike.mesh.position.x - Math.sin(bike.rotation)*3.0, ground+1.2,
-            bike.mesh.position.z - Math.cos(bike.rotation)*3.0);
+            bike.mesh.position.x - Math.sin(bike.rotation)*2.2, ground+1.2,
+            bike.mesh.position.z - Math.cos(bike.rotation)*2.2);
     }
 
     /* 치고 지나간다 */
     for(let i=zombies.length-1; i>=0; i--){
         const zb = zombies[i];
         const d = Math.hypot(bike.mesh.position.x-zb.x, bike.mesh.position.z-zb.z);
-        if(d < 1.8 && Math.abs(bike.speed) > .22){
+        if(d < 1.7 && Math.abs(bike.speed) > .22){
             bloodBurst(zb.x, zb.y+1.2, zb.z);
             if(Math.random() < .5) severLimb(zb, pick(["armL","armR","legL","legR"]));
             killZombie(i);
@@ -5897,6 +5958,7 @@ function clearWorld(){
         const d = disposables.pop();
         if(d.map) d.map.dispose();
         if(d.emissiveMap) d.emissiveMap.dispose();
+        if(d.bumpMap) d.bumpMap.dispose();
         d.dispose();
     }
 
@@ -5912,6 +5974,113 @@ function ambushRunner(bonus){
 
 
 /* =========================================================
+   CINEMATIC WORLD FX: 젖은 지면, 반사 웅덩이, 입체적인 빗줄기
+   기존 전투 로직과 충돌 판정은 손대지 않는 순수 그래픽 연출
+========================================================= */
+const puddleGeo = new THREE.CircleGeometry(1,24);
+puddleGeo.rotateX(-Math.PI/2);
+puddleGeo.userData.shared = true;
+const puddleMat = new THREE.MeshPhysicalMaterial({
+    color:0x758a91, metalness:.55, roughness:.17,
+    clearcoat:1, clearcoatRoughness:.12,
+    transparent:true, opacity:.33,
+    depthWrite:false, side:THREE.DoubleSide,
+    polygonOffset:true, polygonOffsetFactor:-1
+});
+const puddleGleamMat = new THREE.MeshBasicMaterial({
+    color:0x86b9d5, transparent:true, opacity:.055,
+    depthWrite:false, blending:THREE.AdditiveBlending,
+    side:THREE.DoubleSide
+});
+function makePuddles(type){
+    const city=type==='city', total=city?180:64;
+    const puddles = new THREE.InstancedMesh(puddleGeo,puddleMat,total);
+    const gleams  = new THREE.InstancedMesh(puddleGeo,puddleGleamMat,Math.ceil(total/3));
+    const dummy=new THREE.Object3D();
+    let count=0, shimmer=0;
+    for(let i=0;i<total*5&&count<total;i++){
+        let x,z;
+        if(city){
+            // 십자형 도로와 주변 공터 — 건물 안쪽에는 배치하지 않음
+            x=rand(-235,235); z=rand(-235,235);
+            if(Math.min(Math.abs(x),Math.abs(z),Math.abs(x-120),Math.abs(x+120),Math.abs(z-120),Math.abs(z+120))>10) continue;
+        }else{
+            x=rand(-75,75);z=rand(45,135);
+        }
+        dummy.position.set(x,city?.071:.061,z);
+        dummy.rotation.set(0,rand(-Math.PI,Math.PI),0);
+        dummy.scale.set(rand(.5,1.8),1,rand(1.1,3.6));
+        dummy.updateMatrix();
+        puddles.setMatrixAt(count,dummy.matrix);
+        if(count%3===0){
+            dummy.position.y+=.007;
+            dummy.scale.multiplyScalar(.63);
+            dummy.updateMatrix();
+            gleams.setMatrixAt(shimmer++,dummy.matrix);
+        }
+        count++;
+    }
+    puddles.count=count;gleams.count=shimmer;
+    puddles.instanceMatrix.needsUpdate=true;gleams.instanceMatrix.needsUpdate=true;
+    puddles.frustumCulled=false;gleams.frustumCulled=false;
+    world.add(puddles,gleams);
+}
+const rainCount=520;
+const rainCoords=new Float32Array(rainCount*6);
+const rainFall=new Float32Array(rainCount);
+for(let i=0;i<rainCount;i++){
+    const k=i*6,x=rand(-52,52),y=rand(1,34),z=rand(-52,52),len=rand(.48,1.4);
+    rainCoords[k]=x;rainCoords[k+1]=y;rainCoords[k+2]=z;
+    rainCoords[k+3]=x+.18;rainCoords[k+4]=y-len;rainCoords[k+5]=z+.10;
+    rainFall[i]=rand(.28,.67);
+}
+const rainGeo=new THREE.BufferGeometry();
+const rainAttr=new THREE.BufferAttribute(rainCoords,3);
+rainAttr.setUsage(THREE.DynamicDrawUsage);
+rainGeo.setAttribute('position',rainAttr);
+const rainLines=new THREE.LineSegments(rainGeo,new THREE.LineBasicMaterial({
+    color:0xa5bed0,transparent:true,opacity:.23,
+    depthWrite:false,blending:THREE.AdditiveBlending
+}));
+rainLines.frustumCulled=false;rainLines.visible=false;
+scene.add(rainLines);
+let visualTick=0;
+function updateCinematicVisuals(){
+    visualTick++;
+    const outside=(mapKey==='city') || (mapKey==='factory' && (player.z>45 || Math.abs(player.x)>64));
+    rainLines.visible=gameStarted && outside;
+    if(rainLines.visible){
+        for(let i=0;i<rainCount;i++){
+            const j=i*6;
+            rainCoords[j+1]-=rainFall[i];rainCoords[j+4]-=rainFall[i];
+            if(rainCoords[j+1]<0){
+                const y=rand(23,35);rainCoords[j+1]=y;rainCoords[j+4]=y-rand(.48,1.4);
+            }
+        }
+        rainAttr.needsUpdate=true;
+        rainLines.position.set(player.x,0,player.z);
+    }
+    // 월드에 그림자를 과도하게 만드는 좀비 메시를 방지 (가까운 적 그림자만 유지)
+    if(gameStarted && visualTick%9===0){
+        for(const z of zombies){
+            const dx=z.x-player.x,dz=z.z-player.z;
+            const near=dx*dx+dz*dz<54*54;
+            if(z.shadowOn!==near){
+                z.shadowOn=near;
+                z.mesh.traverse(o=>{if(o.isMesh && o.castShadow)o.castShadow=near});
+                if(near){z.mesh.traverse(o=>{if(o.isMesh && o!==z.organ && o.material===zombieMat)o.castShadow=true});}
+            }
+        }
+    }
+    // 고해상도 동적 그림자를 주인공 근방에 맞춰 이동
+    if(gameStarted){
+        sun.position.set(player.x-95,155,player.z+75);
+        sun.target.position.set(player.x,0,player.z);
+        sun.target.updateMatrixWorld();
+    }
+}
+
+/* =========================================================
    맵 1 — 감염도시
 ========================================================= */
 
@@ -5919,7 +6088,7 @@ function buildCity(){
     const roadCanvas = asphaltCanvas("#34383a");
 
     const groundMat = own(new THREE.MeshStandardMaterial({
-        map: colorTex(asphaltCanvas("#4c4e47"),100,100), roughness:1
+        map: colorTex(asphaltCanvas("#4c4e47"),100,100), roughness:.8
     }));
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200,1200), groundMat);
     ground.rotation.x = -Math.PI/2;
@@ -5929,7 +6098,8 @@ function buildCity(){
     function road(x,z,width,depth){
         const mat = own(new THREE.MeshStandardMaterial({
             map: colorTex(roadCanvas, Math.max(1,Math.round(width/9)), Math.max(1,Math.round(depth/9))),
-            roughness:.96
+            bumpMap:reliefTex(roadCanvas, Math.max(1,Math.round(width/9)), Math.max(1,Math.round(depth/9))),
+            bumpScale:.065, roughness:.62, metalness:.08
         }));
         const m = new THREE.Mesh(new THREE.BoxGeometry(width,0.05,depth), mat);
         m.position.set(x,0.025,z);
@@ -5937,6 +6107,7 @@ function buildCity(){
         world.add(m);
     }
 
+    makePuddles('city');
     road(0,0,500,24);   road(0,0,24,500);
     road(0,120,500,18); road(0,-120,500,18);
     road(120,0,18,500); road(-120,0,18,500);
@@ -6054,10 +6225,11 @@ function buildCity(){
     }
 
     const alleyBlocks = [];
-    const pavementMat = own(new THREE.MeshStandardMaterial({ map: colorTex(pavementCanvas(),12,12), roughness:1 }));
+    const pv=pavementCanvas();
+    const pavementMat = own(new THREE.MeshStandardMaterial({ map:colorTex(pv,12,12), bumpMap:reliefTex(pv,12,12), bumpScale:.045, roughness:.85 }));
     const alleyCan = alleyCanvas();
-    const alleyMatZ = own(new THREE.MeshStandardMaterial({ map: colorTex(alleyCan,1,12), roughness:.82 }));
-    const alleyMatX = own(new THREE.MeshStandardMaterial({ map: colorTex(alleyCan,12,1), roughness:.82 }));
+    const alleyMatZ = own(new THREE.MeshStandardMaterial({ map:colorTex(alleyCan,1,12), bumpMap:reliefTex(alleyCan,1,12), bumpScale:.045, roughness:.54, metalness:.1 }));
+    const alleyMatX = own(new THREE.MeshStandardMaterial({ map:colorTex(alleyCan,12,1), bumpMap:reliefTex(alleyCan,12,1), bumpScale:.045, roughness:.54, metalness:.1 }));
 
     for(const bx of [-180,-60,60,180]) for(const bz of [-180,-60,60,180]){
         if(bx===60 && bz===60) continue;
@@ -6342,9 +6514,9 @@ function buildCity(){
     for(const s of spawns) spawnWeapon(s[0],s[1],s[2],s[3]);
 
     /* ---- 오토바이 ---- */
-    createBike(-7, 140, 0, 0x6d2b24);                /* 도심 쪽(-z) */
-    createBike(9, -44, Math.PI, 0x27424f);           /* 도심 쪽(+z) */
-    createBike(-120, 18, 0, 0x4a4326);               /* 서측 대로(-z) */
+    createBike(-7, 140, Math.PI, 0x6d2b24);
+    createBike(9, -44, 0, 0x27424f);
+    createBike(-120, 18, Math.PI, 0x4a4326);
 
     return { alleyBlocks, forestTrees, apt };
 }
@@ -6384,6 +6556,7 @@ function cityTick(state, now){
             const kind = ambushRunner(.1) ? "runner" : undefined;
             const z = createZombie(spawn.x, spawn.z, kind);
             if(z){
+                spawnAmbushBonus(spawn.x,spawn.z,kind);
                 b.used = true;
                 state.lastAmbush = now;
                 showScare(z.runner ? "골목에서 무언가 달려옵니다!" : "골목 안에서 발소리가 들립니다…");
@@ -6423,6 +6596,10 @@ function cityTick(state, now){
         }
 
         if(count){
+            if(Math.random()<.3*count){
+                const spot=freeSpawn(10,23);
+                if(spot) createZombie(spot.x,spot.z,ambushRunner(.05)?'runner':'walker');
+            }
             state.lastForest = now;
             showScare(sawRunner ? "나무 사이로 빠르게 다가옵니다!" : "나무 사이에서 무언가 움직입니다…");
         }
@@ -6443,8 +6620,9 @@ function buildMall(){
     const M = MALL;
     const W = M.x1-M.x0, D = M.z1-M.z0;
 
-    const tileMat = own(new THREE.MeshStandardMaterial({ map: colorTex(tileCanvas(),16,12), roughness:.55, metalness:.08 }));
-    const tileMat2= own(new THREE.MeshStandardMaterial({ map: colorTex(tileCanvas(),8,6), roughness:.6, metalness:.06 }));
+    const tileC=tileCanvas();
+    const tileMat = own(new THREE.MeshStandardMaterial({ map:colorTex(tileC,16,12), bumpMap:reliefTex(tileC,16,12), bumpScale:.032, roughness:.32, metalness:.14 }));
+    const tileMat2= own(new THREE.MeshStandardMaterial({ map:colorTex(tileC,8,6), bumpMap:reliefTex(tileC,8,6), bumpScale:.03, roughness:.37, metalness:.12 }));
     const wallMat = own(new THREE.MeshStandardMaterial({ map: colorTex(concreteCanvas("#5d5b55"),4,2), roughness:.92 }));
     const trimMat = own(new THREE.MeshStandardMaterial({ color:0x8c7a58, metalness:.5, roughness:.45 }));
     const shopMat = own(new THREE.MeshStandardMaterial({ map: colorTex(concreteCanvas("#4a4742"),2,1), roughness:.95 }));
@@ -6802,8 +6980,8 @@ function buildMall(){
     spawnWeapon("bazooka", 48, M.lv[1]+.6, -26);
 
     /* ---- 오토바이 (1층 광장) ---- */
-    createBike(-26, 30, 0, 0x6d2b24);                /* 북쪽 통로(-z) */
-    createBike(30, 18, Math.PI/2, 0x27424f);         /* 서쪽 통로(-x) */
+    createBike(-26, 30, Math.PI, 0x6d2b24);          /* 북쪽 통로를 향해 */
+    createBike(30, 18, -Math.PI/2, 0x27424f);        /* 서쪽 통로를 향해 */
 
     /* 실내 먼지 */
     for(let i=0;i<8;i++) addMist(rand(M.x0+10,M.x1-10), rand(M.z0+10,M.z1-10), rand(26,44), .9);
@@ -6844,6 +7022,7 @@ function mallTick(state, now){
             const z1 = createZombie(sx, sz, kind);
             if(z1){
                 z1.y = M.lv[lv];
+                spawnAmbushBonus(sx,sz,kind,M.lv[lv]);
                 state.lastAmbush = now;
                 showScare(z1.runner ? "매장 안에서 뛰쳐나옵니다!" : "매장 안쪽에서 유리가 깨집니다…");
             }
@@ -6862,12 +7041,14 @@ function buildFactory(){
     const F = FACT;
     const W = F.x1-F.x0, D = F.z1-F.z0;
 
-    const floorMat = own(new THREE.MeshStandardMaterial({ map: colorTex(factoryFloorCanvas(),14,10), roughness:.9 }));
+    const floorC=factoryFloorCanvas();
+    const floorMat = own(new THREE.MeshStandardMaterial({ map:colorTex(floorC,14,10), bumpMap:reliefTex(floorC,14,10), bumpScale:.048, roughness:.61, metalness:.08 }));
     const yardMat  = own(new THREE.MeshStandardMaterial({ map: colorTex(concreteCanvas("#595d56"),26,18), roughness:1 }));
     const wallMat  = own(new THREE.MeshStandardMaterial({ map: colorTex(steelCanvas("#4d5450",true),9,3), metalness:.45, roughness:.72 }));
     const beamMat  = own(new THREE.MeshStandardMaterial({ color:0x58504a, metalness:.55, roughness:.62 }));
 
     /* ---- 바닥 ---- */
+    makePuddles('factory');
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(W,D), floorMat);
     floor.rotation.x = -Math.PI/2;
     floor.position.y = .02;
@@ -7372,9 +7553,9 @@ function buildFactory(){
     spawnWeapon("bazooka", 20, .6, -30);
 
     /* ---- 오토바이 (야적장 · 외곽 숲길) ---- */
-    createBike(-14, 86, -Math.PI/4, 0x6d2b24);       /* 야적장 사선 주행로 */
-    createBike(26, 100, Math.PI/2, 0x4a4326);        /* 야적장 서쪽 주행로 */
-    createBike(-104, 140, Math.PI*.75, 0x27424f);    /* 숲길 */
+    createBike(-14, 86, 0, 0x6d2b24);
+    createBike(26, 100, Math.PI, 0x4a4326);
+    createBike(-104, 140, Math.PI*.75, 0x27424f);
 
     return { presses, trees:factoryTrees, lastAmbush:-Infinity, lastRack:-Infinity, lastWood:-Infinity, wasInWood:false };
 }
@@ -7427,6 +7608,10 @@ function factoryTick(state, now){
         }
 
         if(count){
+            if(Math.random()<.3*count){
+                const spot=freeSpawn(10,23);
+                if(spot) createZombie(spot.x,spot.z,ambushRunner(.05)?'runner':'walker');
+            }
             state.lastWood = now;
             showScare(sawRunner ? "나무 사이로 빠르게 다가옵니다!" : "숲 안쪽에서 나뭇가지가 부러집니다…");
         }
@@ -7441,6 +7626,7 @@ function factoryTick(state, now){
             const kind = ambushRunner(.12) ? "runner" : (Math.random()<.45 ? "crawler" : "walker");
             const z = createZombie(sx, sz, kind);
             if(z){
+                spawnAmbushBonus(sx,sz,kind);
                 state.lastRack = now;
                 showScare(z.runner ? "선반 사이에서 달려 나옵니다!" : "선반 뒤에서 무언가 끌리는 소리…");
             }
@@ -7458,6 +7644,7 @@ function factoryTick(state, now){
                     const kind = ambushRunner(.1) ? "runner" : "walker";
                     const z = createZombie(sx, sz, kind);
                     if(z){
+                        spawnAmbushBonus(sx,sz,kind);
                         state.lastAmbush = now;
                         showScare(z.runner ? "기계 뒤에서 달려듭니다!" : "기계 사이에서 그림자가 움직입니다…");
                     }
@@ -7672,7 +7859,7 @@ let menuMap = "city", menuDiff = "normal";
 
 function refreshBrief(){
     const m = MAPS[menuMap], d = DIFFS[menuDiff];
-    const first = d.first, per = d.per;
+    const first = Math.round(d.first), per = Math.round(d.per);
     const runner = Math.round(Math.min(.74, d.run + 3*d.runW)*100);
 
     const g = 1 + Math.min(.85, 3*.07);
@@ -7684,7 +7871,7 @@ function refreshBrief(){
     document.getElementById("brief").innerHTML =
         "<b>" + m.name + "</b> · " + d.name + " (" + d.tag + ")<br>" +
         d.desc + "<br>" +
-        "1웨이브 <b>" + first + "</b>마리 · 웨이브마다 <b>+" + per + "</b> · 동시 최대 <b>" + d.cap + "</b> · " +
+        "<b style='color:#ffb899'>출현량 +30%</b> · 1웨이브 <b>" + first + "</b>마리 · 웨이브마다 약 <b>+" + per + "</b> · 동시 최대 <b>" + d.cap + "</b> · " +
         "러너 <b>" + runner + "%</b><br>" +
         "<span style='color:#c79a63'>특수 개체 " + (sp.length ? sp.join(" · ") + " — " + d.specialFrom + "웨이브부터" : "없음") + "</span>";
 }
@@ -7730,6 +7917,7 @@ function update(){
     const now = performance.now();
 
     updateProps();
+    updateCinematicVisuals();
     updateFlare();
     updateAmbience();
     updateAsh();
