@@ -1276,6 +1276,157 @@ const haloTex      = softTex("rgba(255,215,140,.6)","rgba(255,180,90,.15)");
 
 
 /* =========================================================
+   오로라 · 안개 날씨 시스템 (실외 전용)
+========================================================= */
+
+const grainEl = document.getElementById("grain");
+const vignetteEl = document.getElementById("vignette");
+const scanEl = document.getElementById("scan");
+
+function auroraCanvas(c1,c2,c3){
+    const c = cvs(512,160), g = c.getContext("2d");
+    g.clearRect(0,0,512,160);
+    for(let i=0;i<84;i++){
+        const x = i/83*512;
+        const wave = 42 + Math.sin(i*.34)*22 + Math.sin(i*.11+1.7)*10;
+        const width = 6 + Math.sin(i*.27+2)*3;
+        const grad = g.createLinearGradient(x,0,x,160);
+        grad.addColorStop(0,"rgba(0,0,0,0)");
+        grad.addColorStop(.15,c1);
+        grad.addColorStop(.5,c2);
+        grad.addColorStop(.84,c3);
+        grad.addColorStop(1,"rgba(0,0,0,0)");
+        g.fillStyle = grad;
+        g.globalAlpha = .34 + .28*Math.sin(i*.22+0.5);
+        g.fillRect(x-width*.5, 24+Math.sin(i*.17)*9, width, wave);
+    }
+    g.globalAlpha = 1;
+    const rg = g.createRadialGradient(256,70,18,256,80,160);
+    rg.addColorStop(0,'rgba(255,255,255,.16)');
+    rg.addColorStop(.4,'rgba(190,255,255,.05)');
+    rg.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle = rg; g.fillRect(0,0,512,160);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+}
+
+const auroraGroup = new THREE.Group();
+auroraGroup.visible = false;
+scene.add(auroraGroup);
+const auroraBands = [];
+[
+    ["rgba(72,255,196,.80)","rgba(116,255,214,.55)","rgba(30,140,255,.12)"],
+    ["rgba(100,255,162,.78)","rgba(162,255,220,.45)","rgba(160,80,255,.10)"],
+    ["rgba(80,210,255,.72)","rgba(110,255,215,.42)","rgba(255,255,255,.06)"]
+].forEach((cols,i)=>{
+    const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(340 + i*70, 82 + i*16),
+        new THREE.MeshBasicMaterial({
+            map: auroraCanvas(cols[0], cols[1], cols[2]),
+            transparent:true, opacity:0,
+            depthWrite:false, fog:false,
+            blending:THREE.AdditiveBlending,
+            side:THREE.DoubleSide
+        })
+    );
+    m.position.set((i-1)*130, 150+i*15, -320-i*18);
+    auroraGroup.add(m);
+    auroraBands.push({ mesh:m, seed:Math.random()*10, baseX:(i-1)*130, baseY:150+i*15, baseZ:-320-i*18 });
+});
+
+const weatherFogGroup = new THREE.Group();
+weatherFogGroup.visible = false;
+scene.add(weatherFogGroup);
+const weatherFogSheets = [];
+for(let i=0;i<16;i++){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(24+Math.random()*34, 10+Math.random()*14),
+        new THREE.MeshBasicMaterial({ map:mistTex, color:0xc7d4d6, transparent:true, opacity:0, depthWrite:false }));
+    weatherFogGroup.add(m);
+    weatherFogSheets.push({ mesh:m, seed:Math.random()*20, radius:16+Math.random()*34, height:1.5+Math.random()*4.5, drift:.15+Math.random()*.5, baseOpacity:.12+Math.random()*.15 });
+}
+
+const weatherState = { mode:'clear', mist:0, aurora:0, nextShift:performance.now()+18000, hint:0 };
+
+function isOutdoorWeatherZone(){
+    if(!currentMap || !currentMap.sky) return false;
+    if(mapKey === 'city') return true;
+    if(mapKey === 'factory') return (player.z > 45 || Math.abs(player.x) > 64);
+    return false;
+}
+
+function resetWeather(forceClear){
+    weatherState.mode = forceClear ? 'clear' : weatherState.mode;
+    weatherState.mist = 0;
+    weatherState.aurora = 0;
+    weatherState.nextShift = performance.now() + rand(15000, 26000);
+    auroraGroup.visible = false;
+    weatherFogGroup.visible = false;
+    if(grainEl) grainEl.style.opacity = '.09';
+    if(vignetteEl) vignetteEl.style.opacity = '1';
+    if(scanEl) scanEl.style.opacity = '.07';
+}
+
+function chooseWeatherMode(){
+    if(!currentMap || !currentMap.sky) return 'clear';
+    const r = Math.random();
+    if(r < .42) return 'clear';
+    if(r < .82) return 'mist';
+    return 'aurora';
+}
+
+function updateWeather(){
+    const now = performance.now();
+    const outdoors = gameStarted && isOutdoorWeatherZone();
+    if(outdoors && now > weatherState.nextShift){
+        weatherState.mode = chooseWeatherMode();
+        weatherState.nextShift = now + rand(weatherState.mode==='aurora' ? 16000 : 12000, weatherState.mode==='aurora' ? 30000 : 24000);
+    }
+    const targetMist = outdoors && (weatherState.mode === 'mist' || weatherState.mode === 'aurora') ? 1 : 0;
+    const targetAurora = outdoors && weatherState.mode === 'aurora' ? 1 : 0;
+    weatherState.mist += (targetMist - weatherState.mist) * .018;
+    weatherState.aurora += (targetAurora - weatherState.aurora) * .012;
+    if(weatherState.mist < .002) weatherState.mist = 0;
+    if(weatherState.aurora < .002) weatherState.aurora = 0;
+
+    weatherFogGroup.visible = weatherState.mist > .01;
+    if(weatherFogGroup.visible){
+        weatherFogGroup.position.set(player.x, 0, player.z);
+        for(const s of weatherFogSheets){
+            const ang = s.seed + now*.00008*s.drift;
+            const r = s.radius + Math.sin(now*.00055+s.seed)*4;
+            s.mesh.position.set(Math.cos(ang)*r, s.height + Math.sin(now*.0007+s.seed)*.55, Math.sin(ang)*r);
+            s.mesh.material.opacity = s.baseOpacity * (.55 + weatherState.mist*.95) * (.75 + .25*Math.sin(now*.0012+s.seed));
+            s.mesh.lookAt(camera.position);
+        }
+    }
+
+    auroraGroup.visible = weatherState.aurora > .01;
+    if(auroraGroup.visible){
+        auroraGroup.position.set(camera.position.x, 0, camera.position.z);
+        for(let i=0;i<auroraBands.length;i++){
+            const a = auroraBands[i], m = a.mesh;
+            m.position.x = a.baseX + Math.sin(now*.00021 + a.seed)*55;
+            m.position.y = a.baseY + Math.sin(now*.0005 + a.seed*2.3)*10;
+            m.position.z = a.baseZ + Math.cos(now*.00017 + a.seed)*24;
+            m.rotation.y = Math.sin(now*.00018 + i)*.3;
+            m.rotation.z = Math.sin(now*.00022 + a.seed)*.06;
+            m.material.opacity = (.14 + i*.05) + weatherState.aurora*(.22 + .07*Math.sin(now*.0014+a.seed));
+            m.scale.y = 1 + Math.sin(now*.001 + a.seed)*.08;
+        }
+    }
+
+    if(grainEl) grainEl.style.opacity = (0.09 + weatherState.mist*0.05).toFixed(3);
+    if(scanEl) scanEl.style.opacity = (0.07 + weatherState.mist*0.025).toFixed(3);
+    if(vignetteEl) vignetteEl.style.opacity = (1 + weatherState.mist*0.08).toFixed(3);
+
+    const nightTint = weatherState.mist*.18 + weatherState.aurora*.08;
+    skyMat.color.setRGB(1 - nightTint*.24, 1 - nightTint*.18, 1 + weatherState.aurora*.08);
+    rainLines.material.opacity = .23 + weatherState.mist*.08;
+}
+
+
+/* =========================================================
    월드 작성 헬퍼
 ========================================================= */
 
@@ -5165,11 +5316,17 @@ function updateDarkZone(){
 
     if(!currentMap) return;
     const m = currentMap;
-    hemi.intensity = m.light.hemi * (1 - darkT*.975);
-    sun.intensity  = m.light.sun  * (1 - darkT);
-    rim.intensity  = m.light.rim  * (1 - darkT*.99);
-    scene.fog.density = m.fogDensity * (1 + darkT*4.5);
-    renderer.toneMappingExposure = (m.exposure||1.32) * (1 - darkT*.4);
+    const outdoors = isOutdoorWeatherZone();
+    const mistT = outdoors ? weatherState.mist : 0;
+    const auroraT = outdoors ? weatherState.aurora : 0;
+    const flareT = Math.max(0, 1 - (performance.now() - flareStart) / 3000);
+
+    hemi.intensity = m.light.hemi * (1 - darkT*.975) * (1 - mistT*.16) * (1 + flareT*.55);
+    sun.intensity  = m.light.sun  * (1 - darkT) * (1 - mistT*.28 - auroraT*.06) * (1 + flareT*.7);
+    rim.intensity  = m.light.rim  * (1 - darkT*.99) * (1 - mistT*.1) + auroraT*.22 + flareT*.16;
+    scene.fog.density = m.fogDensity * (1 + darkT*4.5) * (1 + mistT*1.55 + auroraT*.22) * (flareT > 0 ? .62 : 1);
+    renderer.toneMappingExposure = (m.exposure||1.32) * (1 - darkT*.4) * (1 - mistT*.08 + auroraT*.04) * (1 + flareT*.12);
+    ashMat.opacity = (m.ashOpacity||.3) * (1 + mistT*.35);
 
     darkAudio();
 }
@@ -5936,6 +6093,7 @@ function clearWorld(){
     flashLight.intensity = 0; flashNear.intensity = 0;
     document.getElementById("darkVig").style.opacity = "0";
     document.getElementById("darkBanner").style.opacity = "0";
+    resetWeather(true);
 
     runnerCount = 0;
     acidScreen = 0;
@@ -7793,6 +7951,8 @@ function startGame(key, diff){
             built || {});
 
         applyMapLook(currentMap);
+        resetWeather(true);
+        weatherState.mode = currentMap.sky ? chooseWeatherMode() : "clear";
 
         /* 시작 지점이 막혀 있으면 가장 가까운 빈 자리에서 시작한다 */
         const start = freeSpot(currentMap.spawn.x, currentMap.spawn.z, currentMap.spawn.y)
@@ -7919,6 +8079,7 @@ function update(){
     updateProps();
     updateCinematicVisuals();
     updateFlare();
+    updateWeather();
     updateAmbience();
     updateAsh();
     updateBlood();
