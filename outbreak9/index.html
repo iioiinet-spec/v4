@@ -334,7 +334,12 @@ body.mapOpen #floorHUD{top:576px}
 <div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~7 무기(5 체인소 · 6 방망이 · 7 바주카) · <b style="color:#e8c568">F 손전등</b> · <b style="color:#b571e8">M 지도</b> · T 섬광탄 · 휠 확대 · N 사운드</div>
 <div id="credit"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script>if(!window.THREE){document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"><\/script>');}</script>
+<script>if(!window.THREE){document.addEventListener('DOMContentLoaded',function(){
+  var el=document.getElementById('loading');if(el){el.style.display='flex';el.textContent='3D 엔진 연결 실패 · 인터넷 연결 확인 후 새로고침';}
+  var st=document.getElementById('startScreen');if(st)st.style.display='none';
+});}</script>
 
 <script>
 "use strict";
@@ -842,7 +847,10 @@ const lamps = [];
 const fires = [];
 const mists = [];
 const steams = [];
+const seaStrips = [];  // Animated coastal surf foam (cleared on map reset)
 const spawnQueue = [];
+let lastPlayerJump = -Infinity;
+let jumpThreatCooldown = 0;
 
 /* 맵이 생성한 모든 오브젝트는 world 아래에 둔다 — 맵 교체 시 통째로 해제 */
 const world = new THREE.Group();
@@ -1274,7 +1282,300 @@ const fireTex      = softTex("rgba(255,230,150,.95)","rgba(230,110,30,.55)");
 const mistTex      = softTex("rgba(190,205,205,.85)","rgba(170,185,190,.35)");
 const haloTex      = softTex("rgba(255,215,140,.6)","rgba(255,180,90,.15)");
 
+const seaFoamTex   = softTex("rgba(245,255,255,.95)","rgba(188,214,224,.26)");
 
+/* 해안 포말 평면: 이름이 누락되면 섬 맵 생성 전체가 중단된다. */
+function addSeaStrip(x,z,w,d,alpha){
+    const mat = own(new THREE.MeshBasicMaterial({
+        map:seaFoamTex, color:0xe8f7ff, transparent:true,
+        opacity:alpha===undefined?.22:alpha,
+        depthWrite:false, blending:THREE.AdditiveBlending,
+        side:THREE.DoubleSide
+    }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d),mat);
+    m.rotation.x=-Math.PI/2;
+    m.position.set(x,-.65,z);
+    m.renderOrder=3;
+    world.add(m);
+    seaStrips.push({mesh:m,baseX:x,baseZ:z,w,d,seed:Math.random()*10});
+    return m;
+}
+
+/* 밤바다: 다중 파랑 변위 + 깊이감·물결 반사·포말을 픽셀/정점 셰이더로 계산한다. */
+const oceanClock = { value:0 };
+function makeCinematicOcean(){
+    const noiseMap = colorTex(oceanCanvas(),7,7);
+    const seaMat = own(new THREE.ShaderMaterial({
+        uniforms:{ uTime:oceanClock, uNoise:{value:noiseMap}, uMist:{value:0}, uAurora:{value:0} },
+        transparent:false, depthWrite:true, side:THREE.DoubleSide,
+        vertexShader: `
+          uniform float uTime;
+          varying vec2 vPos;
+          varying float vWave;
+          varying vec3 vN;
+          varying float vDist;
+          void main(){
+            vec3 p=position;
+            vec2 v=p.xy;
+            float a=sin(v.x*.066+v.y*.023+uTime*.74);
+            float b=sin(v.x*.031-v.y*.059-uTime*.55);
+            float c=sin((v.x+v.y)*.12+uTime*1.15);
+            float w=1.05*a+.65*b+.22*c;
+            p.z += w;
+            float dx=1.05*.066*cos(v.x*.066+v.y*.023+uTime*.74)
+              +.65*.031*cos(v.x*.031-v.y*.059-uTime*.55)
+              +.22*.12*cos((v.x+v.y)*.12+uTime*1.15);
+            float dy=1.05*.023*cos(v.x*.066+v.y*.023+uTime*.74)
+              -.65*.059*cos(v.x*.031-v.y*.059-uTime*.55)
+              +.22*.12*cos((v.x+v.y)*.12+uTime*1.15);
+            vN=normalize(vec3(-dx,1.0,dy));
+            vWave=w;
+            vPos=v;
+            vec4 mvPos=modelViewMatrix*vec4(p,1.0);
+            vDist=length(mvPos.xyz);
+            gl_Position=projectionMatrix*mvPos;
+          }`,
+        fragmentShader: `
+          precision highp float;
+          uniform float uTime;
+          uniform float uMist;
+          uniform float uAurora;
+          uniform sampler2D uNoise;
+          varying vec2 vPos;
+          varying float vWave;
+          varying vec3 vN;
+          varying float vDist;
+          float noise2(vec2 p){return texture2D(uNoise,fract(p)).r;}
+          void main(){
+            vec2 p=vPos;
+            vec3 n=normalize(vN);
+            float n1=noise2(p*.005+vec2(uTime*.004,-uTime*.002));
+            float n2=noise2(p*.017+vec2(-uTime*.012,uTime*.009));
+            float ripples=sin(p.x*.28+p.y*.17+uTime*2.1)*sin(p.y*.37-uTime*1.65);
+            float slope=max(0.0,1.0-n.y);
+            float crests=smoothstep(.52,1.45,vWave+.48*(n2-.5));
+            vec3 deep=vec3(.010,.055,.086);
+            vec3 teal=vec3(.033,.18,.225);
+            vec3 col=mix(deep,teal,clamp(.27+.28*vWave+.50*n1,0.0,1.0));
+            float reflection=pow(max(0.0,dot(n,normalize(vec3(-.38,.88,.26)))),11.0);
+            col += vec3(.12,.20,.24)*reflection*.55;
+            col += vec3(.052,.098,.115)*max(0.0,ripples)*.34;
+            col += vec3(.027,.10,.059)*uAurora*(.22+.15*sin(p.x*.015+uTime*.7));
+            float foam=crests*(.22+.55*n2)*(1.0+ .3*sin(p.x*.18+uTime));
+            float coastal=1.0-smoothstep(550.0,625.0,max(abs(p.x),abs(p.y)));
+            foam += coastal*crests*.72;
+            col=mix(col,vec3(.63,.78,.81),clamp(foam,0.0,.68));
+            col=mix(col,vec3(.028,.045,.057),clamp(uMist*.30,0.0,.3));
+            float haze=.0037+uMist*.010;
+            float distantFog=1.0-exp(-pow(vDist*haze,2.0));
+            col=mix(col,vec3(.095,.12,.143),clamp(distantFog*.9,0.0,.9));
+            gl_FragColor=vec4(col,1.0);
+          }`
+    }));
+    // Plane geometry is rotated into horizontal water; p.xy in shader become world x/z.
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(3000,3000,164,164),seaMat);
+    sea.rotation.x=-Math.PI/2;
+    sea.position.y=-2.2;
+    sea.frustumCulled=false;
+    sea.receiveShadow=false;
+    world.add(sea);
+    return sea;
+}
+
+function oceanCanvas(){
+    const c=cvs(512),g=c.getContext('2d');
+    g.fillStyle='#324955';g.fillRect(0,0,512,512);
+    speckle(g,512,17000,'rgba(200,220,230,.12)','rgba(5,16,25,.11)');
+    for(let j=0;j<95;j++){
+        g.strokeStyle=j%2?'rgba(175,210,218,.12)':'rgba(0,12,19,.14)';
+        g.lineWidth=.4+Math.random()*2.5;
+        const x=rand(0,512),y=rand(0,512);g.beginPath();g.moveTo(x,y);
+        g.bezierCurveTo(x+30,y-8,x+75,y+11,x+110,y+4);g.stroke();
+    }
+    return c;
+}
+
+/* 해안 쪽에서 반복적으로 터지는 실제 포말 레이어 */
+const waveCrestTex=(function(){
+    const c=cvs(256,64),g=c.getContext('2d');
+    const gr=g.createLinearGradient(0,0,0,64);
+    gr.addColorStop(0,'rgba(240,253,255,0)');
+    gr.addColorStop(.35,'rgba(230,248,255,.48)');
+    gr.addColorStop(.53,'rgba(250,255,255,.85)');
+    gr.addColorStop(.67,'rgba(205,232,238,.40)');
+    gr.addColorStop(1,'rgba(240,253,255,0)');
+    g.fillStyle=gr;g.fillRect(0,0,256,64);
+    speckle(g,256,1100,'rgba(230,250,255,.35)','rgba(25,100,140,.12)');
+    const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+    return t;
+})();
+const coastalBreakers=[];
+function createCoastalBreakers(){
+    const geo=new THREE.PlaneGeometry(1100,12,56,1);
+    const mat=own(new THREE.MeshBasicMaterial({map:waveCrestTex,transparent:true,opacity:.54,
+      side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
+    for(const axis of [0,1])for(const side of [-1,1])for(let layer=0;layer<4;layer++){
+        const m=new THREE.Mesh(geo,mat.clone());
+        own(m.material);
+        m.rotation.x=-Math.PI/2;
+        if(axis) m.rotation.z=Math.PI/2;
+        m.position.set(axis?side*(557+layer*15):0,-.46-layer*.15,axis?0:side*(557+layer*15));
+        m.renderOrder=2;
+        world.add(m);
+        coastalBreakers.push({mesh:m,axis,side,layer,seed:rand(0,6.28)});
+    }
+}
+
+/* 파도 끝에 흩어지는 거품: 하나의 포인트 배치로 렌더링. */
+const sprayCount=400;
+const seaSprayGeo=new THREE.BufferGeometry();
+const seaSprayPos=new Float32Array(sprayCount*3);
+const seaSprayVel=[];
+for(let i=0;i<sprayCount;i++){
+    const side=i%4,along=rand(-555,555),out=rand(0,55);
+    let x=0,z=0;
+    if(side===0){x=along;z=555+out;}
+    else if(side===1){x=along;z=-555-out;}
+    else if(side===2){x=555+out;z=along;}
+    else {x=-555-out;z=along;}
+    seaSprayPos[3*i]=x;seaSprayPos[3*i+1]=rand(-1.1,.5);seaSprayPos[3*i+2]=z;
+    seaSprayVel.push({vx:rand(-.025,.025),vy:rand(-.015,.015),vz:rand(-.025,.025),phase:rand(0,6.28)});
+}
+seaSprayGeo.setAttribute('position',new THREE.BufferAttribute(seaSprayPos,3));
+const sprayMat=new THREE.PointsMaterial({color:0xdbf4f8,size:.46,map:seaFoamTex,
+ transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+const seaSpray=new THREE.Points(seaSprayGeo,sprayMat);seaSpray.frustumCulled=false;seaSpray.visible=false;scene.add(seaSpray);
+
+/* 개별 걸음의 발자국/모래 튀김: 풀링으로 GC와 drawcall 감소 */
+const sandPrintTex=(function(){
+    const c=cvs(64,128),g=c.getContext('2d');
+    g.fillStyle='rgba(53,38,25,.72)';g.beginPath();g.ellipse(32,73,18,36,0,0,Math.PI*2);g.fill();
+    g.fillStyle='rgba(58,40,25,.35)';g.beginPath();g.ellipse(32,101,12,13,0,0,Math.PI*2);g.fill();
+    for(let j=0;j<5;j++){
+      g.fillStyle='rgba(45,32,25,.55)';g.beginPath();g.ellipse(16+j*8,28-(j===0?4:0),4.7-j*.4,6-j*.4,0,0,Math.PI*2);g.fill();
+    }
+    const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+})();
+const sandFx={prints:null,footprints:[],stamp:0,lastX:null,lastZ:null,lastSide:0,seed:0,
+   sandPositions:new Float32Array(330*3),parts:[],particles:null,geometry:null};
+function createSandFx(){
+    const n=128;
+    sandFx.prints=new THREE.InstancedMesh(new THREE.PlaneGeometry(.43,.73),
+        new THREE.MeshBasicMaterial({map:sandPrintTex,transparent:true,opacity:.58,depthWrite:false,
+            polygonOffset:true,polygonOffsetFactor:-2}),n);
+    sandFx.prints.frustumCulled=false;sandFx.prints.count=0;
+    world.add(sandFx.prints);
+    sandFx.footprints=[];
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(sandFx.sandPositions,3));
+    for(let i=0;i<330;i++){
+        sandFx.sandPositions[i*3+1]=-999;
+        sandFx.parts[i]={life:0,vx:0,vy:0,vz:0};
+    }
+    const m=new THREE.PointsMaterial({size:.21,map:seaFoamTex,color:0xe4cba0,
+        transparent:true,opacity:.95,depthWrite:false,sizeAttenuation:true});
+    sandFx.particles=new THREE.Points(g,m);
+    sandFx.particles.frustumCulled=false;world.add(sandFx.particles);
+    sandFx.geometry=g;
+    sandFx.lastX=null;
+    sandFx.lastZ=null;
+    sandFx.stamp=0;
+    sandFx.seed=0;
+}
+function onSandyShore(x,z){
+    const xx=Math.abs(x),zz=Math.abs(z);
+    return (xx<=548 && zz<=548) && ((xx>=496 && zz<=548)||(zz>=496 && xx<=548));
+}
+function scatterSand(x,z,amount,power){
+    if(!sandFx.particles) return;
+    for(let k=0;k<amount;k++){
+      let slot=-1;
+      for(let j=0;j<sandFx.parts.length;j++){
+        sandFx.seed=(sandFx.seed+1)%sandFx.parts.length;
+        if(sandFx.parts[sandFx.seed].life<=0){slot=sandFx.seed;break;}
+      }
+      if(slot<0) break;
+      const p=sandFx.parts[slot],i=slot*3,ang=rand(0,6.28),speed=rand(.025,.1)*power;
+      sandFx.sandPositions[i]=x+rand(-.3,.3);
+      sandFx.sandPositions[i+1]=rand(.075,.23);
+      sandFx.sandPositions[i+2]=z+rand(-.3,.3);
+      p.vx=Math.cos(ang)*speed;p.vy=rand(.06,.19)*power;p.vz=Math.sin(ang)*speed;
+      p.life=16+Math.floor(Math.random()*25);
+    }
+    sandFx.geometry.attributes.position.needsUpdate=true;
+}
+function updateSandFx(){
+    if(!sandFx.prints || mapKey!=='city' || !gameStarted) return;
+    const shore=onSandyShore(player.x,player.z),now=performance.now();
+    if(sandFx.lastX!==null){
+      const dx=player.x-sandFx.lastX,dz=player.z-sandFx.lastZ;
+      const d=Math.hypot(dx,dz);
+      if(shore && d>.07 && d<2 && player.ground && !player.inCar && !player.onBike && !player.riding){
+          sandFx.stamp+=d;
+          if(sandFx.stamp>.55){
+              sandFx.stamp=0;sandFx.lastSide^=1;
+              const side=sandFx.lastSide?.14:-.14;
+              const ox=-dz/d*side,oz=dx/d*side;
+              sandFx.footprints.push({x:player.x+ox,z:player.z+oz,rot:Math.atan2(dx,dz),time:now});
+              if(sandFx.footprints.length>128) sandFx.footprints.shift();
+              scatterSand(player.x,player.z,17,1.13);
+          }
+      }else if(!shore){sandFx.stamp=0;}
+    }
+    sandFx.lastX=player.x;sandFx.lastZ=player.z;
+    const dummy=new THREE.Object3D();let cnt=0;
+    sandFx.footprints=sandFx.footprints.filter(f=>now-f.time<130000);
+    for(let i=sandFx.footprints.length-1;i>=0 && cnt<128;i--){
+        const f=sandFx.footprints[i];
+        if(Math.abs(f.x-player.x)>95||Math.abs(f.z-player.z)>95)continue;
+        const age=(now-f.time)/130000;
+        dummy.position.set(f.x,.083,f.z);
+        dummy.rotation.set(-Math.PI/2,0,-f.rot);
+        dummy.scale.setScalar(1-age*.45);
+        dummy.updateMatrix();sandFx.prints.setMatrixAt(cnt++,dummy.matrix);
+    }
+    sandFx.prints.count=cnt;
+    if(cnt)sandFx.prints.instanceMatrix.needsUpdate=true;
+    const xyz=sandFx.sandPositions;
+    let dirty=false;
+    for(let i=0;i<sandFx.parts.length;i++){
+       const p=sandFx.parts[i];if(p.life<=0)continue;
+       p.life--;dirty=true;const j=i*3;
+       xyz[j]+=p.vx;xyz[j+1]+=p.vy;xyz[j+2]+=p.vz;
+       p.vy-=.015;p.vx*=.965;p.vz*=.965;
+       if(p.life<=0 || xyz[j+1]<.06){p.life=0;xyz[j+1]=-999;}
+    }
+    if(dirty)sandFx.geometry.attributes.position.needsUpdate=true;
+}
+function updateOceanFx(){
+    if(mapKey!=='city'||!gameStarted){seaSpray.visible=false;return;}
+    const t=performance.now()*.001;
+    oceanClock.value=t;
+    const w=weatherState.mist||0;
+    if(cinematicOcean && cinematicOcean.material.uniforms){
+        cinematicOcean.material.uniforms.uMist.value=w;
+        cinematicOcean.material.uniforms.uAurora.value=weatherState.aurora||0;
+    }
+    for(const b of coastalBreakers){
+       const m=b.mesh;
+       const progress=(t*.18+b.layer*.23+b.seed*.07)%1;
+       const edge=554+progress*55;
+       m.position.set(b.axis?b.side*edge:0,-.35-b.layer*.12+Math.sin(t*1.6+b.seed)*.15,b.axis?0:b.side*edge);
+       m.material.opacity=(.15+.35*(1-progress))*Math.sin(Math.PI*progress);
+       m.scale.y=1+.35*Math.sin(t*.9+b.seed);
+    }
+    seaSpray.visible=Math.max(Math.abs(player.x),Math.abs(player.z))>390;
+    if(seaSpray.visible){
+        const a=seaSprayGeo.attributes.position;
+        for(let i=0;i<sprayCount;i++){
+           const y=i*3+1,par=seaSprayVel[i];
+           a.array[y]=-1+Math.abs(Math.sin(t*(.7+par.vy)+par.phase))*rand(.18,1.0);
+        }
+        a.needsUpdate=true;
+    }
+}
+
+let cinematicOcean=null;
 /* =========================================================
    오로라 · 안개 날씨 시스템 (실외 전용)
 ========================================================= */
@@ -1955,15 +2256,16 @@ function zombieGeometry(kind, v){
     const fit   = OUTFITS[v % OUTFITS.length];
     const bald  = (v % 6) === 2 || (v % 6) === 5;
 
-    const runner   = kind === "runner";
+    const leaper   = kind === "leaper";
+    const runner   = kind === "runner" || leaper;
     const crawler  = kind === "crawler";
     const screamer = kind === "screamer";
     const acid     = kind === "acid";
     const pack     = kind === "pack";
     const plain    = !screamer && !acid;            /* 사람 형태를 유지한 개체 */
 
-    const cloth = runner ? 0x4a5560 : fit.top;
-    const pants = runner ? 0x2f3640 : fit.pants;
+    const cloth = leaper ? 0x663340 : (runner ? 0x4a5560 : fit.top);
+    const pants = leaper ? 0x36242d : (runner ? 0x2f3640 : fit.pants);
     const shoeC = runner ? 0xbfbaac : fit.shoe;
 
     /* 체형 */
@@ -2028,8 +2330,11 @@ function zombieGeometry(kind, v){
             t.add(GEO.box, Z_BLOOD, 0, .9, -.5, 0,0,0, .3,.05,.7);
 
         }else if(runner){
-            /* 민소매 운동복 — 드러난 어깨와 팔 */
-            for(const s of [-1,1]) t.add(GEO.sph, skin, s*tw*.47, 1.62, 0, 0,0,0, .185,.165,.195);
+            /* 민소매 운동복 — 도약형은 적갈색 패치를 더해 구별 */
+            for(const s of [-1,1]) {
+                t.add(GEO.sph, skin, s*tw*.47, 1.62, 0, 0,0,0, .185,.165,.195);
+                if(leaper) t.add(GEO.box, 0xb74b35, s*tw*.47, 1.69, .12, 0,0,s*.28,.19,.08,.20);
+            }
             t.add(GEO.box, skin, 0, 1.66, 0, 0,0,0, tw*.99, .14, td*1.02);
             t.add(GEO.box, Z_DARK, 0, 1.3, front, 0,0,0, .3,.03,.03);
             for(let i=0;i<3;i++)
@@ -2336,6 +2641,8 @@ function rollKind(){
         if(r < acc) return "pack";
     }
 
+    const leaperChance = Math.min(.18, .025 + wave*.006);
+    if(wave >= 3 && Math.random() < leaperChance) return "leaper";
     const runnerChance = Math.min(.74, DIFF.run + wave*DIFF.runW);
     if(wave >= 2 && Math.random() < runnerChance) return "runner";
     if(Math.random() < DIFF.crawl) return "crawler";
@@ -2360,6 +2667,7 @@ function createZombie(spawnX, spawnZ, kind){
     const k = kind || rollKind();
     const crawler  = k === "crawler";
     const runner   = k === "runner";
+    const leaper   = k === "leaper";
     const screamer = k === "screamer";
     const acid     = k === "acid";
     const pack     = k === "pack";
@@ -2382,7 +2690,8 @@ function createZombie(spawnX, spawnZ, kind){
     headMesh.castShadow = true;
     head.add(headMesh);
 
-    const eyeMat = runner ? zEyeRed
+    const eyeMat = leaper ? zEyeAmber
+                 : runner ? zEyeRed
                  : screamer ? zEyePale
                  : acid ? zEyeToxic
                  : pack ? zEyeAmber
@@ -2421,6 +2730,7 @@ function createZombie(spawnX, spawnZ, kind){
     group.scale.setScalar(
         acid ? 1.04+Math.random()*.12 :
         screamer ? .99+Math.random()*.1 :
+        leaper ? .93+Math.random()*.08 :
         runner ? .95+Math.random()*.1 :
         pack ? .96+Math.random()*.1 :
         .93+Math.random()*.16);
@@ -2431,6 +2741,7 @@ function createZombie(spawnX, spawnZ, kind){
     let hp = Math.max(1, Math.round(DIFF.hp + wave*DIFF.hpW));
 
     if(runner){   speed *= 2.15; hp = Math.max(1, Math.round(hp*.72)); }
+    if(leaper){   speed *= 1.86; hp = Math.max(1, Math.round(hp*.82)); }
     if(crawler){  speed *= .78; }
     if(screamer){ speed *= .82;  hp = Math.max(1, Math.round(hp*1.15)); }
     if(acid){     speed *= .58;  hp = Math.max(2, Math.round(hp*2.1));  }
@@ -2438,11 +2749,12 @@ function createZombie(spawnX, spawnZ, kind){
 
     const created = {
         mesh:group, rig, head, arms, legs, organ,
-        kind: k, crawler, runner, screamer, acid, pack,
+        kind: k, crawler, runner, leaper, screamer, acid, pack,
         phase: Math.random()*6.28,
         x, z, y:0, vy:0,
         hp, speed, baseSpeed: speed,
         attackTimer:0, lunge:0, screamed:false, stuck:0,
+        jumpCooldown: 80 + Math.floor(Math.random()*70), leapBoost:0,
         alert:0, shadowOn:true,
         parts: (function(){
             const lp = Math.max(1, Math.round(hp*.55));
@@ -2463,7 +2775,7 @@ function createZombie(spawnX, spawnZ, kind){
     }
 
     zombies.push(created);
-    if(runner) runnerCount++;
+    if(runner || leaper) runnerCount++;
     return created;
 }
 
@@ -2784,7 +3096,7 @@ function updateZombies(){
     for(let i=0;i<zombies.length;i++){
         const zb = zombies[i];
 
-        if(zb.runner) zCount.runner++;
+        if(zb.runner || zb.leaper) zCount.runner++;
         else if(zb.screamer) zCount.screamer++;
         else if(zb.acid) zCount.acid++;
         else if(zb.pack) zCount.pack++;
@@ -2798,11 +3110,11 @@ function updateZombies(){
 
         if(zb.alert > 0) zb.alert--;
 
-        if(zb.runner && !zb.screamed && flat < 46){
+        if((zb.runner || zb.leaper) && !zb.screamed && flat < 46){
             zb.screamed = true;
             screechSound();
         }
-        if(zb.runner && flat < 20 && reach) nearRunner = true;
+        if((zb.runner || zb.leaper) && flat < 20 && reach) nearRunner = true;
 
         /* ---- 경보음 개체 — 주기적으로 비명을 지른다 ---- */
         if(zb.screamer){
@@ -2828,6 +3140,20 @@ function updateZombies(){
                 zb.lunge -= 1;
                 if(zb.lunge < -140 && flat < 26){ zb.lunge = 42; }
                 if(zb.lunge > 0) step *= 1.45;
+            }
+            if(zb.leaper){
+                zb.jumpCooldown--;
+                const provoked = performance.now() - lastPlayerJump < 1100;
+                if(zb.vy === 0 && zb.jumpCooldown <= 0 && flat > 3.8 && flat < 22 && reach && (provoked || Math.random() < .009)){
+                    zb.vy = .24 + Math.min(.14, flat*.006);
+                    zb.leapBoost = 14 + Math.floor(flat*.45);
+                    zb.jumpCooldown = 92 + Math.floor(Math.random()*65);
+                    zb.alert = Math.max(zb.alert, 18);
+                }
+                if(zb.leapBoost > 0){
+                    step *= 2.08;
+                    zb.leapBoost--;
+                }
             }
 
             let moved;
@@ -2864,11 +3190,11 @@ function updateZombies(){
         }else if(!screaming){
             zb.attackTimer--;
             if(zb.attackTimer <= 0 && zb.armsLost < 2){
-                const mul = (zb.runner ? 1.3 : zb.acid ? 1.25 : 1) * (zb.armsLost ? .5 : 1);
+                const mul = ((zb.leaper ? 1.45 : zb.runner ? 1.3 : zb.acid ? 1.25 : 1)) * (zb.armsLost ? .5 : 1);
                 player.hp -= DIFF.dmg * mul;
                 damageFlash();
-                shake = Math.max(shake, zb.runner ? .42 : .3);
-                zb.attackTimer = (zb.runner ? 32 : zb.acid ? 54 : 45) * (zb.armsLost ? 1.5 : 1);
+                shake = Math.max(shake, (zb.runner || zb.leaper) ? .42 : .3);
+                zb.attackTimer = ((zb.leaper ? 28 : zb.runner ? 32 : zb.acid ? 54 : 45)) * (zb.armsLost ? 1.5 : 1);
                 if(player.hp <= 0){ player.hp = 0; endGame(); return; }
             }else if(zb.attackTimer <= 0){
                 /* 두 팔을 잃으면 들이받기만 한다 */
@@ -2904,18 +3230,19 @@ function updateZombies(){
                 zb.rig.position.y = .55;
             }
 
-        }else if(zb.runner){
-            zb.phase += .23;
+        }else if(zb.runner || zb.leaper){
+            zb.phase += zb.leaper ? .26 : .23;
             const gait = Math.sin(zb.phase);
-            const burst = zb.lunge > 0 ? .22 : 0;
-            zb.legs[0].rotation.x = gait*1.05;
-            zb.legs[1].rotation.x = -gait*1.05;
-            zb.arms[0].rotation.set(-.35 - gait*1.15, 0, -.3);
-            zb.arms[1].rotation.set(-.35 + gait*1.15, 0, .3);
-            zb.rig.rotation.x = .46 + burst + Math.abs(gait)*.05;
+            const burst = zb.runner && zb.lunge > 0 ? .22 : 0;
+            const airborne = zb.leaper && (zb.vy > .03 || zb.leapBoost > 0);
+            zb.legs[0].rotation.x = gait*(zb.leaper ? 1.18 : 1.05);
+            zb.legs[1].rotation.x = -gait*(zb.leaper ? 1.18 : 1.05);
+            zb.arms[0].rotation.set((airborne ? -.95 : -.35) - gait*1.15, 0, -.3);
+            zb.arms[1].rotation.set((airborne ? -.95 : -.35) + gait*1.15, 0, .3);
+            zb.rig.rotation.x = (zb.leaper ? .54 : .46) + burst + Math.abs(gait)*.05 + (airborne ? .18 : 0);
             zb.rig.rotation.z = .07*Math.sin(zb.phase*.5);
-            zb.rig.position.y = -.12 + Math.abs(gait)*.085;
-            zb.head.rotation.set(-.42, 0, .1*gait);
+            zb.rig.position.y = (zb.leaper ? -.08 : -.12) + Math.abs(gait)*.085 + (airborne ? .08 : 0);
+            zb.head.rotation.set(airborne ? -.7 : -.42, 0, .1*gait);
             if(flat <= 1.7 && reach){
                 zb.arms[0].rotation.x = -2.0+.5*Math.sin(zb.phase*2);
                 zb.arms[1].rotation.x = -2.0-.5*Math.sin(zb.phase*2);
@@ -3015,6 +3342,11 @@ function updateZombies(){
         }
 
         zb.mesh.position.set(zb.x, zb.y, zb.z);
+        if(mapKey==='city' && gameStarted && onSandyShore(zb.x,zb.z) &&
+            zb.y < 1 && Math.hypot(zb.x-player.x,zb.z-player.z)<48 &&
+            (Math.floor(performance.now()/80)+i*17)%10===0){
+            scatterSand(zb.x,zb.z,3,zb.runner||zb.leaper?1.5:.65);
+        }
 
         /* 멀리 있는 개체는 그림자 계산에서 뺀다 */
         const wantShadow = flat < 38;
@@ -3025,6 +3357,8 @@ function updateZombies(){
     }
 
     runnerAlert = nearRunner ? 1 : Math.max(0, runnerAlert - .04);
+    const rw = document.getElementById("runnerWarn");
+    if(rw) rw.textContent = zombies.some(z=>z.leaper && Math.hypot(z.x-player.x, z.z-player.z) < 22) ? "⚠ 도약형 좀비 접근" : "⚠ 러너 접근";
     document.getElementById("runnerWarn").style.opacity = nearRunner ? "1" : "0";
 }
 
@@ -3191,7 +3525,7 @@ function killZombie(index){
         }
     }
 
-    if(zb.runner) runnerCount = Math.max(0, runnerCount-1);
+    if(zb.runner || zb.leaper) runnerCount = Math.max(0, runnerCount-1);
     zombies.splice(index,1);
     player.kills++;
 }
@@ -3250,12 +3584,22 @@ function wallNearby(){
 
 function jump(){
     if(!gameStarted || player.inCar) return;
+    let didJump = false;
     if(player.ground){
         player.vy = player.jumpPower;
         player.ground = false;
+        didJump = true;
     }else if(wallNearby() && player.wallJumpCooldown <= 0){
         player.vy = 0.46;
         player.wallJumpCooldown = 25;
+        didJump = true;
+    }
+    if(didJump){
+        lastPlayerJump = performance.now();
+        if(jumpThreatCooldown <= 0 && zombies.length + spawnQueue.length < DIFF.cap && wave >= 2){
+            spawnQueue.push(Math.random() < .72 ? "leaper" : "runner");
+            jumpThreatCooldown = 140;
+        }
     }
 }
 
@@ -3263,6 +3607,7 @@ let bobTime = 0, shake = 0, recoil = 0, moving = false;
 
 function updatePlayer(){
     if(!gameStarted) return;
+    if(jumpThreatCooldown > 0) jumpThreatCooldown--;
     if(player.riding){ updateFloorHUD(); return; }
     if(player.inCar){ updateCar(); return; }
     if(player.onBike){ updateBike(); return; }
@@ -3969,6 +4314,14 @@ function updateAmbience(){
     for(const m of mists){
         m.mesh.position.y = m.baseY + Math.sin(now*.0004+m.seed)*.35;
         m.mesh.rotation.z += .0004;
+    }
+
+    for(const s of seaStrips){
+        s.mesh.position.y = -.65 + Math.sin(now*.0013 + s.seed)*.18;
+        s.mesh.position.x = s.baseX + Math.sin(now*.00055+s.seed)*2.2;
+        s.mesh.position.z = s.baseZ + Math.cos(now*.00062+s.seed)*2.2;
+        s.mesh.material.opacity = .12 + .16*(.5 + .5*Math.sin(now*.0018+s.seed));
+        s.mesh.rotation.z = Math.sin(now*.0007+s.seed)*.08;
     }
 
     for(const s of steams){
@@ -6072,8 +6425,11 @@ const disposables = [];
 function own(resource){ disposables.push(resource); return resource; }
 
 function clearWorld(){
-    for(const arr of [zombies,bullets,pickups,cars,elevators,corpses,decals,lamps,fires,mists,steams,props,spawnQueue,acidPools,hazards,firePatches])
+    for(const arr of [zombies,bullets,pickups,cars,elevators,corpses,decals,lamps,fires,mists,steams,seaStrips,props,spawnQueue,acidPools,hazards,firePatches])
         arr.length = 0;
+    cinematicOcean=null;coastalBreakers.length=0;sandFx.prints=null;
+    sandFx.particles=null;sandFx.lastX=null;sandFx.lastZ=null;
+    seaSpray.visible=false;
 
     while(gibs.length) world.remove(gibs.pop().mesh);
     sawStop();
@@ -6248,7 +6604,7 @@ function buildCity(){
     const groundMat = own(new THREE.MeshStandardMaterial({
         map: colorTex(asphaltCanvas("#4c4e47"),100,100), roughness:.8
     }));
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200,1200), groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1080,1080), groundMat);
     ground.rotation.x = -Math.PI/2;
     ground.receiveShadow = true;
     world.add(ground);
@@ -6676,6 +7032,43 @@ function buildCity(){
     createBike(9, -44, 0, 0x27424f);
     createBike(-120, 18, Math.PI, 0x4a4326);
 
+    /* ---- 섬 해안선 · 거친 바다 ---- */
+    const sandCan=(function(){
+        const c=cvs(512),g=c.getContext('2d');
+        g.fillStyle='#b2a27e';g.fillRect(0,0,512,512);
+        speckle(g,512,42000,'rgba(241,213,158,.19)','rgba(57,41,26,.13)');
+        stains(g,512,34,'rgba(86,70,49,.1)',80);
+        for(let y=0;y<512;y+=8){
+            g.beginPath();g.moveTo(0,y);
+            for(let x=0;x<=512;x+=12)g.lineTo(x,y+Math.sin(x*.04+y*.06)*2.4);
+            g.strokeStyle='rgba(255,244,203,.055)';g.lineWidth=2;g.stroke();
+        }
+        return c;
+    })();
+    const beachMat = own(new THREE.MeshStandardMaterial({
+        map: colorTex(sandCan,18,4), bumpMap:reliefTex(sandCan,18,4),
+        bumpScale:.13,roughness:.97,color:0xe4cf9e
+    }));
+    cinematicOcean=makeCinematicOcean();
+    createCoastalBreakers();
+    createSandFx();
+
+    surface(0, 525, 1100, 58, beachMat, .052);
+    surface(0,-525, 1100, 58, beachMat, .052);
+    surface(525,0, 58, 1100, beachMat, .052);
+    surface(-525,0, 58, 1100, beachMat, .052);
+
+    const cliffMat = own(new THREE.MeshStandardMaterial({ map: colorTex(concreteCanvas("#4e504c"),6,2), roughness:1 }));
+    for(const side of [-1,1]){
+        crate(0, -1.2, side*560, 1120, 3.1, 18, cliffMat);
+        crate(side*560, -1.2, 0, 18, 3.1, 1120, cliffMat);
+    }
+    for(let i=0;i<26;i++) addSeaStrip(rand(-560,560), 580 + rand(-24,24), 70+Math.random()*65, 12+Math.random()*10, .16+Math.random()*.1);
+    for(let i=0;i<26;i++) addSeaStrip(rand(-560,560), -580 + rand(-24,24), 70+Math.random()*65, 12+Math.random()*10, .16+Math.random()*.1);
+    for(let i=0;i<20;i++) addSeaStrip(580 + rand(-24,24), rand(-560,560), 12+Math.random()*10, 70+Math.random()*65, .16+Math.random()*.1);
+    for(let i=0;i<20;i++) addSeaStrip(-580 + rand(-24,24), rand(-560,560), 12+Math.random()*10, 70+Math.random()*65, .16+Math.random()*.1);
+    for(let i=0;i<18;i++) addMist(rand(-640,640), pick([620,-620]), rand(80,150), -1.2);
+
     return { alleyBlocks, forestTrees, apt };
 }
 
@@ -6687,8 +7080,8 @@ function cityTick(state, now){
     const inForest = Math.max(Math.abs(player.x),Math.abs(player.z)) > 258;
 
     document.getElementById("districtHUD").textContent =
-        (inForest ? "숲 공원 · 나무 사이 / 지면 주의"
-                  : b ? "좁은 골목 · 모퉁이 주의" : "차도 / 교차로") +
+        ((Math.max(Math.abs(player.x),Math.abs(player.z)) > 500) ? "해안가 · 거친 파도 / 낙하 주의" : (inForest ? "숲 공원 · 나무 사이 / 지면 주의"
+                  : b ? "좁은 골목 · 모퉁이 주의" : "차도 / 교차로")) +
         " · 확대 " + Math.round(75/zoomFov*100) + "%";
 
     if(!gameStarted || gameOver) return;
@@ -6761,6 +7154,26 @@ function cityTick(state, now){
             state.lastForest = now;
             showScare(sawRunner ? "나무 사이로 빠르게 다가옵니다!" : "나무 사이에서 무언가 움직입니다…");
         }
+    }
+
+    /* 백사장까지 추격: 뒤쪽 숲에서 새 감염체가 나와 해안으로 계속 따라온다. */
+    const onBeach=onSandyShore(player.x,player.z);
+    if(onBeach && now-(state.lastBeachThreat||-Infinity)>9000 && zombies.length<DIFF.cap-5){
+        const a=Math.atan2(player.z,player.x);
+        let count=0;
+        for(let k=0;k<12&&count<3;k++){
+            const angle=a+rand(-.55,.55);
+            const nx=player.x-Math.cos(angle)*rand(17,29)+rand(-4,4);
+            const nz=player.z-Math.sin(angle)*rand(17,29)+rand(-4,4);
+            if(Math.max(Math.abs(nx),Math.abs(nz))<546 && Math.hypot(nx-player.x,nz-player.z)>12){
+                if(!blocked(nx,1.7,nz) && currentMap.inBounds(nx,nz)){
+                    const enemy=createZombie(nx,nz,k===0?'leaper':(Math.random()<.3?'runner':'walker'));
+                    if(enemy)count++;
+                }
+            }
+        }
+        state.lastBeachThreat=now;
+        if(count)showScare('해안 뒤쪽 숲에서 좀비가 백사장으로 쏟아집니다!');
     }
 
     state.wasInForest = inForest;
@@ -7825,14 +8238,14 @@ const MAPS = {
         light:{ hemi:.95, sun:1.15, rim:.5 }, ashTop:42, ashOpacity:.34,
         ambient:[44,57.5,88],
         build: buildCity, tick: cityTick,
-        inBounds:(x,z) => Math.abs(x) < 470 && Math.abs(z) < 470,
+        inBounds:(x,z) => Math.abs(x) < 548 && Math.abs(z) < 548,
         levelLabel:(x,y,z) => {
             const apt = { x:70, z:70, w:42, d:34 };
             if(x > apt.x-apt.w/2 && x < apt.x+apt.w/2 && z > apt.z-apt.d/2 && z < apt.z+apt.d/2)
                 return "🏢 아파트 " + (Math.min(4, Math.floor(Math.max(0,y)/4))+1) + "층";
             return "🏙 거리";
         },
-        state:{ lastAmbush:-Infinity, lastForest:-Infinity, wasInForest:false }
+        state:{ lastAmbush:-Infinity, lastForest:-Infinity, lastBeachThreat:-Infinity, wasInForest:false }
     },
 
     mall: {
@@ -7926,6 +8339,7 @@ function startGame(key, diff){
 
     /* 한 프레임 뒤에 생성 — 로딩 문구가 먼저 보이도록 */
     setTimeout(function(){
+        try {
         clearWorld();
 
         wave = 0;
@@ -7987,6 +8401,19 @@ function startGame(key, diff){
         if(document.body.requestPointerLock) document.body.requestPointerLock();
         startAmbient(currentMap.ambient);
         startWave();
+        } catch(err){
+            console.error("맵 생성 실패:", err);
+            gameStarted = false;
+            gameOver = false;
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("startScreen").style.display = "flex";
+            const brief = document.getElementById("brief");
+            if(brief){
+                brief.textContent = "맵 생성 오류: " + (err && err.message ? err.message : "알 수 없는 오류") + " · 다른 맵을 선택하거나 새로고침해주세요.";
+                brief.style.color = "#ff9d89";
+            }
+            alert("게임 시작 오류: " + (err && err.message ? err.message : "알 수 없는 오류"));
+        }
     }, 60);
 }
 
@@ -8018,6 +8445,7 @@ function endGame(){
 let menuMap = "city", menuDiff = "normal";
 
 function refreshBrief(){
+    document.getElementById("brief").style.color = "";
     const m = MAPS[menuMap], d = DIFFS[menuDiff];
     const first = Math.round(d.first), per = Math.round(d.per);
     const runner = Math.round(Math.min(.74, d.run + 3*d.runW)*100);
@@ -8080,6 +8508,8 @@ function update(){
     updateCinematicVisuals();
     updateFlare();
     updateWeather();
+    updateOceanFx();
+    updateSandFx();
     updateAmbience();
     updateAsh();
     updateBlood();
