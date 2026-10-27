@@ -331,7 +331,7 @@ body.mapOpen #floorHUD{top:576px}
 <div id="acidVig"></div>
 <div id="damageFlash"></div>
 
-<div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~7 무기(5 체인소 · 6 방망이 · 7 바주카) · <b style="color:#e8c568">F 손전등</b> · <b style="color:#b571e8">M 지도</b> · T 섬광탄 · 휠 확대 · N 사운드</div>
+<div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~9 무기(5 체인소 · 6 방망이 · 7 바주카 · 8 유탄 · 9 단검) · <b style="color:#e8c568">F 손전등</b> · <b style="color:#b571e8">M 지도</b> · T 섬광탄 · 휠 확대 · N 사운드</div>
 <div id="credit"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
@@ -1277,7 +1277,7 @@ const player = {
     hp:100, kills:0,
     speed:0.24, gravity:0.018, jumpPower:0.42,
     yaw:0, pitch:0, floor:0,
-    wallJumpCooldown:0, shootCooldown:0, stuckFrames:0,
+    wallJumpCooldown:0, wallJumps:0, shootCooldown:0, stuckFrames:0,
     reload:false, reloadTimer:0,
     weapon:1,
     inCar:false, car:null, riding:false,
@@ -1294,7 +1294,12 @@ const weapons = {
     6:{ name:"야구방망이", damage:7, maxAmmo:1, reserve:0, fireDelay:26, model:"bat",
         melee:true, swing:true, infinite:true, reach:3.4, arc:.42 },
     7:{ name:"바주카포", damage:0, maxAmmo:1, reserve:4, fireDelay:72, model:"bazooka",
-        blast:true, radius:8.2, blastDamage:150, reloadTime:110 }
+        blast:true, radius:8.2, blastDamage:150, reloadTime:110 },
+    8:{ name:"유탄발사기", damage:0, maxAmmo:6, reserve:12, fireDelay:34, model:"launcher",
+        lob:true, radius:5.4, blastDamage:95, reloadTime:150, unit:"유탄" },
+    9:{ name:"단검", damage:3, maxAmmo:1, reserve:0, fireDelay:13, model:"dagger",
+        melee:true, swing:true, stab:true, infinite:true, reach:2.3, arc:.74,
+        swingSpeed:.14, severChance:.55 }
 };
 
 const ammo = {
@@ -1304,7 +1309,9 @@ const ammo = {
     4:{ clip:25, reserve:100 },
     5:{ clip:100,reserve:200 },
     6:{ clip:1,  reserve:0 },
-    7:{ clip:1,  reserve:4 }
+    7:{ clip:1,  reserve:4 },
+    8:{ clip:6,  reserve:12 },
+    9:{ clip:1,  reserve:0 }
 };
 
 function resetAmmo(scale){
@@ -1315,6 +1322,8 @@ function resetAmmo(scale){
     ammo[5] = { clip:100,reserve:Math.round(140*scale) };
     ammo[6] = { clip:1,  reserve:0 };                       /* 방망이는 소모되지 않는다 */
     ammo[7] = { clip:1,  reserve:Math.max(1, Math.round(4*scale)) };
+    ammo[8] = { clip:6,  reserve:Math.max(6, Math.round(12*scale)) };
+    ammo[9] = { clip:1,  reserve:0 };                      /* 단검은 소모되지 않는다 */
 }
 
 
@@ -2423,7 +2432,7 @@ window.addEventListener("keydown", function(e){
 
     if(e.code === "KeyT" && !e.repeat) launchFlare();
     if(e.code === "Space"){ e.preventDefault(); jump(); }
-    if(e.key >= "1" && e.key <= "7") changeWeapon(Number(e.key));
+    if(e.key >= "1" && e.key <= "9") changeWeapon(Number(e.key));
     if(e.key.toLowerCase() === "r") reload();
     if(e.key.toLowerCase() === "e") interact();
     if(e.code === "KeyF" && !e.repeat) toggleFlash();
@@ -2491,6 +2500,8 @@ const gunDark = new THREE.MeshStandardMaterial({ color:0x2f3438, metalness:.35, 
 const gunWood = new THREE.MeshStandardMaterial({ color:0x7a5531, roughness:.75 });
 /* 배트 기본 자세 — 오른 어깨 뒤에 세워 둔다 */
 const BAT_REST = { p:[.0,.06,.14], r:[.62,-.5,-.3] };
+/* 단검 기본 자세 — 역수로 비스듬히 쥔다 */
+const DAGGER_REST = { p:[-.05,-.04,.1], r:[.34,-.62,.26] };
 const batMat     = new THREE.MeshStandardMaterial({ color:0x9fa7ad, metalness:.82, roughness:.3 });
 const batGripMat = new THREE.MeshStandardMaterial({ color:0x24262a, roughness:.95 });
 const batBandMat = new THREE.MeshStandardMaterial({ color:0x6b2f26, roughness:.8 });
@@ -2498,6 +2509,8 @@ const Z_RED      = new THREE.MeshStandardMaterial({ color:0x4b1210, roughness:.9
 const rpgTube    = new THREE.MeshStandardMaterial({ color:0x4d5443, metalness:.45, roughness:.6 });
 const rpgScope   = new THREE.MeshStandardMaterial({ color:0x1b1f22, metalness:.4, roughness:.35 });
 const rpgWarhead = new THREE.MeshStandardMaterial({ color:0x7d3326, metalness:.35, roughness:.55 });
+const daggerBlade= new THREE.MeshStandardMaterial({ color:0xb8c0c6, metalness:.92, roughness:.18 });
+const daggerEdge = new THREE.MeshStandardMaterial({ color:0xe8eef2, metalness:.95, roughness:.08 });
 
 function buildGun(type, scale){
     const g = new THREE.Group();
@@ -2552,6 +2565,31 @@ function buildGun(type, scale){
         for(let i=0;i<4;i++) add(.215,.215,.05, 0,0,-.62-i*.22, batBandMat);
         add(.12,.06,.2, .09,.08,-1.0, Z_RED);              /* 말라붙은 피 */
 
+    }else if(type === "launcher"){
+        /* 6연발 리볼버식 유탄발사기 */
+        add(.3,.3,1.25, 0,0,-.32, rpgTube);                /* 총열 */
+        add(.34,.34,.16, 0,0,-.96, rpgTube);
+        add(.56,.56,.42, 0,-.02,.16, gunDark);             /* 탄창 드럼 */
+        for(let i=0;i<6;i++){                              /* 드럼의 유탄 6발 */
+            const a = i/6*6.283;
+            add(.12,.12,.46, Math.cos(a)*.17, -.02+Math.sin(a)*.17, .16, rpgWarhead);
+        }
+        add(.14,.34,.2, 0,-.3,-.08, gunDark);              /* 손잡이 */
+        add(.26,.14,.34, 0,-.2,-.6, rpgTube);              /* 전방 그립 */
+        add(.12,.1,.26, 0,.22,-.3, gunDark);               /* 조준기 */
+        add(.1,.2,.1, 0,.26,-.74, gunDark);
+        add(.3,.1,.42, 0,-.06,.52, gunDark);               /* 개머리판 */
+
+    }else if(type === "dagger"){
+        /* 전투 단검 — 손잡이를 원점에 둔다 */
+        add(.085,.085,.4, 0,0,.2, batGripMat);             /* 손잡이 */
+        add(.14,.05,.075, 0,0,-.02, gunDark);              /* 가드 */
+        add(.1,.1,.08, 0,0,.42, gunDark);                  /* 끝 */
+        add(.1,.03,.78, 0,0,-.44, daggerBlade);            /* 칼날 */
+        add(.05,.034,.3, 0,0,-.96, daggerBlade);           /* 칼끝 */
+        add(.055,.02,.5, .02,.006,-.5, daggerEdge);        /* 날선 */
+        add(.07,.035,.16, 0,0,-.52, Z_RED);                /* 핏자국 */
+
     }else if(type === "bazooka"){
         /* 발사관 · 조준경 · 손잡이 */
         add(.34,.34,2.5, 0,0,-.3, rpgTube);
@@ -2598,7 +2636,9 @@ function refreshViewModel(){
     if(currentViewGun) viewModel.remove(currentViewGun);
     const w = weapons[player.weapon];
     currentViewGun = buildGun(w.model,
-        w.model === "chainsaw" ? .2 : w.model === "bazooka" ? .3 : w.model === "bat" ? .34 : .26);
+        w.model === "chainsaw" ? .2 : w.model === "bazooka" ? .3
+      : w.model === "bat" ? .34 : w.model === "launcher" ? .33
+      : w.model === "dagger" ? .46 : .26);
     if(w.model === "chainsaw"){
         currentViewGun.position.set(-.02, -.01, .06);
         currentViewGun.rotation.set(.03, -.1, -.06);
@@ -2608,6 +2648,12 @@ function refreshViewModel(){
     }else if(w.model === "bat"){
         currentViewGun.position.set(BAT_REST.p[0], BAT_REST.p[1], BAT_REST.p[2]);
         currentViewGun.rotation.set(BAT_REST.r[0], BAT_REST.r[1], BAT_REST.r[2]);
+    }else if(w.model === "dagger"){
+        currentViewGun.position.set(DAGGER_REST.p[0], DAGGER_REST.p[1], DAGGER_REST.p[2]);
+        currentViewGun.rotation.set(DAGGER_REST.r[0], DAGGER_REST.r[1], DAGGER_REST.r[2]);
+    }else if(w.model === "launcher"){
+        currentViewGun.position.set(-.08, .0, .08);
+        currentViewGun.rotation.set(.02, .05, 0);
     }else{
         currentViewGun.position.set(0,0,0);
         currentViewGun.rotation.set(0,0,0);
@@ -2635,7 +2681,8 @@ let viewKick = 0, viewSway = 0;
 function spawnWeapon(type,x,y,z){
     const group = new THREE.Group();
     const model = buildGun(type,
-        type === "chainsaw" ? .55 : type === "bazooka" ? .5 : type === "bat" ? .62 : .9);
+        type === "chainsaw" ? .55 : type === "bazooka" ? .5 : type === "bat" ? .62
+      : type === "launcher" ? .55 : type === "dagger" ? .85 : .9);
     model.rotation.z = .35;
     group.add(model);
 
@@ -4100,16 +4147,37 @@ function wallNearby(){
            blocked(player.x, player.y, player.z-d);
 }
 
+/* 몸이 붙어 있는 벽의 반대 방향 */
+function wallAwayDir(){
+    const d = 0.75;
+    let ax = 0, az = 0;
+    if(blocked(player.x+d, player.y, player.z)) ax -= 1;
+    if(blocked(player.x-d, player.y, player.z)) ax += 1;
+    if(blocked(player.x, player.y, player.z+d)) az -= 1;
+    if(blocked(player.x, player.y, player.z-d)) az += 1;
+    const len = Math.hypot(ax, az);
+    return len ? { x:ax/len, z:az/len } : null;
+}
+
 function jump(){
     if(!gameStarted || player.inCar) return;
     let didJump = false;
     if(player.ground){
         player.vy = player.jumpPower;
         player.ground = false;
+        player.wallJumps = 0;                  /* 착지해야 벽 차기가 돌아온다 */
         didJump = true;
-    }else if(wallNearby() && player.wallJumpCooldown <= 0){
-        player.vy = 0.46;
-        player.wallJumpCooldown = 25;
+    }else if(player.wallJumps < 1 && player.vy < .06 &&
+             player.wallJumpCooldown <= 0 && wallNearby()){
+        /* 벽 차기는 공중에서 단 한 번 — 떨어지는 중에만, 그리고 벽에서 밀려난다 */
+        player.vy = 0.34;
+        player.wallJumps++;
+        player.wallJumpCooldown = 18;
+        const away = wallAwayDir();
+        if(away){
+            const nx = player.x + away.x*.55, nz = player.z + away.z*.55;
+            if(!blocked(nx, player.y, nz)){ player.x = nx; player.z = nz; }
+        }
         didJump = true;
     }
     if(didJump){
@@ -4197,6 +4265,7 @@ function updatePlayer(){
         player.y = floorY;
         player.vy = 0;
         player.ground = true;
+        player.wallJumps = 0;
     }else{
         player.ground = false;
     }
@@ -4274,6 +4343,15 @@ function shoot(){
     }
 
     if(current.clip <= 0){ reload(); return; }
+
+    /* 유탄발사기 — 포물선 유탄 */
+    if(weapon.lob){
+        current.clip--;
+        player.shootCooldown = weapon.fireDelay;
+        fireGrenade();
+        updateWeaponHUD();
+        return;
+    }
 
     /* 바주카포 — 로켓 한 발 */
     if(weapon.blast){
@@ -4546,7 +4624,8 @@ function interact(){
     const nearest = nearestPickup();
     if(nearest.pickup && nearest.distance < 3.2){
         const pickup = nearest.pickup;
-        const weaponNumber = { pistol:1, rifle:2, shotgun:3, smg:4, chainsaw:5, bat:6, bazooka:7 }[pickup.type];
+        const weaponNumber = { pistol:1, rifle:2, shotgun:3, smg:4, chainsaw:5, bat:6, bazooka:7,
+                               launcher:8, dagger:9 }[pickup.type];
 
         if(weaponNumber){
             player.weapon = weaponNumber;
@@ -4589,6 +4668,7 @@ function updateWeaponHUD(){
         (player.reload ? (weapon.blast ? "재장전 중…" : weapon.melee ? "급유 중…" : "장전 중…")
          : weapon.infinite ? "내구도 무제한"
          : weapon.blast ? ("로켓 " + current.clip + " / 예비 " + current.reserve)
+         : weapon.lob ? ("유탄 " + current.clip + " / " + weapon.maxAmmo + " · 예비 " + current.reserve)
          : weapon.melee ? ("연료 " + Math.round(current.clip) + "% · 예비 " + current.reserve)
                         : (current.clip + " / " + current.reserve));
 
@@ -4596,10 +4676,12 @@ function updateWeaponHUD(){
         Math.round(current.clip/weapon.maxAmmo*100) + "%";
 
     let html = "";
-    for(let i=1;i<=7;i++){
+    for(let i=1;i<=9;i++){
         const active = i === player.weapon;
         const w = weapons[i];
-        const tag = w.swing ? "<i class='auto saw'>타격</i>"
+        const tag = w.stab ? "<i class='auto saw'>찌르기</i>"
+                  : w.swing ? "<i class='auto saw'>타격</i>"
+                  : w.lob ? "<i class='auto saw'>곡사</i>"
                   : w.blast ? "<i class='auto saw'>폭발</i>"
                   : w.melee ? "<i class='auto saw'>절단</i>"
                   : w.auto  ? "<i class='auto'>연발</i>" : "";
@@ -6676,7 +6758,7 @@ let swingT = 0, swingHit = false;
 
 function swingBat(){
     if(player.shootCooldown > 0 || swingT > 0) return;
-    const w = weapons[6];
+    const w = weapons[player.weapon];
     swingT = 1;
     swingHit = false;
     player.shootCooldown = w.fireDelay;
@@ -6722,10 +6804,34 @@ function thudSound(){
 /* 휘두르는 동안 중간 지점에서 전방 부채꼴을 때린다 */
 function batTick(){
     if(swingT <= 0) return;
-    swingT = Math.max(0, swingT - .055);
+    const w0 = weapons[player.weapon];
+    if(!w0 || !w0.swing){ swingT = 0; return; }
+    w0.hitFrom = w0.stab ? .26 : .35;
+    w0.hitTo   = w0.stab ? .56 : .62;
+    swingT = Math.max(0, swingT - (w0.swingSpeed || .055));
 
     const phase = 1 - swingT;                       /* 0 → 1 */
-    if(currentViewGun && weapons[player.weapon].swing){
+
+    /* ---- 단검: 앞으로 쭉 찌르고 되돌아온다 ---- */
+    if(currentViewGun && w0.stab){
+        const R = DAGGER_REST;
+        if(swingT <= 0){
+            currentViewGun.position.set(R.p[0], R.p[1], R.p[2]);
+            currentViewGun.rotation.set(R.r[0], R.r[1], R.r[2]);
+        }else{
+            const pull = Math.min(1, phase/.22);
+            const out  = Math.max(0, (phase-.22)/.38);
+            const back = Math.max(0, (phase-.60)/.40);
+            const reach = Math.min(1, out) - back;
+            currentViewGun.position.x = R.p[0] + pull*.06 - reach*.12;
+            currentViewGun.position.y = R.p[1] + pull*.03 - reach*.05;
+            currentViewGun.position.z = R.p[2] + pull*.12 - reach*.46;
+            currentViewGun.rotation.x = R.r[0] - pull*.2 + reach*.26;
+            currentViewGun.rotation.y = R.r[1] + pull*.3 + reach*.52;
+            currentViewGun.rotation.z = R.r[2] + pull*.15 - reach*.3;
+        }
+    }
+    else if(currentViewGun && w0.swing){
         if(swingT <= 0){
             currentViewGun.position.set(BAT_REST.p[0], BAT_REST.p[1], BAT_REST.p[2]);
             currentViewGun.rotation.set(BAT_REST.r[0], BAT_REST.r[1], BAT_REST.r[2]);
@@ -6743,10 +6849,10 @@ function batTick(){
         }
     }
 
-    if(swingHit || phase < .35 || phase > .62) return;
+    if(swingHit || phase < w0.hitFrom || phase > w0.hitTo) return;
     swingHit = true;
 
-    const w = weapons[6];
+    const w = w0;
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     let hits = 0;
 
@@ -6763,20 +6869,134 @@ function batTick(){
         const part = hitPartOf(zb, player.x + fx*d, aimY, player.z + fz*d);
         bloodBurst(zb.x, aimY, zb.z);
 
-        /* 쳐서 날려 보낸다 */
-        const push = 2.2 + Math.random()*1.2;
-        const bx = zb.x + (dx/d)*push, bz = zb.z + (dz/d)*push;
-        if(!blocked(bx, zb.y+1.7, bz, .5)){ zb.x = bx; zb.z = bz; }
+        if(!w.stab){
+            /* 방망이 — 쳐서 날려 보낸다 */
+            const push = 2.2 + Math.random()*1.2;
+            const bx = zb.x + (dx/d)*push, bz = zb.z + (dz/d)*push;
+            if(!blocked(bx, zb.y+1.7, bz, .5)){ zb.x = bx; zb.z = bz; }
+        }
         zb.stuck = 0;
         zb.alert = Math.max(zb.alert, 120);
 
-        if(damagePart(zb, part, w.damage, Math.random() < .3)) killZombie(i);
+        /* 단검은 밀어내는 대신 잘라 낸다 — 머리를 노리면 한 번에 끝난다 */
+        const sever = Math.random() < (w.severChance || .3);
+        if(damagePart(zb, part, w.damage * (w.stab && part === "head" ? 2.4 : 1), sever))
+            killZombie(i);
+        if(w.stab) break;                /* 찌르기는 한 번에 한 놈만 */
     }
 
     if(hits){
         thudSound();
         shake = Math.max(shake, .16);
         viewKick = Math.min(1, viewKick + .4);
+    }
+}
+
+
+/* =========================================================
+   유탄발사기 — 포물선 유탄
+========================================================= */
+
+const grenades = [];
+const grenadeMat = new THREE.MeshStandardMaterial({ color:0x4c5340, metalness:.5, roughness:.55 });
+const grenadeTip = new THREE.MeshStandardMaterial({ color:0x8a7324, metalness:.6, roughness:.4 });
+
+function fireGrenade(){
+    const w = weapons[8];
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.3,8), grenadeMat);
+    body.rotation.x = Math.PI/2;
+    g.add(body);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(.1,8,6), grenadeTip);
+    nose.position.z = -.16;
+    g.add(nose);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.105,.022,5,10), grenadeTip);
+    ring.rotation.y = Math.PI/2;
+    g.add(ring);
+
+    g.position.copy(camera.position).addScaledVector(dir, 1.0);
+    world.add(g);
+
+    /* 살짝 위로 띄워 던진다 — 벽 너머로 넘길 수 있다 */
+    grenades.push({
+        mesh:g,
+        vx: dir.x*.78, vy: dir.y*.78 + .10, vz: dir.z*.78,
+        spin: rand(.1,.3), fuse: 150, bounces: 0,
+        radius: w.radius, dmg: w.blastDamage
+    });
+
+    launcherSound();
+    recoil += .045;
+    shake = Math.max(shake, .16);
+    viewKick = Math.min(1, viewKick + .6);
+    muzzleFlash.material.opacity = .9;
+    muzzleFlash.rotation.z = Math.random()*6.28;
+    muzzleLight.intensity = 18;
+}
+
+function launcherSound(){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    try{
+        const o = ctx.createOscillator(), g2 = ctx.createGain();
+        o.type = "square";
+        o.frequency.setValueAtTime(260, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(70, ctx.currentTime+.12);
+        g2.gain.setValueAtTime(.22, ctx.currentTime);
+        g2.gain.exponentialRampToValueAtTime(.001, ctx.currentTime+.18);
+        o.connect(g2); g2.connect(ctx.destination);
+        o.start(); o.stop(ctx.currentTime+.19);
+    }catch(e){}
+}
+
+function updateGrenades(){
+    for(let i=grenades.length-1; i>=0; i--){
+        const g = grenades[i];
+        g.fuse--;
+        g.vy -= .017;                                  /* 확실한 포물선 */
+
+        const nx = g.mesh.position.x + g.vx;
+        const ny = g.mesh.position.y + g.vy;
+        const nz = g.mesh.position.z + g.vz;
+
+        let boom = g.fuse <= 0;
+        const floor = supportHeight(nx, nz, ny, 2) + .12;
+
+        if(!boom && blocked(nx, ny+1.7, nz, .18)){
+            /* 벽에 맞으면 튕긴다 */
+            g.bounces++;
+            if(g.bounces > 2) boom = true;
+            else { g.vx *= -.42; g.vz *= -.42; g.vy *= .5; }
+        }else if(!boom && ny <= floor){
+            g.bounces++;
+            if(g.bounces > 2){ boom = true; }
+            else {
+                g.mesh.position.set(nx, floor, nz);
+                g.vy = Math.abs(g.vy)*.38;
+                g.vx *= .62; g.vz *= .62;
+            }
+        }else if(!boom){
+            g.mesh.position.set(nx, ny, nz);
+        }
+
+        if(!boom){
+            for(const zb of zombies){
+                const d = Math.hypot(g.mesh.position.x-zb.x, g.mesh.position.z-zb.z);
+                const top = zb.crawler ? zb.y+1.0 : zb.y+2.5;
+                if(d < .9 && g.mesh.position.y > zb.y && g.mesh.position.y < top){ boom = true; break; }
+            }
+        }
+
+        g.mesh.rotation.x += g.spin;
+        g.mesh.rotation.y += g.spin*.6;
+
+        if(boom){
+            explode(g.mesh.position.x, g.mesh.position.y-1.0, g.mesh.position.z, g.radius, g.dmg);
+            world.remove(g.mesh);
+            grenades.splice(i,1);
+        }
     }
 }
 
@@ -6925,6 +7145,7 @@ function updateSmokePuffs(){
 
 function clearRideAndOrdnance(){
     bikes.length = 0;
+    while(grenades.length){ world.remove(grenades.pop().mesh); }
     while(rockets.length){ world.remove(rockets.pop().mesh); }
     while(smokePuffs.length){ const s = smokePuffs.pop(); world.remove(s.mesh); s.mesh.material.dispose(); }
     bikeStop();
@@ -7542,7 +7763,9 @@ function buildCity(){
         ["smg",56,12.5,70], ["rifle",84,16.5,70],
         ["pistol",56,0.5,60],
         ["bat",-18,0.5,118], ["bat",62,0.5,-96],
-        ["bazooka",24,0.5,-118], ["bazooka",-92,0.5,44]
+        ["bazooka",24,0.5,-118], ["bazooka",-92,0.5,44],
+        ["launcher",-56,0.5,-78], ["launcher",96,0.5,112],
+        ["dagger",-24,0.5,-8], ["dagger",38,0.5,46], ["dagger",-70,0.5,70]
     ];
     for(const s of spawns) spawnWeapon(s[0],s[1],s[2],s[3]);
 
@@ -8068,6 +8291,10 @@ function buildMall(){
     spawnWeapon("bat", 26, .6, -18);
     spawnWeapon("bat", -20, M.lv[2]+.6, 16);
     spawnWeapon("bazooka", 48, M.lv[1]+.6, -26);
+    spawnWeapon("launcher", -38, M.lv[2]+.6, -30);
+    spawnWeapon("launcher", 34, .6, 44);
+    spawnWeapon("dagger", 14, .6, 10);
+    spawnWeapon("dagger", -10, M.lv[1]+.6, -14);
 
     /* ---- 오토바이 (1층 광장) ---- */
     createBike(-26, 30, Math.PI, 0x6d2b24);          /* 북쪽 통로를 향해 */
@@ -8641,6 +8868,10 @@ function buildFactory(){
     spawnWeapon("bat", 44, F.cat+.6, 6);
     spawnWeapon("bazooka", -58, .6, 94);
     spawnWeapon("bazooka", 20, .6, -30);
+    spawnWeapon("launcher", 52, .6, -62);
+    spawnWeapon("launcher", -16, F.cat+.6, -40);
+    spawnWeapon("dagger", 12, .6, 18);
+    spawnWeapon("dagger", -40, .6, 40);
 
     /* ---- 오토바이 (야적장 · 외곽 숲길) ---- */
     createBike(-14, 86, 0, 0x6d2b24);
@@ -9044,6 +9275,7 @@ function update(){
     animateChain();
 
     batTick();
+    updateGrenades();
     updateRockets();
     updateSmokePuffs();
     updateDarkZone();
