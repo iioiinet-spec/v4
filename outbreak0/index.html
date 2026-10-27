@@ -1252,8 +1252,11 @@ function freeSpot(x,z,y,rad){
     return null;
 }
 
+/* 맵이 자체 지형(해변 경사 등)을 가질 때 쓰는 훅 — 없으면 바닥은 y=0 */
+let terrainY = null;
+
 function supportHeight(x,z,feetY,step){
-    let best = 0;
+    let best = terrainY === null ? 0 : terrainY(x,z);
     const tol = step === undefined ? .5 : step;
     const list = platCells.get(cellKey(Math.floor(x/CELL), Math.floor(z/CELL)));
     if(list){
@@ -1270,6 +1273,8 @@ function supportHeight(x,z,feetY,step){
 /* =========================================================
    플레이어 · 무기
 ========================================================= */
+
+let wadeBob = 0, wadeSplashT = 0, lastWadeDepth = 0;
 
 const player = {
     x:0, y:1.7, z:170,
@@ -1542,7 +1547,7 @@ function addSeaStrip(x,z,w,d,alpha){
     }));
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d),mat);
     m.rotation.x=-Math.PI/2;
-    m.position.set(x,-.65,z);
+    m.position.set(x,SEA_LEVEL+.07,z);
     m.renderOrder=3;
     world.add(m);
     seaStrips.push({mesh:m,baseX:x,baseZ:z,w,d,seed:Math.random()*10});
@@ -1564,7 +1569,7 @@ function makeCinematicOcean(){
             uTime:oceanClock, uNoise:{value:noiseMap},
             uMist:oceanMist, uAurora:oceanAurora, uEye:oceanEye,
             uMoon:{value:MOON_DIR.clone()},
-            uShore:{value:556.0}
+            uShore:{value:488.0}, uWaterLine:{value:510.0}
         },
         transparent:false, depthWrite:true, side:THREE.DoubleSide,
         vertexShader: `
@@ -1590,10 +1595,11 @@ function makeCinematicOcean(){
 
             float w = 2.10*a + 1.35*b + 0.62*c + 0.26*d + 0.11*e;
 
-            /* 섬에 가까울수록 너울을 눕힌다 — 마루가 육지 위로 솟지 않게 */
+            /* 물가에서 먼 바다로 갈수록 너울이 자란다 — 수면 가장자리는 모래 밑에 숨는다 */
             float land = max(abs(v.x), abs(v.y));
-            float shoreFade = smoothstep(uShore - 6.0, uShore + 70.0, land);
-            w *= shoreFade;
+            /* 물이 얕을수록 파고가 낮다 — 골이 모래 바닥을 드러내지 않도록 */
+            float swell = pow(smoothstep(uShore + 17.0, uShore + 152.0, land), 1.6);
+            w *= swell;
 
             /* 마루를 뾰족하게 — 실제 파도는 위가 좁고 골이 넓다 */
             float sharp = w + 0.30*w*abs(w)*0.5;
@@ -1633,6 +1639,7 @@ function makeCinematicOcean(){
           uniform vec3  uEye;
           uniform vec3  uMoon;
           uniform float uShore;
+          uniform float uWaterLine;
           uniform sampler2D uNoise;
           varying vec2  vPos;
           varying float vWave;
@@ -1735,19 +1742,34 @@ function makeCinematicOcean(){
             /* 마루에만 초록빛 테두리가 남는다 */
             col += acol * uAurora * smoothstep(1.3, 2.9, vWave) * 0.40;
 
+            float edge = max(abs(p.x), abs(p.y));
+
+            /* ---- 얕은 물 : 바닥 모래가 비쳐 옅은 청록이 된다 ---- */
+            float shoal = 1.0 - smoothstep(uWaterLine - 10.0, uWaterLine + 96.0, edge);
+            vec3  shoalCol = vec3(0.035, 0.074, 0.072);
+            vec3  sandLit  = vec3(0.038, 0.045, 0.034);
+            col = mix(col, shoalCol, shoal*0.40);
+            /* 모래 바닥에 부딪혀 돌아오는 빛 — 얕은 물이 검게 가라앉지 않게 한다 */
+            col += sandLit * shoal*shoal * (0.11 + 0.15*r2);
+            /* 얕은 물 위를 달리는 잔물결 반짝임 */
+            col += moonCol * shoal * pow(max(0.0, dot(N, normalize(uMoon + V))), 30.0) * 0.26;
+
             /* ---- 포말 : 마루 거품 + 해안 파도 ---- */
             float crest = smoothstep(1.35, 2.95, vWave + 1.45*(r2-0.5));
             float foam  = crest * (0.35 + 0.65*r3);
             /* 해안선 바로 앞에서만 부서지는 띠 — 너무 넓으면 바다가 뿌옇게 된다 */
-            float edge = max(abs(p.x), abs(p.y));
-            float coastal = smoothstep(uShore, uShore+26.0, edge)
-                          * (1.0 - smoothstep(uShore+44.0, uShore+108.0, edge));
-            float surf = coastal * smoothstep(0.58, 1.0,
+            float coastal = smoothstep(uWaterLine - 8.0, uWaterLine+12.0, edge)
+                          * (1.0 - smoothstep(uWaterLine+18.0, uWaterLine+42.0, edge));
+            float surf = coastal * smoothstep(0.52, 1.0,
                            0.5 + 0.5*sin(edge*0.14 - uTime*1.45));
-            foam += surf * (0.55 + 0.50*r3);
+            foam += surf * (0.26 + 0.30*r3);
+            /* 물가에 얇게 밀려드는 거품 혀 */
+            float swashBand = 1.0 - smoothstep(0.0, 14.0, edge - uWaterLine + 4.0);
+            swashBand *= smoothstep(-7.0, 1.0, edge - uWaterLine + 4.0);
+            foam += swashBand * (0.28 + 0.30*fbm(p*0.42 + vec2(uTime*0.5, -uTime*0.35)));
             foam = clamp(foam, 0.0, 1.0);
-            vec3 foamCol = vec3(0.70, 0.80, 0.85) + moonCol*0.10;
-            col = mix(col, foamCol, foam*0.70);
+            vec3 foamCol = vec3(0.74, 0.83, 0.87) + moonCol*0.10;
+            col = mix(col, foamCol, foam*0.46);
 
             /* ---- 안개와 거리감 : 수평선을 하늘색으로 녹인다 ---- */
             col = mix(col, vec3(0.030, 0.047, 0.060), clamp(uMist*0.32, 0.0, 0.34));
@@ -1767,7 +1789,7 @@ function makeCinematicOcean(){
     const SEA_SPAN = 2200, SEA_SEG = 224;
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SPAN,SEA_SPAN,SEA_SEG,SEA_SEG),seaMat);
     sea.rotation.x=-Math.PI/2;
-    sea.position.y=-2.2;
+    sea.position.y=SEA_LEVEL;
     sea.frustumCulled=false;
     sea.receiveShadow=false;
     sea.userData.pitch = SEA_SPAN/SEA_SEG;
@@ -1804,15 +1826,15 @@ const waveCrestTex=(function(){
 })();
 const coastalBreakers=[];
 function createCoastalBreakers(){
-    const geo=new THREE.PlaneGeometry(1100,12,56,1);
-    const mat=own(new THREE.MeshBasicMaterial({map:waveCrestTex,transparent:true,opacity:.54,
+    const geo=new THREE.PlaneGeometry(1180,15,60,1);
+    const mat=own(new THREE.MeshBasicMaterial({map:waveCrestTex,transparent:true,opacity:.40,
       side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));
-    for(const axis of [0,1])for(const side of [-1,1])for(let layer=0;layer<4;layer++){
+    for(const axis of [0,1])for(const side of [-1,1])for(let layer=0;layer<3;layer++){
         const m=new THREE.Mesh(geo,mat.clone());
         own(m.material);
         m.rotation.x=-Math.PI/2;
         if(axis) m.rotation.z=Math.PI/2;
-        m.position.set(axis?side*(557+layer*15):0,-.46-layer*.15,axis?0:side*(557+layer*15));
+        m.position.set(axis?side*(SHORE_LINE+6+layer*11):0,SEA_LEVEL+.12-layer*.04,axis?0:side*(SHORE_LINE+6+layer*11));
         m.renderOrder=2;
         world.add(m);
         coastalBreakers.push({mesh:m,axis,side,layer,seed:rand(0,6.28)});
@@ -1956,18 +1978,29 @@ function updateOceanFx(){
     }
     for(const b of coastalBreakers){
        const m=b.mesh;
-       const progress=(t*.18+b.layer*.23+b.seed*.07)%1;
-       const edge=554+progress*55;
-       m.position.set(b.axis?b.side*edge:0,-.35-b.layer*.12+Math.sin(t*1.6+b.seed)*.15,b.axis?0:b.side*edge);
-       m.material.opacity=(.15+.35*(1-progress))*Math.sin(Math.PI*progress);
-       m.scale.y=1+.35*Math.sin(t*.9+b.seed);
+       /* 파도가 바다 쪽에서 모래 쪽으로 밀려 올라온다 */
+       const progress=(t*.15+b.layer*.17+b.seed*.06)%1;
+       const edge=SHORE_LINE+62-progress*70;
+       const run=Math.sin(Math.PI*progress);
+       m.position.set(b.axis?b.side*edge:0,
+                      SEA_LEVEL+.14+run*.22+Math.sin(t*1.5+b.seed)*.07,
+                      b.axis?0:b.side*edge);
+       /* 물가에 닿을 때 가장 하얗게 부서진다 */
+       m.material.opacity=(.06+.26*progress)*run;
+       m.scale.y=.6+.9*progress;
     }
-    seaSpray.visible=Math.max(Math.abs(player.x),Math.abs(player.z))>390;
+    if(ambientGain && terrainY!==null){
+        /* 해안에 가까울수록 파도 소리가 커진다 */
+        const e=Math.max(Math.abs(player.x),Math.abs(player.z));
+        const near=Math.max(0, Math.min(1, (e-380)/(SHORE_LINE-380)));
+        ambientGain.gain.value=(soundOn?0.03:0)*(1+near*2.6);
+    }
+    seaSpray.visible=Math.max(Math.abs(player.x),Math.abs(player.z))>420;
     if(seaSpray.visible){
         const a=seaSprayGeo.attributes.position;
         for(let i=0;i<sprayCount;i++){
            const y=i*3+1,par=seaSprayVel[i];
-           a.array[y]=-1+Math.abs(Math.sin(t*(.7+par.vy)+par.phase))*rand(.18,1.0);
+           a.array[y]=SEA_LEVEL+Math.abs(Math.sin(t*(.7+par.vy)+par.phase))*rand(.18,1.3);
         }
         a.needsUpdate=true;
     }
@@ -2295,6 +2328,151 @@ function slab(x,y,z,w,d,mat,thick,parent,noCeiling){
 }
 
 /* 상자형 소품 — 보이는 상자 + 충돌 + 윗면 발판 */
+/* =========================================================
+   섬 해변 — 체비셰프 반지름 e = max(|x|,|z|) 에 따른 단면
+   둔덕 → 마른 모래 → 젖은 모래 → 물가 → 무릎·허리 → 급경사 → 심해
+========================================================= */
+const SEA_LEVEL   = -0.62;          /* 잔잔할 때의 수면 높이 */
+const WADE_DEPTH  = 0.95;           /* 허리 — 여기까지만 들어갈 수 있다 */
+
+const BEACH_PROFILE = [
+    [  0.0,  0.00], [430.0,  0.00], [452.0,  0.34], [468.0,  0.40],
+    [484.0,  0.18], [496.0, -0.10], [505.0, -0.42], [516.0, -0.78],
+    [530.0, -1.10], [544.0, -1.42], [558.0, -1.86], [574.0, -3.40],
+    [600.0, -6.40], [660.0,-11.00], [1400.0,-14.00]
+];
+
+function beachProfileY(e){
+    const T = BEACH_PROFILE;
+    if(e <= T[0][0]) return T[0][1];
+    for(let i=1;i<T.length;i++){
+        if(e <= T[i][0]){
+            const a = T[i-1], b = T[i];
+            let t = (e - a[0]) / (b[0] - a[0]);
+            t = t*t*(3-2*t);                      /* 단면을 매끄럽게 */
+            return a[1] + (b[1]-a[1])*t;
+        }
+    }
+    return T[T.length-1][1];
+}
+
+/* 모래 표면의 잔물결·발자국 단위의 요동 */
+function beachRipple(x,z,e){
+    if(e < 420) return 0;
+    const dry = 1 - Math.min(1, Math.max(0, (e-476)/42));     /* 마른 쪽일수록 거칠다 */
+    const r = Math.sin(x*.085 + z*.031)*.09
+            + Math.sin(x*.027 - z*.074)*.13
+            + Math.sin((x+z)*.169)*.045;
+    const band = Math.min(1, Math.max(0, (e-420)/24));
+    return r * band * (.35 + .65*dry);
+}
+
+/* 해변 지형 높이 — 플레이어·좀비·투사체가 모두 이 값을 밟는다 */
+function islandTerrainY(x,z){
+    const e = Math.max(Math.abs(x), Math.abs(z));
+    if(e < 430) return 0;
+    return beachProfileY(e) + beachRipple(x,z,e);
+}
+
+/* 물 깊이 (양수면 잠긴 것) */
+function waterDepthAt(x,z){
+    return SEA_LEVEL - islandTerrainY(x,z);
+}
+
+/* 허리 깊이가 되는 반지름을 미리 풀어 둔다 */
+let WADE_LIMIT = 575;
+(function solveWadeLimit(){
+    for(let e = 430; e < 700; e += .25){
+        if(SEA_LEVEL - beachProfileY(e) >= WADE_DEPTH){ WADE_LIMIT = e - .25; return; }
+    }
+})();
+
+/* 해안선(수면과 모래가 만나는 반지름) */
+let SHORE_LINE = 540;
+(function solveShoreLine(){
+    for(let e = 430; e < 700; e += .25){
+        if(beachProfileY(e) <= SEA_LEVEL){ SHORE_LINE = e; return; }
+    }
+})();
+
+/* 사각 링 형태의 해변 메시 — 꼭지점 색으로 마른/젖은/잠긴 모래를 구분한다 */
+function buildBeachRing(mat){
+    const rings = [];
+    for(let e = 424; e <= 640; e += (e < 540 ? 6 : 12)) rings.push(e);
+    rings.push(700);
+
+    const perSide = 72;                       /* 한 변당 분할 */
+    const loop = perSide*4;
+    const pos = [], col = [], uvs = [], idx = [];
+
+    /* 변을 따라 한 바퀴 도는 좌표 — 사각 링이므로 모퉁이가 자연스럽게 이어진다 */
+    function ringPoint(e, k){
+        const t = (k % loop) / perSide;       /* 0~4 */
+        const side = Math.floor(t);
+        const f = t - side;                   /* 0~1 */
+        const u = (f*2 - 1) * e;              /* -e ~ e */
+        if(side === 0) return [ u, -e];
+        if(side === 1) return [ e,  u];
+        if(side === 2) return [-u,  e];
+        return [-e, -u];
+    }
+
+    const cDry  = new THREE.Color(0xe8d4a4);
+    const cDamp = new THREE.Color(0xb59b70);
+    const cWet  = new THREE.Color(0x7c6a4e);
+    const cDeep = new THREE.Color(0x3d4a46);
+    const tmp   = new THREE.Color();
+
+    for(let ri=0; ri<rings.length; ri++){
+        const e = rings[ri];
+        for(let k=0; k<=loop; k++){
+            const p = ringPoint(e, k);
+            const y = beachProfileY(e) + beachRipple(p[0], p[1], e);
+            pos.push(p[0], y, p[1]);
+
+            /* 수면 기준 깊이로 색을 섞는다 */
+            const d = SEA_LEVEL - y;
+            if(d <= -0.22){
+                tmp.copy(cDry);
+            }else if(d <= 0.0){
+                tmp.copy(cDry).lerp(cDamp, (d + 0.22)/0.22);
+            }else if(d <= 1.5){
+                tmp.copy(cDamp).lerp(cWet, Math.min(1, d/1.5));
+            }else{
+                tmp.copy(cWet).lerp(cDeep, Math.min(1, (d-1.5)/4.5));
+            }
+            /* 마른 모래에 얇은 색 띠를 넣어 평평해 보이지 않게 */
+            const v = 0.94 + 0.06*Math.sin(e*.21 + k*.17);
+            col.push(tmp.r*v, tmp.g*v, tmp.b*v);
+            uvs.push((k/perSide)*7, (e-424)/22);
+        }
+    }
+
+    const stride = loop + 1;
+    for(let ri=0; ri<rings.length-1; ri++){
+        for(let k=0; k<loop; k++){
+            const a = ri*stride + k,     b = a + 1;
+            const c = (ri+1)*stride + k, d = c + 1;
+            /* 위에서 보이도록 — 법선이 하늘을 향하는 감김 방향 */
+            idx.push(a, b, c, b, d, c);
+        }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+
+    const m = new THREE.Mesh(g, mat);
+    m.name = "beachRing";
+    m.receiveShadow = true;
+    m.frustumCulled = false;
+    world.add(m);
+    return m;
+}
+
 function crate(x,y,z,w,h,d,mat,parent){
     const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
     m.position.set(x, y+h/2, z);
@@ -4147,6 +4325,19 @@ function wallNearby(){
            blocked(player.x, player.y, player.z-d);
 }
 
+/* 허리보다 깊은 물 — 더 들어가지 못한다 */
+function tooDeep(x,z){
+    if(terrainY === null) return false;
+    return SEA_LEVEL - terrainY(x,z) > WADE_DEPTH;
+}
+
+/* 발 밑 물 깊이 (0이면 마른 땅) */
+function depthUnderPlayer(){
+    if(terrainY === null) return 0;
+    return Math.max(0, SEA_LEVEL - terrainY(player.x, player.z));
+}
+
+
 /* 몸이 붙어 있는 벽의 반대 방향 */
 function wallAwayDir(){
     const d = 0.75;
@@ -4163,7 +4354,9 @@ function jump(){
     if(!gameStarted || player.inCar) return;
     let didJump = false;
     if(player.ground){
-        player.vy = player.jumpPower;
+        /* 물에 잠긴 만큼 도움닫기가 죽는다 */
+        const wade = depthUnderPlayer();
+        player.vy = player.jumpPower * (wade > .05 ? Math.max(.34, 1 - wade*.72) : 1);
         player.ground = false;
         player.wallJumps = 0;                  /* 착지해야 벽 차기가 돌아온다 */
         didJump = true;
@@ -4232,18 +4425,39 @@ function updatePlayer(){
         movement.addScaledVector(right, input.x);
         movement.normalize();
 
-        const nx = player.x + movement.x*player.speed;
-        const nz = player.z + movement.z*player.speed;
+        /* 물에 잠길수록 발이 무거워진다 */
+        const wade = depthUnderPlayer();
+        const spd = player.speed * (wade > .05 ? Math.max(.38, 1 - wade*.62) : 1);
+
+        const nx = player.x + movement.x*spd;
+        const nz = player.z + movement.z*spd;
 
         if(stuckIn){
             /* 이미 구조물 안에 끼어 있다 — 충돌 판정을 풀어 걸어 나올 수 있게 한다 */
             player.x = nx;
             player.z = nz;
         }else{
-            if(!blocked(nx, player.y, player.z)) player.x = nx;
-            if(!blocked(player.x, player.y, nz)) player.z = nz;
+            if(!blocked(nx, player.y, player.z) && !tooDeep(nx, player.z)) player.x = nx;
+            if(!blocked(player.x, player.y, nz) && !tooDeep(player.x, nz)) player.z = nz;
         }
     }
+
+    /* ---- 물에 들어간 느낌 ---- */
+    const depth = depthUnderPlayer();
+    if(depth > .06){
+        wadeBob += (moving ? .11 : .035) * (1 + depth*.5);
+        if(moving){
+            wadeSplashT -= 1;
+            if(wadeSplashT <= 0){
+                wadeSound(depth);
+                splashRing(player.x, SEA_LEVEL, player.z, .9 + depth*1.5);
+                wadeSplashT = Math.round(26 - depth*7);
+            }
+        }
+    }else if(lastWadeDepth > .25){
+        wadeSound(lastWadeDepth*.6);          /* 물에서 나오는 소리 */
+    }
+    lastWadeDepth = depth;
 
     const headBefore = player.y;
     player.vy -= player.gravity;
@@ -4288,6 +4502,16 @@ function applyCamera(){
     const sy = shake ? rand(-shake,shake) : 0;
 
     camera.position.set(player.x + bobX + sx, player.y + bobY + sy, player.z);
+    /* 물에 잠긴 만큼 파도에 몸이 밀린다 */
+    if(terrainY !== null){
+        const wd = depthUnderPlayer();
+        if(wd > .06){
+            camera.position.y -= wd*.26;
+            camera.position.y += Math.sin(wadeBob)*.035*wd;
+            camera.position.x += Math.sin(wadeBob*.42)*.028*wd;
+            camera.position.z += Math.cos(wadeBob*.37)*.028*wd;
+        }
+    }
     camera.rotation.y = player.yaw + sx*.3;
     camera.rotation.x = player.pitch + recoil + sy*.3;
 
@@ -4918,10 +5142,10 @@ function updateAmbience(){
     }
 
     for(const s of seaStrips){
-        s.mesh.position.y = -.65 + Math.sin(now*.0013 + s.seed)*.18;
+        s.mesh.position.y = SEA_LEVEL + .07 + Math.sin(now*.0013 + s.seed)*.06;
         s.mesh.position.x = s.baseX + Math.sin(now*.00055+s.seed)*2.2;
         s.mesh.position.z = s.baseZ + Math.cos(now*.00062+s.seed)*2.2;
-        s.mesh.material.opacity = .12 + .16*(.5 + .5*Math.sin(now*.0018+s.seed));
+        s.mesh.material.opacity = .06 + .09*(.5 + .5*Math.sin(now*.0018+s.seed));
         s.mesh.rotation.z = Math.sin(now*.0007+s.seed)*.08;
     }
 
@@ -5358,6 +5582,28 @@ function updateBlasts(){
         b.mesh.material.opacity = b.t*.85;
     }
     if(hazardLight && hazardLight.intensity > .01) hazardLight.intensity *= .84;
+}
+
+function wadeSound(depth){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    try{
+        const dur = .26 + Math.random()*.16;
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*dur), ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for(let i=0;i<d.length;i++){
+            const k = i/d.length;
+            d[i] = (Math.random()*2-1) * Math.pow(1-k, 2.2) * (.26 + depth*.3);
+        }
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = 560 + Math.random()*620 - depth*180;
+        bp.Q.value = .9;
+        const g = ctx.createGain();
+        g.gain.value = Math.min(.5, .16 + depth*.3);
+        src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+        src.start();
+    }catch(e){}
 }
 
 function explodeSound(){
@@ -7168,6 +7414,14 @@ function clearWorld(){
     for(const arr of [zombies,bullets,pickups,cars,elevators,corpses,decals,lamps,fires,mists,steams,seaStrips,props,spawnQueue,acidPools,hazards,firePatches])
         arr.length = 0;
     cinematicOcean=null;coastalBreakers.length=0;sandFx.prints=null;
+    terrainY=null;
+    /* 해안에서 올려 둔 환경음을 원래대로 */
+    if(ambientGain) ambientGain.gain.value = soundOn ? 0.03 : 0;
+    while(splashRings.length){
+        const r = splashRings.pop();
+        world.remove(r.mesh); r.mesh.material.dispose(); r.mesh.geometry.dispose();
+    }
+    wadeBob = 0; wadeSplashT = 0; lastWadeDepth = 0;
     sandFx.particles=null;sandFx.lastX=null;sandFx.lastZ=null;
     seaSpray.visible=false;
 
@@ -7344,7 +7598,8 @@ function buildCity(){
     const groundMat = own(new THREE.MeshStandardMaterial({
         map: colorTex(asphaltCanvas("#4c4e47"),100,100), roughness:.8
     }));
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1080,1080), groundMat);
+    /* 해변이 시작되는 곳에서 끊는다 — 더 나가면 모래 경사면이 바닥을 맡는다 */
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(864,864), groundMat);
     ground.rotation.x = -Math.PI/2;
     ground.receiveShadow = true;
     world.add(ground);
@@ -7599,14 +7854,15 @@ function buildCity(){
     const lNS  = own(new THREE.MeshStandardMaterial({ map: colorTex(pathCan,80,1), roughness:1 }));
     const lEW  = own(new THREE.MeshStandardMaterial({ map: colorTex(pathCan,1,80), roughness:1 }));
 
-    surface(0,367,1000,226,fgNS,.035);
-    surface(0,-367,1000,226,fgNS,.035);
-    surface(367,0,226,510,fgEW,.036);
-    surface(-367,0,226,510,fgEW,.036);
+    /* 숲 바닥은 모래 언덕(e≈446)에서 멈춘다 */
+    surface(0,344,880,180,fgNS,.035);
+    surface(0,-344,880,180,fgNS,.035);
+    surface(344,0,180,510,fgEW,.036);
+    surface(-344,0,180,510,fgEW,.036);
 
     for(const side of [-1,1]){
-        surface(0,side*367,8,226,pNS,.045);
-        surface(side*367,0,226,8,pEW,.045);
+        surface(0,side*344,8,180,pNS,.045);
+        surface(side*344,0,180,8,pEW,.045);
         surface(0,side*320,648,6,lNS,.047);
         surface(side*320,0,6,648,lEW,.047);
     }
@@ -7627,8 +7883,9 @@ function buildCity(){
         Math.abs(Math.abs(x)-320)<5 || Math.abs(Math.abs(z)-320)<5;
 
     for(let attempt=0; treeCount<950 && attempt<15000; attempt++){
-        const x = (Math.random()-.5)*950, z = (Math.random()-.5)*950;
-        if(Math.max(Math.abs(x),Math.abs(z)) < 263 || onPath(x,z)) continue;
+        const x = (Math.random()-.5)*896, z = (Math.random()-.5)*896;
+        const fe = Math.max(Math.abs(x),Math.abs(z));
+        if(fe < 263 || fe > 434 || onPath(x,z)) continue;
         if(forestTrees.some(t => Math.hypot(t.x-x, t.z-z) < 3.7)) continue;
 
         const h = 6+Math.random()*8, r = 1.9+Math.random()*1.8;
@@ -7659,6 +7916,31 @@ function buildCity(){
     trunkBatch.instanceMatrix.needsUpdate = true;
     leafBatch.instanceMatrix.needsUpdate = true;
     if(leafBatch.instanceColor) leafBatch.instanceColor.needsUpdate = true;
+
+    /* 둔덕 위 억새 — 숲이 끝나고 모래가 시작되는 경계 */
+    const duneGrassMat = own(new THREE.MeshStandardMaterial({
+        color:0x7d7a4e, roughness:.95, side:THREE.DoubleSide }));
+    const duneGrass = new THREE.InstancedMesh(new THREE.ConeGeometry(.5,1,4,1,true), duneGrassMat, 1400);
+    duneGrass.frustumCulled = false;
+    world.add(duneGrass);
+    let dgN = 0;
+    for(let attempt=0; dgN<1400 && attempt<9000; attempt++){
+        const side = pick([-1,1]), axis = Math.random() < .5;
+        const along = rand(-540,540);
+        const across = side * rand(432, 486);
+        const gx = axis ? along : across, gz = axis ? across : along;
+        const h = rand(.55,1.5);
+        dummy.position.set(gx, islandTerrainY(gx,gz) + h*.45, gz);
+        dummy.rotation.set(rand(-.18,.18), Math.random()*6.28, rand(-.18,.18));
+        dummy.scale.set(rand(.5,1.0), h, rand(.5,1.0));
+        dummy.updateMatrix();
+        duneGrass.setMatrixAt(dgN, dummy.matrix);
+        duneGrass.setColorAt(dgN, new THREE.Color().setHSL(.13+Math.random()*.08, .18+Math.random()*.14, .22+Math.random()*.14));
+        dgN++;
+    }
+    duneGrass.count = dgN;
+    duneGrass.instanceMatrix.needsUpdate = true;
+    if(duneGrass.instanceColor) duneGrass.instanceColor.needsUpdate = true;
 
     const shrubMat = own(new THREE.MeshStandardMaterial({ color:0x2c4030, roughness:1 }));
     const shrubs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0), shrubMat, 520);
@@ -7788,31 +8070,182 @@ function buildCity(){
         return c;
     })();
     const beachMat = own(new THREE.MeshStandardMaterial({
-        map: colorTex(sandCan,18,4), bumpMap:reliefTex(sandCan,18,4),
-        bumpScale:.13,roughness:.97,color:0xe4cf9e
+        map: colorTex(sandCan,26,5), bumpMap:reliefTex(sandCan,26,5),
+        bumpScale:.22, roughness:.96, vertexColors:true, side:THREE.DoubleSide
     }));
+
+    /* 모래가 바다 속으로 이어지는 경사면 — 벽은 없다 */
+    terrainY = islandTerrainY;
+    buildBeachRing(beachMat);
+
     cinematicOcean=makeCinematicOcean();
     createCoastalBreakers();
     createSandFx();
+    decorateShore();
 
-    surface(0, 525, 1100, 58, beachMat, .052);
-    surface(0,-525, 1100, 58, beachMat, .052);
-    surface(525,0, 58, 1100, beachMat, .052);
-    surface(-525,0, 58, 1100, beachMat, .052);
-
-    const cliffMat = own(new THREE.MeshStandardMaterial({ map: colorTex(concreteCanvas("#4e504c"),6,2), roughness:1 }));
+    /* 밀려 들어온 거품은 해안선 위에 눕힌다 */
     for(const side of [-1,1]){
-        crate(0, -1.2, side*560, 1120, 3.1, 18, cliffMat);
-        crate(side*560, -1.2, 0, 18, 3.1, 1120, cliffMat);
+        for(let i=0;i<24;i++){
+            const along = rand(-540,540), across = SHORE_LINE + rand(-9,16);
+            addSeaStrip(along, side*across, 74+Math.random()*62, 11+Math.random()*9, .17+Math.random()*.11);
+            addSeaStrip(side*across, along, 11+Math.random()*9, 74+Math.random()*62, .17+Math.random()*.11);
+        }
     }
-    for(let i=0;i<26;i++) addSeaStrip(rand(-560,560), 580 + rand(-24,24), 70+Math.random()*65, 12+Math.random()*10, .16+Math.random()*.1);
-    for(let i=0;i<26;i++) addSeaStrip(rand(-560,560), -580 + rand(-24,24), 70+Math.random()*65, 12+Math.random()*10, .16+Math.random()*.1);
-    for(let i=0;i<20;i++) addSeaStrip(580 + rand(-24,24), rand(-560,560), 12+Math.random()*10, 70+Math.random()*65, .16+Math.random()*.1);
-    for(let i=0;i<20;i++) addSeaStrip(-580 + rand(-24,24), rand(-560,560), 12+Math.random()*10, 70+Math.random()*65, .16+Math.random()*.1);
-    for(let i=0;i<18;i++) addMist(rand(-640,640), pick([620,-620]), rand(80,150), -1.2);
+    for(let i=0;i<18;i++) addMist(rand(-660,660), pick([640,-640]), rand(80,150), -1.0);
 
     return { alleyBlocks, forestTrees, apt };
 }
+
+/* 발 밑에 번지는 물결 고리 */
+const splashRings = [];
+let splashRingMat = null;
+
+function splashRing(x,y,z,size){
+    if(splashRings.length > 20) return;
+    if(!splashRingMat){
+        splashRingMat = new THREE.MeshBasicMaterial({
+            map:seaFoamTex, color:0xdff1f7, transparent:true, opacity:.5,
+            depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide });
+    }
+    const m = new THREE.Mesh(new THREE.RingGeometry(.2, .42, 16), splashRingMat.clone());
+    m.rotation.x = -Math.PI/2;
+    m.position.set(x, y + .04, z);
+    m.renderOrder = 4;
+    world.add(m);
+    splashRings.push({ mesh:m, t:0, size:size||1.4 });
+}
+
+function updateSplashRings(){
+    for(let i=splashRings.length-1; i>=0; i--){
+        const r = splashRings[i];
+        r.t += .055;
+        const k = r.t;
+        r.mesh.scale.setScalar(1 + k*r.size*2.6);
+        r.mesh.material.opacity = Math.max(0, .5*(1-k));
+        if(k >= 1){
+            world.remove(r.mesh);
+            r.mesh.material.dispose();
+            r.mesh.geometry.dispose();
+            splashRings.splice(i,1);
+        }
+    }
+}
+
+
+/* 해안 소품 — 바위 무리, 유목, 조개 껍데기, 밀려온 표류물 */
+function decorateShore(){
+    const rockMat = own(new THREE.MeshStandardMaterial({
+        map: colorTex(concreteCanvas("#6a6660"),3,3), roughness:.96, color:0x8d8880 }));
+    const rockWet = own(new THREE.MeshStandardMaterial({
+        map: colorTex(concreteCanvas("#4a4b46"),3,3), roughness:.42, color:0x6e7168, metalness:.08 }));
+    const woodMat = own(new THREE.MeshStandardMaterial({ color:0x6d5a44, roughness:.95 }));
+    const shellMat= own(new THREE.MeshStandardMaterial({ color:0xe6dcc6, roughness:.6 }));
+    const weedMat = own(new THREE.MeshStandardMaterial({ color:0x3f4a30, roughness:.9 }));
+
+    /* 모래 위 어디든 지형에 맞춰 놓는다 */
+    function placeOn(obj, x, z, lift){
+        obj.position.set(x, islandTerrainY(x,z) + (lift||0), z);
+        obj.rotation.y = Math.random()*6.283;
+        obj.castShadow = true; obj.receiveShadow = true;
+        world.add(obj);
+        return obj;
+    }
+
+    /* --- 바위 무리: 물가에 반쯤 잠긴 것들 --- */
+    for(let i=0;i<54;i++){
+        const side = pick([-1,1]), axis = Math.random() < .5;
+        const along = rand(-560,560);
+        const across = side * (SHORE_LINE + rand(-46, 54));
+        const x = axis ? along : across, z = axis ? across : along;
+        const r = rand(.9, 3.4);
+        const wet = islandTerrainY(x,z) < SEA_LEVEL + .25;
+        const g = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), wet ? rockWet : rockMat);
+        g.scale.set(rand(.8,1.35), rand(.45,.8), rand(.8,1.35));
+        placeOn(g, x, z, -r*.28);
+        addRound(x, z, r*.8, islandTerrainY(x,z) + r*.4);
+        registerProp(g, x, z, 300);
+        /* 큰 바위 옆에는 작은 돌을 흩뿌린다 */
+        for(let k=0;k<3;k++){
+            const sx = x + rand(-r*2.4, r*2.4), sz = z + rand(-r*2.4, r*2.4);
+            const sr = rand(.18,.52);
+            const sm = new THREE.Mesh(new THREE.DodecahedronGeometry(sr,0), wet ? rockWet : rockMat);
+            sm.scale.set(1, rand(.5,.8), 1);
+            placeOn(sm, sx, sz, -sr*.3);
+        }
+    }
+
+    /* --- 유목: 파도에 밀려 올라온 통나무 --- */
+    for(let i=0;i<26;i++){
+        const side = pick([-1,1]), axis = Math.random() < .5;
+        const along = rand(-540,540);
+        const across = side * (SHORE_LINE - rand(6, 42));
+        const x = axis ? along : across, z = axis ? across : along;
+        const len = rand(2.6, 7.4), rad = rand(.17,.34);
+        const g = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad*.78, len, 7), woodMat);
+        trunk.rotation.z = Math.PI/2;
+        trunk.rotation.y = rand(-.2,.2);
+        g.add(trunk);
+        for(let k=0;k<2;k++){
+            const br = new THREE.Mesh(new THREE.CylinderGeometry(rad*.4, rad*.2, len*rand(.2,.4), 5), woodMat);
+            br.position.set(rand(-len*.4, len*.4), rad*.5, 0);
+            br.rotation.set(rand(-.6,.6), rand(0,3.1), rand(.7,1.5));
+            g.add(br);
+        }
+        g.rotation.z = rand(-.12,.12);
+        placeOn(g, x, z, rad*.7);
+        addRound(x, z, Math.max(1.1, len*.3), islandTerrainY(x,z) + rad*1.5);
+        registerProp(g, x, z, 240);
+    }
+
+    /* --- 해초 더미 · 조개 껍데기: 조위선을 따라 --- */
+    for(let i=0;i<150;i++){
+        const side = pick([-1,1]), axis = Math.random() < .5;
+        const along = rand(-560,560);
+        const across = side * (SHORE_LINE - rand(-4, 26));
+        const x = axis ? along : across, z = axis ? across : along;
+        if(Math.random() < .45){
+            const w = rand(.8,2.6);
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w*rand(.3,.6)), weedMat);
+            m.rotation.x = -Math.PI/2;
+            m.rotation.z = Math.random()*3.14;
+            m.position.set(x, islandTerrainY(x,z)+.035, z);
+            world.add(m);
+        }else{
+            const sr = rand(.1,.26);
+            const m = new THREE.Mesh(new THREE.SphereGeometry(sr, 6, 4, 0, 6.283, 0, 1.3), shellMat);
+            m.rotation.set(rand(-.4,.4), Math.random()*6.28, Math.PI);
+            m.position.set(x, islandTerrainY(x,z)+sr*.2, z);
+            world.add(m);
+        }
+    }
+
+    /* --- 표류물: 녹슨 드럼통과 부서진 판자 --- */
+    const rustMat = own(new THREE.MeshStandardMaterial({
+        map: colorTex(concreteCanvas("#6b4a33"),2,2), roughness:.92, color:0x8a5f44, metalness:.2 }));
+    for(let i=0;i<16;i++){
+        const side = pick([-1,1]), axis = Math.random() < .5;
+        const along = rand(-520,520);
+        const across = side * (SHORE_LINE - rand(2, 36));
+        const x = axis ? along : across, z = axis ? across : along;
+        if(Math.random() < .5){
+            const g = new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,1.1,12), rustMat);
+            g.rotation.z = Math.PI/2 + rand(-.3,.3);
+            placeOn(g, x, z, .4);
+            addRound(x, z, .62, islandTerrainY(x,z)+.82);
+            registerProp(g, x, z, 220);
+        }else{
+            for(let k=0;k<3;k++){
+                const m = new THREE.Mesh(new THREE.BoxGeometry(rand(1.2,3.0), .09, rand(.24,.46)), woodMat);
+                m.position.set(x+rand(-1.4,1.4), islandTerrainY(x,z)+.06+k*.1, z+rand(-1.4,1.4));
+                m.rotation.y = Math.random()*3.14;
+                m.rotation.z = rand(-.05,.05);
+                world.add(m);
+            }
+        }
+    }
+}
+
 
 /* 도시 전용 — 골목 기습 · 숲 조우 */
 function cityTick(state, now){
@@ -7822,7 +8255,17 @@ function cityTick(state, now){
     const inForest = Math.max(Math.abs(player.x),Math.abs(player.z)) > 258;
 
     document.getElementById("districtHUD").textContent =
-        ((Math.max(Math.abs(player.x),Math.abs(player.z)) > 500) ? "해안가 · 거친 파도 / 낙하 주의" : (inForest ? "숲 공원 · 나무 사이 / 지면 주의"
+        (() => {
+            const e = Math.max(Math.abs(player.x),Math.abs(player.z));
+            const d = depthUnderPlayer();
+            if(d > .08){
+                const label = d > .72 ? "허리까지" : d > .42 ? "무릎까지" : "발목까지";
+                return "바다 · " + label + " 물 (" + d.toFixed(1) + "m) / 더는 못 들어감";
+            }
+            if(e > SHORE_LINE - 16) return "물가 · 젖은 모래 / 파도 주의";
+            if(e > 452) return "백사장 · 마른 모래";
+            return null;
+        })() || ((Math.max(Math.abs(player.x),Math.abs(player.z)) > 500) ? "해안가 · 거친 파도 / 낙하 주의" : (inForest ? "숲 공원 · 나무 사이 / 지면 주의"
                   : b ? "좁은 골목 · 모퉁이 주의" : "차도 / 교차로")) +
         " · 확대 " + Math.round(75/zoomFov*100) + "%";
 
@@ -8988,7 +9431,12 @@ const MAPS = {
         light:{ hemi:.95, sun:1.15, rim:.5 }, ashTop:42, ashOpacity:.34,
         ambient:[44,57.5,88],
         build: buildCity, tick: cityTick,
-        inBounds:(x,z) => Math.abs(x) < 548 && Math.abs(z) < 548,
+        /* 좀비는 무릎 깊이까지만 따라 들어온다 */
+        inBounds:(x,z) => {
+            const e = Math.max(Math.abs(x), Math.abs(z));
+            if(e < 440) return true;
+            return SEA_LEVEL - beachProfileY(e) < 0.55;
+        },
         levelLabel:(x,y,z) => {
             const apt = { x:70, z:70, w:42, d:34 };
             if(x > apt.x-apt.w/2 && x < apt.x+apt.w/2 && z > apt.z-apt.d/2 && z < apt.z+apt.d/2)
@@ -9275,6 +9723,7 @@ function update(){
     animateChain();
 
     batTick();
+    updateSplashRings();
     updateGrenades();
     updateRockets();
     updateSmokePuffs();
