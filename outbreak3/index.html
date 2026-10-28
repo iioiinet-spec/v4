@@ -332,7 +332,7 @@ body.mapOpen #floorHUD{top:576px}
 <div id="acidVig"></div>
 <div id="damageFlash"></div>
 
-<div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~9 무기(5 체인소 · 6 방망이 · 7 바주카 · 8 유탄 · 9 단검) · <b style="color:#e8c568">F 손전등</b> · <b style="color:#b571e8">M 지도</b> · T 섬광탄 · 휠 확대 · N 사운드</div>
+<div id="help">WASD 이동 · SPACE 점프 · E 상호작용 · R 장전 · 1~0 무기(5 체인소 · 6 방망이 · 7 바주카 · 8 유탄 · 9 단검 · 0 화염방사기) · <b style="color:#e8c568">F 손전등</b> · <b style="color:#b571e8">M 지도</b> · T 섬광탄 · 휠 확대 · N 사운드</div>
 <div id="credit"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
@@ -1308,7 +1308,9 @@ const weapons = {
         lob:true, radius:5.4, blastDamage:95, reloadTime:150, unit:"유탄" },
     9:{ name:"단검", damage:3, maxAmmo:1, reserve:0, fireDelay:13, model:"dagger",
         melee:true, swing:true, stab:true, infinite:true, reach:2.3, arc:.74,
-        swingSpeed:.14, severChance:.55 }
+        swingSpeed:.14, severChance:.55 },
+    10:{ name:"화염방사기", damage:1, maxAmmo:100, reserve:220, fireDelay:0, model:"flamer",
+        flame:true, auto:true, reach:9.6, arc:.80, reloadTime:170, unit:"연료" }
 };
 
 const ammo = {
@@ -1320,7 +1322,8 @@ const ammo = {
     6:{ clip:1,  reserve:0 },
     7:{ clip:1,  reserve:4 },
     8:{ clip:6,  reserve:12 },
-    9:{ clip:1,  reserve:0 }
+    9:{ clip:1,  reserve:0 },
+    10:{ clip:100, reserve:220 }
 };
 
 function resetAmmo(scale){
@@ -1333,6 +1336,7 @@ function resetAmmo(scale){
     ammo[7] = { clip:1,  reserve:Math.max(1, Math.round(4*scale)) };
     ammo[8] = { clip:6,  reserve:Math.max(6, Math.round(12*scale)) };
     ammo[9] = { clip:1,  reserve:0 };                      /* 단검은 소모되지 않는다 */
+    ammo[10] = { clip:100, reserve:Math.max(100, Math.round(220*scale)) };
 }
 
 
@@ -2615,6 +2619,7 @@ window.addEventListener("keydown", function(e){
     if(e.code === "KeyT" && !e.repeat) launchFlare();
     if(e.code === "Space"){ e.preventDefault(); jump(); }
     if(e.key >= "1" && e.key <= "9") changeWeapon(Number(e.key));
+    if(e.key === "0") changeWeapon(10);
     if(e.key.toLowerCase() === "r") reload();
     if(e.key.toLowerCase() === "e") interact();
     if(e.code === "KeyF" && !e.repeat) toggleFlash();
@@ -2691,6 +2696,19 @@ const Z_RED      = new THREE.MeshStandardMaterial({ color:0x4b1210, roughness:.9
 const rpgTube    = new THREE.MeshStandardMaterial({ color:0x4d5443, metalness:.45, roughness:.6 });
 const rpgScope   = new THREE.MeshStandardMaterial({ color:0x1b1f22, metalness:.4, roughness:.35 });
 const rpgWarhead = new THREE.MeshStandardMaterial({ color:0x7d3326, metalness:.35, roughness:.55 });
+/* ---- 총기 질감 ---- */
+const gunBlued  = new THREE.MeshStandardMaterial({ color:0x282e33, metalness:.84, roughness:.28 });
+const gunSteel  = new THREE.MeshStandardMaterial({ color:0x8d949a, metalness:.92, roughness:.22 });
+const gunPoly   = new THREE.MeshStandardMaterial({ color:0x414850, metalness:.08, roughness:.74 });
+const gunGrip   = new THREE.MeshStandardMaterial({ color:0x2a2e33, metalness:.03, roughness:.93 });
+const gunBrass  = new THREE.MeshStandardMaterial({ color:0xb98c42, metalness:.9,  roughness:.3 });
+const gunAccent = new THREE.MeshStandardMaterial({ color:0x6d767c, metalness:.72, roughness:.36 });
+const gunGlass  = new THREE.MeshStandardMaterial({ color:0x2b4a52, metalness:.3, roughness:.1,
+                                                   emissive:0x0d2429, transparent:true, opacity:.75 });
+const tankRed   = new THREE.MeshStandardMaterial({ color:0x8c3324, metalness:.42, roughness:.55 });
+const tankYellow= new THREE.MeshStandardMaterial({ color:0x9a7a22, metalness:.42, roughness:.55 });
+const hoseMat   = new THREE.MeshStandardMaterial({ color:0x202226, metalness:.1,  roughness:.9 });
+const pilotMat  = new THREE.MeshBasicMaterial({ color:0xffb257 });
 const daggerBlade= new THREE.MeshStandardMaterial({ color:0xb8c0c6, metalness:.92, roughness:.18 });
 const daggerEdge = new THREE.MeshStandardMaterial({ color:0xe8eef2, metalness:.95, roughness:.08 });
 
@@ -2702,36 +2720,134 @@ function buildGun(type, scale){
         const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
         m.position.set(x,y,z); m.castShadow = true; g.add(m); return m;
     };
+    /* 총열·탄창처럼 둥근 부분 — 기본은 z축을 향해 눕힌다 */
+    const cyl = (r1,r2,len,x,y,z,mat,seg) => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,len,seg||12), mat);
+        m.rotation.x = Math.PI/2;
+        m.position.set(x,y,z); m.castShadow = true; g.add(m); return m;
+    };
+    /* 세워 둔 원통 (손잡이·탱크) */
+    const post = (r1,r2,len,x,y,z,mat,seg) => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,len,seg||10), mat);
+        m.position.set(x,y,z); m.castShadow = true; g.add(m); return m;
+    };
+    const cone = (r,len,x,y,z,mat,flip) => {
+        const m = new THREE.Mesh(new THREE.ConeGeometry(r,len,12), mat);
+        m.rotation.x = flip ? Math.PI/2 : -Math.PI/2;
+        m.position.set(x,y,z); m.castShadow = true; g.add(m); return m;
+    };
+    /* 방아쇠울 — 반원 고리 */
+    const guard = (r,x,y,z,mat) => {
+        const m = new THREE.Mesh(new THREE.TorusGeometry(r,.018,5,14,Math.PI), mat);
+        m.rotation.set(Math.PI/2,0,Math.PI);
+        m.position.set(x,y,z); g.add(m); return m;
+    };
+    /* 가늠쇠 한 쌍 */
+    const sights = (z0,z1,y,mat) => {
+        add(.05,.07,.05, 0,y,z1, mat);
+        add(.085,.055,.05, 0,y,z0, mat);
+        add(.03,.045,.04, 0,y+.045,z1, mat);
+    };
 
     if(type === "pistol"){
-        add(.16,.2,.78, 0,0,-.1, gunBody);
-        add(.13,.1,.44, 0,.06,-.42, gunDark);
-        add(.14,.34,.18, 0,-.24,.1, gunDark);
-        add(.05,.05,.07, 0,.14,-.5, gunDark);
+        /* 슬라이드 — 윗면에 미끄럼 방지 홈 */
+        add(.155,.165,.80, 0,.045,-.12, gunBlued);
+        add(.125,.055,.30, 0,.14,-.34, gunBlued);
+        for(let i=0;i<6;i++) add(.163,.1,.018, 0,.03,.14-i*.05, gunAccent);
+        /* 총열 · 총구 */
+        cyl(.042,.042,.26, 0,.045,-.60, gunSteel, 10);
+        cyl(.055,.055,.05, 0,.045,-.70, gunAccent, 10);
+        /* 프레임 · 방아쇠울 · 손잡이 */
+        add(.14,.1,.62, 0,-.07,-.06, gunPoly);
+        guard(.085, 0,-.145,-.02, gunPoly);
+        add(.035,.075,.03, 0,-.115,-.03, gunSteel);     /* 방아쇠 */
+        const grip = add(.135,.36,.2, 0,-.3,.12, gunGrip);
+        grip.rotation.x = -.22;
+        for(let i=0;i<4;i++) add(.142,.03,.16, 0,-.2-i*.07,.1+i*.016, gunPoly);
+        add(.12,.05,.17, 0,-.47,.16, gunBlued);         /* 탄창 바닥 */
+        /* 가늠쇠 */
+        sights(.2,-.52,.145, gunAccent);
+        add(.05,.04,.05, .085,.06,-.1, gunAccent);      /* 장전 손잡이 */
     }else if(type === "rifle"){
-        add(.17,.22,1.25, 0,0,-.2, gunBody);
-        add(.09,.09,.85, 0,.03,-.9, gunDark);
-        add(.13,.36,.26, 0,-.26,.05, gunDark);
-        add(.15,.19,.5, 0,-.01,.55, stock);
-        add(.1,.3,.18, 0,-.24,-.18, gunDark);
-        add(.07,.1,.3, 0,.16,-.2, gunDark);
+        /* 몸통 · 상부 레일 */
+        add(.15,.2,1.0, 0,0,-.12, gunPoly);
+        add(.14,.075,1.05, 0,.13,-.2, gunBlued);
+        for(let i=0;i<9;i++) add(.09,.03,.035, 0,.175,.18-i*.1, gunAccent);  /* 피카티니 레일 */
+        /* 총열 · 소염기 */
+        cyl(.038,.038,.9, 0,.04,-.86, gunSteel, 10);
+        cyl(.062,.062,.16, 0,.04,-1.33, gunBlued, 10);
+        for(let i=0;i<3;i++) add(.075,.022,.09, 0,.04,-1.3+i*.055, gunAccent);
+        cyl(.052,.052,.5, 0,.04,-.72, gunPoly, 10);      /* 총열 덮개 */
+        for(let i=0;i<5;i++) add(.112,.018,.05, 0,.04,-.52-i*.1, gunAccent);
+        /* 탄창 — 약간 휜 바나나형 */
+        const mag = add(.09,.42,.17, 0,-.3,-.06, gunPoly);
+        mag.rotation.x = .18;
+        add(.095,.05,.17, 0,-.52,-.1, gunBlued);
+        /* 손잡이 · 방아쇠울 · 개머리판 */
+        const grip = add(.11,.3,.17, 0,-.22,.16, gunGrip);
+        grip.rotation.x = -.3;
+        guard(.08, 0,-.115,.0, gunPoly);
+        add(.032,.07,.028, 0,-.09,.01, gunSteel);
+        add(.11,.17,.3, 0,-.02,.42, gunPoly);            /* 버퍼 튜브 */
+        add(.13,.2,.34, 0,-.03,.68, gunPoly);            /* 개머리판 */
+        add(.14,.07,.3, 0,-.13,.66, gunGrip);
+        /* 조준경 */
+        cyl(.062,.062,.34, 0,.24,-.2, gunBlued, 12);
+        cyl(.072,.072,.05, 0,.24,-.36, gunAccent, 12);
+        const lens = cyl(.052,.052,.012, 0,.24,-.372, gunGlass, 12);
+        lens.rotation.x = Math.PI/2;
+        add(.05,.1,.06, 0,.19,-.1, gunAccent);
+        add(.05,.1,.06, 0,.19,-.3, gunAccent);
+        add(.05,.05,.05, .085,.03,.0, gunAccent);        /* 노리쇠 손잡이 */
     }else if(type === "shotgun"){
-        add(.19,.23,1.5, 0,0,-.25, gunWood);
-        add(.11,.11,1.1, 0,.02,-1.0, gunDark);
-        add(.11,.11,.9, 0,-.1,-.95, gunDark);
-        add(.16,.33,.24, 0,-.24,.1, gunWood);
-        add(.17,.2,.55, 0,-.02,.62, gunWood);
+        /* 기관부 */
+        add(.15,.19,.62, 0,0,.0, gunBlued);
+        add(.14,.055,.5, 0,.11,-.05, gunAccent);
+        /* 총열 + 그 아래 탄창관 */
+        cyl(.058,.058,1.25, 0,.045,-.92, gunBlued, 12);
+        cyl(.07,.07,.06, 0,.045,-1.53, gunAccent, 12);
+        cyl(.05,.05,1.0, 0,-.075,-.82, gunSteel, 10);
+        add(.016,.075,.1, 0,-.015,-1.25, gunAccent);     /* 총열 고리 */
+        /* 나무 펌프 손잡이 — 홈을 판다 */
+        add(.14,.14,.46, 0,-.075,-.62, gunWood);
+        for(let i=0;i<5;i++) add(.148,.028,.055, 0,-.075,-.78+i*.09, stock);
+        /* 개머리판 — 목이 가늘고 끝이 두툼하게 */
+        const neck = add(.12,.15,.3, 0,-.08,.42, gunWood);
+        neck.rotation.x = .1;
+        const butt = add(.155,.26,.34, 0,-.16,.74, gunWood);
+        butt.rotation.x = .1;
+        add(.16,.27,.05, 0,-.17,.91, gunGrip);           /* 고무 개머리판 */
+        guard(.08, 0,-.115,.06, gunBlued);
+        add(.032,.07,.028, 0,-.09,.07, gunSteel);
+        /* 장전된 산탄 두 발 */
+        add(.055,.055,.17, .075,-.075,-.22, tankRed);
+        add(.055,.055,.17, -.075,-.075,-.3, tankRed);
+        sights(.22,-1.46,.11, gunAccent);
     }else if(type === "chainsaw"){
-        /* 엔진 블록 */
-        add(.46,.44,.7, 0,0,.18, sawBodyMat);
-        add(.3,.26,.26, .12,.16,-.08, gunDark);
-        add(.16,.3,.5, -.26,.02,.2, sawBodyMat);
-        add(.5,.12,.16, 0,.3,.3, gunDark);
-        add(.14,.3,.14, 0,.16,.56, gunDark);
-        add(.12,.1,.3, 0,-.22,.3, gunDark);
-        /* 가이드 바 */
-        add(.1,.26,1.9, 0,0,-1.0, sawBarMat);
-        add(.12,.1,.3, 0,0,-1.98, sawBarMat);
+        /* 엔진 블록 — 덮개 · 냉각 핀 · 배기 */
+        add(.44,.42,.68, 0,0,.18, sawBodyMat);
+        add(.46,.1,.6, 0,.2,.2, sawBodyMat);
+        for(let i=0;i<5;i++) add(.47,.03,.06, 0,.08+i*.07,.02, gunAccent);  /* 냉각 핀 */
+        post(.16,.16,.26, .17,.14,-.02, gunBlued, 10);                      /* 실린더 */
+        cyl(.07,.07,.2, .17,.26,.1, gunAccent, 8);                          /* 배기관 */
+        add(.3,.26,.24, -.2,.04,.26, sawBodyMat);                           /* 연료통 */
+        add(.1,.12,.12, -.2,.2,.26, gunBlued);                              /* 주유구 */
+        post(.05,.05,.1, .0,.3,.46, gunAccent, 8);
+        /* 당김줄 손잡이 */
+        cyl(.1,.1,.08, 0,.06,.56, gunBlued, 10);
+        add(.14,.05,.05, 0,.06,.63, gunGrip);
+        /* 위쪽 손잡이와 안전 레버 */
+        add(.46,.055,.1, 0,.34,.26, gunBlued);
+        add(.055,.2,.08, -.2,.25,.26, gunBlued);
+        add(.055,.2,.08, .2,.25,.26, gunBlued);
+        const lever = add(.44,.06,.1, 0,.2,-.2, gunGrip);
+        lever.rotation.x = .3;
+        add(.12,.1,.28, 0,-.2,.3, gunGrip);                                 /* 뒤 손잡이 */
+        /* 가이드 바 — 끝이 둥글게 */
+        add(.075,.24,1.75, 0,0,-.95, sawBarMat);
+        cyl(.12,.12,.075, 0,0,-1.84, sawBarMat, 12);
+        add(.045,.13,1.7, 0,0,-.95, gunBlued);                              /* 홈 */
+        add(.1,.12,.2, 0,0,-.16, gunAccent);                                /* 바 고정판 */
         /* 돌아가는 톱니 */
         const teeth = [];
         for(let i=0;i<14;i++) teeth.push(add(.13,.09,.13, 0,0,0, sawToothMat));
@@ -2739,60 +2855,174 @@ function buildGun(type, scale){
         g.userData.chain = true;
     }else if(type === "bat"){
         /* 알루미늄 배트 — 원점을 손잡이에 두어 휘두를 때 제대로 돈다 */
-        add(.1,.1,.5, 0,0,.26, batGripMat);                /* 테이프 감은 손잡이 */
-        add(.13,.13,.1, 0,0,.54, batGripMat);              /* 끝 혹 */
-        add(.15,.15,.5, 0,0,-.2, batMat);                  /* 테이퍼 */
-        add(.2,.2,.95, 0,0,-.86, batMat);                  /* 타격부 */
-        add(.21,.21,.12, 0,0,-1.36, batMat);
-        for(let i=0;i<4;i++) add(.215,.215,.05, 0,0,-.62-i*.22, batBandMat);
-        add(.12,.06,.2, .09,.08,-1.0, Z_RED);              /* 말라붙은 피 */
+        cyl(.048,.048,.5, 0,0,.26, batGripMat, 12);        /* 테이프 감은 손잡이 */
+        for(let i=0;i<9;i++){                              /* 감아 올린 테이프 결 */
+            const t = cyl(.052,.052,.035, 0,0,.03+i*.055, gunGrip, 10);
+            t.rotation.z = .12;
+        }
+        cyl(.068,.068,.075, 0,0,.54, batGripMat, 12);      /* 끝 혹 */
+        cyl(.052,.088,.52, 0,0,-.2, batMat, 14);           /* 테이퍼 */
+        cyl(.095,.1,.92, 0,0,-.88, batMat, 14);            /* 타격부 */
+        cyl(.1,.085,.13, 0,0,-1.4, batMat, 14);            /* 둥근 끝 */
+        for(let i=0;i<3;i++) cyl(.104,.104,.035, 0,0,-.72-i*.26, batBandMat, 14);
+        /* 찌그러진 자국과 말라붙은 피 */
+        add(.03,.055,.12, .085,.03,-1.02, gunAccent);
+        add(.025,.05,.1, -.07,.06,-.72, gunAccent);
+        add(.1,.05,.18, .07,.07,-1.0, Z_RED);
+        add(.07,.04,.12, -.05,.08,-1.22, Z_RED);
 
     }else if(type === "launcher"){
         /* 6연발 리볼버식 유탄발사기 */
-        add(.3,.3,1.25, 0,0,-.32, rpgTube);                /* 총열 */
-        add(.34,.34,.16, 0,0,-.96, rpgTube);
-        add(.56,.56,.42, 0,-.02,.16, gunDark);             /* 탄창 드럼 */
+        cyl(.13,.13,1.2, 0,0,-.34, rpgTube, 14);           /* 총열 */
+        cyl(.155,.155,.1, 0,0,-.92, gunAccent, 14);        /* 총구 링 */
+        cyl(.29,.29,.42, 0,-.02,.16, gunBlued, 16);        /* 탄창 드럼 */
+        cyl(.3,.3,.04, 0,-.02,-.06, gunAccent, 16);
+        cyl(.3,.3,.04, 0,-.02,.38, gunAccent, 16);
         for(let i=0;i<6;i++){                              /* 드럼의 유탄 6발 */
             const a = i/6*6.283;
-            add(.12,.12,.46, Math.cos(a)*.17, -.02+Math.sin(a)*.17, .16, rpgWarhead);
+            const gx = Math.cos(a)*.175, gy = -.02 + Math.sin(a)*.175;
+            cyl(.065,.065,.44, gx,gy,.16, gunBlued, 8);
+            cyl(.07,.07,.1, gx,gy,-.08, rpgWarhead, 8);    /* 삐져나온 탄두 */
         }
-        add(.14,.34,.2, 0,-.3,-.08, gunDark);              /* 손잡이 */
-        add(.26,.14,.34, 0,-.2,-.6, rpgTube);              /* 전방 그립 */
-        add(.12,.1,.26, 0,.22,-.3, gunDark);               /* 조준기 */
-        add(.1,.2,.1, 0,.26,-.74, gunDark);
-        add(.3,.1,.42, 0,-.06,.52, gunDark);               /* 개머리판 */
+        post(.012,.012,.3, 0,-.02,.16, gunSteel, 6);       /* 드럼 축 */
+        /* 손잡이 · 방아쇠울 */
+        const grip = add(.12,.34,.18, 0,-.3,-.08, gunGrip);
+        grip.rotation.x = -.18;
+        guard(.095, 0,-.16,-.22, gunBlued);
+        add(.034,.08,.03, 0,-.13,-.22, gunSteel);
+        /* 전방 그립 */
+        const fg = add(.1,.3,.14, 0,-.26,-.62, gunGrip);
+        fg.rotation.x = .12;
+        add(.22,.06,.3, 0,-.1,-.62, rpgTube);
+        /* 조준기 */
+        add(.1,.035,.5, 0,.17,-.34, gunAccent);
+        add(.07,.12,.05, 0,.25,-.56, gunBlued);
+        add(.05,.09,.04, 0,.23,-.14, gunBlued);
+        /* 접이식 개머리판 */
+        add(.035,.035,.4, .1,-.02,.52, gunAccent);
+        add(.035,.035,.4, -.1,-.02,.52, gunAccent);
+        add(.26,.14,.06, 0,-.02,.72, gunGrip);
 
     }else if(type === "dagger"){
         /* 전투 단검 — 손잡이를 원점에 둔다 */
-        add(.085,.085,.4, 0,0,.2, batGripMat);             /* 손잡이 */
-        add(.14,.05,.075, 0,0,-.02, gunDark);              /* 가드 */
-        add(.1,.1,.08, 0,0,.42, gunDark);                  /* 끝 */
-        add(.1,.03,.78, 0,0,-.44, daggerBlade);            /* 칼날 */
-        add(.05,.034,.3, 0,0,-.96, daggerBlade);           /* 칼끝 */
-        add(.055,.02,.5, .02,.006,-.5, daggerEdge);        /* 날선 */
-        add(.07,.035,.16, 0,0,-.52, Z_RED);                /* 핏자국 */
+        cyl(.042,.047,.4, 0,0,.2, batGripMat, 10);         /* 손잡이 */
+        for(let i=0;i<6;i++) cyl(.05,.05,.025, 0,0,.06+i*.062, gunGrip, 10);  /* 미끄럼 홈 */
+        cyl(.055,.045,.07, 0,0,.43, gunBlued, 10);         /* 끝 마개 */
+        add(.16,.055,.055, 0,0,-.02, gunBlued);            /* 가드 */
+        add(.045,.045,.05, 0,0,-.02, gunBlued);
+        /* 칼날 — 가운데 능선이 서 있고 끝으로 갈수록 얇아진다 */
+        add(.085,.032,.74, 0,0,-.42, daggerBlade);
+        add(.03,.045,.72, 0,0,-.42, daggerBlade);          /* 능선 */
+        add(.055,.028,.26, 0,0,-.92, daggerBlade);
+        const tip = cone(.03,.14, 0,0,-1.08, daggerBlade);
+        tip.rotation.x = -Math.PI/2;
+        add(.09,.012,.68, 0,.012,-.44, daggerEdge);        /* 날선 */
+        for(let i=0;i<5;i++) add(.016,.03,.05, .038,0,-.72-i*.055, gunBlued);  /* 톱니 등날 */
+        add(.07,.03,.14, .015,.012,-.52, Z_RED);           /* 핏자국 */
+        add(.05,.025,.09, -.01,.01,-.8, Z_RED);
+
+    }else if(type === "flamer"){
+        /* 분사관 */
+        cyl(.062,.062,1.15, 0,.02,-.52, gunBlued, 12);
+        cyl(.085,.085,.12, 0,.02,-1.08, gunAccent, 12);      /* 노즐 */
+        cone(.075,.16, 0,.02,-1.2, gunSteel);
+        for(let i=0;i<4;i++) cyl(.075,.075,.035, 0,.02,-.85+i*.18, gunAccent, 12);
+        /* 점화구 — 늘 작게 타고 있는 불씨 */
+        add(.045,.07,.1, .085,.06,-1.0, gunAccent);
+        const pilot = new THREE.Mesh(new THREE.PlaneGeometry(.13,.2),
+            new THREE.MeshBasicMaterial({ map:fireTex, color:0xffb257, transparent:true,
+                opacity:.9, depthWrite:false, blending:THREE.AdditiveBlending }));
+        pilot.position.set(.085,.14,-1.02);
+        g.add(pilot);
+        g.userData.pilot = pilot;
+        /* 몸통 · 조절 밸브 */
+        add(.16,.17,.5, 0,-.02,.06, gunPoly);
+        post(.055,.055,.14, .1,.08,.02, gunBrass, 10);       /* 황동 밸브 */
+        post(.03,.03,.1, .1,.18,.02, gunAccent, 8);
+        add(.1,.06,.3, 0,.11,-.1, gunAccent);                /* 연료관 */
+        /* 손잡이 두 개 */
+        const grip = add(.11,.3,.16, 0,-.24,.2, gunGrip);
+        grip.rotation.x = -.26;
+        guard(.085, 0,-.13,.02, gunBlued);
+        add(.032,.075,.028, 0,-.1,.02, gunSteel);
+        const fgrip = add(.1,.26,.14, 0,-.22,-.42, gunGrip);
+        fgrip.rotation.x = .16;
+        add(.14,.06,.2, 0,-.08,-.42, gunBlued);
+        /* 등에 멘 연료통 두 개 — 호스로 이어진다 */
+        post(.17,.17,.62, .3,-.04,.62, tankRed, 14);
+        post(.13,.13,.56, .48,-.06,.74, tankYellow, 14);
+        post(.175,.175,.05, .3,.28,.62, gunAccent, 14);
+        post(.135,.135,.05, .48,.23,.74, gunAccent, 14);
+        post(.04,.04,.1, .3,.33,.62, gunBrass, 8);
+        post(.03,.03,.09, .48,.27,.74, gunBrass, 8);
+        /* 압력계 */
+        const gauge = post(.055,.055,.03, .22,.2,.44, gunAccent, 10);
+        gauge.rotation.x = Math.PI/2;
+        /* 호스 — 통에서 몸통으로 */
+        for(let i=0;i<9;i++){
+            const t = i/8;
+            const hx = .3 - t*.3 + Math.sin(t*3.1)*.06;
+            const hy = -.04 + Math.sin(t*3.1)*.12 - t*.02;
+            const hz = .62 - t*.52;
+            post(.028,.028,.1, hx,hy,hz, hoseMat, 6);
+        }
 
     }else if(type === "bazooka"){
-        /* 발사관 · 조준경 · 손잡이 */
-        add(.34,.34,2.5, 0,0,-.3, rpgTube);
-        add(.4,.4,.22, 0,0,-1.5, rpgTube);                 /* 총구 */
-        add(.42,.42,.26, 0,0,.88, rpgTube);                /* 후폭풍구 */
-        add(.16,.1,.7, 0,.24,-.5, gunDark);                /* 조준 레일 */
-        add(.1,.16,.12, 0,.34,-.85, gunDark);
-        add(.08,.12,.3, 0,.3,-.1, rpgScope);               /* 조준경 */
-        add(.14,.34,.2, 0,-.3,-.2, gunDark);               /* 손잡이 */
-        add(.12,.26,.16, 0,-.26,.42, gunDark);
-        add(.3,.16,.5, 0,-.2,-.9, rpgTube);                /* 전방 그립 */
-        add(.38,.1,.4, 0,.2,.5, gunDark);                  /* 어깨받이 */
-        add(.26,.26,.4, 0,0,-1.66, rpgWarhead);            /* 장전된 탄두 */
-        add(.16,.16,.26, 0,0,-1.94, rpgWarhead);
+        /* 발사관 */
+        cyl(.17,.17,2.5, 0,0,-.3, rpgTube, 16);
+        cyl(.2,.2,.14, 0,0,-1.52, gunAccent, 16);          /* 총구 링 */
+        cone(.22,.3, 0,0,1.03, rpgTube, true);             /* 나팔 모양 후폭풍구 */
+        for(let i=0;i<3;i++) cyl(.182,.182,.045, 0,0,-.9+i*.7, gunAccent, 16);
+        /* 조준 장치 */
+        add(.1,.045,.8, 0,.19,-.5, gunBlued);
+        cyl(.055,.055,.3, 0,.3,-.12, rpgScope, 12);
+        const lens2 = cyl(.045,.045,.012, 0,.3,-.272, gunGlass, 12);
+        lens2.rotation.x = Math.PI/2;
+        add(.05,.1,.05, 0,.25,-.02, gunBlued);
+        add(.09,.13,.04, 0,.27,-.86, gunBlued);            /* 가늠자 */
+        /* 손잡이 · 방아쇠 */
+        const bg = add(.12,.34,.18, 0,-.32,-.2, gunGrip);
+        bg.rotation.x = -.16;
+        guard(.1, 0,-.19,-.34, gunBlued);
+        add(.034,.085,.03, 0,-.16,-.34, gunSteel);
+        const fg2 = add(.1,.3,.16, 0,-.3,-.84, gunGrip);
+        fg2.rotation.x = .14;
+        add(.26,.08,.26, 0,-.14,-.84, rpgTube);
+        /* 어깨받이 */
+        const pad = add(.34,.1,.44, 0,.18,.5, gunGrip);
+        pad.rotation.x = -.12;
+        add(.08,.2,.1, 0,.08,.5, gunBlued);
+        /* 장전된 탄두 */
+        cyl(.13,.13,.36, 0,0,-1.68, rpgWarhead, 12);
+        cone(.13,.3, 0,0,-2.0, rpgWarhead);
+        for(let i=0;i<4;i++){                              /* 꼬리 날개 */
+            const fin = add(.012,.12,.16, 0,0,-1.5, gunAccent);
+            fin.rotation.z = i*Math.PI/2;
+            fin.position.set(Math.cos(i*1.571)*.13, Math.sin(i*1.571)*.13, -1.5);
+        }
 
     }else{
-        add(.16,.2,.86, 0,0,-.12, gunDark);
-        add(.08,.08,.5, 0,.03,-.62, gunDark);
-        add(.12,.33,.2, 0,-.24,.06, gunDark);
-        add(.09,.28,.14, 0,-.22,-.26, gunDark);
-        add(.14,.16,.42, 0,0,.45, gunBody);
+        /* 기관단총 — 짧고 뭉툭하게 */
+        add(.14,.185,.66, 0,0,-.06, gunPoly);
+        add(.13,.06,.6, 0,.115,-.1, gunBlued);
+        for(let i=0;i<6;i++) add(.085,.028,.03, 0,.155,.1-i*.08, gunAccent);
+        cyl(.034,.034,.54, 0,.035,-.62, gunSteel, 10);
+        cyl(.05,.05,.12, 0,.035,-.92, gunBlued, 10);
+        cyl(.048,.048,.26, 0,.035,-.5, gunPoly, 10);     /* 짧은 덮개 */
+        /* 손잡이 겸 탄창 */
+        const mag = add(.095,.4,.15, 0,-.26,-.08, gunPoly);
+        mag.rotation.x = .06;
+        add(.1,.045,.15, 0,-.47,-.09, gunBlued);
+        const grip = add(.1,.26,.15, 0,-.2,.2, gunGrip);
+        grip.rotation.x = -.26;
+        guard(.072, 0,-.1,-.02, gunPoly);
+        add(.03,.06,.026, 0,-.08,-.02, gunSteel);
+        /* 접은 개머리판 */
+        add(.03,.03,.42, .07,.05,.4, gunAccent);
+        add(.03,.03,.42, -.07,.05,.4, gunAccent);
+        add(.17,.03,.05, 0,.05,.6, gunAccent);
+        add(.05,.05,.05, .08,.06,-.12, gunAccent);
+        sights(.14,-.86,.16, gunAccent);
     }
 
     if(scale) g.scale.setScalar(scale);
@@ -2820,7 +3050,7 @@ function refreshViewModel(){
     currentViewGun = buildGun(w.model,
         w.model === "chainsaw" ? .2 : w.model === "bazooka" ? .3
       : w.model === "bat" ? .34 : w.model === "launcher" ? .33
-      : w.model === "dagger" ? .46 : .26);
+      : w.model === "dagger" ? .46 : w.model === "flamer" ? .3 : .26);
     if(w.model === "chainsaw"){
         currentViewGun.position.set(-.02, -.01, .06);
         currentViewGun.rotation.set(.03, -.1, -.06);
@@ -2836,6 +3066,9 @@ function refreshViewModel(){
     }else if(w.model === "launcher"){
         currentViewGun.position.set(-.08, .0, .08);
         currentViewGun.rotation.set(.02, .05, 0);
+    }else if(w.model === "flamer"){
+        currentViewGun.position.set(-.04, .02, .06);
+        currentViewGun.rotation.set(.015, .04, 0);
     }else{
         currentViewGun.position.set(0,0,0);
         currentViewGun.rotation.set(0,0,0);
@@ -2864,7 +3097,8 @@ function spawnWeapon(type,x,y,z){
     const group = new THREE.Group();
     const model = buildGun(type,
         type === "chainsaw" ? .55 : type === "bazooka" ? .5 : type === "bat" ? .62
-      : type === "launcher" ? .55 : type === "dagger" ? .85 : .9);
+      : type === "launcher" ? .55 : type === "dagger" ? .85
+      : type === "flamer" ? .55 : .9);
     model.rotation.z = .35;
     group.add(model);
 
@@ -4629,6 +4863,12 @@ function shoot(){
     /* 야구방망이 — 휘두르기 */
     if(weapon.swing){ swingBat(); return; }
 
+    /* 화염방사기는 flameTick 이 매 프레임 처리한다 */
+    if(weapon.flame){
+        if(current.clip <= 0) reload();
+        return;
+    }
+
     /* 체인소는 chainsawTick 이 매 프레임 처리한다 */
     if(weapon.melee){
         if(current.clip <= 0) reload();
@@ -4918,7 +5158,7 @@ function interact(){
     if(nearest.pickup && nearest.distance < 3.2){
         const pickup = nearest.pickup;
         const weaponNumber = { pistol:1, rifle:2, shotgun:3, smg:4, chainsaw:5, bat:6, bazooka:7,
-                               launcher:8, dagger:9 }[pickup.type];
+                               launcher:8, dagger:9, flamer:10 }[pickup.type];
 
         if(weaponNumber){
             player.weapon = weaponNumber;
@@ -4958,10 +5198,11 @@ function updateWeaponHUD(){
     document.getElementById("weaponName").innerHTML =
         weapon.name + (weapon.auto ? "<i class='autoBig'>AUTO</i>" : "");
     document.getElementById("ammo").textContent =
-        (player.reload ? (weapon.blast ? "재장전 중…" : weapon.melee ? "급유 중…" : "장전 중…")
+        (player.reload ? (weapon.blast ? "재장전 중…" : (weapon.melee || weapon.flame) ? "급유 중…" : "장전 중…")
          : weapon.infinite ? "내구도 무제한"
          : weapon.blast ? ("로켓 " + current.clip + " / 예비 " + current.reserve)
          : weapon.lob ? ("유탄 " + current.clip + " / " + weapon.maxAmmo + " · 예비 " + current.reserve)
+         : weapon.flame ? ("연료 " + Math.round(current.clip) + "% · 예비 " + current.reserve)
          : weapon.melee ? ("연료 " + Math.round(current.clip) + "% · 예비 " + current.reserve)
                         : (current.clip + " / " + current.reserve));
 
@@ -4969,10 +5210,11 @@ function updateWeaponHUD(){
         Math.round(current.clip/weapon.maxAmmo*100) + "%";
 
     let html = "";
-    for(let i=1;i<=9;i++){
+    for(let i=1;i<=10;i++){
         const active = i === player.weapon;
         const w = weapons[i];
-        const tag = w.stab ? "<i class='auto saw'>찌르기</i>"
+        const tag = w.flame ? "<i class='auto saw'>화염</i>"
+                  : w.stab ? "<i class='auto saw'>찌르기</i>"
                   : w.swing ? "<i class='auto saw'>타격</i>"
                   : w.lob ? "<i class='auto saw'>곡사</i>"
                   : w.blast ? "<i class='auto saw'>폭발</i>"
@@ -5566,6 +5808,163 @@ function gibSound(){
 let sawBite = 0, sawLoad = 0, sawSpin = 0;
 
 /* 전방 부채꼴 안의 대상을 썰어 낸다 */
+/* ---- 화염방사기 ---- */
+const FLAME_JETS = 26;
+let flameGroup = null, flameJets = [], flameLight = null;
+let flameLoad = 0, flameTickCount = 0, flamePatchCool = 0;
+let flameOsc = null, flameGain = null, flameFilter = null;
+
+function ensureFlameRig(){
+    if(flameGroup) return;
+    flameGroup = new THREE.Group();
+    flameGroup.visible = false;
+    camera.add(flameGroup);
+    for(let i=0;i<FLAME_JETS;i++){
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1,1),
+            new THREE.MeshBasicMaterial({ map:fireTex, transparent:true, opacity:0,
+                depthWrite:false, depthTest:false, blending:THREE.AdditiveBlending }));
+        m.renderOrder = 7;
+        flameGroup.add(m);
+        flameJets.push({ mesh:m, t:Math.random(), seed:Math.random()*6.28,
+                         spread:(Math.random()-.5), lift:(Math.random()-.5) });
+    }
+}
+
+function flameStart(){
+    const ctx = audio(); if(!ctx || !soundOn || flameOsc) return;
+    try{
+        const len = Math.floor(ctx.sampleRate*1.4);
+        const buf = ctx.createBuffer(1,len,ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        let last = 0;
+        for(let i=0;i<len;i++){
+            const white = Math.random()*2-1;
+            last = (last + white*.22) * .94;      /* 낮게 깔리는 제트음 */
+            d[i] = last;
+        }
+        flameOsc = ctx.createBufferSource();
+        flameOsc.buffer = buf; flameOsc.loop = true;
+        flameFilter = ctx.createBiquadFilter();
+        flameFilter.type = "bandpass";
+        flameFilter.frequency.value = 760; flameFilter.Q.value = .6;
+        flameGain = ctx.createGain();
+        flameGain.gain.value = 0;
+        flameOsc.connect(flameFilter); flameFilter.connect(flameGain);
+        flameGain.connect(ctx.destination);
+        flameOsc.start();
+    }catch(e){ flameOsc = null; }
+}
+
+function flameStop(){
+    if(!flameOsc) return;
+    try{ flameOsc.stop(); }catch(e){}
+    flameOsc = null; flameGain = null; flameFilter = null;
+}
+
+function flameTick(){
+    const w = weapons[10], fuel = ammo[10];
+    ensureFlameRig();
+
+    const firing = player.weapon === 10 && triggerHeld && !player.reload &&
+                   !player.inCar && gameStarted && !gameOver && fuel.clip > 0;
+
+    if(!firing){
+        flameLoad *= .82;
+        if(flameLoad < .02){
+            flameGroup.visible = false;
+            flameStop();
+            if(flameLight) flameLight.intensity *= .6;
+        }else if(flameGain){
+            flameGain.gain.value = .16*flameLoad;
+        }
+        if(flameLight) flameLight.intensity *= .82;
+        if(currentViewGun && currentViewGun.userData.pilot){
+            const p = currentViewGun.userData.pilot;
+            p.material.opacity = .55 + Math.random()*.3;
+            p.scale.setScalar(.8 + Math.random()*.4);
+        }
+        return;
+    }
+
+    flameStart();
+    flameLoad = Math.min(1, flameLoad + .16);
+    flameGroup.visible = true;
+    if(flameGain) flameGain.gain.value = .2*flameLoad;
+    if(flameFilter) flameFilter.frequency.value = 640 + flameLoad*520;
+
+    fuel.clip = Math.max(0, fuel.clip - .34);
+    flameTickCount++;
+
+    /* ---- 분사 모양: 총구에서 앞으로 퍼져 나가는 원뿔 ---- */
+    for(const j of flameJets){
+        j.t += .055 + Math.random()*.03;
+        if(j.t > 1){
+            j.t -= 1;
+            j.spread = (Math.random()-.5);
+            j.lift   = (Math.random()-.5);
+            j.seed   = Math.random()*6.28;
+        }
+        const k = j.t;                                  /* 0(총구) → 1(끝) */
+        const reach = w.reach*flameLoad;
+        j.mesh.position.set(
+            .30 + j.spread*k*1.5,
+            -.20 + j.lift*k*1.0 + k*k*0.5,              /* 끝에서 살짝 떠오른다 */
+            -.45 - k*reach
+        );
+        const sz = .34 + k*2.4;
+        j.mesh.scale.set(sz, sz, 1);
+        j.mesh.rotation.z = j.seed + k*2.2;
+        /* 뿌리는 희고 뜨겁게, 끝은 주황으로 식으며 사라진다 */
+        j.mesh.material.opacity = (1 - k*k) * (.5 + .5*Math.random()) * flameLoad;
+        j.mesh.material.color.setRGB(1, .62 - k*.3, .26 - k*.24);
+    }
+
+    if(!flameLight) flameLight = new THREE.PointLight(0xff7a26, 0, 26, 2);
+    if(!flameLight.parent) camera.add(flameLight);
+    flameLight.position.set(.3, -.1, -2.2);
+    flameLight.intensity = 11*flameLoad;
+
+    /* ---- 원뿔 안의 감염체를 태운다 ---- */
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    const reach = w.reach*flameLoad;
+
+    if(flameTickCount % 6 === 0){
+        for(let i=zombies.length-1; i>=0; i--){
+            const zb = zombies[i];
+            const dx = zb.x-player.x, dz = zb.z-player.z;
+            const d = Math.hypot(dx,dz);
+            if(d > reach || d < .001) continue;
+            if(Math.abs(player.y-1.7-zb.y) > 2.6) continue;
+            /* 멀수록 원뿔이 넓어진다 */
+            const arc = w.arc - Math.min(.3, d*.028);
+            if((dx*fx + dz*fz)/d < arc) continue;
+
+            const near = 1 - d/reach;
+            const dmg = w.damage * (1 + near*1.6);
+            const aimY = zb.y + (zb.crawler ? .7 : 1.4);
+            const part = hitPartOf(zb, player.x + fx*d, aimY, player.z + fz*d);
+            if(damagePart(zb, part, dmg, false)) killZombie(i);
+        }
+    }
+
+    /* ---- 바닥에 불이 번진다 ---- */
+    flamePatchCool--;
+    if(flamePatchCool <= 0 && firePatches.length < 7){
+        const dist = reach*(.55 + Math.random()*.4);
+        const px = player.x + fx*dist, pz = player.z + fz*dist;
+        if(!blocked(px, 1.7, pz, .4)){
+            addFirePatch(px, supportHeight(px, pz, player.y-1.7, 1.2), pz,
+                         1.5 + Math.random()*.9, 150);
+            flamePatchCool = 26 + Math.floor(Math.random()*22);
+        }else{
+            flamePatchCool = 10;
+        }
+    }
+
+    shake = Math.max(shake, .05*flameLoad);
+    if(fuel.clip <= 0) reload();
+}
+
 function chainsawTick(){
     const w = weapons[5], fuel = ammo[5];
 
@@ -7539,6 +7938,10 @@ function clearWorld(){
 
     while(gibs.length) world.remove(gibs.pop().mesh);
     sawStop();
+    flameStop();
+    flameLoad = 0;
+    if(flameGroup) flameGroup.visible = false;
+    if(flameLight) flameLight.intensity = 0;
     sawLoad = 0;
     if(hazardLight) hazardLight.intensity = 0;
     for(const b of blastPool){ b.t = 0; b.mesh.visible = false; }
@@ -8166,6 +8569,7 @@ function buildCity(){
         ["bat",-18,0.5,118], ["bat",62,0.5,-96],
         ["bazooka",24,0.5,-118], ["bazooka",-92,0.5,44],
         ["launcher",-56,0.5,-78], ["launcher",96,0.5,112],
+        ["flamer",-34,0.5,-146], ["flamer",118,0.5,-36],
         ["dagger",-24,0.5,-8], ["dagger",38,0.5,46], ["dagger",-70,0.5,70]
     ];
     for(const s of spawns) spawnWeapon(s[0],s[1],s[2],s[3]);
@@ -9036,6 +9440,8 @@ function buildMall(){
     spawnWeapon("bazooka", 48, M.lv[1]+.6, -26);
     spawnWeapon("launcher", -38, M.lv[2]+.6, -30);
     spawnWeapon("launcher", 34, .6, 44);
+    spawnWeapon("flamer", -52, .6, 26);
+    spawnWeapon("flamer", 18, M.lv[2]+.6, 30);
     spawnWeapon("dagger", 14, .6, 10);
     spawnWeapon("dagger", -10, M.lv[1]+.6, -14);
 
@@ -9692,6 +10098,8 @@ function buildFactory(){
     spawnWeapon("bazooka", 20, .6, -30);
     spawnWeapon("launcher", 52, .6, -62);
     spawnWeapon("launcher", -16, F.cat+.6, -40);
+    spawnWeapon("flamer", -46, .6, 72);
+    spawnWeapon("flamer", 34, .6, 24);
     spawnWeapon("dagger", 12, .6, 18);
     spawnWeapon("dagger", -40, .6, 40);
 
@@ -9810,8 +10218,34 @@ function factoryTick(state, now){
 
     if(!gameStarted || gameOver) return;
 
-    /* 숲 조우 */
-    if(inWood && state.trees && (!state.wasInWood || now-state.lastWood > 11000) && zombies.length < DIFF.cap-6){
+    /* ---- 구석구석·외곽 은신처에서 3~5마리가 튀어나온다 ---- */
+    if(!player.inCar && now - state.lastLair > 7000 && state.lairs){
+        const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+        let best = null, bestScore = -Infinity;
+
+        for(const L of state.lairs){
+            if(now < L.cool) continue;
+            const dx = L.x - player.x, dz = L.z - player.z;
+            const d = Math.hypot(dx, dz);
+            if(d < 9 || d > 30) continue;
+            /* 캣워크 위에서는 바닥 은신처가 터지지 않게 */
+            if(onCat && L.zone !== "hall") continue;
+            const facing = (dx*fx + dz*fz) / d;
+            if(facing < -0.35) continue;
+            /* 지금 있는 구역의 은신처를 우선한다 */
+            const here = (inHall && L.zone === "hall") ||
+                         (!inHall && !inWood && L.zone === "yard") ||
+                         (inWood && L.zone === "edge");
+            const score = facing*1.3 - d*0.045 + (here ? .9 : 0) + Math.random()*0.35;
+            if(score > bestScore){ bestScore = score; best = L; }
+        }
+
+        if(best && factoryLairBurst(best, now)) state.lastLair = now;
+    }
+
+    /* 외곽 은신처가 막 터졌다면 숲 조우는 건너뛴다 — 한 번에 너무 많이 나오지 않게 */
+    if(inWood && state.trees && now - state.lastLair > 7000 &&
+       (!state.wasInWood || now-state.lastWood > 11000) && zombies.length < DIFF.cap-6){
         const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
 
         let cand = state.trees.filter(t => {
@@ -9852,30 +10286,6 @@ function factoryTick(state, now){
     }
     state.wasInWood = inWood;
 
-    /* ---- 구석구석·외곽 은신처에서 3~5마리가 튀어나온다 ---- */
-    if(!player.inCar && now - state.lastLair > 7000 && state.lairs){
-        const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-        let best = null, bestScore = -Infinity;
-
-        for(const L of state.lairs){
-            if(now < L.cool) continue;
-            const dx = L.x - player.x, dz = L.z - player.z;
-            const d = Math.hypot(dx, dz);
-            if(d < 9 || d > 30) continue;
-            /* 캣워크 위에서는 바닥 은신처가 터지지 않게 */
-            if(onCat && L.zone !== "hall") continue;
-            const facing = (dx*fx + dz*fz) / d;
-            if(facing < -0.35) continue;
-            /* 지금 있는 구역의 은신처를 우선한다 */
-            const here = (inHall && L.zone === "hall") ||
-                         (!inHall && !inWood && L.zone === "yard") ||
-                         (inWood && L.zone === "edge");
-            const score = facing*1.3 - d*0.045 + (here ? .9 : 0) + Math.random()*0.35;
-            if(score > bestScore){ bestScore = score; best = L; }
-        }
-
-        if(best && factoryLairBurst(best, now)) state.lastLair = now;
-    }
 }
 
 
@@ -10180,6 +10590,7 @@ function update(){
     updateFirePatches();
     updateHazards();
     chainsawTick();
+    flameTick();
     animateChain();
 
     batTick();
