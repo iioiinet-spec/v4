@@ -279,6 +279,7 @@ body.mapOpen #floorHUD{top:576px}
   <div class="stat"><span>웨이브</span><b id="wave">0</b></div>
   <div class="stat"><span>잔존 감염체</span><b id="zombies">0</b></div>
   <div class="stat"><span>러너</span><b id="runners">0</b></div>
+  <div class="stat"><span>도약형</span><b id="leapers">0</b></div>
   <div class="spec" id="specials"></div>
   <div class="stat"><span>상태</span><b id="carStatus">도보</b></div>
 </div>
@@ -3384,13 +3385,19 @@ function rollKind(){
         if(r < acc) return "pack";
     }
 
-    const leaperChance = Math.min(.18, .025 + wave*.006);
-    if(wave >= 3 && Math.random() < leaperChance) return "leaper";
+    const leaperChance = Math.min(.22, .04 + wave*.009);
+    if(wave >= 2 && Math.random() < leaperChance) return "leaper";
     const runnerChance = Math.min(.74, DIFF.run + wave*DIFF.runW);
     if(wave >= 2 && Math.random() < runnerChance) return "runner";
     if(Math.random() < DIFF.crawl) return "crawler";
     return "walker";
 }
+
+const RUNNER_SPEED = 2.15;        /* 러너 기본 배속 */
+const LEAPER_EDGE  = 1.10;        /* 도약형은 러너보다 10% 빠르게 접근 */
+/* 바운딩(움츠림-도약) 주기가 평균 속도를 약간 끌어올리므로 그만큼 깎아
+   실제 접근 속도가 러너 × LEAPER_EDGE 가 되게 맞춘다 */
+const LEAPER_GAIT  = 1.094;
 
 let packSlotSeq = 0;
 
@@ -3483,8 +3490,9 @@ function createZombie(spawnX, spawnZ, kind){
     let speed = (.038 + Math.random()*.017 + waveSpeed) * DIFF.spd;
     let hp = Math.max(1, Math.round(DIFF.hp + wave*DIFF.hpW));
 
-    if(runner){   speed *= 2.15; hp = Math.max(1, Math.round(hp*.72)); }
-    if(leaper){   speed *= 1.86; hp = Math.max(1, Math.round(hp*.82)); }
+    if(runner){   speed *= RUNNER_SPEED; hp = Math.max(1, Math.round(hp*.72)); }
+    /* 도약형 — 뛰면서 튀어 오른다. 접근 속도는 러너의 1.10배 */
+    if(leaper){   speed *= RUNNER_SPEED*LEAPER_EDGE*LEAPER_GAIT; hp = Math.max(1, Math.round(hp*.78)); }
     if(crawler){  speed *= .78; }
     if(screamer){ speed *= .82;  hp = Math.max(1, Math.round(hp*1.15)); }
     if(acid){     speed *= .58;  hp = Math.max(2, Math.round(hp*2.1));  }
@@ -3498,6 +3506,7 @@ function createZombie(spawnX, spawnZ, kind){
         hp, speed, baseSpeed: speed,
         attackTimer:0, lunge:0, screamed:false, stuck:0,
         jumpCooldown: 80 + Math.floor(Math.random()*70), leapBoost:0,
+        bound:0, boundCrouch:0, pounce:0, airT:0, landFx:0,
         alert:0, shadowOn:true,
         parts: (function(){
             const lp = Math.max(1, Math.round(hp*.55));
@@ -3807,7 +3816,7 @@ function updatePackState(){
    좀비 업데이트
 ========================================================= */
 
-const zCount = { runner:0, screamer:0, acid:0, pack:0 };
+const zCount = { runner:0, leaper:0, screamer:0, acid:0, pack:0 };
 
 function doScream(zb){
     screamSound();
@@ -3832,14 +3841,15 @@ function doScream(zb){
 
 function updateZombies(){
     let nearRunner = false;
-    zCount.runner = zCount.screamer = zCount.acid = zCount.pack = 0;
+    zCount.runner = zCount.leaper = zCount.screamer = zCount.acid = zCount.pack = 0;
 
     updatePackState();
 
     for(let i=0;i<zombies.length;i++){
         const zb = zombies[i];
 
-        if(zb.runner || zb.leaper) zCount.runner++;
+        if(zb.leaper) zCount.leaper++;
+        else if(zb.runner) zCount.runner++;
         else if(zb.screamer) zCount.screamer++;
         else if(zb.acid) zCount.acid++;
         else if(zb.pack) zCount.pack++;
@@ -3886,16 +3896,40 @@ function updateZombies(){
             }
             if(zb.leaper){
                 zb.jumpCooldown--;
+                const grounded = zb.vy === 0 && zb.leapBoost <= 0;
                 const provoked = performance.now() - lastPlayerJump < 1100;
-                if(zb.vy === 0 && zb.jumpCooldown <= 0 && flat > 3.8 && flat < 22 && reach && (provoked || Math.random() < .009)){
-                    zb.vy = .24 + Math.min(.14, flat*.006);
-                    zb.leapBoost = 14 + Math.floor(flat*.45);
-                    zb.jumpCooldown = 92 + Math.floor(Math.random()*65);
-                    zb.alert = Math.max(zb.alert, 18);
+
+                /* ---- 덮치기: 중거리에서 크게 날아든다 ---- */
+                if(grounded && zb.jumpCooldown <= 0 && flat > 3.6 && flat < 15 && reach &&
+                   (provoked || Math.random() < .055)){
+                    zb.vy = .30 + Math.min(.12, flat*.009);
+                    zb.leapBoost = 18 + Math.floor(flat*.6);
+                    zb.pounce = zb.leapBoost;
+                    zb.jumpCooldown = 70 + Math.floor(Math.random()*50);
+                    zb.alert = Math.max(zb.alert, 24);
+                    leapScreech(zb);
+                }
+                /* ---- 바운딩: 쫓는 동안 쉬지 않고 통통 튄다 ---- */
+                else if(grounded && zb.bound <= 0 && zb.boundCrouch <= 0 && flat > 2.2 && reach){
+                    zb.boundCrouch = 5;                 /* 움츠렸다가 */
+                }
+                if(zb.boundCrouch > 0){
+                    zb.boundCrouch--;
+                    step *= .86;                        /* 움츠릴 때는 느려지고 */
+                    if(zb.boundCrouch === 0){
+                        zb.vy = .165 + Math.random()*.035;
+                        zb.bound = 13;
+                        zb.airT = 0;
+                    }
+                }
+                if(zb.bound > 0){
+                    step *= 1.06;                       /* 떠 있는 동안 쭉 뻗는다 */
+                    zb.bound--;
                 }
                 if(zb.leapBoost > 0){
-                    step *= 2.08;
+                    step *= 1.62;
                     zb.leapBoost--;
+                    if(zb.pounce > 0) zb.pounce--;
                 }
             }
 
@@ -3949,13 +3983,26 @@ function updateZombies(){
 
         /* 수직 — 계단 · 에스컬레이터 · 캣워크를 따라 오른다 */
         const support = supportHeight(zb.x, zb.z, zb.y, .55);
-        if(zb.y > support + .03){
+        /* 도약 직후에는 아직 발이 땅에 있으므로 vy 를 함께 본다 */
+        if(zb.y > support + .03 || zb.vy > .0001){
             zb.vy -= .016;
             zb.y += zb.vy;
-            if(zb.y < support){ zb.y = support; zb.vy = 0; }
+            if(zb.leaper) zb.airT++;
+            if(zb.y < support){
+                /* 착지 — 세게 떨어질수록 먼지가 크게 인다 */
+                if(zb.leaper && zb.vy < -.14){
+                    scatterSand(zb.x, zb.z, 4, 1.2);
+                    zb.landFx = 7;
+                    const d = Math.hypot(zb.x-player.x, zb.z-player.z);
+                    if(d < 24) landThud(Math.max(0, 1 - d/24));
+                }
+                zb.y = support; zb.vy = 0; zb.airT = 0;
+            }
         }else{
             zb.y = support; zb.vy = 0;
+            if(zb.leaper) zb.airT = 0;
         }
+        if(zb.landFx > 0) zb.landFx--;
 
         /* ---- 애니메이션 ---- */
         if(zb.crawler){
@@ -3974,18 +4021,37 @@ function updateZombies(){
             }
 
         }else if(zb.runner || zb.leaper){
-            zb.phase += zb.leaper ? .26 : .23;
+            zb.phase += zb.leaper ? .3 : .23;
             const gait = Math.sin(zb.phase);
             const burst = zb.runner && zb.lunge > 0 ? .22 : 0;
-            const airborne = zb.leaper && (zb.vy > .03 || zb.leapBoost > 0);
-            zb.legs[0].rotation.x = gait*(zb.leaper ? 1.18 : 1.05);
-            zb.legs[1].rotation.x = -gait*(zb.leaper ? 1.18 : 1.05);
-            zb.arms[0].rotation.set((airborne ? -.95 : -.35) - gait*1.15, 0, -.3);
-            zb.arms[1].rotation.set((airborne ? -.95 : -.35) + gait*1.15, 0, .3);
-            zb.rig.rotation.x = (zb.leaper ? .54 : .46) + burst + Math.abs(gait)*.05 + (airborne ? .18 : 0);
-            zb.rig.rotation.z = .07*Math.sin(zb.phase*.5);
-            zb.rig.position.y = (zb.leaper ? -.08 : -.12) + Math.abs(gait)*.085 + (airborne ? .08 : 0);
-            zb.head.rotation.set(airborne ? -.7 : -.42, 0, .1*gait);
+            const air = zb.leaper && (zb.y > supportHeight(zb.x,zb.z,zb.y,.55) + .06);
+            const pouncing = zb.leaper && zb.pounce > 0;
+            const crouch = zb.leaper && zb.boundCrouch > 0;
+            const land = zb.leaper && zb.landFx > 0;
+
+            if(air){
+                /* 다리를 접어 당기고 팔을 활짝 — 덮칠 때는 더 크게 */
+                const reach2 = pouncing ? 1 : .55;
+                const t = Math.min(1, zb.airT*.18);
+                zb.legs[0].rotation.x = -1.05*reach2 - t*.35;
+                zb.legs[1].rotation.x = -.62*reach2 + t*.3;
+                zb.arms[0].rotation.set(-1.9*reach2 - .35, 0, -.62 - .3*reach2);
+                zb.arms[1].rotation.set(-1.9*reach2 - .35, 0,  .62 + .3*reach2);
+                zb.rig.rotation.x = (pouncing ? .18 : .40) - t*.14;
+                zb.rig.rotation.z = .1*Math.sin(zb.phase*.5);
+                zb.rig.position.y = .14 + (pouncing ? .1 : 0);
+                zb.head.rotation.set(pouncing ? -1.05 : -.8, 0, .06*gait);
+            }else{
+                const sq = crouch ? .26 : land ? .2 : 0;      /* 움츠림 · 착지 반동 */
+                zb.legs[0].rotation.x = gait*(zb.leaper ? 1.3 : 1.05) + sq*1.1;
+                zb.legs[1].rotation.x = -gait*(zb.leaper ? 1.3 : 1.05) + sq*1.1;
+                zb.arms[0].rotation.set(-.35 - gait*1.15 - sq*.8, 0, -.3);
+                zb.arms[1].rotation.set(-.35 + gait*1.15 - sq*.8, 0, .3);
+                zb.rig.rotation.x = (zb.leaper ? .58 : .46) + burst + Math.abs(gait)*.05 + sq*.5;
+                zb.rig.rotation.z = .07*Math.sin(zb.phase*.5);
+                zb.rig.position.y = (zb.leaper ? -.08 : -.12) + Math.abs(gait)*.085 - sq*.42;
+                zb.head.rotation.set(-.42 - sq*.3, 0, .1*gait);
+            }
             if(flat <= 1.7 && reach){
                 zb.arms[0].rotation.x = -2.0+.5*Math.sin(zb.phase*2);
                 zb.arms[1].rotation.x = -2.0-.5*Math.sin(zb.phase*2);
@@ -4101,7 +4167,7 @@ function updateZombies(){
 
     runnerAlert = nearRunner ? 1 : Math.max(0, runnerAlert - .04);
     const rw = document.getElementById("runnerWarn");
-    if(rw) rw.textContent = zombies.some(z=>z.leaper && Math.hypot(z.x-player.x, z.z-player.z) < 22) ? "⚠ 도약형 좀비 접근" : "⚠ 러너 접근";
+    if(rw) rw.textContent = zombies.some(z=>z.leaper && Math.hypot(z.x-player.x, z.z-player.z) < 22) ? "⚠ 도약형 좀비 — 뛰어오며 덮친다" : "⚠ 러너 접근";
     document.getElementById("runnerWarn").style.opacity = nearRunner ? "1" : "0";
 }
 
@@ -4927,6 +4993,12 @@ function updateHUD(){
     const rEl = document.getElementById("runners");
     rEl.textContent = zCount.runner;
     rEl.className = zCount.runner > 0 ? "danger" : "";
+
+    const lEl = document.getElementById("leapers");
+    if(lEl){
+        lEl.textContent = zCount.leaper;
+        lEl.className = zCount.leaper > 0 ? "danger" : "";
+    }
 
     const sp = document.getElementById("specials");
     if(zCount.screamer || zCount.acid || zCount.pack){
@@ -7030,6 +7102,42 @@ function swooshSound(){
         const g = ctx.createGain(); g.gain.value = .12;
         src.connect(f); f.connect(g); g.connect(ctx.destination);
         src.start();
+    }catch(e){}
+}
+
+/* 덮치기 직전의 째지는 비명 */
+function leapScreech(zb){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    const d = Math.hypot(zb.x-player.x, zb.z-player.z);
+    if(d > 34) return;
+    const vol = Math.max(.05, .34*(1 - d/34));
+    try{
+        const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(220 + Math.random()*90, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(860 + Math.random()*260, ctx.currentTime+.16);
+        o.frequency.exponentialRampToValueAtTime(300, ctx.currentTime+.34);
+        f.type = "bandpass"; f.frequency.value = 1150; f.Q.value = 1.5;
+        g.gain.setValueAtTime(.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(vol, ctx.currentTime+.05);
+        g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+.36);
+        o.connect(f); f.connect(g); g.connect(ctx.destination);
+        o.start(); o.stop(ctx.currentTime+.37);
+    }catch(e){}
+}
+
+/* 착지 — 묵직한 쿵 */
+function landThud(vol){
+    const ctx = audio(); if(!ctx || !soundOn) return;
+    try{
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.setValueAtTime(150, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(44, ctx.currentTime+.13);
+        g.gain.setValueAtTime(Math.min(.3, .06+vol*.26), ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+.2);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(); o.stop(ctx.currentTime+.21);
     }catch(e){}
 }
 
