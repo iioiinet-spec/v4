@@ -1173,7 +1173,7 @@ function clearCollision(){
 }
 
 /* 반지름 rad, 키 1.7 의 캡슐이 (x,y,z) 에서 막히는지 */
-function blocked(x,y,z,rad){
+function blocked(x,y,z,rad,ignoreSlick){
     const r = rad === undefined ? .35 : rad;
     const feet = y-1.7, head = y;
 
@@ -1202,6 +1202,8 @@ function blocked(x,y,z,rad){
         for(let i=0;i<list.length;i++){
             const s = list[i];
             if(s.dead) continue;
+            /* 철망·철조망은 발을 디딜 수 없다 — 벽 차기 대상에서 뺀다 */
+            if(ignoreSlick && s.slick) continue;
             if(x+r > s.minX && x-r < s.maxX &&
                z+r > s.minZ && z-r < s.maxZ &&
                head > s.minY && feet < s.maxY) return true;
@@ -4622,10 +4624,11 @@ function checkWave(){
 
 function wallNearby(){
     const d = 0.75;
-    return blocked(player.x+d, player.y, player.z) ||
-           blocked(player.x-d, player.y, player.z) ||
-           blocked(player.x, player.y, player.z+d) ||
-           blocked(player.x, player.y, player.z-d);
+    /* 울타리처럼 매끄러운 면은 차고 오를 수 없다 */
+    return blocked(player.x+d, player.y, player.z, undefined, true) ||
+           blocked(player.x-d, player.y, player.z, undefined, true) ||
+           blocked(player.x, player.y, player.z+d, undefined, true) ||
+           blocked(player.x, player.y, player.z-d, undefined, true);
 }
 
 /* 허리보다 깊은 물 — 더 들어가지 못한다 */
@@ -6297,16 +6300,68 @@ function addElectricFence(ax, az, bx, bz, boxX0, boxZ0){
     const n = Math.max(2, Math.round(len/5));
     const wires = [];
 
+    const FENCE_H = 4.3;          /* 기둥 높이 */
+    const BLOCK_H = 5.4;          /* 막아서는 높이 — 점프로 넘을 수 없다 */
+
+    /* 기둥 — 위쪽이 바깥으로 꺾여 철조망을 인다 */
     for(let i=0;i<=n;i++){
         const t = i/n;
-        detail(g, .26, 3.1, .26, ax+(bx-ax)*t, 1.55, az+(bz-az)*t, matMetal);
+        const px = ax+(bx-ax)*t, pz = az+(bz-az)*t;
+        detail(g, .26, FENCE_H, .26, px, FENCE_H/2, pz, matMetal);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(.14,.9,.14), matMetal);
+        arm.position.set(px, FENCE_H+.38, pz);
+        arm.rotation.x = .5;
+        g.add(arm);
     }
-    for(let h=0; h<3; h++){
+
+    /* 철망 — 성긴 격자 */
+    const meshMat = own(new THREE.MeshStandardMaterial({
+        color:0x6b7378, metalness:.6, roughness:.5,
+        transparent:true, opacity:.34, side:THREE.DoubleSide }));
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, FENCE_H-.3), meshMat);
+    panel.position.set((ax+bx)/2, (FENCE_H-.3)/2+.15, (az+bz)/2);
+    panel.rotation.y = ang + Math.PI/2;
+    g.add(panel);
+
+    /* 전류가 흐르는 가로선 */
+    for(let h=0; h<4; h++){
         const w = new THREE.Mesh(new THREE.BoxGeometry(.07, .07, len), hazWireMat);
-        w.position.set((ax+bx)/2, .9+h*.85, (az+bz)/2);
+        w.position.set((ax+bx)/2, .75+h*1.05, (az+bz)/2);
         w.rotation.y = ang;
         g.add(w);
         wires.push(w);
+    }
+    /* 꼭대기 철조망 — 넘어갈 수 없다는 신호 */
+    for(let h=0; h<2; h++){
+        const w = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, len), hazWireMat);
+        w.position.set((ax+bx)/2, FENCE_H+.42+h*.3, (az+bz)/2);
+        w.rotation.y = ang;
+        g.add(w);
+        wires.push(w);
+    }
+    for(let i=0;i<Math.max(3,Math.round(len/1.6));i++){
+        const t = (i+.5)/Math.max(3,Math.round(len/1.6));
+        const bx2 = ax+(bx-ax)*t, bz2 = az+(bz-az)*t;
+        const barb = new THREE.Mesh(new THREE.TorusGeometry(.17,.022,4,8), hazWireMat);
+        barb.position.set(bx2, FENCE_H+.56, bz2);
+        barb.rotation.set(Math.PI/2, ang, 0);
+        g.add(barb);
+    }
+
+    /* ---- 통과 불가: 울타리 선을 따라 충돌 상자를 깐다 ---- */
+    const fenceSolids = [];
+    const segs = Math.max(1, Math.ceil(len/4));
+    for(let i=0;i<segs;i++){
+        const t0 = i/segs, t1 = (i+1)/segs;
+        const sx0 = ax+(bx-ax)*t0, sz0 = az+(bz-az)*t0;
+        const sx1 = ax+(bx-ax)*t1, sz1 = az+(bz-az)*t1;
+        const cx = (sx0+sx1)/2, cz = (sz0+sz1)/2;
+        /* 축에 정렬된 상자이므로 구간을 덮을 만큼만 키운다 */
+        const w = Math.abs(sx1-sx0) + .42;
+        const d = Math.abs(sz1-sz0) + .42;
+        const fs = addSolid(cx, 0, cz, w, BLOCK_H, d);
+        fs.slick = true;                      /* 기어오를 수 없는 면 */
+        fenceSolids.push(fs);
     }
 
     /* 조작반 */
@@ -6320,7 +6375,8 @@ function addElectricFence(ax, az, bx, bz, boxX0, boxZ0){
     addSolid(boxX, 0, boxZ, 1.0, 2.0, .6);
 
     hazards.push({ type:"fence", ax, az, bx, bz, x:boxX, z:boxZ, y:0,
-                   group:g, wires, lamp, active:0, cool:0, light:null, dead:false });
+                   group:g, wires, lamp, solids:fenceSolids,
+                   active:0, cool:0, light:null, dead:false });
 }
 
 /* 점과 선분 사이 거리 */
@@ -6470,6 +6526,18 @@ function updateHazards(){
                 const flick = .55+Math.random()*.45;
                 for(const w of h.wires) w.material = hazWireLive;
                 h.lamp.material = hazLampOn;
+                /* 울타리에 바싹 붙으면 플레이어도 지진다 */
+                if(!player.inCar && !player.onBike &&
+                   distToSegment(player.x, player.z, h.ax, h.az, h.bx, h.bz) < 1.5 &&
+                   player.y-1.7 < 4.4){
+                    if(h.active % 10 === 0){
+                        player.hp -= DIFF.dmg*.7;
+                        damageFlash();
+                        shake = Math.max(shake, .3);
+                        zapSound();
+                        if(player.hp <= 0){ player.hp = 0; endGame(); return; }
+                    }
+                }
 
                 if(!h.light){
                     h.light = new THREE.PointLight(0x7fd4ff, 0, 26, 2);
