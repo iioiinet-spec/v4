@@ -1136,6 +1136,9 @@ function putCells(map, minX, minZ, maxX, maxZ, item){
 }
 
 /* 벽 — 축 정렬 상자 */
+/* 한 번에 디딜 수 있는 턱 높이 */
+const STEP_RISE = 0.55;
+
 let lastSolid = null;
 
 function addSolid(x,y,z,w,h,d){
@@ -1211,6 +1214,15 @@ function blocked(x,y,z,rad,ignoreSlick){
     }
 
     return false;
+}
+
+/* 가려는 자리에 발을 디딜 수 있으면 그 높이를 돌려준다.
+   계단을 오를 때 윗층 바닥 모서리에 몸이 걸리는 것을 막는다.
+   (층 바닥은 두께만큼 충돌체를 갖는데, 계단을 밟는 동안 발이 그 띠 안에 들어가
+    옆에서 막히기 때문이다) */
+function stepUpHeight(x, z, feetY, rad){
+    const top = supportHeight(x, z, feetY, STEP_RISE);
+    return blocked(x, top + 1.7, z, rad) ? null : top;
 }
 
 /* 머리 위에서 가장 낮게 걸리는 면 — 점프로 위층을 뚫지 못하게 한다 */
@@ -3813,6 +3825,10 @@ function zombieStep(zb, dirX, dirZ, step){
 
     if(!blocked(nx, feetY, nz, .34)){ zb.x = nx; zb.z = nz; return true; }
 
+    /* 계단·발판이면 한 발 올라선다 */
+    const up = stepUpHeight(nx, nz, zb.y, .34);
+    if(up !== null){ zb.x = nx; zb.z = nz; zb.y = up; return true; }
+
     /* 벽을 만나면 좌우로 비껴 간다 */
     const side = (zb.phase % 6.28) < 3.14 ? 1 : -1;
     for(const a of [40*DEG, -40*DEG, 75*DEG, -75*DEG, 110*DEG, -110*DEG]){
@@ -3821,6 +3837,8 @@ function zombieStep(zb, dirX, dirZ, step){
         const ddx = dirX*c - dirZ*s, ddz = dirX*s + dirZ*c;
         const sx = zb.x + ddx*step, sz = zb.z + ddz*step;
         if(!blocked(sx, feetY, sz, .34)){ zb.x = sx; zb.z = sz; return true; }
+        const su = stepUpHeight(sx, sz, zb.y, .34);
+        if(su !== null){ zb.x = sx; zb.z = sz; zb.y = su; return true; }
     }
     return false;
 }
@@ -4743,8 +4761,14 @@ function updatePlayer(){
             player.x = nx;
             player.z = nz;
         }else{
-            if(!blocked(nx, player.y, player.z) && !tooDeep(nx, player.z)) player.x = nx;
-            if(!blocked(player.x, player.y, nz) && !tooDeep(player.x, nz)) player.z = nz;
+            const feet = player.y - 1.7;
+            /* 그대로 갈 수 있으면 가고, 막히면 턱을 밟고 올라설 수 있는지 본다 */
+            if(!tooDeep(nx, player.z) &&
+               (!blocked(nx, player.y, player.z) ||
+                stepUpHeight(nx, player.z, feet, .35) !== null)) player.x = nx;
+            if(!tooDeep(player.x, nz) &&
+               (!blocked(player.x, player.y, nz) ||
+                stepUpHeight(player.x, nz, feet, .35) !== null)) player.z = nz;
         }
     }
 
@@ -4778,7 +4802,7 @@ function updatePlayer(){
         }
     }
 
-    const floorY = supportHeight(player.x, player.z, player.y-1.7, .5) + 1.7;
+    const floorY = supportHeight(player.x, player.z, player.y-1.7, STEP_RISE) + 1.7;
 
     if(player.y <= floorY){
         if(player.vy < -0.3) shake = Math.min(.22, -player.vy*.4);
@@ -4795,8 +4819,18 @@ function updatePlayer(){
     updateFloorHUD();
 }
 
+/* 눈높이는 계단 턱을 부드럽게 넘어간다 — 한 칸씩 툭툭 끊겨 보이지 않도록 */
+let camEyeY = 1.7;
+
 function applyCamera(){
     if(moving) bobTime += 0.17;
+
+    if(!gameStarted || !player.ground || Math.abs(player.y - camEyeY) > 1.6){
+        camEyeY = player.y;                 /* 공중·낙하·순간이동은 그대로 */
+    }else{
+        camEyeY += (player.y - camEyeY) * 0.22;
+        if(Math.abs(player.y - camEyeY) < .004) camEyeY = player.y;
+    }
 
     const bobY = moving ? Math.sin(bobTime)*0.055 : Math.sin(bobTime*.25)*0.012;
     const bobX = moving ? Math.cos(bobTime*.5)*0.035 : 0;
@@ -4807,7 +4841,7 @@ function applyCamera(){
     const sx = shake ? rand(-shake,shake) : 0;
     const sy = shake ? rand(-shake,shake) : 0;
 
-    camera.position.set(player.x + bobX + sx, player.y + bobY + sy, player.z);
+    camera.position.set(player.x + bobX + sx, camEyeY + bobY + sy, player.z);
     /* 물에 잠긴 만큼 파도에 몸이 밀린다 */
     if(terrainY !== null){
         const wd = depthUnderPlayer();
@@ -6287,7 +6321,7 @@ function addBarrel(x0,z0,y){
 }
 
 /* ---- 전기 울타리 ---- */
-function addElectricFence(ax, az, bx, bz, boxX0, boxZ0){
+function addElectricFence(ax, az, bx, bz, boxX0, boxZ0, gapW){
     const spot = hazardSpot(boxX0, boxZ0, 0, 1.2);
     if(!spot) return;
     const boxX = spot.x, boxZ = spot.z;
@@ -6303,65 +6337,88 @@ function addElectricFence(ax, az, bx, bz, boxX0, boxZ0){
     const FENCE_H = 4.3;          /* 기둥 높이 */
     const BLOCK_H = 5.4;          /* 막아서는 높이 — 점프로 넘을 수 없다 */
 
-    /* 기둥 — 위쪽이 바깥으로 꺾여 철조망을 인다 */
-    for(let i=0;i<=n;i++){
-        const t = i/n;
-        const px = ax+(bx-ax)*t, pz = az+(bz-az)*t;
-        detail(g, .26, FENCE_H, .26, px, FENCE_H/2, pz, matMetal);
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(.14,.9,.14), matMetal);
-        arm.position.set(px, FENCE_H+.38, pz);
-        arm.rotation.x = .5;
-        g.add(arm);
-    }
+    /* 가운데가 뜯겨 열려 있으면 그 구간은 비운다 (지나갈 수 있는 틈) */
+    const gap = Math.max(0, Math.min(len-1.5, gapW || 0));
+    const gHalf = gap/2 / len;
+    const spans = gap > 0 ? [[0, .5-gHalf], [.5+gHalf, 1]] : [[0, 1]];
 
-    /* 철망 — 성긴 격자 */
+    const at = t => [ax+(bx-ax)*t, az+(bz-az)*t];
     const meshMat = own(new THREE.MeshStandardMaterial({
         color:0x6b7378, metalness:.6, roughness:.5,
         transparent:true, opacity:.34, side:THREE.DoubleSide }));
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, FENCE_H-.3), meshMat);
-    panel.position.set((ax+bx)/2, (FENCE_H-.3)/2+.15, (az+bz)/2);
-    panel.rotation.y = ang + Math.PI/2;
-    g.add(panel);
 
-    /* 전류가 흐르는 가로선 */
-    for(let h=0; h<4; h++){
-        const w = new THREE.Mesh(new THREE.BoxGeometry(.07, .07, len), hazWireMat);
-        w.position.set((ax+bx)/2, .75+h*1.05, (az+bz)/2);
-        w.rotation.y = ang;
-        g.add(w);
-        wires.push(w);
-    }
-    /* 꼭대기 철조망 — 넘어갈 수 없다는 신호 */
-    for(let h=0; h<2; h++){
-        const w = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, len), hazWireMat);
-        w.position.set((ax+bx)/2, FENCE_H+.42+h*.3, (az+bz)/2);
-        w.rotation.y = ang;
-        g.add(w);
-        wires.push(w);
-    }
-    for(let i=0;i<Math.max(3,Math.round(len/1.6));i++){
-        const t = (i+.5)/Math.max(3,Math.round(len/1.6));
-        const bx2 = ax+(bx-ax)*t, bz2 = az+(bz-az)*t;
-        const barb = new THREE.Mesh(new THREE.TorusGeometry(.17,.022,4,8), hazWireMat);
-        barb.position.set(bx2, FENCE_H+.56, bz2);
-        barb.rotation.set(Math.PI/2, ang, 0);
-        g.add(barb);
-    }
-
-    /* ---- 통과 불가: 울타리 선을 따라 충돌 상자를 깐다 ---- */
     const fenceSolids = [];
-    const segs = Math.max(1, Math.ceil(len/4));
-    for(let i=0;i<segs;i++){
-        const t0 = i/segs, t1 = (i+1)/segs;
-        const sx0 = ax+(bx-ax)*t0, sz0 = az+(bz-az)*t0;
-        const sx1 = ax+(bx-ax)*t1, sz1 = az+(bz-az)*t1;
-        const cx = (sx0+sx1)/2, cz = (sz0+sz1)/2;
-        /* 축에 정렬된 상자이므로 구간을 덮을 만큼만 키운다 */
-        const w = Math.abs(sx1-sx0) + .42;
-        const d = Math.abs(sz1-sz0) + .42;
-        const fs = addSolid(cx, 0, cz, w, BLOCK_H, d);
-        fs.slick = true;                      /* 기어오를 수 없는 면 */
-        fenceSolids.push(fs);
+
+    for(const [t0, t1] of spans){
+        const sl = len*(t1-t0);
+        if(sl < .4) continue;
+        const [x0, z0] = at(t0), [x1, z1] = at(t1);
+        const cx0 = (x0+x1)/2, cz0 = (z0+z1)/2;
+
+        /* 기둥 — 위쪽이 바깥으로 꺾여 철조망을 인다 */
+        const posts = Math.max(1, Math.round(sl/5));
+        for(let i=0;i<=posts;i++){
+            const [px, pz] = at(t0 + (t1-t0)*i/posts);
+            detail(g, .26, FENCE_H, .26, px, FENCE_H/2, pz, matMetal);
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(.14,.9,.14), matMetal);
+            arm.position.set(px, FENCE_H+.38, pz);
+            arm.rotation.x = .5;
+            g.add(arm);
+        }
+
+        /* 철망 */
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(sl, FENCE_H-.3), meshMat);
+        panel.position.set(cx0, (FENCE_H-.3)/2+.15, cz0);
+        panel.rotation.y = ang + Math.PI/2;
+        g.add(panel);
+
+        /* 전류가 흐르는 가로선 */
+        for(let h=0; h<4; h++){
+            const w = new THREE.Mesh(new THREE.BoxGeometry(.07, .07, sl), hazWireMat);
+            w.position.set(cx0, .75+h*1.05, cz0);
+            w.rotation.y = ang;
+            g.add(w);
+            wires.push(w);
+        }
+        /* 꼭대기 철조망 */
+        for(let h=0; h<2; h++){
+            const w = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, sl), hazWireMat);
+            w.position.set(cx0, FENCE_H+.42+h*.3, cz0);
+            w.rotation.y = ang;
+            g.add(w);
+            wires.push(w);
+        }
+        const barbs = Math.max(2, Math.round(sl/1.6));
+        for(let i=0;i<barbs;i++){
+            const [bx2, bz2] = at(t0 + (t1-t0)*(i+.5)/barbs);
+            const barb = new THREE.Mesh(new THREE.TorusGeometry(.17,.022,4,8), hazWireMat);
+            barb.position.set(bx2, FENCE_H+.56, bz2);
+            barb.rotation.set(Math.PI/2, ang, 0);
+            g.add(barb);
+        }
+
+        /* ---- 통과 불가: 이 구간을 따라 충돌 상자를 깐다 ---- */
+        const segs = Math.max(1, Math.ceil(sl/4));
+        for(let i=0;i<segs;i++){
+            const s0 = t0 + (t1-t0)*i/segs, s1 = t0 + (t1-t0)*(i+1)/segs;
+            const [sx0, sz0] = at(s0), [sx1, sz1] = at(s1);
+            const w = Math.abs(sx1-sx0) + .42;
+            const d = Math.abs(sz1-sz0) + .42;
+            const fs = addSolid((sx0+sx1)/2, 0, (sz0+sz1)/2, w, BLOCK_H, d);
+            fs.slick = true;                  /* 기어오를 수 없는 면 */
+            fenceSolids.push(fs);
+        }
+    }
+
+    /* 틈 — 뜯겨 옆으로 젖혀진 철망 조각 */
+    if(gap > 0){
+        for(const side of [-1, 1]){
+            const [tx, tz] = at(.5 + side*gHalf);
+            const torn = new THREE.Mesh(new THREE.PlaneGeometry(1.1, FENCE_H-1.0), meshMat);
+            torn.position.set(tx + Math.cos(ang)*side*.45, (FENCE_H-1.0)/2+.2, tz - Math.sin(ang)*side*.45);
+            torn.rotation.set(0, ang + Math.PI/2 + side*.8, side*.16);
+            g.add(torn);
+        }
     }
 
     /* 조작반 */
@@ -8007,6 +8064,7 @@ function clearWorld(){
     while(gibs.length) world.remove(gibs.pop().mesh);
     sawStop();
     flameStop();
+    camEyeY = player.y;
     flameLoad = 0;
     if(flameGroup) flameGroup.visible = false;
     if(flameLight) flameLight.intensity = 0;
@@ -9490,7 +9548,8 @@ function buildMall(){
     addCollapse(  0, -40, 6.5, 7, 3.2,  0, 1, matCarton, "선반 지지대");
 
     /* 정문 셔터의 전기 방벽 */
-    addElectricFence(-9, 31, 9, 31, 12, 33);
+    /* 정문 로비 앞 바리케이드 — 가운데가 뜯겨 사람 하나 지날 틈이 있다 */
+    addElectricFence(-9, 31, 9, 31, 12, 33, 4.6);
 
     /* ---- 무기 ---- */
     spawnWeapon("chainsaw", 8, .6, 26);
