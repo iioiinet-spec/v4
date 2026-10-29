@@ -155,6 +155,24 @@ h1,h2,h3{font-family:var(--f-d);font-weight:400;margin:0;text-wrap:balance;lette
 .dlg{background:#07151bf5;border:2px solid var(--pink);border-radius:20px;padding:18px 20px;width:min(640px,100%);display:flex;flex-direction:column;gap:12px}
 .dlg .who{font:400 18px var(--f-d);color:var(--pink)}
 .dlg p{margin:0;font-size:17px;line-height:1.6;word-break:keep-all}
+
+/* 관리자 모드 */
+.hud-c .time{pointer-events:auto;cursor:pointer}
+.adm{background:#061119f5}
+.admbox{width:min(780px,100%);margin:0 auto;display:flex;flex-direction:column;gap:8px;padding-block:4px}
+.admhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:-6px;background:#061119f5;padding:8px 0;z-index:2}
+.admhead h2{font-size:24px;color:var(--gold)}
+.admsec{font:400 17px var(--f-d);color:var(--mint);margin:8px 0 0}
+.admgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,232px),1fr));gap:8px}
+.admrow{display:flex;align-items:center;gap:7px;background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:6px 8px;min-width:0}
+.admrow .ic{width:30px;height:30px;border-radius:9px}
+.admrow .ic svg{width:19px;height:19px}
+.admrow b{font:400 14px var(--f-d);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admrow .lvn{font:400 15px var(--f-d);color:var(--gold);min-width:38px;text-align:center;font-variant-numeric:tabular-nums}
+.sq{width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--panel2);color:var(--text);font:400 18px/1 var(--f-d);cursor:pointer;box-shadow:0 3px 0 #0b2027}
+.sq.p{background:var(--mint);color:#05281f;box-shadow:0 3px 0 var(--mint-d)}
+.sq:active{transform:translateY(2px);box-shadow:0 1px 0 #0b2027}
+.sq:disabled{opacity:.3;cursor:default;transform:none}
 @media (prefers-reduced-motion:reduce){#banner.show{animation:none;opacity:1}.story-box .next{animation:none}}
 </style>
 <canvas id="cv"></canvas>
@@ -936,7 +954,7 @@ function newRun(){
     en:[],pr:[],eb:[],zn:[],pz:[],gems:[],drops:[],pt:[],tx:[],fx:[],pets:[],
     skills:[],pass:{},lv:1,xp:0,need:needFor(1),queue:[],gold:0,kills:0,dmg:0,
     boss:null,bossDone:{bear:false,king:false,doc:false},bossKills:0,spawnT:1,swarmT:45,ringT:115,eliteT:85,
-    bombs:0,tonic:false,xpb:1,gb:1,shake:0,hitstop:0,won:false,dialog:null,tip:true,
+    bombs:0,tonic:false,xpb:1,gb:1,shake:0,hitstop:0,won:false,dialog:null,tip:true,god:false,
     revives:0};
   S=calcStats();G.p.maxHp=S.hp;G.p.hp=S.hp;
   G.skills.push({id:'ball',lv:1,t:.3});
@@ -997,7 +1015,7 @@ function explode(x,y,rad,dmg,small){
   burst(x,y,'#ffb35c',small?5:12,160);sfx('boom');G.shake=Math.max(G.shake,small?2:5);
 }
 function hurtP(d){
-  const p=G.p;if(p.inv>0||G.mode!=='play')return;
+  const p=G.p;if(p.inv>0||G.god||G.mode!=='play')return;
   d=Math.max(1,d*(1-S.def));p.hp-=d;p.inv=.6;p.flash=.25;G.shake=Math.max(G.shake,7);sfx('hurt');
   pop(p.x,p.y-24,'-'+Math.round(d),'#ff6b9a',16);burst(p.x,p.y,'#62f0c4',8,140);
   if(G.tonic&&p.hp>0&&p.hp<=p.maxHp*.3){G.tonic=false;p.hp=Math.min(p.maxHp,p.hp+p.maxHp*.6);toast('응급 약병을 마셨어요!');sfx('pick')}
@@ -1146,6 +1164,7 @@ function updEnemies(dt){
       }
     }
   }
+  if(OBS.length)for(const e of G.en){if(e.dead||e.boss||e.fly)continue;const q=obsResolve(e.x,e.y,e.r);e.x=clamp(q[0],e.r,ARENA-e.r);e.y=clamp(q[1],e.r,ARENA-e.r)}
   if(G.boss&&!G.boss.dead&&G.boss.fl>0)G.boss.fl-=dt;
 }
 function killE(e){
@@ -1561,13 +1580,97 @@ function showDialog(lines,cb){
 function pauseGame(){
   if(!G||appState!=='play'||G.mode!=='play')return;
   G.mode='paused';joy.on=false;joyEl.hidden=true;
-  $('#modal').innerHTML=`<section class="screen dim"><div class="pause-box"><h2>잠깐 쉬는 중</h2><p class="sub">모은 젤리 ${fmt(G.gold)}</p><button class="btn" data-act="resume" type="button">계속하기</button><button class="btn alt" data-act="quit" type="button">포기하고 나가기</button><span class="mini">포기하면 모은 젤리의 절반만 받아요.</span></div></section>`;
+  $('#modal').innerHTML=`<section class="screen dim"><div class="pause-box"><h2>잠깐 쉬는 중</h2><p class="sub">모은 젤리 ${fmt(G.gold)}</p><button class="btn" data-act="resume" type="button">계속하기</button><button class="btn alt sm" data-act="admin" type="button">관리자 모드 (P)</button><button class="btn alt" data-act="quit" type="button">포기하고 나가기</button><span class="mini">포기하면 모은 젤리의 절반만 받아요.</span></div></section>`;
 }
 function resumeGame(){if(G&&G.mode==='paused'){$('#modal').innerHTML='';G.mode='play'}}
+
+/* ---- 관리자 모드 (P) : 스킬·패시브 레벨을 직접 조절 ---- */
+function openAdmin(){
+  if(!G||appState!=='play'||G.mode!=='play')return;
+  G.mode='admin';joy.on=false;joyEl.hidden=true;H.root.hidden=true;sfx('ui');renderAdmin();
+}
+function closeAdmin(){
+  if(G&&G.mode==='admin'){$('#modal').innerHTML='';H.root.hidden=false;hudSig='';hudGold=-1;G.mode='play';sfx('ui')}
+}
+function admRow(name,g,col,lv,max,act,id){
+  return `<div class="admrow"><div class="ic">${ico(g,col)}</div><b>${esc(name)}</b>`+
+    `<button class="sq" data-act="${act}" data-id="${id}" data-d="-1" type="button"${lv<=0?' disabled':''}>−</button>`+
+    `<span class="lvn">${lv}/${max}</span>`+
+    `<button class="sq p" data-act="${act}" data-id="${id}" data-d="1" type="button"${lv>=max?' disabled':''}>+</button></div>`;
+}
+function renderAdmin(){
+  const box=$('#modal .screen'),sc=box?box.scrollTop:0,st=calcStats();
+  const sk=SKILL_IDS.map(id=>{const s=G.skills.find(k=>k.id===id),d=SKILLS[id];return admRow(d.name,d.g,d.col,s?s.lv:0,5,'aSk',id)}).join('');
+  const ps=PASS_IDS.map(id=>{const d=PASSIVES[id];return admRow(d.name,d.g,d.col,G.pass[id]||0,5,'aPs',id)}).join('');
+  $('#modal').innerHTML=`<section class="screen adm"><div class="admbox">
+    <div class="admhead"><h2>관리자 모드</h2>
+      <div class="row"><span class="mini">${esc(MAP.short)} · Lv.${G.lv} · ${fmtTime(G.t)} · STAGE ${G.stage}</span><button class="btn sm" data-act="aClose" type="button">닫기 (P)</button></div></div>
+    <p class="admsec">스킬 — Lv.0 은 미보유, +를 누르면 바로 배워요</p>
+    <div class="admgrid">${sk}</div>
+    <p class="admsec">패시브 강화</p>
+    <div class="admgrid">${ps}</div>
+    <p class="admsec">편의 기능</p>
+    <div class="admgrid">
+      <button class="btn sm${G.god?'':' alt'}" data-act="aGod" type="button">무적 ${G.god?'켜짐':'꺼짐'}</button>
+      <button class="btn sm alt" data-act="aHeal" type="button">체력 전부 회복</button>
+      <button class="btn sm alt" data-act="aMax" type="button">보유 스킬 전부 Lv.5</button>
+      <button class="btn sm alt" data-act="aClear" type="button">스킬·패시브 초기화</button>
+      <button class="btn sm alt" data-act="aLv" type="button">레벨업 카드 뽑기</button>
+      <button class="btn sm alt" data-act="aGold" type="button">젤리 +1000</button>
+      <button class="btn sm alt" data-act="aBomb" type="button">폭탄 +3</button>
+      <button class="btn sm alt" data-act="aWipe" type="button">화면의 적 전멸</button>
+      <button class="btn sm alt" data-act="aTime" data-d="60" type="button">시간 +60초</button>
+      <button class="btn sm alt" data-act="aTime" data-d="-60" type="button">시간 -60초</button>
+      <button class="btn sm alt" data-act="aBoss" data-id="bear" type="button">보스 : 곰돌이 왕</button>
+      <button class="btn sm alt" data-act="aBoss" data-id="king" type="button">보스 : 슬라임 킹</button>
+      <button class="btn sm alt" data-act="aBoss" data-id="doc" type="button">보스 : 닥터 카오스</button>
+    </div>
+    <p class="mini">지금 능력치 — 체력 ${Math.round(st.hp)} · 공격 ${Math.round(st.atk*100)}% · 이동 ${Math.round(st.spd*100)}% · 방어 ${Math.round(st.def*100)}% · 치명타 ${Math.round(st.crit*100)}% · 쿨타임 -${Math.round(st.cdr*100)}%</p>
+    <p class="mini">P 키, 또는 화면 가운데 시간 표시를 3번 탭하면 열고 닫을 수 있어요. 여기서 바꾼 내용은 이번 출격에만 적용돼요.</p>
+    <p class="mini">세영코딩연구소  저자 : 컴퓨터공학박사 KIM</p>
+  </div></section>`;
+  const nb=$('#modal .screen');if(nb&&sc)nb.scrollTop=sc;
+}
+function admSkill(id,d){
+  const s=G.skills.find(k=>k.id===id);
+  if(d>0){if(s){if(s.lv<5)s.lv++}else G.skills.push({id,lv:1,t:.2})}
+  else if(s){s.lv--;if(s.lv<=0)G.skills=G.skills.filter(k=>k.id!==id)}
+  if(!G.skills.find(k=>k.id==='pet'))G.pets.length=0;
+  S=calcStats();sfx('pick');renderAdmin();
+}
+function admPass(id,d){
+  const l=G.pass[id]||0;
+  if(d>0){if(l<5)G.pass[id]=l+1}
+  else if(l>0){if(l===1)delete G.pass[id];else G.pass[id]=l-1}
+  const old=G.p.maxHp;S=calcStats();G.p.maxHp=S.hp;
+  G.p.hp=clamp(G.p.hp+(S.hp-old),1,G.p.maxHp);
+  sfx('pick');renderAdmin();
+}
+function admAct(a,d){
+  if(!G||G.mode!=='admin')return;
+  switch(a){
+    case 'aSk':admSkill(d.id,+d.d);return;
+    case 'aPs':admPass(d.id,+d.d);return;
+    case 'aGod':G.god=!G.god;if(G.god)G.p.inv=Math.max(G.p.inv,.1);break;
+    case 'aHeal':G.p.hp=G.p.maxHp;break;
+    case 'aMax':G.skills.forEach(s=>s.lv=5);S=calcStats();break;
+    case 'aClear':G.skills=[{id:'ball',lv:1,t:.3}];G.pass={};G.pets.length=0;{const o=G.p.maxHp;S=calcStats();G.p.maxHp=S.hp;G.p.hp=clamp(G.p.hp+(S.hp-o),1,G.p.maxHp)}break;
+    case 'aLv':G.queue.push('lv');closeAdmin();return;
+    case 'aGold':G.gold+=1000;break;
+    case 'aBomb':G.bombs+=3;break;
+    case 'aWipe':{for(const e of G.en)if(!e.dead&&!e.boss)killE(e);G.eb.length=0;break}
+    case 'aTime':G.t=Math.max(0,G.t+ +d.d);G.stage=stageOf(G.t);break;
+    case 'aBoss':
+      if(G.boss&&!G.boss.dead){toast('이미 보스와 싸우는 중이에요');return}
+      closeAdmin();spawnBoss(d.id);return;
+  }
+  renderAdmin();
+}
 function onBlur(){if(G&&appState==='play'&&G.mode==='play')pauseGame()}
 function onKey(e){
   if(appState==='play'&&G){
-    if(e.code==='Escape'||e.code==='KeyP'){if(G.mode==='play')pauseGame();else if(G.mode==='paused')resumeGame()}
+    if(e.code==='Escape'){if(G.mode==='play')pauseGame();else if(G.mode==='paused')resumeGame();else if(G.mode==='admin')closeAdmin()}
+    else if(e.code==='KeyP'){if(G.mode==='play')openAdmin();else if(G.mode==='admin')closeAdmin();else if(G.mode==='paused'){resumeGame();openAdmin()}}
     else if((e.code==='Space'||e.code==='KeyB')&&G.mode==='play')useBomb();
     else if(G.mode==='levelup'&&/^Digit[1-3]$/.test(e.code))pickOpt(+e.code.slice(5)-1);
     else if(G.mode==='dialog'&&(e.code==='Space'||e.code==='Enter')&&G.dlgNext)G.dlgNext();
@@ -1699,18 +1802,22 @@ function updHud(){
     H.ps.innerHTML=Object.keys(G.pass).map(id=>`<div class="mi" title="${esc(PASSIVES[id].name)}">${ico(PASSIVES[id].g,PASSIVES[id].col)}<em>${G.pass[id]}</em></div>`).join('')}
   const b=G.boss&&!G.boss.dead?G.boss:null;H.boss.hidden=!b;
   if(b){H.bossN.textContent=BOSSES[b.type].name;H.bossHp.style.width=Math.max(0,b.hp/b.maxHp*100)+'%'}
-  const hasBomb=G.loads.includes('bomb');H.bomb.hidden=!hasBomb;if(hasBomb){H.bombN.textContent=G.bombs;H.bomb.disabled=G.bombs<=0;H.bomb.style.opacity=G.bombs>0?1:.4}
+  const hasBomb=G.loads.includes('bomb')||G.bombs>0;H.bomb.hidden=!hasBomb;if(hasBomb){H.bombN.textContent=G.bombs;H.bomb.disabled=G.bombs<=0;H.bomb.style.opacity=G.bombs>0?1:.4}
 }
 
 /* ---- 메인 루프 ---- */
 function frame(ts){
   requestAnimationFrame(frame);
   const dt=Math.min(.05,(ts-lastTs)/1000||0);lastTs=ts;clockT+=dt;
-  if(appState==='play'&&G){if(G.mode==='play'||G.mode==='won')step(dt);else if(G.mode==='dialog'||G.mode==='levelup'||G.mode==='paused')G.shake=0;updHud()}
+  if(appState==='play'&&G){if(G.mode==='play'||G.mode==='won')step(dt);else if(G.mode!=='over')G.shake=0;updHud()}
   if(appState==='story')storyTick(dt);
   draw();
 }
 $('#bPause').addEventListener('click',()=>pauseGame());
+(function(){let n=0,last=0;H.time.addEventListener('click',()=>{
+  const t=performance.now();n=(t-last<700)?n+1:1;last=t;
+  if(n>=3){n=0;if(G&&appState==='play'&&G.mode==='play')openAdmin()}
+})})();
 $('#bBomb').addEventListener('click',()=>useBomb());
 
 /* ================= 화면: 타이틀 / 스토리 / 로비 / 상점 / 결과 ================= */
@@ -1916,6 +2023,10 @@ function onAct(a,d){
     case 'pick':pickOpt(+d.i);break;
     case 'dlg':if(G&&G.dlgNext)G.dlgNext();break;
     case 'resume':resumeGame();break;
+    case 'admin':resumeGame();openAdmin();break;
+    case 'aClose':closeAdmin();break;
+    case 'aSk':case 'aPs':case 'aGod':case 'aHeal':case 'aMax':case 'aClear':case 'aLv':
+    case 'aGold':case 'aBomb':case 'aWipe':case 'aTime':case 'aBoss':admAct(a,d);break;
     case 'quit':endRun(false,true);break;
   }
 }
