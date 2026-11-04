@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WORD DECK · 나만의 영어 단어 학습장</title>
+<meta name="description" content="카드로 외우고 퀴즈로 확인하는 나만의 영어 단어장">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="WORD DECK">
+<meta name="format-detection" content="telephone=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Gowun+Dodum&family=Jua&family=Gaegu:wght@400;700&family=Do+Hyeon&family=Nanum+Pen+Script&family=Noto+Serif+KR:wght@400;700&family=Orbitron:wght@600&display=swap" rel="stylesheet">
+<style>
+/* ===================================================================
+   WORD DECK — 세영코딩연구소 샘플 앱
+   테마를 고르면 앱 전체가 그 무드로 바뀝니다. (JS가 아래 변수를 갈아끼움)
+   =================================================================== */
+:root{
+  box-sizing:border-box;
+  --bg:#eef1f7;          /* 전체 배경 */
+  --surface:#ffffff;     /* 카드·패널 */
+  --ink:#171f2e;         /* 글자 */
+  --sub:#7b879f;         /* 흐린 글자 */
+  --point:#3b61e8;       /* 포인트 */
+  --line:#dde3ee;        /* 경계선 */
+  --radius:20px;
+  --shadow:0 12px 28px rgba(25,40,80,.10);
+  --pattern:none;
+  --font:'Gowun Dodum', system-ui, sans-serif;
+  --word:'Fredoka', sans-serif;
+  --ui:'Gowun Dodum', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-custom="1"]){
+    --bg:#0f1420; --surface:#1a2231; --ink:#e9eef8; --sub:#8e9bb5;
+    --point:#7d9bff; --line:#2a3447; --shadow:0 12px 28px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]:not([data-custom="1"]){
+  --bg:#0f1420; --surface:#1a2231; --ink:#e9eef8; --sub:#8e9bb5;
+  --point:#7d9bff; --line:#2a3447; --shadow:0 12px 28px rgba(0,0,0,.45);
+}
+*,*::before,*::after{ box-sizing:inherit; }
+html{ -webkit-text-size-adjust:100%; height:100%; overscroll-behavior-y:none; }
+body{
+  margin:0; min-height:100%; background:var(--bg); background-image:var(--pattern);
+  color:var(--ink); font-family:var(--font); line-height:1.65;
+  -webkit-tap-highlight-color:transparent;
+  transition:background-color .4s ease, color .4s ease;
+  padding-top:env(safe-area-inset-top, 0px);
+}
+button,input,select,textarea{ font-family:inherit; color:inherit; font-size:inherit; }
+button{ touch-action:manipulation; }
+:focus-visible{ outline:3px solid var(--point); outline-offset:2px; border-radius:6px; }
+
+.app{ width:min(760px, 100%); margin-inline:auto; padding:0 16px 120px;
+  padding-bottom:calc(104px + env(safe-area-inset-bottom, 0px)); }
+
+/* 상단 바 */
+.appbar{ display:flex; align-items:center; gap:12px; padding:16px 2px 12px; }
+.logo{ font-family:var(--word); font-weight:700; font-size:17px; letter-spacing:.06em; }
+.logo b{ color:var(--point); }
+.appbar .stat{ margin-left:auto; display:flex; gap:8px; align-items:center; font-size:12.5px; color:var(--sub); }
+.pill{ background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:5px 12px; }
+.pill b{ color:var(--ink); }
+
+/* 진도 */
+.progress{ display:flex; align-items:center; gap:10px; font-size:12px; color:var(--sub); margin-bottom:16px; }
+.progress .bar{ flex:1; height:7px; border-radius:99px; background:color-mix(in srgb, var(--sub) 25%, transparent); overflow:hidden; }
+.progress .bar i{ display:block; height:100%; background:var(--point); border-radius:99px; transition:width .35s ease; }
+
+/* 카드 */
+.cardbox{ perspective:1400px; }
+.flip{ position:relative; width:100%; min-height:300px; cursor:pointer;
+  transform-style:preserve-3d; transition:transform .6s cubic-bezier(.2,.8,.2,1); }
+.flip.on{ transform:rotateY(180deg); }
+.face{ position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:12px; padding:30px 22px; text-align:center; border:1px solid var(--line); }
+.face.back{ transform:rotateY(180deg); }
+.face p{ margin:0; }
+.word{ font-family:var(--word); font-weight:600; font-size:clamp(38px,9vw,62px); line-height:1.05; }
+.tagline{ font-size:11.5px; letter-spacing:.18em; color:var(--sub); }
+.mean{ font-size:clamp(24px,5.4vw,34px); font-weight:600; color:var(--point); }
+.sent{ font-family:var(--word); font-size:15.5px; color:var(--sub); max-width:32ch; line-height:1.6; }
+.known-mark{ position:absolute; top:14px; right:16px; font-size:19px; opacity:.25; }
+.known-mark.on{ opacity:1; }
+
+.row{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
+.btn{ cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  border-radius:999px; padding:11px 20px; font-size:14px; min-height:44px; box-shadow:var(--shadow); }
+.btn:hover{ border-color:var(--point); color:var(--point); }
+.btn.main{ background:var(--point); border-color:var(--point); color:var(--bg); font-weight:600; }
+.btn.main:hover{ color:var(--bg); opacity:.92; }
+.btn.ghost{ box-shadow:none; background:transparent; }
+.btn.sm{ padding:7px 14px; font-size:12.5px; min-height:36px; box-shadow:none; }
+.btn[aria-pressed="true"]{ border-color:var(--point); color:var(--point); font-weight:600; }
+.btn.danger:hover{ border-color:#e05252; color:#e05252; }
+
+/* 패널 */
+.panel{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px 18px; margin-top:16px; box-shadow:var(--shadow); }
+.panel h3{ margin:0 0 4px; font-size:15px; }
+.panel p.hint{ margin:0 0 12px; font-size:12.5px; color:var(--sub); }
+.label{ font-size:11px; letter-spacing:.14em; color:var(--sub); margin:0 0 8px; }
+
+/* 퀴즈 */
+.qhead{ text-align:center; margin-bottom:16px; }
+.qhead .qn{ font-size:12px; letter-spacing:.14em; color:var(--sub); }
+.qhead .qq{ font-family:var(--word); font-weight:600; font-size:clamp(32px,7vw,50px); margin:6px 0 0; }
+.qhead .qq.ko{ font-family:var(--font); font-size:clamp(26px,6vw,40px); }
+.opts{ display:grid; gap:10px; }
+@media (min-width:560px){ .opts{ grid-template-columns:1fr 1fr; } }
+.opt{ cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  border-radius:14px; padding:15px 16px; font-size:15.5px; text-align:left; min-height:52px;
+  box-shadow:var(--shadow); transition:transform .12s; }
+.opt:hover{ transform:translateY(-1px); border-color:var(--point); }
+.opt[data-s="o"]{ border-color:var(--point); background:color-mix(in srgb, var(--point) 16%, var(--surface)); font-weight:600; }
+.opt[data-s="x"]{ opacity:.4; text-decoration:line-through; }
+.opt .en{ font-family:var(--word); }
+.result{ text-align:center; padding:18px 0; }
+.result .big{ font-family:var(--word); font-weight:700; font-size:clamp(44px,10vw,70px); color:var(--point); line-height:1; }
+.wrongs{ list-style:none; margin:14px 0 0; padding:0; display:grid; gap:8px; text-align:left; }
+.wrongs li{ display:flex; gap:10px; align-items:baseline; border-bottom:1px dashed var(--line); padding-bottom:6px; font-size:14.5px; }
+.wrongs li b{ font-family:var(--word); font-weight:600; }
+.wrongs li span{ color:var(--sub); margin-left:auto; font-size:13px; }
+
+/* 단어 목록 */
+.wlist{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.witem{ display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
+  border-bottom:1px dashed var(--line); padding:8px 2px; }
+.witem .star{ border:none; background:transparent; cursor:pointer; font-size:17px; opacity:.28; padding:0; }
+.witem .star[aria-pressed="true"]{ opacity:1; }
+.witem .en{ font-family:var(--word); font-weight:600; font-size:17px; }
+.witem .ko{ font-size:13.5px; color:var(--sub); }
+.witem .del{ border:none; background:transparent; color:var(--sub); cursor:pointer; font-size:12.5px; }
+.witem .del:hover{ color:#e05252; }
+.form{ display:grid; gap:8px; margin-top:14px; }
+.form .three{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+input[type="text"], textarea, select{
+  border:1px solid var(--line); background:var(--bg); color:var(--ink);
+  border-radius:12px; padding:11px 13px; width:100%; font-size:15px; }
+textarea{ min-height:110px; resize:vertical; line-height:1.6; }
+input[type="color"]{ border:1px solid var(--line); background:var(--bg); border-radius:12px;
+  padding:3px; width:100%; height:42px; }
+input[type="range"]{ width:100%; accent-color:var(--point); }
+code.out{ display:block; white-space:pre-wrap; word-break:break-word; font-size:12.5px;
+  background:var(--bg); border:1px dashed var(--line); border-radius:12px; padding:12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; line-height:1.65; margin-top:10px; }
+
+/* 테마 덱 */
+.deck{ display:grid; gap:12px; }
+@media (min-width:600px){ .deck{ grid-template-columns:1fr 1fr; } }
+.tcard{ border:1px solid var(--line); background:var(--surface); border-radius:16px; padding:14px 16px;
+  box-shadow:var(--shadow); }
+.tcard[data-active="true"]{ border-color:var(--point); box-shadow:0 0 0 3px color-mix(in srgb, var(--point) 22%, transparent); }
+.tcard header{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.tcard h4{ margin:0; font-size:15px; }
+.mine{ font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:999px;
+  background:color-mix(in srgb, var(--point) 18%, transparent); color:var(--point); }
+.chips{ display:inline-flex; gap:4px; margin-left:auto; }
+.chips i{ width:14px; height:14px; border-radius:5px; border:1px solid var(--line); display:block; }
+.tcard p.d{ margin:0 0 10px; font-size:12.5px; color:var(--sub); line-height:1.55; }
+.tcard details{ margin-top:9px; }
+.tcard summary{ cursor:pointer; font-size:12px; color:var(--sub); }
+.tcard pre{ margin:8px 0 0; white-space:pre-wrap; word-break:break-word; font-size:12px;
+  background:var(--bg); border-radius:10px; padding:10px 12px; font-family:var(--font); line-height:1.6; }
+.acts{ display:flex; gap:6px; flex-wrap:wrap; }
+
+/* 질감 */
+[data-skin="jelly"] .face,[data-skin="jelly"] .opt,[data-skin="jelly"] .panel{
+  box-shadow:0 8px 0 color-mix(in srgb, var(--point) 22%, transparent); }
+[data-skin="neon"] .face,[data-skin="neon"] .opt{
+  box-shadow:0 0 26px color-mix(in srgb, var(--point) 35%, transparent); }
+[data-skin="neon"] .word,[data-skin="neon"] .result .big{
+  text-shadow:0 0 20px color-mix(in srgb, var(--point) 60%, transparent); }
+[data-skin="paper"] .face{ border-style:dashed; }
+[data-skin="paper"] .opt{ border-style:dashed; }
+[data-skin="mono"] .face,[data-skin="mono"] .opt,[data-skin="mono"] .panel,[data-skin="mono"] .btn{ box-shadow:none; }
+
+/* 탭 바 */
+.tabbar{ position:fixed; left:0; right:0; bottom:0; z-index:50; display:flex;
+  background:color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter:blur(12px);
+  border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom, 0px); }
+.tabbar button{ flex:1; border:none; background:transparent; cursor:pointer; padding:11px 4px 13px;
+  color:var(--sub); font-size:11.5px; display:grid; gap:3px; justify-items:center; }
+.tabbar button em{ font-style:normal; font-size:19px; line-height:1; }
+.tabbar button[aria-selected="true"]{ color:var(--point); font-weight:600;
+  box-shadow:inset 0 3px 0 var(--point); }
+
+.install{ position:fixed; right:12px; top:calc(10px + env(safe-area-inset-top, 0px)); z-index:60;
+  border:1px solid var(--line); background:var(--surface); color:var(--sub); border-radius:999px;
+  padding:7px 14px; font-size:12.5px; cursor:pointer; box-shadow:var(--shadow); }
+.install[hidden]{ display:none; }
+.howto{ position:fixed; z-index:70; left:50%; transform:translateX(-50%);
+  bottom:calc(86px + env(safe-area-inset-bottom, 0px)); width:min(320px,88vw);
+  background:var(--ink); color:var(--bg); border-radius:14px; padding:14px 16px; font-size:13.5px; }
+.howto b{ display:block; margin-bottom:4px; }
+.howto button{ border:none; background:transparent; color:var(--point); cursor:pointer; padding:6px 0 0; }
+
+footer.credit{ text-align:center; font-size:11.5px; color:var(--sub); padding:22px 0 6px; line-height:1.8; }
+
+#toast{ position:fixed; left:50%; transform:translateX(-50%) translateY(16px);
+  bottom:calc(86px + env(safe-area-inset-bottom, 0px)); z-index:80; background:var(--ink);
+  color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13.5px;
+  opacity:0; pointer-events:none; transition:opacity .22s, transform .22s; }
+#toast[data-show="true"]{ opacity:1; transform:translateX(-50%) translateY(0); }
+@media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+@media (display-mode:standalone){ .app{ padding-top:4px; } }
+</style>
+</head>
+<body>
+
+<button class="install" id="installBtn" type="button" hidden>앱으로 설치</button>
+
+<div class="app">
+  <div class="appbar">
+    <div class="logo">WORD <b>DECK</b></div>
+    <div class="stat">
+      <span class="pill" id="starStat">⭐ 0</span>
+      <span class="pill" id="countStat">0 단어</span>
+    </div>
+  </div>
+  <main id="view"></main>
+  <footer class="credit">
+    <p style="margin:0"><b>세영코딩연구소</b>　저자 : 컴퓨터공학박사 KIM</p>
+    <p style="margin:0">바이브 코딩 샘플 — 나만의 영어 단어 학습장</p>
+  </footer>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="메뉴"></nav>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* =========================================================
+     1. 기본 단어 세트
+     ========================================================= */
+  var SET_ELEM = [
+    ['apple','사과','I eat an apple every morning.'],
+    ['school','학교','My school is near the park.'],
+    ['friend','친구','She is my best friend.'],
+    ['family','가족','My family has four people.'],
+    ['water','물','Please give me some water.'],
+    ['happy','행복한','I feel happy today.'],
+    ['teacher','선생님','Our teacher is very kind.'],
+    ['animal','동물','A dog is my favorite animal.'],
+    ['flower','꽃','The flower smells good.'],
+    ['window','창문','Open the window, please.'],
+    ['pencil','연필','I have a new pencil.'],
+    ['kitchen','부엌','Mom is in the kitchen.'],
+    ['morning','아침','I run every morning.'],
+    ['winter','겨울','Winter is cold and white.'],
+    ['music','음악','I listen to music after school.'],
+    ['people','사람들','Many people are at the park.'],
+    ['river','강','We walked along the river.'],
+    ['smile','미소, 웃다','Your smile is bright.'],
+    ['train','기차','The train leaves at nine.'],
+    ['bread','빵','I bought warm bread.'],
+    ['cloud','구름','A white cloud is in the sky.'],
+    ['garden','정원','We grow tomatoes in the garden.'],
+    ['brother','남자 형제','My brother is ten years old.'],
+    ['color','색깔','Blue is my favorite color.']
+  ];
+  var SET_MID = [
+    ['practice','연습하다','I practice English every day.'],
+    ['library','도서관','We study in the library.'],
+    ['travel','여행하다','I want to travel to Jeju.'],
+    ['weather','날씨','The weather is nice today.'],
+    ['decide','결정하다','You must decide by Friday.'],
+    ['environment','환경','We should protect the environment.'],
+    ['culture','문화','Korean culture is popular now.'],
+    ['invent','발명하다','He invented a useful machine.'],
+    ['protect','보호하다','Helmets protect your head.'],
+    ['community','공동체, 지역사회','Our community cleans the park.'],
+    ['improve','향상시키다','Reading improves your writing.'],
+    ['opinion','의견','What is your opinion about it?'],
+    ['imagine','상상하다','Imagine a world without cars.'],
+    ['develop','발전시키다','They develop new apps.'],
+    ['serious','심각한, 진지한','This is a serious problem.'],
+    ['suggest','제안하다','I suggest we start now.'],
+    ['achieve','성취하다','She achieved her goal.'],
+    ['average','평균의','The average score was 82.'],
+    ['celebrate','축하하다','We celebrate her birthday.'],
+    ['continue','계속하다','Please continue your story.'],
+    ['discover','발견하다','They discovered a new star.'],
+    ['prepare','준비하다','I prepare for the test.'],
+    ['support','지지하다, 돕다','My parents support my dream.'],
+    ['respect','존중하다','We should respect each other.']
+  ];
+  function toWords(set){
+    return set.map(function(w){ return { en:w[0], ko:w[1], ex:w[2], known:false }; });
+  }
+
+  /* =========================================================
+     2. 테마 (프롬프트 덱)
+     ========================================================= */
+  var THEMES = [
+    { id:'auto', name:'기본', mine:false, auto:true,
+      desc:'AI가 처음 만들어 주는 기본 화면. 밝을 때와 어두울 때를 자동으로 따라갑니다.',
+      prompt:'HTML, CSS, JavaScript를 index.html 한 파일에 담아줘.\n1) 영어 단어 카드: 앞면에 영어, 누르면 뒤집혀 뜻과 예문\n2) 이전 / 다음 버튼, 진도 표시, 발음 듣기 버튼\n3) 단어 목록은 JS 맨 위 배열로 모으고 "여기만 고치세요" 주석\n4) 모든 줄에 한국어 주석, 외부 라이브러리 없이',
+      t:{ bg:'#eef1f7', surface:'#ffffff', ink:'#171f2e', sub:'#7b879f', point:'#3b61e8',
+          line:'#dde3ee', radius:20, font:"'Gowun Dodum', sans-serif", word:"'Fredoka', sans-serif",
+          skin:'plain', pattern:'none' } },
+    { id:'jelly', name:'파스텔 젤리', mine:false,
+      desc:'말랑한 글씨와 두툼한 그림자. 눌렀을 때 기분이 좋아지는 무드.',
+      prompt:'디자인만 바꿔줘. 기능과 단어는 그대로.\n무드: 문구점에서 산 말랑한 젤리 스티커\n- 배경 #fff0f6, 카드 #ffffff, 글자 #5b3a52, 포인트 #ff6fa5\n- 한글은 구글 폰트 Jua, 영어는 Fredoka 적용 (link 태그 포함)\n- 카드 모서리 28px, 아래쪽에 두툼한 단색 그림자\n- 색은 전부 :root 변수로 빼고 변수마다 한국어 주석',
+      t:{ bg:'#fff0f6', surface:'#ffffff', ink:'#5b3a52', sub:'#c094b0', point:'#ff6fa5',
+          line:'#ffd9e8', radius:28, font:"'Jua', sans-serif", word:"'Fredoka', sans-serif",
+          skin:'jelly', pattern:'none' } },
+    { id:'board', name:'칠판과 분필', mine:false,
+      desc:'수업 끝난 교실의 초록 칠판. 손글씨 폰트로 분필 느낌을 냅니다.',
+      prompt:'디자인만 바꿔줘. 기능과 단어는 그대로.\n무드: 수업이 끝난 교실의 초록 칠판\n- 배경 #1f3b32, 카드 #27463c, 글자 #f2f0e4, 포인트 #ffe08a\n- 한글과 영어 모두 구글 폰트 Gaegu 적용 (link 태그 포함)\n- 모서리 10px로 거의 각지게, 그림자 없음\n- 배경 위쪽에 아주 옅은 분필 가루 느낌의 그라데이션',
+      t:{ bg:'#1f3b32', surface:'#27463c', ink:'#f2f0e4', sub:'#9bb3a6', point:'#ffe08a',
+          line:'#38594c', radius:10, font:"'Gaegu', cursive", word:"'Gaegu', cursive",
+          skin:'mono', pattern:'radial-gradient(circle at 80% 0%, rgba(255,255,255,.07), transparent 55%)' } },
+    { id:'neon', name:'다크 네온', mine:false,
+      desc:'검은 배경에 형광 글로우. 밤에 공부할 때 눈이 편합니다.',
+      prompt:'디자인만 바꿔줘. 기능과 단어는 그대로.\n무드: 새벽 게임방의 네온 불빛\n- 배경 #080a14, 카드 #121630, 글자 #dbe4ff, 포인트 #4ef0c8\n- 영어는 구글 폰트 Fredoka 굵게, 한글은 Do Hyeon\n- 카드 둘레에 포인트색 발광 그림자, 모서리 14px\n- 단어 글자에도 옅은 네온 빛 효과',
+      t:{ bg:'#080a14', surface:'#121630', ink:'#dbe4ff', sub:'#6d7aa8', point:'#4ef0c8',
+          line:'#242a52', radius:14, font:"'Do Hyeon', sans-serif", word:"'Fredoka', sans-serif",
+          skin:'neon', pattern:'radial-gradient(circle at 15% 0%, rgba(78,240,200,.10), transparent 45%)' } },
+    { id:'note', name:'노란 포스트잇', mine:false,
+      desc:'책상에 붙여둔 메모지. 손글씨라서 외운 티가 납니다.',
+      prompt:'디자인만 바꿔줘. 기능과 단어는 그대로.\n무드: 책상에 붙여둔 노란 포스트잇\n- 배경 #f4efe2, 카드 #ffe99a, 글자 #3a3222, 포인트 #d6543c\n- 한글과 영어 모두 구글 폰트 Nanum Pen Script 적용\n- 모서리 4px로 거의 각지게, 테두리는 점선\n- 글자 크기를 조금 크게',
+      t:{ bg:'#f4efe2', surface:'#ffe99a', ink:'#3a3222', sub:'#97885f', point:'#d6543c',
+          line:'#d8c88a', radius:6, font:"'Nanum Pen Script', cursive", word:"'Nanum Pen Script', cursive",
+          skin:'paper', pattern:'none' } },
+    { id:'dict', name:'오래된 사전', mine:false,
+      desc:'여백이 넓은 종이 사전. 시험 기간에 집중이 잘 됩니다.',
+      prompt:'디자인만 바꿔줘. 기능과 단어는 그대로.\n무드: 오래된 영어 사전의 한 페이지\n- 배경 #f5f3ee, 카드 #ffffff, 글자 #1d1b18, 포인트 #8a2f26\n- 한글은 Noto Serif KR, 영어도 세리프 느낌으로\n- 모서리 0, 그림자 없이 얇은 선으로만 구분\n- 여백을 지금보다 넉넉하게',
+      t:{ bg:'#f5f3ee', surface:'#ffffff', ink:'#1d1b18', sub:'#8d897f', point:'#8a2f26',
+          line:'#ddd8cc', radius:0, font:"'Noto Serif KR', serif", word:"'Noto Serif KR', serif",
+          skin:'mono', pattern:'none' } }
+  ];
+
+  var FONTS = [
+    ["'Gowun Dodum', sans-serif",'고운돋움 · 깔끔'],
+    ["'Jua', sans-serif",'주아 · 말랑'],
+    ["'Do Hyeon', sans-serif",'도현 · 또렷'],
+    ["'Gaegu', cursive",'개구 · 또박또박 손글씨'],
+    ["'Nanum Pen Script', cursive",'나눔손글씨 · 흘림'],
+    ["'Noto Serif KR', serif",'본명조 · 단정'],
+    ["'Fredoka', sans-serif",'Fredoka · 둥글둥글'],
+    ["'Orbitron', sans-serif",'Orbitron · SF']
+  ];
+  var FONT_LABEL = {};
+  FONTS.forEach(function(f){ FONT_LABEL[f[0]] = f[1].split(' · ')[0]; });
+  var SKINS = [['plain','기본'],['jelly','젤리 그림자'],['neon','네온 발광'],['paper','종이 점선'],['mono','각진 미니멀']];
+  var SKIN_TEXT = {
+    plain:'그림자는 아주 옅게', jelly:'카드 아래에 두툼한 단색 그림자',
+    neon:'카드 둘레에 포인트색 발광 그림자', paper:'테두리는 점선으로',
+    mono:'그림자 없이 얇은 선으로만 구분'
+  };
+
+  /* =========================================================
+     3. 저장소
+     ========================================================= */
+  var STORE = 'seyoung-word-deck-v1';
+  var db = null;
+  try{ var raw = localStorage.getItem(STORE); if (raw) db = JSON.parse(raw); }catch(e){}
+  if (!db || !db.words || !db.words.length){
+    db = { words:toWords(SET_ELEM), themeId:'auto', custom:[], rate:0.85, dir:'en2ko', onlyNew:false };
+  }
+  if (!db.custom) db.custom = [];
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(db)); }catch(e){} }
+
+  /* =========================================================
+     4. 도구
+     ========================================================= */
+  var $ = function(id){ return document.getElementById(id); };
+  var view = $('view');
+  function el(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function btn(cls, text, fn){
+    var b = el('button', cls, text);
+    b.type = 'button';
+    if (fn) b.addEventListener('click', fn);
+    return b;
+  }
+  function toast(m){
+    var t = $('toast'); t.textContent = m; t.setAttribute('data-show','true');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ t.setAttribute('data-show','false'); }, 2000);
+  }
+  function copyText(text, ok){
+    function fb(){
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); toast(ok); }catch(e){ toast('복사가 막혀 있어요'); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast(ok); }, fb);
+    } else { fb(); }
+  }
+  function speak(word){
+    if (!('speechSynthesis' in window)){ toast('이 브라우저는 소리를 지원하지 않아요'); return; }
+    try{
+      var u = new SpeechSynthesisUtterance(word);
+      u.lang = 'en-US'; u.rate = db.rate;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }catch(e){ toast('소리를 낼 수 없는 환경이에요'); }
+  }
+  function allThemes(){ return THEMES.concat(db.custom); }
+  function findTheme(id){
+    var r = null;
+    allThemes().forEach(function(t){ if (t.id === id) r = t; });
+    return r;
+  }
+
+  /* =========================================================
+     5. 테마 적용 — 앱 전체가 바뀝니다
+     ========================================================= */
+  var VARS = ['bg','surface','ink','sub','point','line'];
+  function applyThemeObject(t){
+    var r = document.documentElement;
+    if (!t || t.auto){
+      r.removeAttribute('data-custom');
+      VARS.forEach(function(k){ r.style.removeProperty('--' + k); });
+      ['radius','font','word','pattern'].forEach(function(k){ r.style.removeProperty('--' + k); });
+      r.removeAttribute('data-skin');
+      return;
+    }
+    r.setAttribute('data-custom','1');
+    VARS.forEach(function(k){ r.style.setProperty('--' + k, t[k]); });
+    r.style.setProperty('--radius', t.radius + 'px');
+    r.style.setProperty('--font', t.font);
+    r.style.setProperty('--word', t.word);
+    r.style.setProperty('--pattern', t.pattern || 'none');
+    r.setAttribute('data-skin', t.skin || 'plain');
+  }
+  function applyTheme(id, quiet){
+    var th = findTheme(id);
+    if (!th) return;
+    db.themeId = id;
+    applyThemeObject(th.auto ? null : th.t);
+    save();
+    if (!quiet) toast('"' + th.name + '" 테마를 입혔어요');
+  }
+
+  /* =========================================================
+     6. 카드 모드
+     ========================================================= */
+  var idx = 0, flipped = false;
+
+  function deck(){
+    if (db.onlyNew){
+      var left = db.words.filter(function(w){ return !w.known; });
+      if (left.length) return left;
+    }
+    return db.words;
+  }
+  function header(){
+    $('starStat').textContent = '⭐ ' + db.words.filter(function(w){ return w.known; }).length;
+    $('countStat').textContent = db.words.length + ' 단어';
+  }
+
+  function viewCards(){
+    var list = deck();
+    if (!list.length){
+      view.appendChild(emptyBox('단어가 하나도 없어요', '아래 "단어" 탭에서 내 단어를 넣어보세요.'));
+      return;
+    }
+    if (idx >= list.length) idx = 0;
+    var w = list[idx];
+
+    var pr = el('div','progress');
+    pr.appendChild(el('span', null, (idx+1) + ' / ' + list.length));
+    var bar = el('span','bar');
+    var fi = el('i');
+    fi.style.width = Math.round((idx+1)/list.length*100) + '%';
+    bar.appendChild(fi);
+    pr.appendChild(bar);
+    view.appendChild(pr);
+
+    var box = el('div','cardbox');
+    var flip = el('div','flip' + (flipped ? ' on' : ''));
+    flip.tabIndex = 0;
+    flip.setAttribute('role','button');
+    flip.setAttribute('aria-label','카드 뒤집기');
+
+    var front = el('div','face');
+    var mark = el('span','known-mark' + (w.known ? ' on' : ''), '⭐');
+    front.appendChild(mark);
+    front.appendChild(el('p','word', w.en));
+    front.appendChild(el('p','tagline','TAP TO FLIP'));
+    flip.appendChild(front);
+
+    var back = el('div','face back');
+    back.appendChild(el('p','mean', w.ko));
+    if (w.ex) back.appendChild(el('p','sent', w.ex));
+    back.appendChild(el('p','tagline','다시 누르면 영어'));
+    flip.appendChild(back);
+
+    function doFlip(){ flipped = !flipped; flip.classList.toggle('on'); }
+    flip.addEventListener('click', doFlip);
+    flip.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); doFlip(); }
+    });
+    box.appendChild(flip);
+    view.appendChild(box);
+
+    var row = el('div','row');
+    row.appendChild(btn('btn','이전', function(){
+      idx = (idx - 1 + list.length) % list.length; flipped = false; render();
+    }));
+    row.appendChild(btn('btn main','🔊 발음 듣기', function(){ speak(w.en); }));
+    row.appendChild(btn('btn','다음', function(){
+      idx = (idx + 1) % list.length; flipped = false; render();
+    }));
+    view.appendChild(row);
+
+    var row2 = el('div','row');
+    var know = btn('btn sm', w.known ? '⭐ 외운 단어' : '☆ 외웠어요', function(){
+      w.known = !w.known; save(); header(); render();
+    });
+    know.setAttribute('aria-pressed', w.known ? 'true' : 'false');
+    row2.appendChild(know);
+    row2.appendChild(btn('btn sm','🔀 섞기', function(){
+      for (var i = db.words.length - 1; i > 0; i--){
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = db.words[i]; db.words[i] = db.words[j]; db.words[j] = t;
+      }
+      idx = 0; flipped = false; save(); render(); toast('순서를 섞었어요');
+    }));
+    var only = btn('btn sm', '👀 안 외운 것만', function(){
+      db.onlyNew = !db.onlyNew; idx = 0; flipped = false; save(); render();
+    });
+    only.setAttribute('aria-pressed', db.onlyNew ? 'true' : 'false');
+    row2.appendChild(only);
+    var slow = btn('btn sm', '🐢 느리게 듣기', function(){
+      db.rate = db.rate < 0.8 ? 0.85 : 0.6; save(); render();
+      toast(db.rate < 0.8 ? '느린 발음으로 바꿨어요' : '보통 속도로 바꿨어요');
+    });
+    slow.setAttribute('aria-pressed', db.rate < 0.8 ? 'true' : 'false');
+    row2.appendChild(slow);
+    view.appendChild(row2);
+  }
+
+  function emptyBox(title, sub){
+    var p = el('div','panel');
+    p.style.textAlign = 'center';
+    p.appendChild(el('h3', null, title));
+    p.appendChild(el('p','hint', sub));
+    return p;
+  }
+
+  /* =========================================================
+     7. 퀴즈 모드
+     ========================================================= */
+  var quiz = null;
+
+  function startQuiz(pool){
+    var src = (pool && pool.length) ? pool.slice() : db.words.slice();
+    if (src.length < 4){ toast('단어가 4개 이상 있어야 퀴즈를 낼 수 있어요'); return; }
+    for (var i = src.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = src[i]; src[i] = src[j]; src[j] = t;
+    }
+    quiz = { list:src.slice(0, Math.min(10, src.length)), at:0, right:0, wrong:[], locked:false };
+    render();
+  }
+
+  function viewQuiz(){
+    if (!quiz){
+      var p = el('div','panel');
+      p.appendChild(el('h3','', '퀴즈로 확인하기'));
+      p.appendChild(el('p','hint','보기 네 개 중에서 고르는 10문제입니다. 방향을 고르고 시작하세요.'));
+      var row = el('div','row');
+      row.style.justifyContent = 'flex-start';
+      var a = btn('btn sm','영어 → 뜻', function(){ db.dir = 'en2ko'; save(); render(); });
+      a.setAttribute('aria-pressed', db.dir === 'en2ko' ? 'true' : 'false');
+      var b = btn('btn sm','뜻 → 영어', function(){ db.dir = 'ko2en'; save(); render(); });
+      b.setAttribute('aria-pressed', db.dir === 'ko2en' ? 'true' : 'false');
+      row.appendChild(a); row.appendChild(b);
+      p.appendChild(row);
+      var row2 = el('div','row');
+      row2.style.justifyContent = 'flex-start';
+      row2.appendChild(btn('btn main','퀴즈 시작', function(){ startQuiz(db.words); }));
+      var left = db.words.filter(function(w){ return !w.known; });
+      row2.appendChild(btn('btn','안 외운 단어로만', function(){ startQuiz(left); }));
+      p.appendChild(row2);
+      view.appendChild(p);
+      return;
+    }
+
+    if (quiz.at >= quiz.list.length){
+      var r = el('div','panel');
+      var res = el('div','result');
+      res.appendChild(el('p','label','점수'));
+      res.appendChild(el('p','big', quiz.right + ' / ' + quiz.list.length));
+      var msg = quiz.right === quiz.list.length ? '전부 맞혔어요. 대단해요!'
+        : (quiz.right >= quiz.list.length * 0.7 ? '잘했어요. 틀린 것만 다시 볼까요?' : '괜찮아요. 한 번 더 하면 올라갑니다.');
+      res.appendChild(el('p','hint', msg));
+      r.appendChild(res);
+      if (quiz.wrong.length){
+        r.appendChild(el('p','label','틀린 단어'));
+        var ul = el('ul','wrongs');
+        quiz.wrong.forEach(function(w){
+          var li = el('li');
+          li.appendChild(el('b', null, w.en));
+          li.appendChild(el('span', null, w.ko));
+          ul.appendChild(li);
+        });
+        r.appendChild(ul);
+      }
+      var row = el('div','row');
+      if (quiz.wrong.length){
+        row.appendChild(btn('btn main','틀린 것만 다시', function(){ startQuiz(quiz.wrong); }));
+      }
+      row.appendChild(btn('btn','처음으로', function(){ quiz = null; render(); }));
+      r.appendChild(row);
+      view.appendChild(r);
+      return;
+    }
+
+    var q = quiz.list[quiz.at];
+    var head = el('div','qhead');
+    head.appendChild(el('p','qn', (quiz.at + 1) + ' / ' + quiz.list.length));
+    var ask = el('p','qq' + (db.dir === 'ko2en' ? ' ko' : ''), db.dir === 'en2ko' ? q.en : q.ko);
+    head.appendChild(ask);
+    view.appendChild(head);
+
+    if (db.dir === 'en2ko'){
+      var r2 = el('div','row');
+      r2.appendChild(btn('btn sm','🔊 들어보기', function(){ speak(q.en); }));
+      view.appendChild(r2);
+    }
+
+    var answer = db.dir === 'en2ko' ? q.ko : q.en;
+    var pool = db.words.filter(function(w){ return (db.dir === 'en2ko' ? w.ko : w.en) !== answer; });
+    var picks = [answer];
+    var guard = 0;
+    while (picks.length < 4 && pool.length && guard < 200){
+      var c = pool[Math.floor(Math.random() * pool.length)];
+      var v = db.dir === 'en2ko' ? c.ko : c.en;
+      if (picks.indexOf(v) === -1) picks.push(v);
+      guard++;
+    }
+    for (var i = picks.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = picks[i]; picks[i] = picks[j]; picks[j] = t;
+    }
+
+    var opts = el('div','opts');
+    opts.style.marginTop = '16px';
+    picks.forEach(function(v){
+      var o = btn('opt' + (db.dir === 'ko2en' ? ' en' : ''), v, function(){
+        if (quiz.locked) return;
+        quiz.locked = true;
+        Array.prototype.forEach.call(opts.children, function(x){
+          x.setAttribute('data-s', x.textContent === answer ? 'o' : 'x');
+        });
+        if (v === answer){ quiz.right++; toast('정답이에요'); }
+        else { quiz.wrong.push(q); toast('정답은 ' + answer); }
+        setTimeout(function(){
+          quiz.at++; quiz.locked = false; render();
+        }, 850);
+      });
+      opts.appendChild(o);
+    });
+    view.appendChild(opts);
+
+    var pr = el('div','progress');
+    pr.style.marginTop = '18px';
+    pr.appendChild(el('span', null, '맞은 개수 ' + quiz.right));
+    var bar = el('span','bar');
+    var fi = el('i');
+    fi.style.width = Math.round(quiz.at / quiz.list.length * 100) + '%';
+    bar.appendChild(fi);
+    pr.appendChild(bar);
+    view.appendChild(pr);
+  }
+
+  /* =========================================================
+     8. 단어 모드
+     ========================================================= */
+  function viewWords(){
+    var p = el('div','panel');
+    p.appendChild(el('h3', null, '내 단어 ' + db.words.length + '개'));
+    p.appendChild(el('p','hint','별을 누르면 외운 단어로 표시됩니다. 시험 범위 단어로 바꿔 넣어보세요.'));
+
+    var ul = el('ul','wlist');
+    db.words.forEach(function(w, i){
+      var li = el('li','witem');
+      var st = btn('star', w.known ? '⭐' : '☆', function(){
+        w.known = !w.known; save(); header(); render();
+      });
+      st.setAttribute('aria-pressed', w.known ? 'true' : 'false');
+      st.setAttribute('aria-label', w.en + ' 외움 표시');
+      li.appendChild(st);
+      var mid = el('div');
+      mid.appendChild(el('div','en', w.en));
+      mid.appendChild(el('div','ko', w.ko + (w.ex ? ' · ' + w.ex : '')));
+      li.appendChild(mid);
+      li.appendChild(btn('del','삭제', function(){
+        db.words.splice(i,1); idx = 0; save(); header(); render();
+      }));
+      ul.appendChild(li);
+    });
+    p.appendChild(ul);
+    view.appendChild(p);
+
+    /* 한 개 추가 */
+    var add = el('div','panel');
+    add.appendChild(el('h3', null, '단어 추가하기'));
+    var form = el('div','form');
+    var three = el('div','three');
+    var en = document.createElement('input'); en.type='text'; en.placeholder='english';
+    en.setAttribute('aria-label','영어 단어');
+    var ko = document.createElement('input'); ko.type='text'; ko.placeholder='뜻';
+    ko.setAttribute('aria-label','뜻');
+    three.appendChild(en); three.appendChild(ko);
+    form.appendChild(three);
+    var ex = document.createElement('input'); ex.type='text'; ex.placeholder='예문 (비워도 됩니다)';
+    ex.setAttribute('aria-label','예문');
+    form.appendChild(ex);
+    var r = el('div','row');
+    r.style.justifyContent = 'flex-start';
+    r.appendChild(btn('btn main','추가', function(){
+      if (!en.value.trim() || !ko.value.trim()){ toast('영어와 뜻을 적어주세요'); return; }
+      db.words.push({ en:en.value.trim(), ko:ko.value.trim(), ex:ex.value.trim(), known:false });
+      save(); header(); render(); toast('단어를 넣었어요');
+    }));
+    form.appendChild(r);
+    add.appendChild(form);
+    view.appendChild(add);
+
+    /* 여러 개 한꺼번에 */
+    var bulk = el('div','panel');
+    bulk.appendChild(el('h3', null, '여러 개 한꺼번에 넣기'));
+    bulk.appendChild(el('p','hint','한 줄에 하나씩 · 영어, 뜻, 예문 순서로 쉼표로 구분하세요.'));
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'apple, 사과, I eat an apple.\nschool, 학교, My school is near the park.';
+    ta.spellcheck = false;
+    bulk.appendChild(ta);
+    var br = el('div','row');
+    br.style.justifyContent = 'flex-start';
+    br.appendChild(btn('btn main','한꺼번에 넣기', function(){
+      var lines = ta.value.split('\n').filter(function(l){ return l.trim(); });
+      var n = 0;
+      lines.forEach(function(line){
+        var c = line.split(',').map(function(x){ return x.trim(); });
+        if (c[0] && c[1]){
+          db.words.push({ en:c[0], ko:c[1], ex:c[2] || '', known:false });
+          n++;
+        }
+      });
+      if (!n){ toast('형식을 확인해 주세요'); return; }
+      save(); header(); render(); toast(n + '개를 넣었어요');
+    }));
+    bulk.appendChild(br);
+    view.appendChild(bulk);
+
+    /* 세트와 내보내기 */
+    var tool = el('div','panel');
+    tool.appendChild(el('h3', null, '단어 세트와 내보내기'));
+    tool.appendChild(el('p','hint','기본 세트를 불러오면 지금 단어 목록이 바뀝니다. 내보내기는 내가 만든 코드에 붙여넣을 때 씁니다.'));
+    var tr = el('div','row');
+    tr.style.justifyContent = 'flex-start';
+    tr.appendChild(btn('btn','초등 기본 24개', function(){
+      db.words = toWords(SET_ELEM); idx = 0; save(); header(); render(); toast('초등 기본 세트를 불러왔어요');
+    }));
+    tr.appendChild(btn('btn','중학 기본 24개', function(){
+      db.words = toWords(SET_MID); idx = 0; save(); header(); render(); toast('중학 기본 세트를 불러왔어요');
+    }));
+    tr.appendChild(btn('btn','별 표시 모두 지우기', function(){
+      db.words.forEach(function(w){ w.known = false; });
+      save(); header(); render(); toast('별을 모두 지웠어요');
+    }));
+    tool.appendChild(tr);
+
+    var codeText = 'const WORDS = [\n' + db.words.map(function(w){
+      return "  { en:'" + w.en.replace(/'/g,'') + "', ko:'" + w.ko.replace(/'/g,'') +
+             "', ex:'" + (w.ex || '').replace(/'/g,'') + "' },";
+    }).join('\n') + '\n];';
+    var code = el('code','out', codeText);
+    tool.appendChild(code);
+    var cr = el('div','row');
+    cr.style.justifyContent = 'flex-start';
+    cr.appendChild(btn('btn main','이 코드 복사하기', function(){
+      copyText(codeText, '코드를 복사했어요. 내 index.html에 붙여넣어 보세요');
+    }));
+    tool.appendChild(cr);
+    view.appendChild(tool);
+  }
+
+  /* =========================================================
+     9. 테마 모드 — 학생이 직접 프롬프트를 추가합니다
+     ========================================================= */
+  var maker = {
+    name:'', bg:'#101528', surface:'#1b2340', ink:'#eaeefb', sub:'#8d9ac4',
+    point:'#7be0c8', line:'#2a3560', radius:18,
+    font:"'Gowun Dodum', sans-serif", word:"'Fredoka', sans-serif", skin:'plain'
+  };
+
+  function makerPrompt(){
+    return '방금 만든 영어 단어장의 디자인만 바꿔줘. 기능과 단어는 그대로 유지해.\n' +
+      '무드: ' + (maker.name || '(여기에 떠오르는 장면을 한 줄로)') + '\n' +
+      '- 배경 ' + maker.bg + ', 카드 ' + maker.surface + ', 글자 ' + maker.ink + ', 포인트 ' + maker.point + '\n' +
+      '- 한글은 구글 폰트 ' + (FONT_LABEL[maker.font] || '') + ', 영어는 ' + (FONT_LABEL[maker.word] || '') + ' 적용 (link 태그 포함)\n' +
+      '- 카드 모서리 ' + maker.radius + 'px, ' + SKIN_TEXT[maker.skin] + '\n' +
+      '- 색은 전부 :root의 CSS 변수로 빼고, 변수마다 한국어 주석을 달아줘\n' +
+      '바뀐 부분만 보여주고 어디에 붙여넣는지도 알려줘.';
+  }
+  function makerTheme(){
+    return { bg:maker.bg, surface:maker.surface, ink:maker.ink, sub:maker.sub,
+      point:maker.point, line:maker.line, radius:maker.radius,
+      font:maker.font, word:maker.word, skin:maker.skin, pattern:'none' };
+  }
+
+  function viewThemes(){
+    var head = el('div','panel');
+    head.appendChild(el('h3', null, '테마 고르기'));
+    head.appendChild(el('p','hint','프롬프트를 누르면 앱 전체가 그 무드로 바뀝니다. 마음에 드는 게 없으면 아래에서 직접 만들어 덱에 추가하세요.'));
+    view.appendChild(head);
+
+    var deckBox = el('div','deck');
+    deckBox.style.marginTop = '14px';
+    allThemes().forEach(function(t){
+      var c = el('div','tcard');
+      c.setAttribute('data-active', t.id === db.themeId ? 'true' : 'false');
+      var h = el('header');
+      h.appendChild(el('h4', null, t.name));
+      if (t.mine) h.appendChild(el('span','mine','내 프롬프트'));
+      var chips = el('span','chips');
+      var cc = t.auto ? ['#eef1f7','#ffffff','#3b61e8'] : [t.t.bg, t.t.surface, t.t.point];
+      cc.forEach(function(x){ var i = el('i'); i.style.background = x; chips.appendChild(i); });
+      h.appendChild(chips);
+      c.appendChild(h);
+      c.appendChild(el('p','d', t.desc));
+
+      var acts = el('div','acts');
+      acts.appendChild(btn('btn sm main','이 테마 입히기', function(){ applyTheme(t.id); render(); }));
+      acts.appendChild(btn('btn sm','프롬프트 복사', function(){
+        copyText(t.prompt, '프롬프트를 복사했어요. AI에게 그대로 보내보세요');
+      }));
+      if (t.mine){
+        acts.appendChild(btn('btn sm danger','삭제', function(){
+          db.custom = db.custom.filter(function(x){ return x.id !== t.id; });
+          if (db.themeId === t.id) applyTheme('auto', true);
+          save(); render(); toast('지웠어요');
+        }));
+      }
+      c.appendChild(acts);
+
+      var det = document.createElement('details');
+      det.appendChild(el('summary', null, '프롬프트 전문 보기'));
+      det.appendChild(el('pre', null, t.prompt));
+      c.appendChild(det);
+      deckBox.appendChild(c);
+    });
+    view.appendChild(deckBox);
+
+    /* 만들기 */
+    var mk = el('div','panel');
+    mk.appendChild(el('h3', null, '새 프롬프트 만들기'));
+    mk.appendChild(el('p','hint','값을 바꾸면 화면이 바로 바뀝니다. 마음에 들면 덱에 추가하세요.'));
+
+    var form = el('div','form');
+
+    var nameF = el('div');
+    nameF.appendChild(el('p','label','프롬프트 이름 (어떤 장면인지)'));
+    var nameI = document.createElement('input');
+    nameI.type = 'text'; nameI.value = maker.name;
+    nameI.placeholder = '예: 새벽 도서관, 여름 바다, 우주 정거장';
+    nameI.setAttribute('aria-label','프롬프트 이름');
+    nameI.addEventListener('input', function(){ maker.name = this.value; refreshPrompt(); });
+    nameF.appendChild(nameI);
+    form.appendChild(nameF);
+
+    var colors = el('div','three');
+    [['bg','배경색'],['surface','카드 색'],['ink','글자색'],['point','포인트색']].forEach(function(c){
+      var f = el('div');
+      f.appendChild(el('p','label', c[1]));
+      var i = document.createElement('input');
+      i.type = 'color'; i.value = maker[c[0]];
+      i.setAttribute('aria-label', c[1]);
+      i.addEventListener('input', function(){
+        maker[c[0]] = this.value;
+        if (c[0] === 'surface') maker.line = this.value;
+        if (c[0] === 'ink') maker.sub = this.value + '99';
+        livePreview();
+      });
+      f.appendChild(i);
+      colors.appendChild(f);
+    });
+    form.appendChild(colors);
+
+    var fonts = el('div','three');
+    [['font','한글 폰트'],['word','영어 폰트']].forEach(function(c){
+      var f = el('div');
+      f.appendChild(el('p','label', c[1]));
+      var sel = document.createElement('select');
+      sel.setAttribute('aria-label', c[1]);
+      FONTS.forEach(function(ff){
+        var o = document.createElement('option');
+        o.value = ff[0]; o.textContent = ff[1];
+        if (maker[c[0]] === ff[0]) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', function(){ maker[c[0]] = this.value; livePreview(); });
+      f.appendChild(sel);
+      fonts.appendChild(f);
+    });
+    form.appendChild(fonts);
+
+    var last = el('div','three');
+    var rf = el('div');
+    rf.appendChild(el('p','label','카드 모서리 ' + maker.radius + 'px'));
+    var rr = document.createElement('input');
+    rr.type = 'range'; rr.min = '0'; rr.max = '34'; rr.value = maker.radius;
+    rr.setAttribute('aria-label','카드 모서리 둥글기');
+    rr.addEventListener('input', function(){
+      maker.radius = Number(this.value);
+      rf.firstChild.textContent = '카드 모서리 ' + maker.radius + 'px';
+      livePreview();
+    });
+    rf.appendChild(rr);
+    last.appendChild(rf);
+
+    var sf = el('div');
+    sf.appendChild(el('p','label','질감'));
+    var ss = document.createElement('select');
+    ss.setAttribute('aria-label','질감');
+    SKINS.forEach(function(s){
+      var o = document.createElement('option');
+      o.value = s[0]; o.textContent = s[1];
+      if (maker.skin === s[0]) o.selected = true;
+      ss.appendChild(o);
+    });
+    ss.addEventListener('change', function(){ maker.skin = this.value; livePreview(); });
+    sf.appendChild(ss);
+    last.appendChild(sf);
+    form.appendChild(last);
+
+    mk.appendChild(form);
+
+    mk.appendChild(el('p','label','AI에게 보낼 프롬프트'));
+    var pre = el('code','out', makerPrompt());
+    pre.id = 'makerPrompt';
+    mk.appendChild(pre);
+
+    var row = el('div','row');
+    row.style.justifyContent = 'flex-start';
+    row.appendChild(btn('btn main','덱에 추가하고 입히기', function(){
+      if (!maker.name.trim()){ toast('프롬프트 이름을 적어주세요'); nameI.focus(); return; }
+      var id = 'mine-' + Date.now();
+      db.custom.push({
+        id:id, name:maker.name.trim(), mine:true,
+        desc:'내가 만든 프롬프트입니다. 복사해서 AI에게 그대로 보내보세요.',
+        prompt:makerPrompt(), t:makerTheme()
+      });
+      applyTheme(id, true);
+      save(); render();
+      toast('"' + maker.name.trim() + '" 테마를 덱에 넣었어요');
+    }));
+    row.appendChild(btn('btn','프롬프트 복사', function(){
+      copyText(makerPrompt(), '프롬프트를 복사했어요');
+    }));
+    row.appendChild(btn('btn','되돌리기', function(){
+      applyTheme(db.themeId, true); render(); toast('원래 테마로 되돌렸어요');
+    }));
+    mk.appendChild(row);
+    view.appendChild(mk);
+
+    function livePreview(){
+      applyThemeObject(makerTheme());
+      refreshPrompt();
+    }
+    function refreshPrompt(){
+      var n = $('makerPrompt');
+      if (n) n.textContent = makerPrompt();
+    }
+  }
+
+  /* =========================================================
+     10. 탭과 렌더
+     ========================================================= */
+  var TABS = [
+    { id:'cards', name:'카드', icon:'🗂', fn:viewCards },
+    { id:'quiz',  name:'퀴즈', icon:'✏️', fn:viewQuiz },
+    { id:'words', name:'단어', icon:'📝', fn:viewWords },
+    { id:'theme', name:'테마', icon:'🎨', fn:viewThemes }
+  ];
+  var tab = 'cards';
+  var tabbar = $('tabbar');
+  TABS.forEach(function(t){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role','tab');
+    b.setAttribute('data-tab', t.id);
+    b.appendChild(el('em', null, t.icon));
+    b.appendChild(el('span', null, t.name));
+    b.addEventListener('click', function(){
+      tab = t.id;
+      if (t.id !== 'quiz') quiz = quiz;
+      render();
+      window.scrollTo({ top:0, behavior:'smooth' });
+    });
+    tabbar.appendChild(b);
+  });
+
+  function render(){
+    view.textContent = '';
+    header();
+    Array.prototype.forEach.call(tabbar.children, function(b){
+      b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
+    });
+    var t = TABS.filter(function(x){ return x.id === tab; })[0] || TABS[0];
+    t.fn();
+  }
+
+  applyTheme(db.themeId || 'auto', true);
+  render();
+})();
+</script>
+
+<script>
+/* ===== 웹으로도, 앱으로도 =====
+   같은 파일 하나가 브라우저에서는 웹페이지로, 홈 화면에 추가하면 전체화면 앱으로 열립니다. */
+(function(){
+  'use strict';
+  var ICON192 = 'data:image/png;base64,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';
+  var ICON512 = 'data:image/png;base64,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6AcBEAMMfRAAgMxcAgMIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAIgCUAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAAEAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAABAAAAQBAAAAQAAAEAAABAEAAABAAAAQAAAEAQAAAEAAABACArv0Dq7KSLNUzbOcAAAAASUVORK5CYII=';
+
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || window.navigator.standalone === true;
+
+  try{
+    if (location.protocol === 'http:' || location.protocol === 'https:'){
+      var here = location.href.split('#')[0];
+      var dir = here.replace(/[^\/]*$/, '');
+      var manifest = {
+        name:'WORD DECK · 나만의 영어 단어 학습장', short_name:'WORD DECK', lang:'ko',
+        description:'카드로 외우고 퀴즈로 확인하는 나만의 영어 단어장',
+        start_url:here, scope:dir, id:here,
+        display:'standalone', display_override:['standalone','minimal-ui'],
+        background_color:'#eef1f7', theme_color:'#eef1f7',
+        icons:[
+          { src:ICON192, sizes:'192x192', type:'image/png', purpose:'any' },
+          { src:ICON512, sizes:'512x512', type:'image/png', purpose:'maskable' }
+        ]
+      };
+      var link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/manifest+json' }));
+      document.head.appendChild(link);
+      var ic = document.createElement('link');
+      ic.rel = 'apple-touch-icon'; ic.href = ICON192;
+      document.head.appendChild(ic);
+    }
+  }catch(e){}
+
+  var btn = document.getElementById('installBtn');
+  var deferred = null;
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  window.addEventListener('beforeinstallprompt', function(ev){
+    ev.preventDefault(); deferred = ev;
+    if (!standalone) btn.hidden = false;
+  });
+  if (!standalone && isIOS && location.protocol !== 'file:') btn.hidden = false;
+
+  btn.addEventListener('click', function(){
+    if (deferred){
+      deferred.prompt();
+      deferred.userChoice.then(function(){ deferred = null; btn.hidden = true; });
+      return;
+    }
+    var old = document.querySelector('.howto');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.className = 'howto';
+    var b = document.createElement('b');
+    b.textContent = '홈 화면에 추가하면 앱이 됩니다';
+    box.appendChild(b);
+    var p = document.createElement('span');
+    p.textContent = isIOS
+      ? '사파리 아래쪽 공유 버튼을 누르고 "홈 화면에 추가"를 고르세요.'
+      : '브라우저 메뉴에서 "앱 설치" 또는 "홈 화면에 추가"를 고르세요.';
+    box.appendChild(p);
+    var c = document.createElement('button');
+    c.type = 'button'; c.textContent = '알겠어요';
+    c.addEventListener('click', function(){ box.remove(); });
+    box.appendChild(c);
+    document.body.appendChild(box);
+    setTimeout(function(){ if (box.parentNode) box.remove(); }, 9000);
+  });
+  window.addEventListener('appinstalled', function(){ btn.hidden = true; });
+  if (standalone) btn.hidden = true;
+})();
+</script>
+</body>
+</html>
