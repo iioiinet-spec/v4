@@ -1,0 +1,399 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>럭키 룰렛</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:18px 12px;
+ background:#101322;color:white;
+ font-family:Arial,sans-serif;text-align:center
+}
+h1{color:#ffd54a}
+.panel{
+ background:#20283d;padding:15px;
+ border-radius:14px;max-width:470px;
+ margin:15px auto
+}
+.stats{
+ display:grid;grid-template-columns:1fr 1fr;gap:9px
+}
+.stat{
+ background:#303b55;padding:12px;border-radius:9px
+}
+.stat span{
+ display:block;color:#64ffb0;
+ font-size:21px;font-weight:bold;margin-top:5px
+}
+.wheel-box{
+ width:min(340px,90vw);aspect-ratio:1;
+ margin:30px auto;position:relative
+}
+canvas{
+ width:100%;height:100%;
+ transition:transform 5s cubic-bezier(.12,.75,.15,1)
+}
+.pointer{
+ position:absolute;top:-15px;left:50%;
+ transform:translateX(-50%);
+ font-size:35px;color:#ffdf44;z-index:2
+}
+input{
+ padding:12px;width:100%;border-radius:8px;
+ border:1px solid #777;font-size:17px;
+ text-align:center;margin:5px 0
+}
+button{
+ border:0;padding:13px;border-radius:9px;
+ font-weight:bold;font-size:16px;
+ cursor:pointer;margin:5px
+}
+.main-btn{background:#ffca28;width:85%;font-size:20px}
+.max-btn{background:#64dba0}
+.loan-btn{background:#5c9eff;color:white}
+.pay-btn{background:#bd83ff;color:white}
+.reset-btn{background:#596174;color:white}
+.result{font-size:24px;font-weight:bold;min-height:65px;margin:20px}
+.setting-row{
+ display:flex;align-items:center;
+ justify-content:space-between;gap:10px;
+ margin:8px 0;background:#303b55;
+ padding:9px;border-radius:8px
+}
+.setting-row input{width:85px;margin:0}
+.prob{color:#ffd54a;font-size:13px}
+.history{
+ text-align:left;max-height:180px;
+ overflow:auto;font-size:14px
+}
+.history div{padding:7px;border-bottom:1px solid #444}
+button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+</head>
+<body>
+
+<h1>🎰 럭키 룰렛</h1>
+
+<div class="panel">
+ <div class="stats">
+  <div class="stat">보유 포인트<span id="balance">1,000P</span></div>
+  <div class="stat">현재 빚<span id="debt">0P</span></div>
+  <div class="stat">총 상환 금액<span id="repay">0P</span></div>
+  <div class="stat">순자산<span id="net">1,000P</span></div>
+ </div>
+</div>
+
+<div class="wheel-box">
+ <div class="pointer">▼</div>
+ <canvas id="wheel" width="700" height="700"></canvas>
+</div>
+
+<div class="panel">
+ <h3>💰 배팅하기</h3>
+ <input type="number" id="bet" min="1" step="1" value="100" placeholder="배팅 금액">
+ <button class="max-btn" onclick="maxBet()">최대 배팅</button>
+ <br>
+ <button class="main-btn" id="spinBtn" onclick="spin()">🎯 룰렛 돌리기</button>
+ <div class="result" id="result">행운을 시험해 보세요!</div>
+</div>
+
+<div class="panel">
+ <h3>🏦 돈 빌리기</h3>
+ <small>빌린 금액의 2배를 상환해야 합니다.</small>
+ <input type="number" id="loanAmount" min="1" step="1" placeholder="빌릴 금액">
+ <button class="loan-btn" onclick="borrow()">돈 빌리기</button>
+ <hr>
+ <h3>💳 빚 갚기</h3>
+ <small>빌린 원금의 2배를 모두 갚아야 빚이 없어집니다.</small>
+ <button class="pay-btn" onclick="repayDebt()">빚 전액 상환</button>
+</div>
+
+<div class="panel">
+ <h3>⚙️ 룰렛 확률 설정</h3>
+ <small>각 배수의 칸 개수를 변경할 수 있어요.</small>
+ <div id="settings"></div>
+ <p id="totalSlots">총 1,000칸</p>
+ <button class="max-btn" onclick="applySettings()">설정 적용</button>
+ <button class="reset-btn" onclick="defaultSettings()">기본 확률</button>
+</div>
+
+<div class="panel">
+ <h3>📜 게임 기록</h3>
+ <div class="history" id="history">아직 기록이 없습니다.</div>
+</div>
+
+<button class="reset-btn" onclick="resetGame()">게임 초기화</button>
+
+<script>
+const multipliers=[0,0.5,1,2,5,10,50,100];
+
+const colors=[
+ "#34495e","#f1c40f","#16a085","#2980b9",
+ "#e67e22","#e74c3c","#9b59b6","#ff3c8e"
+];
+
+const defaults=[350,250,200,120,50,20,9,1];
+
+let counts=[...defaults];
+let balance=1000;
+let debt=0;
+let rotation=0;
+let spinning=false;
+let history=[];
+
+const canvas=document.getElementById("wheel");
+const ctx=canvas.getContext("2d");
+
+function update(){
+ document.getElementById("balance").textContent=balance.toLocaleString()+"P";
+ document.getElementById("debt").textContent=debt.toLocaleString()+"P";
+ document.getElementById("repay").textContent=(debt*2).toLocaleString()+"P";
+ document.getElementById("net").textContent=(balance-debt*2).toLocaleString()+"P";
+}
+
+function renderSettings(){
+ const box=document.getElementById("settings");
+ box.innerHTML="";
+ multipliers.forEach((m,i)=>{
+  const row=document.createElement("div");
+  row.className="setting-row";
+  const label=document.createElement("label");
+  label.textContent=m+"배 칸";
+  const input=document.createElement("input");
+  input.type="number";
+  input.min="0";
+  input.step="1";
+  input.value=counts[i];
+  input.id="count"+i;
+  input.addEventListener("input",calculateProbability);
+  const prob=document.createElement("span");
+  prob.className="prob";
+  prob.id="prob"+i;
+  row.append(label,input,prob);
+  box.appendChild(row);
+ });
+ calculateProbability();
+}
+
+function calculateProbability(){
+ const values=multipliers.map((m,i)=>{
+  return Math.max(0,Math.floor(Number(document.getElementById("count"+i)?.value)||0));
+ });
+ const total=values.reduce((a,b)=>a+b,0);
+ document.getElementById("totalSlots").textContent="총 "+total.toLocaleString()+"칸";
+ values.forEach((v,i)=>{
+  const p=total>0?(v/total*100):0;
+  const el=document.getElementById("prob"+i);
+  if(el)el.textContent=p.toFixed(2)+"%";
+ });
+}
+
+function applySettings(){
+ if(spinning)return;
+ const values=multipliers.map((m,i)=>{
+  return Number(document.getElementById("count"+i).value);
+ });
+ if(values.some(v=>!Number.isSafeInteger(v)||v<0)||
+    values.reduce((a,b)=>a+b,0)<=0){
+  alert("칸 개수는 0 이상의 정수여야 하며 총 칸은 1개 이상이어야 합니다.");
+  return;
+ }
+ counts=values;
+ drawWheel();
+ renderSettings();
+ alert("확률 설정이 적용되었습니다!");
+}
+
+function defaultSettings(){
+ if(spinning)return;
+ counts=[...defaults];
+ renderSettings();
+ drawWheel();
+}
+
+function drawWheel(){
+ const total=counts.reduce((a,b)=>a+b,0);
+ ctx.clearRect(0,0,700,700);
+ if(total===0)return;
+
+ let angle=0;
+ counts.forEach((count,i)=>{
+  if(count===0)return;
+  const part=count/total*Math.PI*2;
+  ctx.beginPath();
+  ctx.moveTo(350,350);
+  ctx.arc(350,350,335,angle-Math.PI/2,angle+part-Math.PI/2);
+  ctx.closePath();
+  ctx.fillStyle=colors[i];
+  ctx.fill();
+  ctx.strokeStyle="white";
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // 큰 칸은 중앙에, 작은 칸은 여러 개를 묶어 표시
+  if(part>0.035){
+   ctx.save();
+   ctx.translate(350,350);
+   ctx.rotate(angle+part/2-Math.PI/2);
+   ctx.fillStyle="white";
+   ctx.textAlign="right";
+   ctx.font="bold 25px Arial";
+   ctx.fillText(multipliers[i]+"배",305,9);
+   ctx.restore();
+  }
+  angle+=part;
+ });
+
+ ctx.beginPath();
+ ctx.arc(350,350,42,0,Math.PI*2);
+ ctx.fillStyle="white";
+ ctx.fill();
+ ctx.fillStyle="#111";
+ ctx.font="bold 22px Arial";
+ ctx.textAlign="center";
+ ctx.fillText("SPIN",350,358);
+}
+
+function maxBet(){
+ document.getElementById("bet").value=balance;
+}
+
+function borrow(){
+ if(spinning)return;
+ const amount=Number(document.getElementById("loanAmount").value);
+ if(!Number.isSafeInteger(amount)||amount<=0){
+  alert("올바른 대출 금액을 입력하세요.");
+  return;
+ }
+ if(!Number.isSafeInteger(debt+amount)){
+  alert("대출 금액이 너무 큽니다.");
+  return;
+ }
+ debt+=amount;
+ balance+=amount;
+ document.getElementById("loanAmount").value="";
+ update();
+ addHistory(amount.toLocaleString()+"P 대출 / 상환금 "+(amount*2).toLocaleString()+"P");
+}
+
+function repayDebt(){
+ if(spinning)return;
+ const amount=debt*2;
+ if(debt===0){
+  alert("갚을 빚이 없습니다.");
+  return;
+ }
+ if(balance<amount){
+  alert("상환할 포인트가 부족합니다! 필요 금액: "+amount.toLocaleString()+"P");
+  return;
+ }
+ balance-=amount;
+ debt=0;
+ update();
+ addHistory(amount.toLocaleString()+"P 상환 완료");
+}
+
+function spin(){
+ if(spinning)return;
+
+ const bet=Number(document.getElementById("bet").value);
+ if(!Number.isSafeInteger(bet)||bet<=0){
+  alert("올바른 배팅 금액을 입력하세요.");
+  return;
+ }
+ if(bet>balance){
+  alert("포인트가 부족합니다!");
+  return;
+ }
+
+ const total=counts.reduce((a,b)=>a+b,0);
+ if(total<=0){
+  alert("룰렛 칸을 설정하세요.");
+  return;
+ }
+
+ spinning=true;
+ document.getElementById("spinBtn").disabled=true;
+ balance-=bet;
+ update();
+
+ // 설정한 칸 개수에 따라 무작위 칸 선택
+ let random=Math.floor(Math.random()*total);
+ let selected=0;
+ for(let i=0;i<counts.length;i++){
+  if(random<counts[i]){
+   selected=i;
+   break;
+  }
+  random-=counts[i];
+ }
+
+ // 선택된 배수의 전체 구간 중 임의 위치를 목표로 지정
+ let before=counts.slice(0,selected).reduce((a,b)=>a+b,0);
+ let position=before+Math.random()*counts[selected];
+ let targetAngle=position/total*360;
+ let desired=(360-targetAngle+360)%360;
+ let extra=(desired-rotation%360+360)%360;
+
+ rotation+=360*7+extra;
+ canvas.style.transform=`rotate(${rotation}deg)`;
+
+ setTimeout(()=>{
+  const multiplier=multipliers[selected];
+  const winnings=Math.floor(bet*multiplier);
+  balance+=winnings;
+  update();
+
+  document.getElementById("result").innerHTML=
+   multiplier+"배 당첨!<br>"+
+   "배팅: "+bet.toLocaleString()+"P / 획득: "+winnings.toLocaleString()+"P";
+
+  document.getElementById("result").style.color=
+   multiplier>1?"#64ffb0":multiplier===1?"#ffd54a":"#ff7777";
+
+  addHistory(
+   bet.toLocaleString()+"P 배팅 → "+multiplier+
+   "배 → "+winnings.toLocaleString()+"P 획득"
+  );
+
+  spinning=false;
+  document.getElementById("spinBtn").disabled=false;
+ },5100);
+}
+
+function addHistory(message){
+ history.unshift(message);
+ document.getElementById("history").innerHTML=
+  history.slice(0,30).map(x=>"<div>"+x+"</div>").join("");
+}
+
+function resetGame(){
+ if(spinning)return;
+ if(!confirm("모든 포인트와 빚, 기록을 초기화할까요?"))return;
+ balance=1000;
+ debt=0;
+ rotation=0;
+ history=[];
+ counts=[...defaults];
+ canvas.style.transition="none";
+ canvas.style.transform="rotate(0deg)";
+ setTimeout(()=>{
+  canvas.style.transition="transform 5s cubic-bezier(.12,.75,.15,1)";
+ },50);
+ document.getElementById("bet").value=100;
+ document.getElementById("history").textContent="아직 기록이 없습니다.";
+ document.getElementById("result").textContent="행운을 시험해 보세요!";
+ renderSettings();
+ drawWheel();
+ update();
+}
+
+renderSettings();
+drawWheel();
+update();
+</script>
+</body>
+</html>
