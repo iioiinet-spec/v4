@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>학교에 핸드폰 두고 왔다 2: 지옥의 야간 자율 학습</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=DungGeunMo&family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', 'Gowun Dodum', sans-serif;
+            background-color: #05040a;
+            color: #f3f4f6;
+            overflow-x: hidden;
+            user-select: none;
+        }
+
+        .font-pixel {
+            font-family: 'DungGeunMo', monospace;
+        }
+
+        /* CRT Scanline Overlay */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.45) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* Animation Keyframes */
+        .shake-screen {
+            animation: shake 0.3s infinite;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(3px, 3px) rotate(0deg); }
+            20% { transform: translate(-3px, -3px) rotate(-1deg); }
+            40% { transform: translate(-4px, 0px) rotate(1deg); }
+            60% { transform: translate(4px, 2px) rotate(0deg); }
+            80% { transform: translate(1px, -3px) rotate(1deg); }
+            100% { transform: translate(-2px, 2px) rotate(-1deg); }
+        }
+
+        .flash-white {
+            animation: flash 0.25s ease-out;
+        }
+
+        @keyframes flash {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
+
+        .b-class-glow {
+            text-shadow: 0 0 12px #ec4899, 0 0 24px #a855f7;
+        }
+
+        .glass-box {
+            background: rgba(15, 12, 24, 0.92);
+            backdrop-filter: blur(12px);
+            border: 2px solid #c084fc;
+            box-shadow: 0 0 30px rgba(192, 132, 252, 0.25);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090611;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #9333ea;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col items-center justify-center p-2 sm:p-4 relative">
+
+    <!-- Scanline Visual Overlay -->
+    <div class="fixed inset-0 scanlines z-40"></div>
+
+    <!-- Screen Flash Overlay -->
+    <div id="flash-overlay" class="fixed inset-0 pointer-events-none z-50 transition-opacity duration-100 opacity-0"></div>
+
+    <!-- Main Container -->
+    <div id="game-app" class="relative w-full h-full max-w-4xl max-h-[920px] flex flex-col glass-box rounded-3xl overflow-hidden p-3 sm:p-6 border-4 border-purple-500/70 shadow-2xl">
+
+        <!-- Header / Stats Bar -->
+        <header class="w-full flex justify-between items-center bg-slate-950/90 p-2.5 sm:p-4 rounded-2xl border border-purple-500/40 mb-3 z-10">
+            <!-- Stats Gauges -->
+            <div class="flex items-center space-x-3 sm:space-x-6">
+                <!-- HP -->
+                <div class="flex flex-col">
+                    <span class="text-[10px] sm:text-xs text-emerald-400 font-pixel">❤️ 체력</span>
+                    <span id="hp-val" class="text-base sm:text-xl font-bold font-pixel text-emerald-300">100</span>
+                </div>
+                <!-- Sanity -->
+                <div class="flex flex-col">
+                    <span class="text-[10px] sm:text-xs text-cyan-400 font-pixel">🧠 멘탈</span>
+                    <span id="sanity-val" class="text-base sm:text-xl font-bold font-pixel text-cyan-300">100</span>
+                </div>
+                <!-- Crazy (Nonsense) Index -->
+                <div class="flex flex-col">
+                    <span class="text-[10px] sm:text-xs text-pink-400 font-pixel">🤪 병맛 지수</span>
+                    <span id="crazy-val" class="text-base sm:text-xl font-bold font-pixel text-pink-300">0</span>
+                </div>
+            </div>
+
+            <!-- Audio & Restart Controls -->
+            <div class="flex items-center space-x-2">
+                <button id="sound-btn" class="px-2.5 py-1.5 bg-purple-950 hover:bg-purple-900 border border-purple-500/50 rounded-xl text-purple-300 text-xs font-pixel transition">
+                    🔊 사운드 ON
+                </button>
+                <button id="restart-top-btn" class="px-2.5 py-1.5 bg-rose-950 hover:bg-rose-900 border border-rose-500/50 rounded-xl text-rose-300 text-xs font-pixel transition">
+                    🔄 재시작
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Scene Display -->
+        <main class="flex-1 flex flex-col items-center justify-between bg-slate-950/95 rounded-2xl p-4 sm:p-6 border border-slate-800 relative overflow-hidden z-10 mb-3">
+            
+            <!-- Character / Monster Comic Avatar -->
+            <div id="scene-avatar-box" class="relative flex items-center justify-center my-1">
+                <div id="scene-avatar" class="text-6xl sm:text-7xl animate-bounce transform transition-transform duration-300">
+                    🏫
+                </div>
+                <div id="scene-tag" class="absolute -top-2 -right-6 bg-pink-600 text-white font-pixel text-[10px] px-2 py-0.5 rounded-full shadow-lg">
+                    SEASON 2
+                </div>
+            </div>
+
+            <!-- Location & Step Indicator -->
+            <div class="flex items-center gap-2 mb-2">
+                <span id="scene-location" class="text-xs sm:text-sm font-pixel text-purple-300 border border-purple-500/40 px-3 py-1 rounded-full bg-purple-950/60 shadow">
+                    자정이 가까운 시각 - 학교 현관 앞
+                </span>
+            </div>
+
+            <!-- Main Dialogue Story Log Box -->
+            <div id="scene-text-box" class="w-full flex-1 overflow-y-auto text-sm sm:text-base leading-relaxed text-slate-200 font-sans text-center flex flex-col items-center justify-center p-3 border-y border-purple-900/40 my-2">
+                <p id="scene-text" class="leading-relaxed">
+                    "새벽 1시 출석체크 이벤트 한정판 칭호를 받아야 하는데...!"<br>스마트폰을 교실에 둔 것을 깨닫고 밤 깊은 학교로 돌아온 당신. 정문은 열려있고 복도 깊은 곳에서 기괴한 댄스 비트가 흘러나옵니다.
+                </p>
+            </div>
+
+            <!-- Mini Game Interactive Container (Hidden by Default) -->
+            <div id="minigame-container" class="w-full bg-purple-950/80 border-2 border-pink-500/60 rounded-xl p-3 my-2 text-center hidden">
+                <div id="minigame-title" class="font-pixel text-yellow-300 text-sm mb-1">QTE 미니게임: 광란의 버튼 연타!</div>
+                <div id="minigame-desc" class="text-xs text-slate-300 mb-2">제한시간 안에 [스페이스바] 또는 [버튼]을 10번 누르세요!</div>
+                <div class="w-full bg-slate-900 rounded-full h-4 overflow-hidden mb-2 border border-slate-700">
+                    <div id="minigame-bar" class="bg-gradient-to-r from-pink-500 to-yellow-400 h-full w-0 transition-all duration-75"></div>
+                </div>
+                <button id="minigame-btn" class="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-slate-950 font-pixel font-bold text-base rounded-lg shadow-lg active:scale-95 transition">
+                    👉 연타하기! (0/10)
+                </button>
+            </div>
+
+            <!-- Inventory Section -->
+            <div class="w-full flex items-center justify-start gap-2 bg-slate-900/80 border border-slate-800 rounded-xl p-2">
+                <span class="text-xs font-pixel text-purple-400 whitespace-nowrap">🎒 소지품:</span>
+                <div id="inventory-list" class="flex gap-2 overflow-x-auto text-xs text-slate-300 font-pixel">
+                    <span class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-500">비어 있음</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Interactive 2-Choice Buttons -->
+        <footer id="choice-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full z-10">
+            <button id="choice-1" class="py-3.5 px-4 bg-gradient-to-r from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 border-2 border-purple-500/60 rounded-2xl text-purple-200 font-bold text-sm sm:text-base shadow-lg hover:scale-[1.01] active:scale-95 transition flex items-center justify-center text-center">
+                선택지 1
+            </button>
+            <button id="choice-2" class="py-3.5 px-4 bg-gradient-to-r from-pink-900 to-rose-900 hover:from-pink-800 hover:to-rose-800 border-2 border-pink-500/60 rounded-2xl text-pink-200 font-bold text-sm sm:text-base shadow-lg hover:scale-[1.01] active:scale-95 transition flex items-center justify-center text-center">
+                선택지 2
+            </button>
+        </footer>
+
+    </div>
+
+    <!-- Web Audio & B-Class Game Logic -->
+    <script>
+        /**
+         * Web Audio Synthesizer Engine
+         */
+        class BClassAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.bgmTimer = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleSound() {
+                this.enabled = !this.enabled;
+                if (!this.enabled && this.bgmTimer) {
+                    clearInterval(this.bgmTimer);
+                    this.bgmTimer = null;
+                } else if (this.enabled) {
+                    this.startEerieBGM();
+                }
+                return this.enabled;
+            }
+
+            startEerieBGM() {
+                if (!this.enabled) return;
+                this.init();
+                if (this.bgmTimer) clearInterval(this.bgmTimer);
+
+                const notes = [130.81, 146.83, 164.81, 155.56, 130.81, 174.61, 123.47, 110.00];
+                let idx = 0;
+
+                this.bgmTimer = setInterval(() => {
+                    if (!this.enabled || !this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = (idx % 3 === 0) ? 'sawtooth' : 'triangle';
+                    osc.frequency.setValueAtTime(notes[idx % notes.length], now);
+
+                    gain.gain.setValueAtTime(0.04, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + 0.22);
+
+                    idx++;
+                }, 240);
+            }
+
+            playBoing() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(140, now);
+                osc.frequency.exponentialRampToValueAtTime(700, now + 0.35);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+
+            playShock() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const freqs = [120, 110, 90, 70];
+
+                freqs.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(f, now + i * 0.12);
+                    gain.gain.setValueAtTime(0.25, now + i * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.12 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.12);
+                    osc.stop(now + i * 0.12 + 0.2);
+                });
+            }
+
+            playVictory() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+
+                notes.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(f, now + i * 0.09);
+                    gain.gain.setValueAtTime(0.12, now + i * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.09 + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.09);
+                    osc.stop(now + i * 0.09 + 0.18);
+                });
+            }
+
+            playClick() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.05);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+        }
+
+        /**
+         * Story Engine Logic
+         */
+        class FunnyHorrorGameSeason2 {
+            constructor() {
+                this.sound = new BClassAudioEngine();
+                this.hp = 100;
+                this.sanity = 100;
+                this.crazy = 0;
+                this.inventory = [];
+                this.currentStep = 'start';
+
+                // Mini Game Variables
+                this.minigameCount = 0;
+                this.minigameTarget = 10;
+                this.minigameTimer = null;
+                this.minigameSuccessNext = '';
+                this.minigameFailNext = '';
+
+                // Massive Story Branching Tree (25+ Nodes, 12 Endings)
+                this.storyNodes = {
+                    start: {
+                        avatar: '🏫',
+                        location: '새벽 1시 - 학교 중앙 현관',
+                        text: '스마트폰 1000일 연속 출석체크 한정판 칭호가 10분 뒤 마감됩니다! 어두운 현관문 안쪽에서 "슬릭백" 댄스 소리와 함께 신스웨이브 음악이 흘러나옵니다.',
+                        c1: { text: '현관 신발장에서 실내화 대신 삼선 슬리퍼를 장착하고 진입', next: 'hallway_slippers', hp: 0, sanity: 10, crazy: 15, item: '🩴 삼선 슬리퍼' },
+                        c2: { text: '당당하게 "영업 끝났나요?!" 소리치며 입장한다', next: 'hallway_shout', hp: -10, sanity: -5, crazy: 20 }
+                    },
+
+                    hallway_slippers: {
+                        avatar: '🩴',
+                        location: '1층 중앙 복도',
+                        text: '삼선 슬리퍼를 끌며 착착 소리를 내자, 복도 끝 거울에서 핏기 없는 거울 귀신이 슬릭백 춤을 추며 접근합니다! 귀신이 스텝을 자랑스럽게 보여줍니다.',
+                        c1: { text: '귀신 앞에서 탕후루를 건네며 댄스 챌린지를 신청한다', next: 'ghost_tanghulu', hp: 0, sanity: 10, crazy: 30, item: '🍡 매운 탕후루' },
+                        c2: { text: '슬리퍼 바닥으로 찰지게 짝! 소리 내며 뺨을 때린다', next: 'ghost_slap', hp: -15, sanity: -10, crazy: 25 }
+                    },
+
+                    hallway_shout: {
+                        avatar: '📢',
+                        location: '1층 당직실 앞',
+                        text: '소리를 지르자 당직실 문이 열리며, 머리에 빗자루를 꽂은 괴기한 당직 선생님 귀신이 몽둥이를 들고 출몰했습니다!',
+                        c1: { text: '"선생님! 야간 자율 학습 추가 신청하러 왔습니다!"라 외친다', next: 'teacher_yaza', hp: 0, sanity: 20, crazy: 40 },
+                        c2: { text: '빛의 속도로 2층 계단으로 도망친다', next: 'stairs_qte', hp: -10, sanity: -10, crazy: 5 }
+                    },
+
+                    ghost_tanghulu: {
+                        avatar: '🍡',
+                        location: '1층 거울 앞 챌린지 구역',
+                        text: '매운 탕후루를 먹은 거울 귀신이 감동의 눈물을 흘리며 숏폼 댄스를 같이 촬영했습니다! 귀신이 2층 열쇠를 선물로 주었습니다.',
+                        c1: { text: '귀신과 듀엣 인스타 맞팔 후 2층 교실로 이동', next: 'classroom_gate', hp: 0, sanity: 20, crazy: 25, item: '🔑 2층 마스터 열쇠' },
+                        c2: { text: '귀신에게 매점 빵 셔틀을 시켜본다', next: 'ghost_shuttle_ending', hp: 0, sanity: 0, crazy: 50 }
+                    },
+
+                    ghost_slap: {
+                        avatar: '👋',
+                        location: '1층 복도 바닥',
+                        text: '슬리퍼 짝! 소리에 거울 귀신이 엄청난 수치심을 느끼며 울면서 거울 속으로 도망쳤습니다. 하지만 마찰열로 슬리퍼가 불타버렸습니다.',
+                        c1: { text: '맨발로 힙하게 스텝을 밟으며 계단으로 향한다', next: 'stairs_qte', hp: -10, sanity: -10, crazy: 20 },
+                        c2: { text: '바닥에 떨어진 촛농을 발바닥에 발라 방어력을 높인다', next: 'wax_foot', hp: -20, sanity: 10, crazy: 35 }
+                    },
+
+                    teacher_yaza: {
+                        avatar: '👨‍🏫',
+                        location: '1층 당직실 앞',
+                        text: '당직 선생님 귀신이 몹시 기뻐하며 눈물을 흘립니다. "이런 인재가 있다니! 상으로 교장실 보물 상자 열쇠를 주마!"',
+                        c1: { text: '열쇠를 받고 교장실로 직행한다', next: 'principal_room', hp: 0, sanity: 20, crazy: 30, item: '🗝️ 황금 보물 열쇠' },
+                        c2: { text: '"선생님 수능 특강 문제집 풀어주세요!"라며 미니게임 신청', next: 'math_minigame', hp: 0, sanity: 10, crazy: 25 }
+                    },
+
+                    stairs_qte: {
+                        avatar: '🏃',
+                        location: '2층 올라가는 계단',
+                        text: '계단 위에서 굴러떨어지는 무서운 인체 모형과의 충돌 위기! 빠르게 피해야 합니다!',
+                        isMinigame: true,
+                        mType: 'qte',
+                        mTitle: 'QTE: 굴러오는 인체 모형 회피!',
+                        mDesc: '5초 안에 [연타하기] 버튼을 10번 눌러 순간 스텝으로 피하세요!',
+                        mTarget: 10,
+                        mTime: 5,
+                        mSuccess: 'stairs_avoided',
+                        mFail: 'mannequin_hit_ending'
+                    },
+
+                    stairs_avoided: {
+                        avatar: '🤸',
+                        location: '2층 복도 입구',
+                        text: '화려한 덤블링으로 인체 모형을 피했습니다! 인체 모형이 감탄하며 따봉을 날립니다.',
+                        c1: { text: '인체 모형과 어깨동무하고 3반 교실로 직진', next: 'classroom_gate', hp: 0, sanity: 10, crazy: 20 },
+                        c2: { text: '인체 모형에게 장기 자랑 댄스를 요구한다', next: 'mannequin_dance_ending', hp: 0, sanity: 20, crazy: 45 }
+                    },
+
+                    wax_foot: {
+                        avatar: '🕯️',
+                        location: '2층 복도',
+                        text: '발바닥에 촛농을 코팅하여 굳건한 무적의 굳은살을 얻었습니다! 어떤 가시밭길도 두렵지 않습니다.',
+                        c1: { text: '무적의 발바닥으로 교실 문을 냅다 발차기', next: 'classroom_kick', hp: 0, sanity: 10, crazy: 30 },
+                        c2: { text: '과학실로 들어가 연금술 재료를 탐색한다', next: 'science_lab', hp: -5, sanity: 5, crazy: 25 }
+                    },
+
+                    math_minigame: {
+                        avatar: '📐',
+                        location: '1층 당직실 서재',
+                        text: '선생님이 암산 퀴즈를 냅니다! [ 17 × 4 = ? ]',
+                        c1: { text: '정답인 "68!"을 당당하게 외친다', next: 'math_success', hp: 0, sanity: 30, crazy: 15 },
+                        c2: { text: '"몰루?"라고 외치며 혀를 낼름 내민다', next: 'math_fail_ending', hp: -50, sanity: -50, crazy: 50 }
+                    },
+
+                    math_success: {
+                        avatar: '💯',
+                        location: '1층 당직실',
+                        text: '선생님이 "수학 천재로구나!"라며 프리패스 상장과 스마트폰 탐지기를 건네줍니다.',
+                        c1: { text: '탐지기를 켜고 2층 3반 교실로 향한다', next: 'classroom_gate', hp: 0, sanity: 20, crazy: 20, item: '📡 스마트폰 탐지기' },
+                        c2: { text: '상장을 가슴에 품고 장학금 신청하러 간다', next: 'scholarship_ending', hp: 0, sanity: 30, crazy: 40 }
+                    },
+
+                    principal_room: {
+                        avatar: '🏛️',
+                        location: '2층 교장실',
+                        text: '황금 보물 상자를 열자 안에서 은빛으로 빛나는 마법의 뚫어뻥과 금가루가 튀어나왔습니다!',
+                        c1: { text: '마법의 뚫어뻥을 무기로 장착하고 교실로 이동', next: 'classroom_gate', hp: 0, sanity: 20, crazy: 35, item: '🪠 황금 뚫어뻥' },
+                        c2: { text: '교장실 안마의자에 앉아서 잠 청하기', next: 'massage_chair_ending', hp: 50, sanity: 50, crazy: 40 }
+                    },
+
+                    science_lab: {
+                        avatar: '🧪',
+                        location: '2층 과학실',
+                        text: '알코올 램프 위에서 보라색 시약이 보글보글 끓고 있습니다. 마시면 기운이 날 것 같은 냄새가 납니다.',
+                        c1: { text: '시약을 원샷하여 슈퍼 파워를 얻는다', next: 'potion_drink', hp: 30, sanity: -20, crazy: 40 },
+                        c2: { text: '시약을 비눗방울로 만들어 복도에 날린다', next: 'bubble_fun', hp: 0, sanity: 20, crazy: 30 }
+                    },
+
+                    potion_drink: {
+                        avatar: '헐크',
+                        location: '2층 복도 한복판',
+                        text: '몸이 녹색으로 빛나며 근육이 폭발했습니다! 근육의 힘으로 벽을 뚫을 수 있을 것 같습니다!',
+                        c1: { text: '교실 벽을 뚫고 무자비하게 돌진한다', next: 'wall_smash', hp: 0, sanity: 0, crazy: 50 },
+                        c2: { text: '근육 포즈를 잡으며 복도 귀신들을 위협한다', next: 'bodybuilder_ending', hp: 0, sanity: 30, crazy: 60 }
+                    },
+
+                    bubble_fun: {
+                        avatar: '🫧',
+                        location: '2층 복도',
+                        text: '복도가 보라색 비눗방울로 가득 찼습니다. 지나가던 귀신들이 비눗방울을 터뜨리며 동심으로 돌아갔습니다.',
+                        c1: { text: '평화로워진 복도를 따라 3반 교실로 진입', next: 'classroom_gate', hp: 10, sanity: 20, crazy: 20 },
+                        c2: { text: '비눗방울 파티를 개최하여 입장료를 받는다', next: 'bubble_party_ending', hp: 0, sanity: 20, crazy: 45 }
+                    },
+
+                    classroom_gate: {
+                        avatar: '🚪',
+                        location: '2층 3반 교실 앞',
+                        text: '마침내 목적지인 2층 3반 교실 앞! 문 사이로 보라색 연기와 함께 저주받은 시험지 귀신이 둥둥 떠 있는 것이 보입니다.',
+                        c1: { text: '소지품 아이템을 총동원하여 정면 돌파한다', next: 'classroom_boss', hp: 0, sanity: 0, crazy: 20 },
+                        c2: { text: '문틈으로 야식 보쌈 냄새를 풍겨 귀신을 유인한다', next: 'boss_lure', hp: 0, sanity: 10, crazy: 35 }
+                    },
+
+                    classroom_kick: {
+                        avatar: '🦶',
+                        location: '2층 3반 교실 입구',
+                        text: '촛농 코팅 발차기로 교실 문을 통째로 날려버렸습니다! 교실 안 귀신들이 멘붕에 빠졌습니다.',
+                        c1: { text: '당당하게 책상 위 스마트폰을 낚아채 출석체크!', next: 'phone_check_success', hp: 0, sanity: 20, crazy: 30 },
+                        c2: { text: '문짝 수리비 명목으로 귀신들에게 돈을 요구', next: 'repair_cost_ending', hp: 0, sanity: 0, crazy: 50 }
+                    },
+
+                    wall_smash: {
+                        avatar: '💥',
+                        location: '2층 3반 교실 내부',
+                        text: '콰쾅!! 근육의 힘으로 벽을 파괴하며 등장! 교실 안 몬스터들이 두려움에 떨며 엎드립니다.',
+                        c1: { text: '스마트폰을 집어 들고 1000일 연속 출석 완료!', next: 'phone_check_success', hp: 0, sanity: 30, crazy: 40 },
+                        c2: { text: '교실 안 귀신들에게 스쿼트 100회를 시킨다', next: 'squat_master_ending', hp: 0, sanity: 20, crazy: 60 }
+                    },
+
+                    boss_lure: {
+                        avatar: '🍖',
+                        location: '2층 3반 복도',
+                        text: '보쌈 냄새에 홀린 시험지 귀신이 눈물을 흘리며 복도로 튀어나왔습니다! 귀신이 보쌈을 먹느라 정신이 없습니다.',
+                        c1: { text: '귀신이 먹는 사이 교실 안으로 들어가 스마트폰 획득', next: 'phone_check_success', hp: 0, sanity: 20, crazy: 20 },
+                        c2: { text: '귀신과 합석하여 같이 야식 먹방을 찍는다', next: 'mukbang_ending', hp: 20, sanity: 20, crazy: 40 }
+                    },
+
+                    classroom_boss: {
+                        avatar: '👾',
+                        location: '2층 3반 최종 보스전',
+                        text: '시험지 귀신이 "OMR 카드 마킹 오류의 저주를 받아라!"라며 붉은 레이저를 쏩니다!',
+                        isMinigame: true,
+                        mType: 'qte',
+                        mTitle: '최종 결전: OMR 레이저 연타 회피!',
+                        mDesc: '6초 안에 [연타하기] 버튼을 12번 눌러 레이저를 반사하세요!',
+                        mTarget: 12,
+                        mTime: 6,
+                        mSuccess: 'phone_check_success',
+                        mFail: 'test_curse_ending'
+                    },
+
+                    phone_check_success: {
+                        avatar: '📱',
+                        location: '새벽 1시 59분 - 출석 완료',
+                        text: '[축하합니다!] 마감 1분 전, 스마트폰을 터치하여 1000일 연속 출석체크 한정판 칭호 획득 성공! 전설의 게이머로 등극했습니다!',
+                        c1: { text: '기쁨의 댄스를 추며 창문 짚라인으로 탈출!', next: 'true_hero_ending', hp: 0, sanity: 50, crazy: 30 },
+                        c2: { text: '교실 에어컨 켜고 밤새 게임하다 아침에 등교한다', next: 'overnight_gamer_ending', hp: 10, sanity: 20, crazy: 40 }
+                    },
+
+                    // 12 DISTINCT MULTI ENDINGS
+                    ghost_shuttle_ending: {
+                        isEnding: true,
+                        avatar: '🥖',
+                        location: '엔딩 1: 매점의 제왕',
+                        text: '【엔딩 1: 귀신 빵 셔틀 엔딩】\n거울 귀신이 매일 밤 심야 매점에서 피자빵과 바나나우유를 사다 바치는 전설의 매점 제왕이 되었습니다.'
+                    },
+                    mannequin_hit_ending: {
+                        isEnding: true,
+                        avatar: '🚑',
+                        location: '엔딩 2: 인체 모형의 단짝',
+                        text: '【엔딩 2: 계단 샌드위치 엔딩】\n굴러떨어지는 인체 모형과 정면 충돌하여 아침 조회 시간까지 계단 밑에서 샌드위치처럼 깔려있었습니다.'
+                    },
+                    mannequin_dance_ending: {
+                        isEnding: true,
+                        avatar: '💃',
+                        location: '엔딩 3: 심야 스트릿 댄스',
+                        text: '【엔딩 3: 스트릿 인체 파이터】\n인체 모형과 댄스 크루를 결성해 전국 댄스 대회에서 대상을 수상했습니다. 스마트폰은 까먹었습니다.'
+                    },
+                    math_fail_ending: {
+                        isEnding: true,
+                        avatar: '🤡',
+                        location: '엔딩 4: 수학 낙제자',
+                        text: '【엔딩 4: "몰루?"의 형벌】\n당직 선생님의 몽둥이에 맞아 아침까지 "17 × 4 = 68"을 10,000번 반성문에 쓰게 되었습니다.'
+                    },
+                    scholarship_ending: {
+                        isEnding: true,
+                        avatar: '🎓',
+                        location: '엔딩 5: 수석 졸업생',
+                        text: '【엔딩 5: 야간 공부의 신】\n당직 귀신에게 스카우트되어 밤마다 특출난 암산 교육을 받아 명문대에 수석 입학하게 되었습니다.'
+                    },
+                    massage_chair_ending: {
+                        isEnding: true,
+                        avatar: '💆‍♂️',
+                        location: '엔딩 6: 교장실의 안락함',
+                        text: '【엔딩 6: 무릉도원 엔딩】\n교장실 안마의자의 천국 같은 시원함에 빠져 아침 8시 교장 선생님이 출근할 때까지 꿀잠을 잤습니다.'
+                    },
+                    bodybuilder_ending: {
+                        isEnding: true,
+                        avatar: '🏋️‍♂️',
+                        location: '엔딩 7: 괴담 헬스클럽',
+                        text: '【엔딩 7: 3대 500 심야 헬스장】\n과학실 시약으로 3대 700의 괴력이 된 당신! 학교 귀신들을 모두 헬스트레이너로 고용해 헬스장을 차렸습니다.'
+                    },
+                    bubble_party_ending: {
+                        isEnding: true,
+                        avatar: '🎉',
+                        location: '엔딩 8: 버블 클럽 대표',
+                        text: '【엔딩 8: 심야 버블 클럽 대표】\n학교 복도에 보라색 비눗방울 클럽을 오픈해 동네 귀신들의 핫플레이스가 되었습니다. 대박 부자가 되었습니다.'
+                    },
+                    repair_cost_ending: {
+                        isEnding: true,
+                        avatar: '💸',
+                        location: '엔딩 9: 문짝 수리 기사',
+                        text: '【엔딩 9: 학교 시설 관리자】\n귀신들에게 문짝 수리비를 뜯어내려다 되려 학교 시설물 파손죄로 아침까지 교문 청소를 하게 되었습니다.'
+                    },
+                    squat_master_ending: {
+                        isEnding: true,
+                        avatar: '🦵',
+                        location: '엔딩 10: 피트니스 조교',
+                        text: '【엔딩 10: 저승 피트니스 조교】\n3반 교실 귀신들에게 스쿼트 100회를 완수시키며 저승 최고의 피트니스 조교로 명성을 떨쳤습니다.'
+                    },
+                    mukbang_ending: {
+                        isEnding: true,
+                        avatar: '🍜',
+                        location: '엔딩 11: 심야 먹방 유튜버',
+                        text: '【엔딩 11: 심야 귀신 먹방 1위】\n시험지 귀신과 함께한 보쌈 먹방 라이브 방송이 대박을 쳐 구독자 100만 유튜버가 되었습니다.'
+                    },
+                    test_curse_ending: {
+                        isEnding: true,
+                        avatar: '📝',
+                        location: '엔딩 12: OMR 마킹 저주',
+                        text: '【엔딩 12: 컴퓨터용 수성펜 저주】\n시험지 귀신의 레이저를 맞아 온몸이 컴퓨터용 싸인펜 색으로 물든 채 OMR 카드가 되었습니다.'
+                    },
+                    true_hero_ending: {
+                        isEnding: true,
+                        avatar: '👑',
+                        location: '진 엔딩: 1000일 연속 출석 마스터',
+                        text: '【진 엔딩: 1000일 전설의 게이머】\n스마트폰 1000일 연속 출석 칭호를 획득하고 짚라인을 타며 멋지게 탈출! 전 세계 게이머들의 우상이 되었습니다!'
+                    },
+                    overnight_gamer_ending: {
+                        isEnding: true,
+                        avatar: '🎮',
+                        location: '엔딩 13: 올나잇 게이머',
+                        text: '【엔딩 13: 3반 에어컨 힐링】\n교실 에어컨을 18도로 켜놓고 아침까지 게임을 즐기다 등교하는 반 친구들을 맞이했습니다.'
+                    },
+                    bad_stat_ending: {
+                        isEnding: true,
+                        avatar: '💀',
+                        location: '엔딩 0: 멘탈 / 체력 방전',
+                        text: '【게임 오버: 멘탈 / 체력 붕괴】\n병맛 가득한 학교의 기운을 견디지 못하고 정신을 잃었습니다... 눈을 뜨니 아침 8시 반 담임선생님의 지각 매질이 기다립니다!'
+                    }
+                };
+
+                this.initUI();
+            }
+
+            initUI() {
+                // Sound Toggle Button
+                document.getElementById('sound-btn').addEventListener('click', () => {
+                    const active = this.sound.toggleSound();
+                    document.getElementById('sound-btn').textContent = active ? '🔊 사운드 ON' : '🔇 사운드 OFF';
+                });
+
+                // Top Restart Button
+                document.getElementById('restart-top-btn').addEventListener('click', () => {
+                    if (confirm("처음부터 다시 시작하시겠습니까?")) {
+                        this.resetGame();
+                    }
+                });
+
+                // Choice Buttons Events
+                document.getElementById('choice-1').addEventListener('click', () => this.makeChoice(1));
+                document.getElementById('choice-2').addEventListener('click', () => this.makeChoice(2));
+
+                // Minigame Button Event
+                document.getElementById('minigame-btn').addEventListener('click', () => this.handleMinigameClick());
+
+                // Spacebar Support for Minigame & Keyboard 1,2
+                window.addEventListener('keydown', (e) => {
+                    const minigameBox = document.getElementById('minigame-container');
+                    if (!minigameBox.classList.contains('hidden') && e.code === 'Space') {
+                        e.preventDefault();
+                        this.handleMinigameClick();
+                    } else if (minigameBox.classList.contains('hidden')) {
+                        if (e.code === 'Digit1' || e.code === 'Numpad1') this.makeChoice(1);
+                        if (e.code === 'Digit2' || e.code === 'Numpad2') this.makeChoice(2);
+                    }
+                });
+
+                this.renderNode('start');
+            }
+
+            makeChoice(optionNum) {
+                const node = this.storyNodes[this.currentStep];
+                if (node.isEnding) {
+                    this.resetGame();
+                    return;
+                }
+
+                const choice = optionNum === 1 ? node.c1 : node.c2;
+
+                // Add Item to Inventory if available
+                if (choice.item && !this.inventory.includes(choice.item)) {
+                    this.inventory.push(choice.item);
+                }
+
+                // Update Stats
+                this.hp = Math.max(0, Math.min(100, this.hp + (choice.hp || 0)));
+                this.sanity = Math.max(0, Math.min(100, this.sanity + (choice.sanity || 0)));
+                this.crazy = Math.max(0, this.crazy + (choice.crazy || 0));
+
+                // Audio and Visual Screen Effects
+                if ((choice.crazy || 0) >= 25) {
+                    this.sound.playShock();
+                    this.triggerEffect('shake');
+                } else {
+                    this.sound.playBoing();
+                    this.triggerEffect('flash');
+                }
+
+                // Check Failure Game Over
+                if (this.hp <= 0 || this.sanity <= 0) {
+                    this.renderNode('bad_stat_ending');
+                } else {
+                    this.renderNode(choice.next);
+                }
+            }
+
+            startMinigame(node) {
+                this.minigameCount = 0;
+                this.minigameTarget = node.mTarget || 10;
+                this.minigameSuccessNext = node.mSuccess;
+                this.minigameFailNext = node.mFail;
+
+                const box = document.getElementById('minigame-container');
+                const title = document.getElementById('minigame-title');
+                const desc = document.getElementById('minigame-desc');
+                const btn = document.getElementById('minigame-btn');
+                const bar = document.getElementById('minigame-bar');
+
+                title.textContent = node.mTitle;
+                desc.textContent = node.mDesc;
+                btn.textContent = `👉 연타하기! (0/${this.minigameTarget})`;
+                bar.style.width = '0%';
+                box.classList.remove('hidden');
+
+                // Hide standard choice buttons during minigame
+                document.getElementById('choice-container').classList.add('hidden');
+
+                let timeLeft = node.mTime || 5;
+                if (this.minigameTimer) clearInterval(this.minigameTimer);
+
+                this.minigameTimer = setInterval(() => {
+                    timeLeft -= 0.1;
+                    if (timeLeft <= 0) {
+                        clearInterval(this.minigameTimer);
+                        this.sound.playShock();
+                        box.classList.add('hidden');
+                        document.getElementById('choice-container').classList.remove('hidden');
+                        this.renderNode(this.minigameFailNext);
+                    }
+                }, 100);
+            }
+
+            handleMinigameClick() {
+                this.sound.playClick();
+                this.minigameCount += 1;
+                const bar = document.getElementById('minigame-bar');
+                const btn = document.getElementById('minigame-btn');
+
+                const pct = Math.min(100, (this.minigameCount / this.minigameTarget) * 100);
+                bar.style.width = `${pct}%`;
+                btn.textContent = `👉 연타하기! (${this.minigameCount}/${this.minigameTarget})`;
+
+                if (this.minigameCount >= this.minigameTarget) {
+                    if (this.minigameTimer) clearInterval(this.minigameTimer);
+                    this.sound.playVictory();
+                    document.getElementById('minigame-container').classList.add('hidden');
+                    document.getElementById('choice-container').classList.remove('hidden');
+                    this.renderNode(this.minigameSuccessNext);
+                }
+            }
+
+            triggerEffect(type) {
+                const app = document.getElementById('game-app');
+                const flash = document.getElementById('flash-overlay');
+
+                if (type === 'shake') {
+                    app.classList.add('shake-screen');
+                    setTimeout(() => app.classList.remove('shake-screen'), 300);
+                } else if (type === 'flash') {
+                    flash.classList.add('flash-white');
+                    flash.style.opacity = '1';
+                    setTimeout(() => {
+                        flash.classList.remove('flash-white');
+                        flash.style.opacity = '0';
+                    }, 250);
+                }
+            }
+
+            renderInventory() {
+                const list = document.getElementById('inventory-list');
+                list.innerHTML = '';
+                if (this.inventory.length === 0) {
+                    list.innerHTML = '<span class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-500">비어 있음</span>';
+                } else {
+                    this.inventory.forEach(item => {
+                        const span = document.createElement('span');
+                        span.className = 'bg-purple-950 border border-purple-500/50 px-2 py-0.5 rounded text-purple-200 font-pixel text-xs';
+                        span.textContent = item;
+                        list.appendChild(span);
+                    });
+                }
+            }
+
+            renderNode(nodeId) {
+                this.currentStep = nodeId;
+                const node = this.storyNodes[nodeId];
+
+                // Update Stats
+                document.getElementById('hp-val').textContent = this.hp;
+                document.getElementById('sanity-val').textContent = this.sanity;
+                document.getElementById('crazy-val').textContent = this.crazy;
+
+                // Update Inventory UI
+                this.renderInventory();
+
+                // Update Story Display
+                document.getElementById('scene-avatar').textContent = node.avatar || '🏫';
+                document.getElementById('scene-location').textContent = node.location || '';
+                document.getElementById('scene-text').innerText = node.text || '';
+
+                const btn1 = document.getElementById('choice-1');
+                const btn2 = document.getElementById('choice-2');
+
+                if (node.isMinigame) {
+                    this.startMinigame(node);
+                    return;
+                }
+
+                document.getElementById('minigame-container').classList.add('hidden');
+                document.getElementById('choice-container').classList.remove('hidden');
+
+                if (node.isEnding) {
+                    this.sound.playVictory();
+                    btn1.textContent = '🔄 처음부터 다시 도전하기';
+                    btn1.className = 'col-span-1 sm:col-span-2 py-4 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-lg rounded-2xl shadow-lg transition text-center font-pixel';
+                    btn2.classList.add('hidden');
+                } else {
+                    btn1.textContent = `[1] ${node.c1.text}`;
+                    btn2.textContent = `[2] ${node.c2.text}`;
+                    btn1.className = 'py-3.5 px-4 bg-gradient-to-r from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 border-2 border-purple-500/60 rounded-2xl text-purple-200 font-bold text-sm sm:text-base shadow-lg hover:scale-[1.01] active:scale-95 transition flex items-center justify-center text-center';
+                    btn2.className = 'py-3.5 px-4 bg-gradient-to-r from-pink-900 to-rose-900 hover:from-pink-800 hover:to-rose-800 border-2 border-pink-500/60 rounded-2xl text-pink-200 font-bold text-sm sm:text-base shadow-lg hover:scale-[1.01] active:scale-95 transition flex items-center justify-center text-center';
+                    btn2.classList.remove('hidden');
+                }
+            }
+
+            resetGame() {
+                this.hp = 100;
+                this.sanity = 100;
+                this.crazy = 0;
+                this.inventory = [];
+                this.renderNode('start');
+            }
+        }
+
+        // Initialize Game Engine on Window Load
+        window.onload = () => {
+            window.gameInstance2 = new FunnyHorrorGameSeason2();
+        };
+    </script>
+</body>
+</html>

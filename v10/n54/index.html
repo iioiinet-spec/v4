@@ -1,0 +1,408 @@
+<!DOCTYPE html> <!-- 이 문서가 HTML5 표준 형식임을 브라우저에 알려줍니다. -->
+<html lang="ko"> <!-- 문서의 기본 언어를 한국어(ko)로 설정합니다. -->
+<head> <!-- 웹페이지 설정, 제목, 스타일을 정의하는 구역입니다. -->
+  <meta charset="UTF-8"> <!-- 글자가 깨지지 않도록 문자 인코딩을 UTF-8로 설정합니다. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 다양한 기기 화면 크기에 맞게 자동으로 조절합니다. -->
+  <title>2D 탑뷰 슈팅 게임</title> <!-- 브라우저 탭 상단에 표시될 게임 제목입니다. -->
+  <style> /* 게임 화면 레이아웃과 디자인 스타일 공간입니다. */
+    * { margin: 0; padding: 0; box-sizing: border-box; } /* 기본 여백을 없애고 요소를 정확한 크기로 계산합니다. */
+    body, html { width: 100%; height: 100%; overflow: hidden; background-color: #0f172a; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; user-select: none; } /* 화면 스크롤을 막고 중앙에 배치합니다. */
+    
+    /* 게임 캔버스를 감싸는 메인 상자 디자인 */
+    #game-container { position: relative; width: 800px; height: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border-radius: 12px; overflow: hidden; border: 4px solid #334155; }
+    canvas { display: block; background-color: #1e293b; cursor: crosshair; } /* 게임 조준선 모양 커서를 적용합니다. */
+
+    /* 상단 정보 표시줄 (HUD) */
+    #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.7); color: white; text-shadow: 1px 1px 3px black; font-weight: bold; font-size: 16px; pointer-events: none; }
+    .stat-group { display: flex; align-items: center; gap: 15px; }
+
+    /* 체력바 게이지 디자인 */
+    .hp-bar-container { width: 160px; height: 18px; background-color: #475569; border: 2px solid #ffffff; border-radius: 10px; overflow: hidden; position: relative; }
+    .hp-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); transition: width 0.2s; }
+    .hp-text { position: absolute; width: 100%; text-align: center; font-size: 11px; top: 1px; color: white; font-weight: bold; }
+
+    /* 게임 시작 및 오버 안내 창 */
+    .overlay-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.92); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 10; text-align: center; padding: 30px; }
+    .game-title { font-size: 42px; color: #38bdf8; margin-bottom: 15px; text-shadow: 0 0 12px rgba(56, 189, 248, 0.5); font-weight: bold; }
+    .game-desc { font-size: 16px; color: #cbd5e1; margin-bottom: 25px; line-height: 1.7; max-width: 500px; }
+    .action-btn { padding: 14px 36px; font-size: 20px; font-weight: bold; color: #0f172a; background-color: #38bdf8; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4); }
+    .action-btn:hover { background-color: #7dd3fc; transform: translateY(-2px); }
+  </style> <!-- 스타일 정의 끝 -->
+</head>
+<body>
+
+  <!-- 게임 메인 컨테이너 상자 -->
+  <div id="game-container">
+    <!-- 2D 게임 캔버스 태그 -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- 상단 UI 정보창 -->
+    <div id="hud">
+      <div class="stat-group">
+        <div>체력</div>
+        <div class="hp-bar-container">
+          <div id="hp-fill" class="hp-bar-fill"></div>
+          <div id="hp-text" class="hp-text">100 / 100</div>
+        </div>
+      </div>
+      <div class="stat-group">
+        <div>💣 총알: <span id="ammo-text" style="color: #facc15;">30 / 30</span></div>
+        <div>🎯 처치: <span id="score-text" style="color: #4ade80;">0</span></div>
+      </div>
+    </div>
+
+    <!-- 게임 시작 화면 -->
+    <div id="start-screen" class="overlay-screen">
+      <h1 class="game-title">🔫 탑뷰 총 쏘기 게임</h1>
+      <p class="game-desc">
+        사방에서 몰려오는 적들을 향해 총을 쏘아 살아남으세요!<br>
+        - <b>이동:</b> [W, A, S, D] 키<br>
+        - <b>조준 및 발사:</b> [마우스 이동]으로 조준 후 [좌클릭] 사격<br>
+        - <b>재장전:</b> [R] 키 (탄약 충전)
+      </p>
+      <button class="action-btn" id="start-btn">게임 시작하기</button>
+    </div>
+
+    <!-- 게임 오버 화면 -->
+    <div id="gameover-screen" class="overlay-screen" style="display: none;">
+      <h1 class="game-title" style="color: #ef4444;">☠️ 게임 오버</h1>
+      <p class="game-desc" id="gameover-desc">적들의 공격을 버티지 못했습니다...</p>
+      <button class="action-btn" id="restart-btn">다시 도전하기</button>
+    </div>
+  </div>
+
+  <script> /* 게임 로직 및 그래픽 제어 자바스크립트 구역입니다. */
+
+    // ----------------------------------------------------------------
+    // 1. 웹 오디오 효과음 생성기
+    // ----------------------------------------------------------------
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playSound(type) {
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+
+      if (type === 'shoot') { // 총 발사 소리
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+      } else if (type === 'reload') { // 장전 소리
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.setValueAtTime(600, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
+      } else if (type === 'hit') { // 적 타격 소리
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.1);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // 2. 캔버스 및 게임 상태 변수 설정
+    // ----------------------------------------------------------------
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const keys = { w: false, a: false, s: false, d: false };
+    const mouse = { x: 0, y: 0, isDown: false };
+
+    let isGamePlaying = false;
+    let score = 0;
+
+    // 플레이어 정보
+    const player = {
+      x: 400, y: 300, radius: 18, speed: 4,
+      hp: 100, maxHp: 100, ammo: 30, maxAmmo: 30, isReloading: false
+    };
+
+    const bullets = []; // 총알 배열
+    const enemies = []; // 적 배열
+
+    // ----------------------------------------------------------------
+    // 3. 입력 이벤트 리스너 등록
+    // ----------------------------------------------------------------
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
+      if (k === 's' || e.key === 'ArrowDown') keys.s = true;
+      if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
+      if (k === 'r') reloadWeapon();
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
+      if (k === 's' || e.key === 'ArrowDown') keys.s = false;
+      if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // 좌클릭 사격
+        mouse.isDown = true;
+        shootBullet();
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (e.button === 0) mouse.isDown = false;
+    });
+
+    // ----------------------------------------------------------------
+    // 4. 총알 발사 및 재장전 시스템
+    // ----------------------------------------------------------------
+    function shootBullet() {
+      if (!isGamePlaying || player.isReloading) return;
+
+      if (player.ammo <= 0) {
+        reloadWeapon();
+        return;
+      }
+
+      player.ammo--;
+      updateHUD();
+      playSound('shoot');
+
+      // 마우스 방향으로 날아가는 각도 계산
+      const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+      const speed = 10;
+
+      bullets.push({
+        x: player.x,
+        y: player.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 4
+      });
+    }
+
+    function reloadWeapon() {
+      if (player.isReloading || player.ammo === player.maxAmmo) return;
+      player.isReloading = true;
+      playSound('reload');
+
+      setTimeout(() => {
+        player.ammo = player.maxAmmo;
+        player.isReloading = false;
+        updateHUD();
+      }, 1000); // 1초 후 장전 완료
+    }
+
+    // ----------------------------------------------------------------
+    // 5. 적 스폰 및 관리
+    // ----------------------------------------------------------------
+    function spawnEnemy() {
+      if (!isGamePlaying) return;
+
+      // 화면 바깥 사방에서 랜덤 생성
+      let x, y;
+      if (Math.random() < 0.5) {
+        x = Math.random() < 0.5 ? -20 : canvas.width + 20;
+        y = Math.random() * canvas.height;
+      } else {
+        x = Math.random() * canvas.width;
+        y = Math.random() < 0.5 ? -20 : canvas.height + 20;
+      }
+
+      enemies.push({
+        x: x, y: y, radius: 16, speed: 2 + Math.random() * 1.5, hp: 20
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // 6. 게임 업데이트 및 메인 루프
+    // ----------------------------------------------------------------
+    function update() {
+      if (!isGamePlaying) return;
+
+      // 플레이어 이동 (WASD)
+      let dx = 0, dy = 0;
+      if (keys.w) dy -= 1;
+      if (keys.s) dy += 1;
+      if (keys.a) dx -= 1;
+      if (keys.d) dx += 1;
+
+      if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+      player.x += dx * player.speed;
+      player.y += dy * player.speed;
+
+      // 화면 밖으로 나가지 못하게 제한
+      player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+      player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+
+      // 총알 이동 및 충돌 체크
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+
+        // 화면 밖으로 나가면 총알 삭제
+        if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+          bullets.splice(i, 1);
+          continue;
+        }
+
+        // 적과의 충돌 확인
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const en = enemies[j];
+          const dist = Math.hypot(b.x - en.x, b.y - en.y);
+
+          if (dist < b.radius + en.radius) {
+            en.hp -= 20;
+            playSound('hit');
+            bullets.splice(i, 1); // 총알 삭제
+
+            if (en.hp <= 0) {
+              enemies.splice(j, 1); // 적 사망
+              score++;
+              updateHUD();
+            }
+            break;
+          }
+        }
+      }
+
+      // 적 이동 및 플레이어 공격 체크
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const en = enemies[i];
+        const angle = Math.atan2(player.y - en.y, player.x - en.x);
+        en.x += Math.cos(angle) * en.speed;
+        en.y += Math.sin(angle) * en.speed;
+
+        // 플레이어와 부딪혔을 때 체력 감소
+        const dist = Math.hypot(player.x - en.x, player.y - en.y);
+        if (dist < player.radius + en.radius) {
+          player.hp -= 0.5;
+          updateHUD();
+          if (player.hp <= 0) {
+            gameOver();
+          }
+        }
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // 7. 그래픽 렌더링 (그리기)
+    // ----------------------------------------------------------------
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 격자 무늬 바닥 그리기
+      ctx.strokeStyle = '#27354f';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // 적 그리기
+      enemies.forEach(en => {
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath(); ctx.arc(en.x, en.y, en.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#b91c1c'; ctx.lineWidth = 3; ctx.stroke();
+      });
+
+      // 총알 그리기
+      bullets.forEach(b => {
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+      });
+
+      // 플레이어 그리기 (마우스 방향 바라보기)
+      const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(angle);
+
+      // 몸체
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#0284c7'; ctx.lineWidth = 3; ctx.stroke();
+
+      // 총구
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, -5, player.radius + 6, 10);
+
+      ctx.restore();
+    }
+
+    // 게임 무한 루프
+    function gameLoop() {
+      update();
+      render();
+      if (isGamePlaying) requestAnimationFrame(gameLoop);
+    }
+
+    // ----------------------------------------------------------------
+    // 8. UI 및 상태 제어 함수
+    // ----------------------------------------------------------------
+    function updateHUD() {
+      document.getElementById('hp-fill').style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+      document.getElementById('hp-text').textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+      document.getElementById('ammo-text').textContent = player.isReloading ? '재장전 중...' : `${player.ammo} / ${player.maxAmmo}`;
+      document.getElementById('score-text').textContent = score;
+    }
+
+    let enemySpawnTimer = null;
+
+    function startGame() {
+      isGamePlaying = true;
+      score = 0;
+      player.hp = 100;
+      player.ammo = 30;
+      player.x = 400; player.y = 300;
+      enemies.length = 0;
+      bullets.length = 0;
+
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('gameover-screen').style.display = 'none';
+      updateHUD();
+
+      if (enemySpawnTimer) clearInterval(enemySpawnTimer);
+      enemySpawnTimer = setInterval(spawnEnemy, 1200); // 1.2초마다 적 생성
+
+      gameLoop();
+    }
+
+    function gameOver() {
+      isGamePlaying = false;
+      clearInterval(enemySpawnTimer);
+
+      document.getElementById('gameover-desc').innerHTML = `적들의 공격을 버티지 못했습니다...<br><b>최종 처치 수:</b> ${score} 마리`;
+      document.getElementById('gameover-screen').style.display = 'flex';
+    }
+
+    // 버튼 클릭 이벤트 리스너 연결
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+
+    // 초기 화면 준비
+    render();
+  </script>
+</body>
+</html>

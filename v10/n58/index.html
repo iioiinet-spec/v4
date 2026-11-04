@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 백룸 미로 탈출 - 어둠 속의 추격전</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #d4af37;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+        h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+            border: 4px solid #221c10;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        canvas {
+            display: block;
+            background-color: #000;
+        }
+        /* 데스/경고 오버레이 효과 */
+        #vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-shadow: inset 0 0 50px rgba(255, 0, 0, 0);
+            pointer-events: none;
+            transition: box-shadow 0.2s;
+            z-index: 5;
+        }
+        /* 크로스헤어(+) 스타일 */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 6;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.7);
+        }
+        #crosshair::before {
+            top: 4px;
+            left: 0;
+            width: 10px;
+            height: 2px;
+        }
+        #crosshair::after {
+            top: 0;
+            left: 4px;
+            width: 2px;
+            height: 10px;
+        }
+
+        .controls-guide {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #7a6836;
+            background: #111;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid #332a15;
+        }
+        #instruction {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #e6dbb9;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 1px solid #d4af37;
+            font-size: 1.1rem;
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>LEVEL 0 : THE BACKROOMS</h1>
+    <div id="game-container">
+        <canvas id="raycastCanvas" width="640" height="400"></canvas>
+        <div id="vignette"></div>
+        <div id="crosshair"></div>
+        <div id="instruction">클릭하여 게임 시작 (어둠 속에서 괴물을 피하세요!)</div>
+    </div>
+    <div class="controls-guide">
+        조작법: <b>W, A, S, D</b> (이동) | <b>Shift + 이동</b> (달리기) | <b>마우스</b> (시점) | <b>ESC</b> (마우스 해제)
+    </div>
+
+<script>
+const canvas = document.getElementById('raycastCanvas');
+const ctx = canvas.getContext('2d');
+const instruction = document.getElementById('instruction');
+const vignette = document.getElementById('vignette');
+
+const SCREEN_WIDTH = 640;
+const SCREEN_HEIGHT = 400;
+
+// 미로 맵 (1: 백룸 벽, 0: 길, 9: 탈출구)
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,1,0,0,0,0,0,1,0,0,9,1],
+    [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+    [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+    [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
+    [1,1,1,0,1,0,1,1,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+const MAP_WIDTH = map[0].length;
+const MAP_HEIGHT = map.length;
+
+// 플레이어 상태
+let player = {
+    x: 1.5,
+    y: 1.5,
+    angle: 0,
+    pitch: 0,
+    fov: Math.PI / 3,
+    bobbing: 0
+};
+
+// 괴물 상태 (미로 구석에서 시작)
+let monster = {
+    x: 13.5,
+    y: 7.5,
+    speed: 0.025
+};
+
+// 키 입력 상태
+let keys = { w: false, s: false, a: false, d: false, shift: false };
+
+// 포인터 락 (마우스 잠금) 이벤트
+canvas.addEventListener('click', () => {
+    canvas.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === canvas) {
+        instruction.style.opacity = '0';
+    } else {
+        instruction.style.opacity = '1';
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement === canvas) {
+        let sensitivityX = 0.003;
+        let sensitivityY = 0.5;
+
+        player.angle += e.movementX * sensitivityX;
+        player.pitch -= e.movementY * sensitivityY;
+        if (player.pitch > 200) player.pitch = 200;
+        if (player.pitch < -200) player.pitch = -200;
+    }
+});
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'w' || e.key === 'W') keys.w = true;
+    if (e.key === 's' || e.key === 'S') keys.s = true;
+    if (e.key === 'a' || e.key === 'A') keys.a = true;
+    if (e.key === 'd' || e.key === 'D') keys.d = true;
+    if (e.key === 'Shift') keys.shift = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'W') keys.w = false;
+    if (e.key === 's' || e.key === 'S') keys.s = false;
+    if (e.key === 'a' || e.key === 'A') keys.a = false;
+    if (e.key === 'd' || e.key === 'D') keys.d = false;
+    if (e.key === 'Shift') keys.shift = false;
+});
+
+function resetGame() {
+    player.x = 1.5;
+    player.y = 1.5;
+    player.angle = 0;
+    player.pitch = 0;
+    monster.x = 13.5;
+    monster.y = 7.5;
+}
+
+function update() {
+    const baseSpeed = 0.04;
+    const runMultiplier = 1.8;
+    const isMoving = keys.w || keys.s || keys.a || keys.d;
+    const moveSpeed = keys.shift ? baseSpeed * runMultiplier : baseSpeed;
+
+    let cos = Math.cos(player.angle);
+    let sin = Math.sin(player.angle);
+
+    let dx = 0;
+    let dy = 0;
+
+    if (keys.w) { dx += cos * moveSpeed; dy += sin * moveSpeed; }
+    if (keys.s) { dx -= cos * moveSpeed; dy -= sin * moveSpeed; }
+    if (keys.a) { dx += sin * moveSpeed; dy -= cos * moveSpeed; }
+    if (keys.d) { dx -= sin * moveSpeed; dy += cos * moveSpeed; }
+
+    if (map[Math.floor(player.y)][Math.floor(player.x + dx)] === 0) player.x += dx;
+    if (map[Math.floor(player.y + dy)][Math.floor(player.x)] === 0) player.y += dy;
+
+    if (isMoving) {
+        player.bobbing += keys.shift ? 0.2 : 0.12;
+    } else {
+        player.bobbing = 0;
+    }
+
+    // --- 괴물 AI (플레이어 추적) ---
+    let angleToPlayer = Math.atan2(player.y - monster.y, player.x - monster.x);
+    let mdx = Math.cos(angleToPlayer) * monster.speed;
+    let mdy = Math.sin(angleToPlayer) * monster.speed;
+
+    if (map[Math.floor(monster.y)][Math.floor(monster.x + mdx)] === 0) monster.x += mdx;
+    if (map[Math.floor(monster.y + mdy)][Math.floor(monster.x)] === 0) monster.y += mdy;
+
+    // 플레이어와 괴물 거리 계산 (잡혔는지 확인)
+    let distToMonster = Math.hypot(player.x - monster.x, player.y - monster.y);
+    if (distToMonster < 0.4) {
+        alert('💀 괴물에게 잡혔습니다...! 백룸의 어둠 속에 갇혔습니다.');
+        resetGame();
+    }
+
+    let vignetteIntensity = Math.max(0, 1 - (distToMonster / 4));
+    vignette.style.boxShadow = `inset 0 0 ${vignetteIntensity * 120}px rgba(255, 0, 0, ${vignetteIntensity * 0.9})`;
+
+    // 탈출 조건
+    if (map[Math.floor(player.y)][Math.floor(player.x)] === 9) {
+        alert('🎉 축하합니다! 어둠 속 미로를 탈출했습니다!');
+        resetGame();
+    }
+}
+
+function drawRectPrism45() {
+    let bobX = Math.sin(player.bobbing) * 5;
+    let bobY = Math.abs(Math.cos(player.bobbing)) * 7;
+
+    let x = 400 + bobX;
+    let y = SCREEN_HEIGHT + 40 - bobY + (player.pitch * 0.4);
+
+    // 어두운 분위기에 맞게 손 색상도 어둡고 칙칙하게 조절
+    ctx.fillStyle = '#423714';
+    ctx.beginPath();
+    ctx.moveTo(x + 70, y - 140);
+    ctx.lineTo(x + 130, y - 80);
+    ctx.lineTo(x + 130, y + 20);
+    ctx.lineTo(x + 70, y - 40);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#736124';
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 100);
+    ctx.lineTo(x + 70, y - 140);
+    ctx.lineTo(x + 130, y - 80);
+    ctx.lineTo(x + 70, y - 40);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#5c4c1b';
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 100);
+    ctx.lineTo(x + 70, y - 40);
+    ctx.lineTo(x + 70, y + 20);
+    ctx.lineTo(x + 10, y + 20);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function draw() {
+    let horizon = (SCREEN_HEIGHT / 2) + player.pitch;
+
+    // 천장과 바닥을 극도로 어둡게 설정
+    ctx.fillStyle = '#080705';
+    ctx.fillRect(0, 0, SCREEN_WIDTH, Math.max(0, horizon));
+
+    ctx.fillStyle = '#100e0a';
+    ctx.fillRect(0, Math.min(SCREEN_HEIGHT, horizon), SCREEN_WIDTH, SCREEN_HEIGHT - Math.min(SCREEN_HEIGHT, horizon));
+
+    let numRays = SCREEN_WIDTH;
+    let halfFov = player.fov / 2;
+    let zBuffer = new Array(SCREEN_WIDTH);
+
+    // 1. 레이캐스팅 벽 렌더링 (어두운 조명 + 안개 효과 적용)
+    for (let i = 0; i < numRays; i++) {
+        let rayAngle = player.angle - halfFov + (i / numRays) * player.fov;
+        
+        let distanceToWall = 0;
+        let hitWall = false;
+        let isExit = false;
+
+        let eyeX = Math.cos(rayAngle);
+        let eyeY = Math.sin(rayAngle);
+
+        while (!hitWall && distanceToWall < 12) { // 시야 거리 축소
+            distanceToWall += 0.05;
+            let testX = Math.floor(player.x + eyeX * distanceToWall);
+            let testY = Math.floor(player.y + eyeY * distanceToWall);
+
+            if (testX < 0 || testX >= MAP_WIDTH || testY < 0 || testY >= MAP_HEIGHT) {
+                hitWall = true;
+                distanceToWall = 12;
+            } else {
+                let block = map[testY][testX];
+                if (block === 1) {
+                    hitWall = true;
+                } else if (block === 9) {
+                    hitWall = true;
+                    isExit = true;
+                }
+            }
+        }
+
+        let correctedDistance = distanceToWall * Math.cos(rayAngle - player.angle);
+        zBuffer[i] = correctedDistance;
+
+        let wallHeight = Math.min(SCREEN_HEIGHT * 2, (SCREEN_HEIGHT / correctedDistance));
+        let ceiling = horizon - (wallHeight / 2);
+
+        // 어두운 조명 계산 (거리가 멀어질수록 급격히 어두워짐)
+        let lightFactor = Math.max(0, 1 - (correctedDistance / 7.5)); // 7.5블록 이상은 암흑
+        let shade = Math.floor(lightFactor * 200);
+        
+        if (isExit) {
+            ctx.fillStyle = `rgb(${shade * 0.2}, ${shade * 0.8}, ${shade * 0.2})`;
+        } else {
+            let r = Math.floor(shade * 0.85);
+            let g = Math.floor(shade * 0.65);
+            let b = Math.floor(shade * 0.20);
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        }
+
+        ctx.fillRect(i, ceiling, 1, wallHeight);
+    }
+
+    // 2. --- 괴물 스프라이트 렌더링 (어둠 속에서 희미하게 빛나도록) ---
+    let spriteX = monster.x - player.x;
+    let spriteY = monster.y - player.y;
+
+    let monsterAngle = Math.atan2(spriteY, spriteX) - player.angle;
+    
+    while (monsterAngle < -Math.PI) monsterAngle += Math.PI * 2;
+    while (monsterAngle > Math.PI) monsterAngle -= Math.PI * 2;
+
+    if (Math.abs(monsterAngle) < player.fov + 0.2) {
+        let screenX = (SCREEN_WIDTH / 2) + (monsterAngle / (player.fov / 2)) * (SCREEN_WIDTH / 2);
+        let dist = Math.hypot(spriteX, spriteY);
+        let correctedDist = dist * Math.cos(monsterAngle);
+        
+        if (correctedDist > 0.2 && correctedDist < 9) { // 너무 멀면 보이지 않음
+            let monsterHeight = Math.min(SCREEN_HEIGHT, SCREEN_HEIGHT / correctedDist);
+            let monsterWidth = monsterHeight;
+            let mTop = horizon - (monsterHeight / 2);
+            let mLeft = Math.floor(screenX - (monsterWidth / 2));
+            let mRight = Math.floor(screenX + (monsterWidth / 2));
+
+            let monsterLight = Math.max(0.1, 1 - (correctedDist / 6)); // 가까울수록 선명함
+
+            for (let stripe = Math.max(0, mLeft); stripe < Math.min(SCREEN_WIDTH, mRight); stripe++) {
+                if (correctedDist < zBuffer[stripe]) {
+                    let yStart = Math.max(0, mTop);
+                    let yEnd = Math.min(SCREEN_HEIGHT, mTop + monsterHeight);
+                    
+                    // 괴물 실루엣 (어둠 속이라 거의 검정)
+                    ctx.fillStyle = `rgba(10, 10, 10, ${monsterLight})`;
+                    ctx.fillRect(stripe, yStart, 1, yEnd - yStart);
+
+                    // 섬뜩하게 빛나는 붉은 눈 (거리에 비례해 선명함)
+                    let eyeY1 = mTop + monsterHeight * 0.3;
+                    if (stripe >= screenX - monsterWidth * 0.25 && stripe <= screenX - monsterWidth * 0.1) {
+                        ctx.fillStyle = `rgba(255, 0, 0, ${monsterLight})`;
+                        ctx.fillRect(stripe, eyeY1, 1, (yEnd - yStart) * 0.05);
+                    }
+                    if (stripe >= screenX + monsterWidth * 0.1 && stripe <= screenX + monsterWidth * 0.25) {
+                        ctx.fillStyle = `rgba(255, 0, 0, ${monsterLight})`;
+                        ctx.fillRect(stripe, eyeY1, 1, (yEnd - yStart) * 0.05);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 우측 블록(손) 렌더링
+    drawRectPrism45();
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>

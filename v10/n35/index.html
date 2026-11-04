@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P AI 영어 단어 학습장</title>
+    <!-- 구글 폰트 'Jua' (주아체) 불러오기 -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <!-- PeerJS 라이브러리 로드 (P2P 통신용) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-color: #0f172a; /* 다크 계열의 감성적인 배경 */
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Jua', sans-serif; /* 주아체 전체 적용 */
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 850px;
+            background: var(--card-bg);
+            padding: 35px;
+            border-radius: 24px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 
+                        0 0 20px rgba(99, 102, 241, 0.15); /* 은은한 보라빛 글로우 효과 */
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #818cf8;
+            margin-bottom: 25px;
+            font-size: 2.5rem;
+            text-shadow: 0 0 15px rgba(129, 140, 248, 0.5); /* 타이틀 글로우 */
+        }
+
+        .section {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .meta-box {
+            display: flex;
+            gap: 15px;
+            background: #0f172a;
+            padding: 18px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+            border: 1px solid var(--border-color);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input, button, select {
+            padding: 12px 16px;
+            font-size: 16px;
+            font-family: 'Jua', sans-serif;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            outline: none;
+            background: #0f172a;
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+
+        input {
+            flex: 1;
+        }
+
+        input:focus {
+            border-color: #818cf8;
+            box-shadow: 0 0 10px rgba(129, 140, 248, 0.4); /* 입력창 글로우 */
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: normal;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(99, 102, 241, 0.5); /* 버튼 호버 글로우 */
+        }
+
+        .word-list {
+            list-style: none;
+            padding: 0;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .word-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            padding: 14px 18px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .word-item:hover {
+            transform: scale(1.01);
+            border-color: #475569;
+        }
+
+        .word-info strong {
+            font-size: 19px;
+            color: #818cf8;
+            text-shadow: 0 0 8px rgba(129, 140, 248, 0.3);
+        }
+
+        .word-info span {
+            margin-left: 12px;
+            color: #cbd5e1;
+        }
+
+        .word-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .word-actions button {
+            padding: 6px 12px;
+            font-size: 14px;
+        }
+
+        .ai-panel {
+            background: linear-gradient(135deg, #1e1b4b 100%, #311042 100%);
+            border: 1px solid #4c1d95;
+            padding: 20px;
+            border-radius: 14px;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.15);
+        }
+
+        .p2p-panel {
+            background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+            border: 1px solid #065f46;
+            padding: 20px;
+            border-radius: 14px;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+        }
+
+        .p2p-panel h3 {
+            color: #34d399;
+            margin-top: 0;
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            font-size: 13px;
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid #059669;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌐 P2P AI 영어 단어 학습장</h1>
+
+    <!-- 사용자 및 단어장 설정 섹션 (자동저장) -->
+    <div class="meta-box">
+        <input type="text" id="authorInput" placeholder="작성자 이름 (예: 김철수)" oninput="saveMeta()">
+        <input type="text" id="titleInput" placeholder="단어장 제목 (예: 토익 필수 200선)" oninput="saveMeta()">
+    </div>
+
+    <!-- 단어 입력 섹션 -->
+    <div class="section">
+        <h3>📝 단어 추가</h3>
+        <div class="input-group">
+            <input type="text" id="wordInput" placeholder="영어 단어 (예: resilient)">
+            <input type="text" id="meaningInput" placeholder="뜻 (예: 회복력 있는)">
+            <button onclick="addWord()">추가하기</button>
+        </div>
+    </div>
+
+    <!-- 단어 목록 섹션 -->
+    <div class="section">
+        <h3>📚 단어 목록 (<span id="wordCount">0</span>개)</h3>
+        <ul id="wordList" class="word-list"></ul>
+    </div>
+
+    <!-- AI 학습 도우미 -->
+    <div class="section ai-panel">
+        <h3 style="margin-top:0; color:#a78bfa; text-shadow: 0 0 10px rgba(167, 139, 250, 0.4);">✨ AI 학습 도우미</h3>
+        <p id="aiHint" style="color: #ddd;">단어 목록의 <strong>[AI학습]</strong> 버튼을 누르면 AI 예문과 팁이 제공됩니다.</p>
+    </div>
+
+    <!-- P2P 단어장 공유 커뮤니티 -->
+    <div class="section p2p-panel">
+        <h3>🤝 P2P 단어장 공유 커뮤니티 (중앙 서버 없음)</h3>
+        <div class="badge" id="myPeerStatus">내 상태: P2P 네트워크 연결 중...</div>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <button onclick="hostVocabulary()" style="background-color: #059669; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);">📡 단어장 공유하기 (방 만들기)</button>
+            <input type="text" id="peerIdInput" placeholder="상대방 공유 코드 입력">
+            <button onclick="connectToPeer()" style="background-color: #2563eb; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">📥 단어장 가져오기</button>
+        </div>
+        <p id="p2pLog" style="font-size: 14px; color: #a7f3d0; margin: 5px 0 0 0;"></p>
+    </div>
+</div>
+
+<script>
+    let appData = JSON.parse(localStorage.getItem('vocab_app_data')) || {
+        author: '',
+        title: '',
+        words: []
+    };
+
+    document.getElementById('authorInput').value = appData.author;
+    document.getElementById('titleInput').value = appData.title;
+
+    function saveMeta() {
+        appData.author = document.getElementById('authorInput').value;
+        appData.title = document.getElementById('titleInput').value;
+        localStorage.setItem('vocab_app_data', JSON.stringify(appData));
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('vocab_app_data', JSON.stringify(appData));
+        renderWords();
+    }
+
+    function addWord() {
+        const word = document.getElementById('wordInput').value.trim();
+        const meaning = document.getElementById('meaningInput').value.trim();
+
+        if (!word || !meaning) {
+            alert('단어와 뜻을 모두 입력해주세요!');
+            return;
+        }
+
+        appData.words.push({ word, meaning });
+        document.getElementById('wordInput').value = '';
+        document.getElementById('meaningInput').value = '';
+        saveAndRender();
+    }
+
+    function deleteWord(index) {
+        appData.words.splice(index, 1);
+        saveAndRender();
+    }
+
+    function renderWords() {
+        const listEl = document.getElementById('wordList');
+        document.getElementById('wordCount').innerText = appData.words.length;
+        listEl.innerHTML = '';
+
+        if (appData.words.length === 0) {
+            listEl.innerHTML = '<p style="text-align: center; color: #64748b; margin: 20px 0;">등록된 단어가 없습니다. 단어를 추가해보세요!</p>';
+            return;
+        }
+
+        appData.words.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'word-item';
+            li.innerHTML = `
+                <div class="word-info">
+                    <strong>${item.word}</strong><span>${item.meaning}</span>
+                </div>
+                <div class="word-actions">
+                    <button onclick="speakWord('${item.word}')">🔊 듣기</button>
+                    <button onclick="aiStudy('${item.word}', '${item.meaning}')" style="background-color: #7c3aed;">✨ AI학습</button>
+                    <button onclick="deleteWord(${index})" style="background-color: #dc2626; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);">삭제</button>
+                </div>
+            `;
+            listEl.appendChild(li);
+        });
+    }
+
+    function speakWord(word) {
+        if (!('speechSynthesis' in window)) return;
+        const utterance = new SpeechSynthesisUtterance(word);
+        utterance.lang = 'en-US';
+        speechSynthesis.speak(utterance);
+    }
+
+    function aiStudy(word, meaning) {
+        const aiHintEl = document.getElementById('aiHint');
+        aiHintEl.innerHTML = `⏳ AI 분석 중... ('${word}')`;
+        setTimeout(() => {
+            aiHintEl.innerHTML = `
+                <strong style="color:#c4b5fd;">🎯 [${word}] - ${meaning}</strong><br>
+                💡 <strong style="color:#ddd;">어원 팁:</strong> 문맥 속에서 반복 노출이 효과적인 단어입니다.<br>
+                📝 <strong style="color:#ddd;">예문:</strong> "It is crucial to understand the concept of <span style='color:#c4b5fd;'>${word}</span>."
+            `;
+        }, 600);
+    }
+
+    let peer = null;
+    let conn = null;
+
+    function initPeer() {
+        peer = new Peer();
+        
+        peer.on('open', (id) => {
+            document.getElementById('myPeerStatus').innerText = `내 P2P 연결 완료! (내 공유 코드: ${id})`;
+        });
+
+        peer.on('connection', (incomingConn) => {
+            conn = incomingConn;
+            document.getElementById('p2pLog').innerText = `🔗 '${conn.peer}' 사용자가 단어장을 요청했습니다. 전송 중...`;
+            
+            conn.on('open', () => {
+                conn.send(appData);
+                document.getElementById('p2pLog').innerText = `✅ 단어장을 성공적으로 전송했습니다!`;
+            });
+        });
+    }
+
+    function hostVocabulary() {
+        if (!peer || !peer.id) {
+            alert('P2P 네트워크 연결 중입니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        prompt('상대방에게 아래 공유 코드를 복사해서 전달하세요!', peer.id);
+        document.getElementById('p2pLog').innerText = `📡 공유 대기 중... 상대방이 코드를 입력하면 단어장이 전송됩니다.`;
+    }
+
+    function connectToPeer() {
+        const targetId = document.getElementById('peerIdInput').value.trim();
+        if (!targetId) {
+            alert('상대방의 공유 코드를 입력해주세요!');
+            return;
+        }
+
+        document.getElementById('p2pLog').innerText = `🔄 상대방(${targetId})에게 연결 시도 중...`;
+        
+        const outgoingConn = peer.connect(targetId);
+        
+        outgoingConn.on('open', () => {
+            document.getElementById('p2pLog').innerText = `📥 연결 성공! 단어장을 다운로드 중입니다...`;
+        });
+
+        outgoingConn.on('data', (data) => {
+            if (data && data.words) {
+                if (confirm(`'${data.author || '익명'}' 님의 '${data.title || '제목 없음'}' 단어장(${data.words.length}개)을 받았습니다. 내 단어장에 덮어쓰시겠습니까?`)) {
+                    appData = data;
+                    document.getElementById('authorInput').value = appData.author;
+                    document.getElementById('titleInput').value = appData.title;
+                    saveAndRender();
+                    document.getElementById('p2pLog').innerText = `🎉 단어장 가져오기 완료!`;
+                }
+            }
+        });
+
+        outgoingConn.on('error', (err) => {
+            document.getElementById('p2pLog').innerText = `❌ 연결 실패: 코드를 다시 확인해주세요.`;
+        });
+    }
+
+    renderWords();
+    initPlayer = initPeer();
+</script>
+
+</body>
+</html>

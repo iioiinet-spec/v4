@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>슬라임 왕국 서바이버 - 민태홍 제작</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+        
+        * {
+            font-family: 'Noto Sans KR', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .font-jua {
+            font-family: 'Jua', sans-serif;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 4px;
+        }
+
+        /* UI Animations */
+        @keyframes pulse-subtle {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-pulse-subtle {
+            animation: pulse-subtle 2s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+        .animate-float {
+            animation: float 3s infinite ease-in-out;
+        }
+
+        /* Glassmorphism background */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hit overlay animation */
+        @keyframes hit-flash {
+            0% { opacity: 0.8; }
+            100% { opacity: 0; }
+        }
+        .hit-overlay {
+            animation: hit-flash 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white overflow-hidden w-screen h-screen flex flex-col items-center justify-center">
+
+    <!-- CANVAS CONTAINER -->
+    <div id="game-container" class="relative w-full h-full max-w-4xl max-h-[900px] overflow-hidden rounded-none sm:rounded-2xl shadow-2xl bg-slate-900 border border-slate-800 flex flex-col">
+        
+        <!-- GAME CANVAS -->
+        <canvas id="gameCanvas" class="w-full h-full block bg-slate-950 cursor-crosshair"></canvas>
+
+        <!-- TOP BAR UI (INGAME) -->
+        <div id="ingame-ui" class="absolute top-0 left-0 w-full p-3 pointer-events-none hidden flex-col gap-2 z-10">
+            <!-- EXP Bar & Level & HP -->
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-500 text-slate-950 font-black px-3 py-1 rounded-full text-sm font-jua border-2 border-amber-300 shadow" id="hud-level">LV 1</div>
+                <div class="flex-1 flex flex-col gap-1">
+                    <!-- EXP Bar -->
+                    <div class="bg-slate-800/80 h-3 rounded-full overflow-hidden border border-slate-700 p-0.5 shadow-inner">
+                        <div id="hud-exp-bar" class="bg-gradient-to-r from-amber-400 to-emerald-400 h-full rounded-full transition-all duration-200" style="width: 0%"></div>
+                    </div>
+                    <!-- Player HUD HP Bar -->
+                    <div class="bg-slate-800/80 h-3.5 rounded-full overflow-hidden border border-slate-700 p-0.5 flex items-center relative shadow-inner">
+                        <div id="hud-hp-bar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-300 h-full rounded-full transition-all duration-200" style="width: 100%"></div>
+                        <span id="hud-hp-text" class="absolute w-full text-center text-[10px] font-bold text-white drop-shadow">100 / 100</span>
+                    </div>
+                </div>
+                <div class="text-xs font-bold text-slate-300 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-1 shadow">
+                    <i class="fa-solid fa-skull text-red-400"></i><span id="hud-kill-count">0</span>
+                </div>
+            </div>
+
+            <!-- Timer & Stage Name -->
+            <div class="flex justify-between items-center text-sm">
+                <div id="hud-timer" class="font-jua text-xl text-yellow-300 bg-slate-900/80 px-4 py-1 rounded-xl border border-yellow-500/30 shadow">00:00</div>
+                <div id="hud-stage-name" class="font-bold text-slate-300 bg-slate-900/80 px-3 py-1 rounded-xl border border-slate-800">STAGE 1</div>
+            </div>
+
+            <!-- Boss Health Bar -->
+            <div id="hud-boss-container" class="w-full flex flex-col items-center gap-1 hidden mt-1">
+                <div class="flex justify-between w-full text-xs font-bold text-red-400 px-1">
+                    <span id="hud-boss-name"><i class="fa-solid fa-crown mr-1"></i>거대 감염 동물</span>
+                    <span id="hud-boss-hp-text">100%</span>
+                </div>
+                <div class="w-full bg-slate-800/90 h-4 rounded-full overflow-hidden border-2 border-red-600 p-0.5 shadow-lg">
+                    <div id="hud-boss-hp-bar" class="bg-gradient-to-r from-red-600 to-amber-500 h-full rounded-full transition-all duration-100" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIRTUAL JOYSTICK FOR MOBILE -->
+        <div id="joystick-zone" class="absolute bottom-6 left-6 w-32 h-32 rounded-full border-2 border-white/20 bg-white/5 touch-none hidden z-10 pointer-events-auto">
+            <div id="joystick-handle" class="absolute w-12 h-12 rounded-full bg-emerald-500/80 border-2 border-white top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 shadow-lg"></div>
+        </div>
+
+        <!-- ================= OVERLAYS & MODALS ================= -->
+
+        <!-- 1. STORY SCREEN OVERLAY -->
+        <div id="screen-story" class="absolute inset-0 z-50 glass-panel flex flex-col justify-between p-6 sm:p-10 text-white">
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-4">
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-black font-jua text-amber-400 tracking-wider">슬라임 왕국의 위기</h1>
+                    <p class="text-xs text-slate-400 mt-0.5">제작자: <span class="text-emerald-400 font-bold">민태홍</span></p>
+                </div>
+                <button id="btn-skip-story" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-sm border border-slate-600 transition flex items-center gap-2">
+                    스킵 <i class="fa-solid fa-forward"></i>
+                </button>
+            </div>
+
+            <div class="my-auto flex flex-col items-center text-center max-w-xl mx-auto space-y-6">
+                <div id="story-avatar" class="w-32 h-32 sm:w-40 sm:h-40 rounded-3xl bg-slate-800 border-4 border-amber-400/50 flex items-center justify-center shadow-2xl relative overflow-hidden transition-all duration-500">
+                    <div id="story-graphic" class="text-6xl animate-float">👑</div>
+                </div>
+                
+                <div class="space-y-3 bg-slate-900/90 p-5 rounded-2xl border border-slate-800 w-full shadow-inner">
+                    <div id="story-speaker" class="text-amber-400 font-bold text-sm tracking-wide uppercase">슬라임 왕국 서사</div>
+                    <p id="story-text" class="text-base sm:text-lg leading-relaxed text-slate-200 font-medium min-h-[80px]">
+                        평화롭던 슬라임 왕국에 정체불명의 미친 과학자가 나타나 변종 바이러스를 유포했습니다...
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-4 border-t border-slate-700/60">
+                <button id="btn-next-story" class="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black px-8 py-3.5 rounded-xl font-jua text-lg shadow-lg transform active:scale-95 transition">
+                    다음 이야기 <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. MAIN LOBBY OVERLAY -->
+        <div id="screen-lobby" class="absolute inset-0 z-40 glass-panel flex flex-col justify-between p-4 sm:p-6 hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 text-xl font-black">
+                        👑
+                    </div>
+                    <div>
+                        <div class="text-xs text-slate-400">슬라임 왕자</div>
+                        <div class="font-bold text-amber-400 flex items-center gap-2 text-sm">
+                            <i class="fa-solid fa-coins text-yellow-400"></i> <span id="lobby-gold">0</span> Gold
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn-open-settings" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lobby Content -->
+            <div class="flex-1 my-3 overflow-y-auto rounded-2xl bg-slate-950/60 p-4 border border-slate-800/80 relative" id="lobby-content">
+                <!-- TAB 1: STAGE SELECT -->
+                <div id="tab-stage" class="lobby-tab flex flex-col items-center justify-center h-full space-y-6">
+                    <div class="text-center space-y-1">
+                        <div class="text-xs text-emerald-400 font-bold uppercase tracking-widest">Stage Select</div>
+                        <h2 id="stage-title" class="text-2xl sm:text-3xl font-black font-jua text-amber-300">Stage 1: 감염된 숲</h2>
+                        <p id="stage-desc" class="text-xs sm:text-sm text-slate-400 max-w-sm">변종 바이러스에 감염된 토끼와 늑대들이 배회하는 왕국 외곽입니다.</p>
+                    </div>
+
+                    <div class="flex items-center gap-4 my-4">
+                        <button id="btn-prev-stage" class="p-3 bg-slate-800 hover:bg-slate-700 rounded-2xl border border-slate-700 text-amber-400 font-bold"><i class="fa-solid fa-chevron-left text-xl"></i></button>
+                        <div class="w-44 h-44 rounded-3xl bg-gradient-to-br from-emerald-900/40 to-slate-900 border-2 border-emerald-500/40 flex flex-col items-center justify-center gap-2 shadow-2xl relative">
+                            <span id="stage-icon" class="text-6xl animate-float">🌲</span>
+                            <span id="stage-number-badge" class="bg-emerald-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full font-jua">STAGE 1</span>
+                        </div>
+                        <button id="btn-next-stage" class="p-3 bg-slate-800 hover:bg-slate-700 rounded-2xl border border-slate-700 text-amber-400 font-bold"><i class="fa-solid fa-chevron-right text-xl"></i></button>
+                    </div>
+
+                    <button id="btn-start-game" class="w-full max-w-xs bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 font-black py-4 rounded-2xl font-jua text-xl shadow-xl shadow-emerald-950/50 transform active:scale-95 transition animate-pulse-subtle">
+                        출전하기 (Battle)
+                    </button>
+                </div>
+
+                <!-- TAB 2: EQUIPMENT -->
+                <div id="tab-equip" class="lobby-tab hidden space-y-4">
+                    <h3 class="text-lg font-bold font-jua text-amber-400 border-b border-slate-800 pb-2">장비 및 무기 착용</h3>
+                    <div class="grid grid-cols-2 gap-3 max-w-md mx-auto">
+                        <div class="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl" id="equip-slot-weapon">🗡️</div>
+                            <div>
+                                <div class="text-xs text-slate-400">무기</div>
+                                <div class="font-bold text-sm text-slate-200" id="equip-name-weapon">젤리 왕가 검</div>
+                                <div class="text-xs text-emerald-400" id="equip-stat-weapon">공격력 +15</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-2xl" id="equip-slot-armor">👑</div>
+                            <div>
+                                <div class="text-xs text-slate-400">방어구</div>
+                                <div class="font-bold text-sm text-slate-200" id="equip-name-armor">왕가 슬라임 왕관</div>
+                                <div class="text-xs text-blue-400" id="equip-stat-armor">체력 +50</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <div class="text-xs font-bold text-slate-400 mb-2">보유 장비 목록</div>
+                        <div id="inventory-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: UPGRADES -->
+                <div id="tab-upgrade" class="lobby-tab hidden space-y-4">
+                    <h3 class="text-lg font-bold font-jua text-amber-400 border-b border-slate-800 pb-2">슬라임 왕국 연구소 (영구 강화)</h3>
+                    <div class="space-y-3" id="upgrade-list"></div>
+                </div>
+
+                <!-- TAB 4: SHOP -->
+                <div id="tab-shop" class="lobby-tab hidden space-y-4">
+                    <h3 class="text-lg font-bold font-jua text-amber-400 border-b border-slate-800 pb-2">왕국 상점</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="shop-list"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Navigation Bar -->
+            <div class="grid grid-cols-4 gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800">
+                <button class="nav-btn active p-2.5 rounded-xl flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" data-tab="tab-stage">
+                    <i class="fa-solid fa-map text-lg"></i>
+                    <span class="text-[10px] font-bold">스테이지</span>
+                </button>
+                <button class="nav-btn p-2.5 rounded-xl flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" data-tab="tab-equip">
+                    <i class="fa-solid fa-shield-halved text-lg"></i>
+                    <span class="text-[10px] font-bold">장비</span>
+                </button>
+                <button class="nav-btn p-2.5 rounded-xl flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" data-tab="tab-upgrade">
+                    <i class="fa-solid fa-flask text-lg"></i>
+                    <span class="text-[10px] font-bold">연구소</span>
+                </button>
+                <button class="nav-btn p-2.5 rounded-xl flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" data-tab="tab-shop">
+                    <i class="fa-solid fa-store text-lg"></i>
+                    <span class="text-[10px] font-bold">상점</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 3. LEVEL UP SKILL SELECT MODAL -->
+        <div id="modal-levelup" class="absolute inset-0 z-50 glass-panel flex flex-col items-center justify-center p-6 hidden">
+            <div class="text-center mb-6 animate-bounce">
+                <div class="text-xs font-bold text-amber-400 uppercase tracking-widest">LEVEL UP!</div>
+                <h2 class="text-3xl font-black font-jua text-white">스킬을 선택하세요</h2>
+            </div>
+            <div class="w-full max-w-md space-y-3" id="skill-options-container"></div>
+        </div>
+
+        <!-- 4. DIALOGUE / ENDING OVERLAY -->
+        <div id="modal-dialogue" class="absolute inset-0 z-50 glass-panel flex flex-col justify-end p-6 hidden">
+            <div class="bg-slate-900 border-2 border-amber-500/60 p-5 rounded-2xl shadow-2xl space-y-4 max-w-xl mx-auto w-full">
+                <div class="flex items-center gap-4">
+                    <div id="dialogue-avatar" class="w-16 h-16 rounded-2xl bg-slate-800 border-2 border-amber-400 flex items-center justify-center text-4xl shrink-0">🧪</div>
+                    <div>
+                        <div id="dialogue-speaker" class="font-bold text-amber-400 text-sm">미친 과학자</div>
+                        <div id="dialogue-title" class="text-xs text-slate-400">바이러스 유포자</div>
+                    </div>
+                </div>
+                <p id="dialogue-text" class="text-slate-200 text-sm sm:text-base leading-relaxed font-medium min-h-[60px]">
+                    크크크... 내 바이러스에 무릎을 꿇어라!
+                </p>
+                <div class="flex justify-end">
+                    <button id="btn-next-dialogue" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-2.5 rounded-xl font-jua text-sm">
+                        대화 계속하기 <i class="fa-solid fa-chevron-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. GAME OVER / VICTORY MODAL -->
+        <div id="modal-gameover" class="absolute inset-0 z-50 glass-panel flex flex-col items-center justify-center p-6 hidden">
+            <div class="bg-slate-900 border border-slate-800 p-6 sm:p-8 rounded-3xl max-w-sm w-full text-center space-y-5 shadow-2xl">
+                <div id="gameover-icon" class="text-6xl">💀</div>
+                <div>
+                    <h2 id="gameover-title" class="text-2xl font-black font-jua text-red-400">패배하였습니다</h2>
+                    <p id="gameover-desc" class="text-xs text-slate-400 mt-1">바이러스 감염체들에게 압도당했습니다.</p>
+                </div>
+
+                <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-2 text-sm text-slate-300">
+                    <div class="flex justify-between">
+                        <span>생존 시간</span>
+                        <span id="gameover-time" class="font-bold text-amber-400">00:00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>처치한 감염체</span>
+                        <span id="gameover-kills" class="font-bold text-emerald-400">0</span>
+                    </div>
+                    <div class="flex justify-between border-t border-slate-800 pt-2">
+                        <span>획득 골드</span>
+                        <span id="gameover-gold" class="font-bold text-yellow-400">+0 Gold</span>
+                    </div>
+                </div>
+
+                <button id="btn-return-lobby" class="w-full bg-gradient-to-r from-amber-500 to-emerald-500 text-slate-950 font-black py-3.5 rounded-xl font-jua text-base shadow-lg">
+                    로비로 돌아가기
+                </button>
+            </div>
+        </div>
+
+        <!-- 6. SETTINGS MODAL -->
+        <div id="modal-settings" class="absolute inset-0 z-50 glass-panel flex flex-col items-center justify-center p-6 hidden">
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full space-y-5 shadow-2xl">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                    <h3 class="text-lg font-bold font-jua text-slate-200">설정</h3>
+                    <button id="btn-close-settings" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="text-xs text-slate-400 leading-relaxed">
+                        게임 데이터를 초기화하면 획득한 골드, 업그레이드, 장비 및 진행 상황이 모두 삭제되고 처음 스토리부터 다시 시작합니다.
+                    </div>
+                    <button id="btn-reset-data" class="w-full bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-trash-can"></i> 모든 데이터 초기화
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN GAME LOGIC SCRIPT -->
+    <script>
+        /* ==========================================================================
+           1. GAME DATA & SAVE SYSTEM
+           ========================================================================== */
+        const SAVE_KEY = 'SLIME_SURVIVOR_MIN_TAE_HONG_SAVE_DATA_V1';
+
+        const defaultSaveData = {
+            gold: 150,
+            currentStage: 1,
+            maxStageUnlocked: 1,
+            equippedWeapon: 'weapon_sword',
+            equippedArmor: 'armor_crown',
+            inventory: ['weapon_sword', 'armor_crown'],
+            upgrades: { hp: 0, atk: 0, magnet: 0, regen: 1 },
+            storyCompleted: false
+        };
+
+        let saveData = JSON.parse(localStorage.getItem(SAVE_KEY)) || { ...defaultSaveData };
+
+        function saveGame() {
+            localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+        }
+
+        function resetGameData() {
+            localStorage.removeItem(SAVE_KEY);
+            saveData = JSON.parse(JSON.stringify(defaultSaveData));
+            saveGame();
+            location.reload();
+        }
+
+        /* ==========================================================================
+           2. CONSTANTS & DEFINITIONS
+           ========================================================================== */
+        const STAGES = [
+            { id: 1, name: "Stage 1: 감염된 숲", desc: "바이러스에 감염된 토끼와 늑대들의 공격!", icon: "🌲" },
+            { id: 2, name: "Stage 2: 독기 서린 늪지", desc: "산성 독충과 독수리들이 공중에서 기습합니다.", icon: "☣️" },
+            { id: 3, name: "Stage 3: 버려진 연구소 외곽", desc: "미친 과학자의 실험체 동물들이 떼지어 등장합니다.", icon: "🏗️" },
+            { id: 4, name: "Stage 4: 변종 동물 구역", desc: "강력하게 변이된 거대 늑대와 곰의 본거지.", icon: "🐺" },
+            { id: 5, name: "Stage 5: 왕국 지하 감옥", desc: "감염된 왕국 기사 동물들의 집단 광기.", icon: "🏰" },
+            { id: 6, name: "Stage 6: 과학자의 요새", desc: "바이러스 생성 장치가 작동 중인 요새 내부.", icon: "⚡" },
+            { id: 7, name: "Stage 7: 최종 결전의 장", desc: "미친 과학자와의 최종 대결 및 왕국 구출!", icon: "🧪" }
+        ];
+
+        const ITEMS_DATABASE = {
+            weapon_sword: { id: 'weapon_sword', name: '젤리 왕가 검', type: 'weapon', statDesc: '기본 공격력 +15', price: 0, icon: '🗡️' },
+            weapon_blaster: { id: 'weapon_blaster', name: '산성 블래스터', type: 'weapon', statDesc: '기본 공격력 +30', price: 300, icon: '🔫' },
+            weapon_whip: { id: 'weapon_whip', name: '점성 채찍', type: 'weapon', statDesc: '기본 공격력 +50', price: 800, icon: '🪢' },
+            armor_crown: { id: 'armor_crown', name: '왕가 슬라임 왕관', type: 'armor', statDesc: '최대 체력 +50', price: 0, icon: '👑' },
+            armor_fluid: { id: 'armor_fluid', name: '말랑 액체 갑옷', type: 'armor', statDesc: '최대 체력 +120', price: 350, icon: '🛡️' },
+            armor_shoes: { id: 'armor_shoes', name: '신속의 젤리 신발', type: 'armor', statDesc: '이동 속도 +20%', price: 600, icon: '👟' }
+        };
+
+        const SKILLS_DATABASE = [
+            { id: 'slime_clone', name: '슬라임 분신 파도', desc: '화면을 튕겨 다니며 액체 폭발을 일으킵니다.', icon: '🌊', type: 'active' },
+            { id: 'jelly_shield', name: '점성 젤리 장막', desc: '회전하며 적의 탄환을 막고 지속 피해를 줍니다.', icon: '🛡️', type: 'active' },
+            { id: 'acid_puddle', name: '산성 젤리 스트라이크', desc: '바닥에 산성 웅덩이를 생성하여 장판 피해를 입힙니다.', icon: '🧪', type: 'active' },
+            { id: 'royal_meteor', name: '왕가의 유성 낙하', desc: '하늘에서 거대한 점성 유성이 떨어집니다.', icon: '☄️', type: 'active' },
+            { id: 'crown_spark', name: '왕관 스파크 발사기', desc: '가장 가까운 적에게 유도성 스파크를 발사합니다.', icon: '⚡', type: 'active' },
+            { id: 'pass_atk', name: '산성 농도 강화', desc: '모든 공격력이 15% 증가합니다.', icon: '💥', type: 'passive' },
+            { id: 'pass_speed', name: '말랑 점성 탄성', desc: '이동 속도가 15% 증가합니다.', icon: '💨', type: 'passive' },
+            { id: 'pass_hp', name: '왕가 세포 분열', desc: '최대 체력이 20% 증가하고 HP를 회복합니다.', icon: '❤️', type: 'passive' }
+        ];
+
+        /* ==========================================================================
+           3. CANVAS & INPUT SETUP
+           ========================================================================== */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        let joystickActive = false;
+        let joystickVector = { x: 0, y: 0 };
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickHandle = document.getElementById('joystick-handle');
+
+        if ('ontouchstart' in window) {
+            joystickZone.classList.remove('hidden');
+        }
+
+        let touchOrigin = { x: 0, y: 0 };
+        joystickZone.addEventListener('touchstart', e => {
+            joystickActive = true;
+            const touch = e.touches[0];
+            const rect = joystickZone.getBoundingClientRect();
+            touchOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        });
+
+        joystickZone.addEventListener('touchmove', e => {
+            if (!joystickActive) return;
+            const touch = e.touches[0];
+            const dx = touch.clientX - touchOrigin.x;
+            const dy = touch.clientY - touchOrigin.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxDist = 45;
+            const angle = Math.atan2(dy, dx);
+            const moveDist = Math.min(dist, maxDist);
+
+            joystickVector.x = Math.cos(angle) * (moveDist / maxDist);
+            joystickVector.y = Math.sin(angle) * (moveDist / maxDist);
+            joystickHandle.style.transform = `translate(calc(-50% + ${Math.cos(angle) * moveDist}px), calc(-50% + ${Math.sin(angle) * moveDist}px))`;
+        });
+
+        const resetJoystick = () => {
+            joystickActive = false;
+            joystickVector = { x: 0, y: 0 };
+            joystickHandle.style.transform = `translate(-50%, -50%)`;
+        };
+        joystickZone.addEventListener('touchend', resetJoystick);
+        joystickZone.addEventListener('touchcancel', resetJoystick);
+
+        /* ==========================================================================
+           4. GAME STATE & VARIABLES
+           ========================================================================== */
+        let gameState = 'STORY';
+        let gameTime = 0;
+        let gameFrame = 0;
+        let killCount = 0;
+        let stageGoldEarned = 0;
+
+        let player = {
+            x: 0, y: 0,
+            radius: 20,
+            speed: 3.8,
+            hp: 120, maxHp: 120,
+            invincibleTimer: 0, // Hit invincibility frames
+            level: 1, exp: 0, nextExp: 10,
+            skills: {},
+            facing: 1
+        };
+
+        let camera = { x: 0, y: 0 };
+        let monsters = [];
+        let projectiles = [];
+        let particles = [];
+        let expGems = [];
+        let puddles = [];
+        let boxes = [];
+        let drops = [];
+        let damageTexts = [];
+        let bossMonster = null;
+        let screenFlash = 0;
+
+        /* ==========================================================================
+           5. STORY & DIALOGUE SEQUENCES
+           ========================================================================== */
+        const storyPages = [
+            { speaker: "슬라임 왕국 서사", text: "평화롭던 슬라임 왕국에 정체불명의 '미친 과학자'가 나타나 치명적인 변종 바이러스를 유포했습니다!", icon: "🧪" },
+            { speaker: "슬라임 왕국 서사", text: "바이러스에 감염된 귀여운 동물들과 슬라임들은 난폭하게 변이되어 왕국을 파괴하기 시작했습니다.", icon: "🐺" },
+            { speaker: "슬라임 왕자", text: "유일하게 바이러스 면역을 가진 나 '슬라임 왕자'가 전설의 왕가 마법을 들고 왕국을 구하러 나선다! (제작자: 민태홍)", icon: "👑" }
+        ];
+        let currentStoryIndex = 0;
+
+        function renderStoryPage() {
+            const page = storyPages[currentStoryIndex];
+            document.getElementById('story-speaker').innerText = page.speaker;
+            document.getElementById('story-text').innerText = page.text;
+            document.getElementById('story-graphic').innerText = page.icon;
+        }
+
+        document.getElementById('btn-next-story').addEventListener('click', () => {
+            currentStoryIndex++;
+            if (currentStoryIndex >= storyPages.length) finishStoryAndGoLobby();
+            else renderStoryPage();
+        });
+        document.getElementById('btn-skip-story').addEventListener('click', finishStoryAndGoLobby);
+
+        function finishStoryAndGoLobby() {
+            saveData.storyCompleted = true;
+            saveGame();
+            document.getElementById('screen-story').classList.add('hidden');
+            document.getElementById('screen-lobby').classList.remove('hidden');
+            gameState = 'LOBBY';
+            updateLobbyUI();
+        }
+
+        let dialogueQueue = [];
+        let dialogueCallback = null;
+
+        function startDialogue(queue, callback) {
+            dialogueQueue = queue;
+            dialogueCallback = callback;
+            gameState = 'DIALOGUE';
+            document.getElementById('modal-dialogue').classList.remove('hidden');
+            showNextDialogue();
+        }
+
+        function showNextDialogue() {
+            if (dialogueQueue.length === 0) {
+                document.getElementById('modal-dialogue').classList.add('hidden');
+                if (dialogueCallback) dialogueCallback();
+                return;
+            }
+            const item = dialogueQueue.shift();
+            document.getElementById('dialogue-speaker').innerText = item.speaker;
+            document.getElementById('dialogue-title').innerText = item.title || "";
+            document.getElementById('dialogue-text').innerText = item.text;
+            document.getElementById('dialogue-avatar').innerText = item.icon || "🧪";
+        }
+
+        document.getElementById('btn-next-dialogue').addEventListener('click', showNextDialogue);
+
+        /* ==========================================================================
+           6. LOBBY UI & FUNCTIONS
+           ========================================================================== */
+        const navBtns = document.querySelectorAll('.nav-btn');
+        const lobbyTabs = document.querySelectorAll('.lobby-tab');
+
+        navBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                navBtns.forEach(b => b.classList.remove('text-amber-400', 'bg-slate-800'));
+                btn.classList.add('text-amber-400', 'bg-slate-800');
+                const targetTab = btn.getAttribute('data-tab');
+                lobbyTabs.forEach(tab => {
+                    if (tab.id === targetTab) tab.classList.remove('hidden');
+                    else tab.classList.add('hidden');
+                });
+            });
+        });
+
+        function updateLobbyUI() {
+            document.getElementById('lobby-gold').innerText = saveData.gold;
+
+            const stg = STAGES[saveData.currentStage - 1];
+            document.getElementById('stage-title').innerText = stg.name;
+            document.getElementById('stage-desc').innerText = stg.desc;
+            document.getElementById('stage-icon').innerText = stg.icon;
+            document.getElementById('stage-number-badge').innerText = `STAGE ${stg.id}`;
+
+            const wpn = ITEMS_DATABASE[saveData.equippedWeapon];
+            const arm = ITEMS_DATABASE[saveData.equippedArmor];
+            document.getElementById('equip-name-weapon').innerText = wpn.name;
+            document.getElementById('equip-stat-weapon').innerText = wpn.statDesc;
+            document.getElementById('equip-slot-weapon').innerText = wpn.icon;
+            document.getElementById('equip-name-armor').innerText = arm.name;
+            document.getElementById('equip-stat-armor').innerText = arm.statDesc;
+            document.getElementById('equip-slot-armor').innerText = arm.icon;
+
+            const invContainer = document.getElementById('inventory-list');
+            invContainer.innerHTML = '';
+            saveData.inventory.forEach(itemId => {
+                const item = ITEMS_DATABASE[itemId];
+                if (!item) return;
+                const isEquipped = (saveData.equippedWeapon === itemId || saveData.equippedArmor === itemId);
+                const div = document.createElement('div');
+                div.className = `p-3 rounded-2xl border flex items-center justify-between ${isEquipped ? 'bg-amber-500/10 border-amber-500/50' : 'bg-slate-900 border-slate-800'}`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${item.icon}</span>
+                        <div>
+                            <div class="font-bold text-xs text-slate-200">${item.name}</div>
+                            <div class="text-[10px] text-slate-400">${item.statDesc}</div>
+                        </div>
+                    </div>
+                    ${isEquipped ? '<span class="text-[10px] font-bold text-amber-400 bg-amber-400/20 px-2 py-0.5 rounded-md">착용중</span>' : `<button class="btn-equip text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 font-bold" data-id="${item.id}">장착</button>`}
+                `;
+                invContainer.appendChild(div);
+            });
+
+            document.querySelectorAll('.btn-equip').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.target.getAttribute('data-id');
+                    const item = ITEMS_DATABASE[id];
+                    if (item.type === 'weapon') saveData.equippedWeapon = id;
+                    if (item.type === 'armor') saveData.equippedArmor = id;
+                    saveGame();
+                    updateLobbyUI();
+                });
+            });
+
+            const upgradeContainer = document.getElementById('upgrade-list');
+            upgradeContainer.innerHTML = '';
+            const upgradeDefs = [
+                { key: 'hp', name: '젤리 세포 강화', desc: '최대 체력 +20', cost: (saveData.upgrades.hp + 1) * 100, icon: '❤️' },
+                { key: 'atk', name: '산성 농도 증가', desc: '공격력 +5', cost: (saveData.upgrades.atk + 1) * 100, icon: '💥' },
+                { key: 'magnet', name: '점성 흡수력', desc: '경험치 자석 범위 +20%', cost: (saveData.upgrades.magnet + 1) * 150, icon: '🧲' },
+                { key: 'regen', name: '왕가의 자연 회복력', desc: '1.5초당 HP 회복 +1.5', cost: (saveData.upgrades.regen + 1) * 120, icon: '✨' }
+            ];
+
+            upgradeDefs.forEach(up => {
+                const lvl = saveData.upgrades[up.key] || 0;
+                const div = document.createElement('div');
+                div.className = "bg-slate-900 p-3 rounded-2xl border border-slate-800 flex items-center justify-between";
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${up.icon}</span>
+                        <div>
+                            <div class="font-bold text-sm text-slate-200">${up.name} <span class="text-amber-400 text-xs">(Lv.${lvl})</span></div>
+                            <div class="text-xs text-slate-400">${up.desc}</div>
+                        </div>
+                    </div>
+                    <button class="btn-buy-upgrade bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-black px-4 py-2 rounded-xl text-xs font-jua" data-key="${up.key}" data-cost="${up.cost}" ${saveData.gold < up.cost ? 'disabled' : ''}>
+                        강화 (${up.cost} G)
+                    </button>
+                `;
+                upgradeContainer.appendChild(div);
+            });
+
+            document.querySelectorAll('.btn-buy-upgrade').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const key = e.target.getAttribute('data-key');
+                    const cost = parseInt(e.target.getAttribute('data-cost'));
+                    if (saveData.gold >= cost) {
+                        saveData.gold -= cost;
+                        saveData.upgrades[key] = (saveData.upgrades[key] || 0) + 1;
+                        saveGame();
+                        updateLobbyUI();
+                    }
+                });
+            });
+
+            const shopContainer = document.getElementById('shop-list');
+            shopContainer.innerHTML = '';
+            Object.values(ITEMS_DATABASE).forEach(item => {
+                const owned = saveData.inventory.includes(item.id);
+                const div = document.createElement('div');
+                div.className = "bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-3";
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-3xl">${item.icon}</span>
+                        <div>
+                            <div class="font-bold text-sm text-slate-200">${item.name}</div>
+                            <div class="text-xs text-emerald-400">${item.statDesc}</div>
+                        </div>
+                    </div>
+                    ${owned ? '<span class="text-xs text-center font-bold text-slate-500 bg-slate-950 py-2 rounded-xl">보유 중</span>' : `
+                        <button class="btn-buy-item w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black py-2 rounded-xl text-xs font-jua" data-id="${item.id}" data-price="${item.price}" ${saveData.gold < item.price ? 'disabled' : ''}>
+                            구입하기 (${item.price} G)
+                        </button>
+                    `}
+                `;
+                shopContainer.appendChild(div);
+            });
+
+            document.querySelectorAll('.btn-buy-item').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.target.getAttribute('data-id');
+                    const price = parseInt(e.target.getAttribute('data-price'));
+                    if (saveData.gold >= price && !saveData.inventory.includes(id)) {
+                        saveData.gold -= price;
+                        saveData.inventory.push(id);
+                        saveGame();
+                        updateLobbyUI();
+                    }
+                });
+            });
+        }
+
+        document.getElementById('btn-prev-stage').addEventListener('click', () => {
+            if (saveData.currentStage > 1) {
+                saveData.currentStage--;
+                updateLobbyUI();
+            }
+        });
+        document.getElementById('btn-next-stage').addEventListener('click', () => {
+            if (saveData.currentStage < saveData.maxStageUnlocked && saveData.currentStage < STAGES.length) {
+                saveData.currentStage++;
+                updateLobbyUI();
+            }
+        });
+
+        document.getElementById('btn-open-settings').addEventListener('click', () => {
+            document.getElementById('modal-settings').classList.remove('hidden');
+        });
+        document.getElementById('btn-close-settings').addEventListener('click', () => {
+            document.getElementById('modal-settings').classList.add('hidden');
+        });
+        document.getElementById('btn-reset-data').addEventListener('click', () => {
+            resetGameData();
+        });
+
+        /* ==========================================================================
+           7. IN-GAME INITIATION
+           ========================================================================== */
+        document.getElementById('btn-start-game').addEventListener('click', startBattle);
+
+        function startBattle() {
+            document.getElementById('screen-lobby').classList.add('hidden');
+            document.getElementById('ingame-ui').classList.remove('hidden');
+            document.getElementById('ingame-ui').classList.add('flex');
+
+            gameTime = 0;
+            gameFrame = 0;
+            killCount = 0;
+            stageGoldEarned = 0;
+            monsters = [];
+            projectiles = [];
+            particles = [];
+            expGems = [];
+            puddles = [];
+            boxes = [];
+            drops = [];
+            damageTexts = [];
+            bossMonster = null;
+
+            let baseHp = 100 + (saveData.upgrades.hp * 20);
+            if (saveData.equippedArmor === 'armor_crown') baseHp += 50;
+            if (saveData.equippedArmor === 'armor_fluid') baseHp += 120;
+
+            player.x = 0;
+            player.y = 0;
+            player.maxHp = baseHp;
+            player.hp = baseHp;
+            player.invincibleTimer = 0;
+            player.speed = (saveData.equippedArmor === 'armor_shoes') ? 4.2 : 3.5;
+            player.level = 1;
+            player.exp = 0;
+            player.nextExp = 10;
+            player.skills = {};
+            player.skills['slime_clone'] = 1;
+
+            // Spawn initial map boxes
+            for (let i = 0; i < 4; i++) {
+                spawnBox();
+            }
+
+            gameState = 'PLAYING';
+            updateIngameHUD();
+        }
+
+        function updateIngameHUD() {
+            document.getElementById('hud-level').innerText = `LV ${player.level}`;
+            const expPercent = Math.min(100, (player.exp / player.nextExp) * 100);
+            document.getElementById('hud-exp-bar').style.width = `${expPercent}%`;
+            
+            const hpPct = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+            document.getElementById('hud-hp-bar').style.width = `${hpPct}%`;
+            document.getElementById('hud-hp-text').innerText = `${Math.ceil(player.hp)} / ${Math.ceil(player.maxHp)}`;
+            document.getElementById('hud-kill-count').innerText = killCount;
+
+            const mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            const secs = Math.floor(gameTime % 60).toString().padStart(2, '0');
+            document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
+            document.getElementById('hud-stage-name').innerText = STAGES[saveData.currentStage - 1].name;
+
+            if (bossMonster) {
+                document.getElementById('hud-boss-container').classList.remove('hidden');
+                const bossHpPct = Math.max(0, (bossMonster.hp / bossMonster.maxHp) * 100);
+                document.getElementById('hud-boss-hp-bar').style.width = `${bossHpPct}%`;
+                document.getElementById('hud-boss-hp-text').innerText = `${Math.ceil(bossHpPct)}%`;
+                document.getElementById('hud-boss-name').innerText = bossMonster.name;
+            } else {
+                document.getElementById('hud-boss-container').classList.add('hidden');
+            }
+        }
+
+        function addDamageText(x, y, text, color = '#fef08a') {
+            damageTexts.push({
+                x: x, y: y, text: text, color: color, alpha: 1.0, vy: -1.2
+            });
+        }
+
+        /* ==========================================================================
+           8. LEVEL UP & SKILLS
+           ========================================================================== */
+        function triggerLevelUp() {
+            gameState = 'LEVELUP';
+            document.getElementById('modal-levelup').classList.remove('hidden');
+
+            const container = document.getElementById('skill-options-container');
+            container.innerHTML = '';
+
+            const available = SKILLS_DATABASE.filter(sk => (player.skills[sk.id] || 0) < 5);
+            const shuffled = available.sort(() => 0.5 - Math.random()).slice(0, 3);
+
+            shuffled.forEach(skill => {
+                const currentLvl = player.skills[skill.id] || 0;
+                const card = document.createElement('div');
+                card.className = "bg-slate-900 border-2 border-slate-700 hover:border-amber-400 p-4 rounded-2xl flex items-center gap-4 cursor-pointer transform hover:scale-105 transition shadow-lg";
+                card.innerHTML = `
+                    <div class="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-600 flex items-center justify-center text-3xl shrink-0">
+                        ${skill.icon}
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-white text-base font-jua">${skill.name}</span>
+                            <span class="text-xs font-bold text-amber-400 bg-amber-400/20 px-2 py-0.5 rounded-full">${currentLvl === 0 ? '신규' : `Lv.${currentLvl + 1}`}</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">${skill.desc}</p>
+                    </div>
+                `;
+                card.addEventListener('click', () => {
+                    player.skills[skill.id] = (player.skills[skill.id] || 0) + 1;
+                    if (skill.id === 'pass_hp') {
+                        player.maxHp = Math.floor(player.maxHp * 1.2);
+                        player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.3);
+                    }
+                    document.getElementById('modal-levelup').classList.add('hidden');
+                    gameState = 'PLAYING';
+                    updateIngameHUD();
+                });
+                container.appendChild(card);
+            });
+        }
+
+        function handleSkillsExecution() {
+            let bonusAtk = 1 + (saveData.upgrades.atk * 0.1) + ((player.skills['pass_atk'] || 0) * 0.15);
+            if (saveData.equippedWeapon === 'weapon_blaster') bonusAtk += 0.2;
+            if (saveData.equippedWeapon === 'weapon_whip') bonusAtk += 0.4;
+
+            // Slime Clone Waves - Guaranteed hit homing/direct towards nearest monsters
+            if (player.skills['slime_clone'] && gameFrame % 45 === 0 && monsters.length > 0) {
+                const lvl = player.skills['slime_clone'];
+                // Sort monsters by proximity to player for guaranteed hits
+                const sortedMonsters = [...monsters].sort((a, b) => 
+                    Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+                );
+
+                for (let i = 0; i < Math.min(lvl + 1, sortedMonsters.length); i++) {
+                    const target = sortedMonsters[i];
+                    const ang = Math.atan2(target.y - player.y, target.x - player.x);
+                    projectiles.push({
+                        x: player.x, y: player.y,
+                        vx: Math.cos(ang) * 12, vy: Math.sin(ang) * 12,
+                        radius: 16, damage: 99999, life: 120, pierce: true, color: '#10b981'
+                    });
+                }
+            }
+
+            // Crown Spark - Fast direct homing beam
+            if (player.skills['crown_spark'] && gameFrame % 30 === 0 && monsters.length > 0) {
+                const target = monsters[0];
+                const ang = Math.atan2(target.y - player.y, target.x - player.x);
+                projectiles.push({
+                    x: player.x, y: player.y,
+                    vx: Math.cos(ang) * 16, vy: Math.sin(ang) * 16,
+                    radius: 14, damage: 99999, life: 90, pierce: true, color: '#facc15'
+                });
+            }
+
+            // Acid Puddle - Widescale high tick damage
+            if (player.skills['acid_puddle'] && gameFrame % 100 === 0) {
+                puddles.push({
+                    x: player.x, y: player.y,
+                    radius: 75 + (player.skills['acid_puddle'] * 15),
+                    damage: 99999, life: 250
+                });
+            }
+
+            // Royal Meteor - Instant clear strike on target area
+            if (player.skills['royal_meteor'] && gameFrame % 120 === 0 && monsters.length > 0) {
+                const target = monsters[Math.floor(Math.random() * monsters.length)];
+                puddles.push({
+                    x: target.x, y: target.y, radius: 110, damage: 99999, life: 40
+                });
+                createParticle(target.x, target.y, '#ef4444', 40);
+            }
+        }
+
+        /* ==========================================================================
+           9. MONSTER SPAWNING & TIME EVENTS
+           ========================================================================== */
+        function spawnMonster() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.max(canvas.width, canvas.height) / 2 + 50;
+            // Reduced monster stats (One-hit defeat for regular monsters: HP 1)
+            const types = [
+                { name: '감염 토끼', radius: 16, speed: 2.0, hp: 1, atk: 2, color: '#ec4899', exp: 2 },
+                { name: '감염 늑대', radius: 20, speed: 2.3, hp: 1, atk: 3, color: '#8b5cf6', exp: 4 },
+                { name: '산성 독충', radius: 14, speed: 2.8, hp: 1, atk: 1, color: '#10b981', exp: 2 },
+                { name: '감염 곰', radius: 28, speed: 1.2, hp: 1, atk: 5, color: '#b45309', exp: 8 }
+            ];
+            const mType = types[Math.floor(Math.random() * types.length)];
+
+            monsters.push({
+                x: player.x + Math.cos(angle) * dist,
+                y: player.y + Math.sin(angle) * dist,
+                radius: mType.radius,
+                speed: mType.speed,
+                hp: mType.hp,
+                maxHp: mType.hp,
+                atk: mType.atk,
+                color: mType.color,
+                expValue: mType.exp,
+                isBoss: false
+            });
+        }
+
+        function spawnBoss(name, hp, speed, size, color) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 300;
+            bossMonster = {
+                name: name,
+                x: player.x + Math.cos(angle) * dist,
+                y: player.y + Math.sin(angle) * dist,
+                radius: size,
+                speed: speed,
+                hp: hp,
+                maxHp: hp,
+                atk: 8,
+                color: color,
+                expValue: 120,
+                isBoss: true
+            };
+            monsters.push(bossMonster);
+            updateIngameHUD();
+        }
+
+        function checkTimeEvents() {
+            // 5분 (300초) 보스
+            if (gameTime === 300 && !bossMonster) {
+                spawnBoss("거대 변종 늑대 왕 (5분 보스)", 800, 1.8, 44, '#a855f7');
+            }
+
+            // 10분 (600초) 이벤트 및 보스
+            if (gameTime === 600) {
+                if (saveData.currentStage === 7) {
+                    startDialogue([
+                        { speaker: "미친 과학자", title: "바이러스 개발자", text: "크크크... 여기까지 도달하다니 제법이구나 슬라임 왕자!", icon: "🧪" },
+                        { speaker: "슬라임 왕자", title: "왕국 구원자", text: "너의 미친 실험은 여기까지다! 왕국을 당장 원래대로 돌려놓아라!", icon: "👑" },
+                        { speaker: "미친 과학자", title: "최종 보스", text: "내 궁극의 변종 바이러스 신체를 맛보아라!", icon: "🧪" }
+                    ], () => {
+                        spawnBoss("미친 과학자 (최종 결전)", 2000, 2.0, 50, '#dc2626');
+                    });
+                } else if (!bossMonster) {
+                    spawnBoss("변종 곰 대장군 (10분 보스)", 1500, 1.6, 54, '#ea580c');
+                }
+            }
+        }
+
+        /* ==========================================================================
+           10. GAME OVER & VICTORY LOGIC
+           ========================================================================== */
+        function triggerGameOver(isVictory) {
+            gameState = 'GAMEOVER';
+            document.getElementById('ingame-ui').classList.add('hidden');
+            document.getElementById('modal-gameover').classList.remove('hidden');
+
+            const mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            const secs = Math.floor(gameTime % 60).toString().padStart(2, '0');
+            document.getElementById('gameover-time').innerText = `${mins}:${secs}`;
+            document.getElementById('gameover-kills').innerText = killCount;
+            document.getElementById('gameover-gold').innerText = `+${stageGoldEarned} Gold`;
+
+            if (isVictory) {
+                document.getElementById('gameover-icon').innerText = '🎉';
+                document.getElementById('gameover-title').innerText = '왕국의 평화 회복!';
+                document.getElementById('gameover-desc').innerText = '미친 과학자를 무찌르고 슬라임 왕국을 구했습니다! (제작자: 민태홍)';
+                if (saveData.currentStage === saveData.maxStageUnlocked && saveData.maxStageUnlocked < STAGES.length) {
+                    saveData.maxStageUnlocked++;
+                }
+            } else {
+                document.getElementById('gameover-icon').innerText = '💀';
+                document.getElementById('gameover-title').innerText = '패배하였습니다';
+                document.getElementById('gameover-desc').innerText = '바이러스 감염체들에게 압도당했습니다.';
+            }
+
+            saveData.gold += stageGoldEarned;
+            saveGame();
+        }
+
+        document.getElementById('btn-return-lobby').addEventListener('click', () => {
+            document.getElementById('modal-gameover').classList.add('hidden');
+            document.getElementById('screen-lobby').classList.remove('hidden');
+            gameState = 'LOBBY';
+            updateLobbyUI();
+        });
+
+        /* ==========================================================================
+           11. MAIN UPDATE & PARTICLE LOGIC
+           ========================================================================== */
+        function createParticle(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = Math.random() * 5 + 2;
+                particles.push({
+                    x: x, y: y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color: color,
+                    alpha: 1.0
+                });
+            }
+        }
+
+        function updateGame() {
+            gameFrame++;
+            if (gameFrame % 60 === 0) {
+                gameTime++;
+                updateIngameHUD();
+                checkTimeEvents();
+            }
+
+            if (screenFlash > 0) screenFlash--;
+            if (player.invincibleTimer > 0) player.invincibleTimer--;
+
+            // Fast Natural Health Recovery over time
+            const regenAmount = 1.0 + (saveData.upgrades.regen * 1.5);
+            if (gameFrame % 60 === 0 && player.hp < player.maxHp) {
+                player.hp = Math.min(player.maxHp, player.hp + regenAmount);
+                addDamageText(player.x, player.y - player.radius, `+${Math.round(regenAmount)} HP`, '#34d399');
+                updateIngameHUD();
+            }
+
+            let moveX = 0, moveY = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) moveY -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveY += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+            if (joystickActive) {
+                moveX = joystickVector.x;
+                moveY = joystickVector.y;
+            }
+
+            if (moveX !== 0 || moveY !== 0) {
+                const len = Math.sqrt(moveX * moveX + moveY * moveY);
+                if (len > 0) {
+                    const passSpeedLvl = player.skills['pass_speed'] || 0;
+                    const spd = player.speed * (1 + passSpeedLvl * 0.15);
+                    player.x += (moveX / len) * spd;
+                    player.y += (moveY / len) * spd;
+                    if (moveX !== 0) player.facing = moveX > 0 ? 1 : -1;
+                }
+            }
+
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
+
+            // Monster Spawn Rate & Max Cap (Slightly increased to 55 max for better intensity)
+            if (gameFrame % 25 === 0 && monsters.length < 55) {
+                spawnMonster();
+            }
+
+            if (gameFrame % 1000 === 0 && boxes.length < 4) {
+                spawnBox();
+            }
+
+            handleSkillsExecution();
+
+            // Check Boss Defeat Condition
+            if (bossMonster && bossMonster.hp <= 0) {
+                if (saveData.currentStage === 7 && gameTime >= 600) {
+                    triggerGameOver(true); // Final Game Clear
+                }
+            }
+
+            // Monsters Update
+            monsters.forEach((m) => {
+                const angle = Math.atan2(player.y - m.y, player.x - m.x);
+                m.x += Math.cos(angle) * m.speed;
+                m.y += Math.sin(angle) * m.speed;
+
+                const dist = Math.hypot(player.x - m.x, player.y - m.y);
+                // Guaranteed hit handling: Monster attack hit when touching player & not invincible
+                if (dist < player.radius + m.radius && player.invincibleTimer <= 0) {
+                    const damageTaken = m.atk;
+                    player.hp -= damageTaken;
+                    player.invincibleTimer = 35; // Invincibility window
+                    
+                    player.x += Math.cos(angle) * 14;
+                    player.y += Math.sin(angle) * 14;
+
+                    addDamageText(player.x, player.y - player.radius, `-${damageTaken}`, '#ef4444');
+                    createParticle(player.x, player.y, '#ef4444', 8);
+                    updateIngameHUD();
+
+                    if (player.hp <= 0) triggerGameOver(false);
+                }
+            });
+
+            // Projectiles Update - Guaranteed direct hit registration & instant kill for regular monsters
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+
+                for (let b = boxes.length - 1; b >= 0; b--) {
+                    const box = boxes[b];
+                    if (Math.hypot(p.x - box.x, p.y - box.y) < p.radius + box.radius + 5) {
+                        box.hp = 0;
+                        addDamageText(box.x, box.y - 10, `파괴!`, '#fbbf24');
+                        createParticle(box.x, box.y, '#f59e0b', 12);
+                        if (!p.pierce) projectiles.splice(i, 1);
+                        destroyBox(b);
+                        break;
+                    }
+                }
+
+                if (!projectiles[i]) continue;
+
+                for (let j = monsters.length - 1; j >= 0; j--) {
+                    const m = monsters[j];
+                    if (Math.hypot(p.x - m.x, p.y - m.y) < p.radius + m.radius + 6) {
+                        m.hp -= p.damage;
+                        addDamageText(m.x, m.y - m.radius, `ONE SHOT!`, p.color || '#38bdf8');
+                        createParticle(m.x, m.y, p.color || '#38bdf8', 12);
+                        if (!p.pierce) projectiles.splice(i, 1);
+                        if (m.hp <= 0) killMonster(j);
+                        break;
+                    }
+                }
+
+                if (projectiles[i] && p.life <= 0) projectiles.splice(i, 1);
+            }
+
+            // Puddles Update
+            for (let i = puddles.length - 1; i >= 0; i--) {
+                const pud = puddles[i];
+                pud.life--;
+                if (gameFrame % 10 === 0) {
+                    for (let j = monsters.length - 1; j >= 0; j--) {
+                        const m = monsters[j];
+                        if (Math.hypot(pud.x - m.x, pud.y - m.y) < pud.radius + 10) {
+                            m.hp -= pud.damage;
+                            addDamageText(m.x, m.y - m.radius, `K.O!`, '#10b981');
+                            createParticle(m.x, m.y, '#10b981', 8);
+                            if (m.hp <= 0) killMonster(j);
+                        }
+                    }
+                }
+                if (pud.life <= 0) puddles.splice(i, 1);
+            }
+
+            // EXP Gems Update
+            const magnetMult = 1 + (saveData.upgrades.magnet * 0.2);
+            const pullDist = 110 * magnetMult;
+
+            for (let i = expGems.length - 1; i >= 0; i--) {
+                const gem = expGems[i];
+                const d = Math.hypot(player.x - gem.x, player.y - gem.y);
+                if (d < pullDist) {
+                    gem.x += (player.x - gem.x) * 0.18;
+                    gem.y += (player.y - gem.y) * 0.18;
+                }
+                if (d < player.radius + 12) {
+                    player.exp += gem.value;
+                    stageGoldEarned += gem.gold || 1;
+                    expGems.splice(i, 1);
+
+                    if (player.exp >= player.nextExp) {
+                        player.exp -= player.nextExp;
+                        player.level++;
+                        player.nextExp = Math.floor(player.nextExp * 1.35);
+                        triggerLevelUp();
+                        updateIngameHUD();
+                        break; // Stop loop after leveling up once to handle skill upgrade modal first
+                    }
+                    updateIngameHUD();
+                }
+            }
+
+            // Field Items Drop Update
+            for (let i = drops.length - 1; i >= 0; i--) {
+                const drop = drops[i];
+                const d = Math.hypot(player.x - drop.x, player.y - drop.y);
+                if (d < player.radius + drop.radius) {
+                    if (drop.type === 'heal') {
+                        const healAmt = Math.round(player.maxHp * 0.5);
+                        player.hp = Math.min(player.maxHp, player.hp + healAmt);
+                        addDamageText(player.x, player.y - player.radius, `+${healAmt} HP`, '#10b981');
+                        createParticle(player.x, player.y, '#10b981', 25);
+                        updateIngameHUD();
+                    } else if (drop.type === 'bomb') {
+                        screenFlash = 15;
+                        for (let j = monsters.length - 1; j >= 0; j--) {
+                            killMonster(j);
+                        }
+                        createParticle(player.x, player.y, '#ef4444', 45);
+                    } else if (drop.type === 'magnet') {
+                        expGems.forEach(gem => { gem.x = player.x; gem.y = player.y; });
+                    }
+                    drops.splice(i, 1);
+                }
+            }
+
+            // Damage Floating Texts Update
+            for (let i = damageTexts.length - 1; i >= 0; i--) {
+                const dt = damageTexts[i];
+                dt.y += dt.vy;
+                dt.alpha -= 0.02;
+                if (dt.alpha <= 0) damageTexts.splice(i, 1);
+            }
+
+            // Particles Update
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.alpha -= 0.025;
+                if (pt.alpha <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function spawnBox() {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = 180 + Math.random() * 220;
+            boxes.push({
+                x: player.x + Math.cos(ang) * dist,
+                y: player.y + Math.sin(ang) * dist,
+                radius: 20, hp: 1, maxHp: 1
+            });
+        }
+
+        function destroyBox(index) {
+            const box = boxes[index];
+            boxes.splice(index, 1);
+            const dropTypes = ['heal', 'bomb', 'magnet'];
+            const chosen = dropTypes[Math.floor(Math.random() * dropTypes.length)];
+            drops.push({ x: box.x, y: box.y, type: chosen, radius: 15 });
+            createParticle(box.x, box.y, '#fbbf24', 20);
+        }
+
+        function killMonster(index) {
+            const m = monsters[index];
+            if (!m) return;
+            killCount++;
+            expGems.push({ x: m.x, y: m.y, value: m.expValue || 2, gold: m.isBoss ? 50 : 2 });
+            createParticle(m.x, m.y, m.color || '#f59e0b', 16);
+
+            if (m.isBoss) {
+                bossMonster = null;
+                updateIngameHUD();
+            }
+            monsters.splice(index, 1);
+            updateIngameHUD();
+        }
+
+        /* ==========================================================================
+           12. RENDERING ENGINE (ULTRA HIGH GRAPHICS ENHANCED)
+           ========================================================================== */
+        function renderGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (screenFlash > 0) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${screenFlash / 10})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // High Quality Grid Background Pattern with Ambient Vignette
+            ctx.strokeStyle = 'rgba(51, 65, 85, 0.4)';
+            ctx.lineWidth = 1.5;
+            const gridSize = 60;
+            const offsetX = -camera.x % gridSize;
+            const offsetY = -camera.y % gridSize;
+
+            for (let x = offsetX; x < canvas.width; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = offsetY; y < canvas.height; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+
+            if (gameState !== 'PLAYING' && gameState !== 'LEVELUP' && gameState !== 'DIALOGUE') return;
+
+            // Render Puddles (Enhanced Shader-like Radial Glow)
+            puddles.forEach(pud => {
+                const rx = pud.x - camera.x;
+                const ry = pud.y - camera.y;
+                const grad = ctx.createRadialGradient(rx, ry, 5, rx, ry, pud.radius);
+                grad.addColorStop(0, 'rgba(16, 185, 129, 0.7)');
+                grad.addColorStop(0.7, 'rgba(16, 185, 129, 0.3)');
+                grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(rx, ry, pud.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Render Boxes (Wooden Metallic Texture Glow)
+            boxes.forEach(box => {
+                const rx = box.x - camera.x;
+                const ry = box.y - camera.y;
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = '#b45309';
+                ctx.beginPath();
+                ctx.roundRect(rx - 18, ry - 16, 36, 32, 8);
+                ctx.fill();
+                ctx.strokeStyle = '#fef08a';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                // Box Lock Details
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(rx - 5, ry - 5, 10, 10);
+                ctx.shadowBlur = 0;
+            });
+
+            // Render Field Drops
+            drops.forEach(drop => {
+                const rx = drop.x - camera.x;
+                const ry = drop.y - camera.y;
+                const floatOffset = Math.sin(gameFrame * 0.12) * 4;
+                ctx.shadowBlur = 18;
+                if (drop.type === 'heal') {
+                    ctx.shadowColor = '#10b981'; ctx.fillStyle = '#34d399';
+                    ctx.beginPath(); ctx.arc(rx, ry + floatOffset, 15, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('💚', rx - 7, ry + floatOffset + 5);
+                } else if (drop.type === 'bomb') {
+                    ctx.shadowColor = '#ef4444'; ctx.fillStyle = '#f87171';
+                    ctx.beginPath(); ctx.arc(rx, ry + floatOffset, 15, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('💣', rx - 7, ry + floatOffset + 5);
+                } else if (drop.type === 'magnet') {
+                    ctx.shadowColor = '#3b82f6'; ctx.fillStyle = '#60a5fa';
+                    ctx.beginPath(); ctx.arc(rx, ry + floatOffset, 15, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('🧲', rx - 7, ry + floatOffset + 5);
+                }
+                ctx.shadowBlur = 0;
+            });
+
+            // Render EXP Gems (Glowing Jewels)
+            expGems.forEach(gem => {
+                const rx = gem.x - camera.x;
+                const ry = gem.y - camera.y;
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 12;
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath(); ctx.arc(rx, ry, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Render Monsters (High Quality Visual Gradient & Eye Glow)
+            monsters.forEach(m => {
+                const rx = m.x - camera.x;
+                const ry = m.y - camera.y;
+                ctx.shadowColor = m.color;
+                ctx.shadowBlur = m.isBoss ? 24 : 14;
+
+                // Gradient body
+                const mGrad = ctx.createRadialGradient(rx - 3, ry - 3, 2, rx, ry, m.radius);
+                mGrad.addColorStop(0, '#ffffff');
+                mGrad.addColorStop(0.3, m.color);
+                mGrad.addColorStop(1, '#020617');
+                ctx.fillStyle = mGrad;
+                ctx.beginPath(); ctx.arc(rx, ry, m.radius, 0, Math.PI * 2); ctx.fill();
+
+                // Glowing Crimson Eyes
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(rx - m.radius * 0.35, ry - m.radius * 0.2, m.radius * 0.28, 0, Math.PI * 2);
+                ctx.arc(rx + m.radius * 0.35, ry - m.radius * 0.2, m.radius * 0.28, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(rx - m.radius * 0.35, ry - m.radius * 0.2, m.radius * 0.14, 0, Math.PI * 2);
+                ctx.arc(rx + m.radius * 0.35, ry - m.radius * 0.2, m.radius * 0.14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Render Projectiles
+            projectiles.forEach(p => {
+                const rx = p.x - camera.x;
+                const ry = p.y - camera.y;
+                ctx.shadowColor = p.color || '#38bdf8';
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = p.color || '#38bdf8';
+                ctx.beginPath(); ctx.arc(rx, ry, p.radius, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Render Orbiting Shield
+            if (player.skills['jelly_shield']) {
+                const lvl = player.skills['jelly_shield'];
+                const orbitCount = 2 + lvl;
+                const dist = 75;
+                for (let i = 0; i < orbitCount; i++) {
+                    const ang = (gameFrame * 0.06) + (i * Math.PI * 2 / orbitCount);
+                    const ox = player.x + Math.cos(ang) * dist - camera.x;
+                    const oy = player.y + Math.sin(ang) * dist - camera.y;
+                    ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 16; ctx.fillStyle = '#60a5fa';
+                    ctx.beginPath(); ctx.arc(ox, oy, 12, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+            }
+
+            // Render Player (Slime Prince) & Overhead HP Bar
+            const px = player.x - camera.x;
+            const py = player.y - camera.y;
+
+            // Player Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.beginPath(); ctx.ellipse(px, py + player.radius * 0.85, player.radius * 0.95, 7, 0, 0, Math.PI * 2); ctx.fill();
+
+            // Slime Squish Animation
+            const squish = Math.sin(gameFrame * 0.18) * 3.0;
+            const radiusX = player.radius + squish;
+            const radiusY = player.radius - squish;
+
+            // Invincible hit blink effect
+            if (player.invincibleTimer % 4 < 2) {
+                ctx.shadowColor = '#34d399'; ctx.shadowBlur = 22;
+                const slimeGrad = ctx.createRadialGradient(px - 5, py - 5, 2, px, py, radiusX);
+                slimeGrad.addColorStop(0, '#ecfdf5');
+                slimeGrad.addColorStop(0.4, '#10b981');
+                slimeGrad.addColorStop(1, '#047857');
+                ctx.fillStyle = slimeGrad;
+                ctx.beginPath(); ctx.ellipse(px, py, radiusX, radiusY, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Crown
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.moveTo(px - 11, py - radiusY + 2);
+                ctx.lineTo(px - 14, py - radiusY - 14);
+                ctx.lineTo(px - 5, py - radiusY - 6);
+                ctx.lineTo(px, py - radiusY - 16);
+                ctx.lineTo(px + 5, py - radiusY - 6);
+                ctx.lineTo(px + 14, py - radiusY - 14);
+                ctx.lineTo(px + 11, py - radiusY + 2);
+                ctx.closePath(); ctx.fill();
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.arc(px, py - radiusY - 7, 3, 0, Math.PI * 2); ctx.fill();
+
+                // Eyes
+                const eyeOffset = player.facing * 4;
+                ctx.fillStyle = '#0f172a';
+                ctx.beginPath();
+                ctx.arc(px - 6 + eyeOffset, py - 2, 4, 0, Math.PI * 2);
+                ctx.arc(px + 6 + eyeOffset, py - 2, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(px - 7 + eyeOffset, py - 3, 1.5, 0, Math.PI * 2);
+                ctx.arc(px + 5 + eyeOffset, py - 3, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Overhead Dynamic HP Bar
+            const hpBarW = 54;
+            const hpBarH = 8;
+            const hpBarX = px - hpBarW / 2;
+            const hpBarY = py - radiusY - 26;
+            const hpPct = Math.max(0, Math.min(1, player.hp / player.maxHp));
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(hpBarX - 2, hpBarY - 2, hpBarW + 4, hpBarH + 4);
+
+            ctx.fillStyle = hpPct > 0.4 ? '#10b981' : '#ef4444';
+            ctx.fillRect(hpBarX, hpBarY, hpBarW * hpPct, hpBarH);
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(hpBarX - 2, hpBarY - 2, hpBarW + 4, hpBarH + 4);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 9px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.ceil(player.hp)} / ${Math.ceil(player.maxHp)}`, px, hpBarY - 4);
+            ctx.textAlign = 'start';
+
+            // Damage Floating Texts Render
+            damageTexts.forEach(dt => {
+                const rx = dt.x - camera.x;
+                const ry = dt.y - camera.y;
+                ctx.fillStyle = dt.color;
+                ctx.globalAlpha = Math.max(0, dt.alpha);
+                ctx.font = 'black 15px font-jua, sans-serif';
+                ctx.fillText(dt.text, rx - 10, ry);
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Particles Render
+            particles.forEach(pt => {
+                const rx = pt.x - camera.x;
+                const ry = pt.y - camera.y;
+                ctx.fillStyle = pt.color;
+                ctx.globalAlpha = Math.max(0, pt.alpha);
+                ctx.beginPath(); ctx.arc(rx, ry, 3.8, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') updateGame();
+            renderGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = () => {
+            if (saveData.storyCompleted) {
+                document.getElementById('screen-story').classList.add('hidden');
+                document.getElementById('screen-lobby').classList.remove('hidden');
+                gameState = 'LOBBY';
+                updateLobbyUI();
+            } else {
+                renderStoryPage();
+            }
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>혈귀 토벌전 - Demon Slayer 1st Person Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 20;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        #crosshair::before { top: 4px; left: -8px; width: 26px; height: 2px; }
+        #crosshair::after { top: -8px; left: 4px; width: 2px; height: 26px; }
+
+        .blood-overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, transparent 40%, rgba(180, 0, 0, 0.6) 90%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            z-index: 15;
+        }
+        .slash-effect {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 16;
+            opacity: 0;
+            transition: opacity 0.15s ease-out;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen">
+
+    <!-- Canvas -->
+    <div id="game-container" class="w-full h-full"></div>
+
+    <!-- UI Overlay -->
+    <div id="crosshair"></div>
+    <div id="blood-overlay" class="blood-overlay"></div>
+    <div id="slash-overlay" class="slash-effect"></div>
+
+    <!-- HUD Screen -->
+    <div id="hud" class="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between z-10">
+        <!-- Top Stats -->
+        <div class="flex justify-between items-start">
+            <div class="bg-black/75 border border-red-900/60 p-4 rounded-xl text-white backdrop-blur-md min-w-[240px]">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs uppercase tracking-widest text-red-400 font-bold">플레이어 상태</span>
+                    <span id="hp-text" class="text-sm font-bold text-red-500">생명력: 5 / 5</span>
+                </div>
+                <!-- Health Bar -->
+                <div class="w-full bg-gray-900 rounded-full h-3 border border-gray-700 overflow-hidden mb-2">
+                    <div id="hp-bar" class="bg-gradient-to-r from-red-600 to-rose-500 h-full w-full transition-all duration-300"></div>
+                </div>
+                <!-- Active Buff status -->
+                <div id="buff-status" class="text-xs font-semibold text-yellow-400 hidden flex items-center gap-1">
+                    <i class="fa-solid fa-fire"></i> <span id="buff-timer">혁도 상태 (30s)</span>
+                </div>
+            </div>
+
+            <!-- Upper Moon Progress & Spawner info -->
+            <div class="bg-black/75 border border-amber-900/60 p-4 rounded-xl text-white backdrop-blur-md text-right min-w-[220px]">
+                <div class="text-xs text-amber-400 font-bold uppercase tracking-wider mb-1">상현 토벌 진행도</div>
+                <div class="text-2xl font-black text-amber-500" id="upper-moon-count">0 / 12 마리</div>
+                <div id="upper-timer" class="text-xs text-gray-300 mt-1">다음 상현 출현: <span id="um-time">03:00</span></div>
+            </div>
+        </div>
+
+        <!-- Final Boss Muzan Health Bar (Hidden initially) -->
+        <div id="muzan-boss-ui" class="hidden w-full max-w-2xl mx-auto bg-black/85 border-2 border-red-700 p-4 rounded-2xl backdrop-blur-lg shadow-2xl shadow-red-900/50">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-red-500 font-black text-lg tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-skull"></i> 최종보스 : 귀살의 숙적 - 키부츠지 무잔
+                </span>
+                <span id="muzan-hp-text" class="text-red-400 font-bold text-sm">HP: 100%</span>
+            </div>
+            <div class="w-full bg-gray-950 rounded-full h-5 border border-red-900 overflow-hidden p-0.5">
+                <div id="muzan-hp-bar" class="bg-gradient-to-r from-red-800 via-red-600 to-rose-500 h-full w-full rounded-full transition-all duration-200"></div>
+            </div>
+        </div>
+
+        <!-- Breathing Skills Toolbar -->
+        <div id="breathing-hud" class="flex flex-col items-center gap-3">
+            <div id="boss-banner" class="hidden text-3xl font-black text-amber-400 tracking-widest drop-shadow-[0_4px_10px_rgba(255,0,0,0.8)] animate-pulse">
+                ❖ 귀멸의 칼날: 무잔과의 최종전투 ❖
+            </div>
+
+            <!-- Skill Slots -->
+            <div id="skill-slots" class="hidden flex gap-2 sm:gap-3 bg-black/80 p-3 rounded-2xl border border-gray-800 backdrop-blur-md">
+                <!-- Skills populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Modal Screen -->
+    <div id="modal-screen" class="absolute inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-30">
+        <div class="max-w-xl w-full bg-neutral-900 border border-neutral-700 p-8 rounded-2xl text-center shadow-2xl text-white">
+            <h1 class="text-4xl font-extrabold text-red-500 mb-2 tracking-wide">귀살대 혈귀 토벌전</h1>
+            <p class="text-gray-400 text-sm mb-6">1인칭 검술 액션 3D 웹게임</p>
+
+            <div class="bg-neutral-950 p-4 rounded-xl border border-neutral-800 text-left text-xs text-gray-300 space-y-2 mb-6">
+                <p class="font-bold text-amber-400 text-sm border-b border-neutral-800 pb-1 mb-2">조작법 & 게임 규칙</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><span class="text-red-400 font-semibold">W, A, S, D</span> : 이동</div>
+                    <div><span class="text-red-400 font-semibold">마우스 클릭</span> : 일격 참격</div>
+                    <div><span class="text-red-400 font-semibold">Space / C</span> : 점프 / 슬라이딩</div>
+                    <div><span class="text-red-400 font-semibold">숫자키 1 ~ 5</span> : 호흡 기술 사용</div>
+                </div>
+                <hr class="border-neutral-800 my-2">
+                <p>• <strong>혈귀 피격 제한:</strong> 일반(5회) | 중반(3회) | 상현(2회)</p>
+                <p>• <strong>혁도/붕대 아이템:</strong> 필드에서 획득 시 30초간 강화 공격 / 체력 2 회복</p>
+                <p>• <strong>상현 12마리 격퇴 시:</strong> 무한성 전장 이동 및 무잔과의 최종 결전 개막!</p>
+            </div>
+
+            <button id="start-btn" class="w-full py-4 bg-red-700 hover:bg-red-600 text-white font-bold rounded-xl text-lg transition duration-200 shadow-lg shadow-red-900/50">
+                전장 입진 (게임 시작)
+            </button>
+        </div>
+    </div>
+
+    <!-- Breathing Selection Modal -->
+    <div id="breathing-modal" class="hidden absolute inset-0 bg-black/90 backdrop-blur-lg flex items-center justify-center z-40">
+        <div class="max-w-3xl w-full bg-neutral-900 border-2 border-amber-600/60 p-8 rounded-3xl text-center shadow-2xl text-white">
+            <h2 class="text-3xl font-black text-amber-400 mb-2">전설의 호흡 선택</h2>
+            <p class="text-gray-400 text-sm mb-8">무잔과의 최종 결전에 사용할 전집중 호흡을 선택하십시오.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Flame -->
+                <button onclick="selectBreathing('flame')" class="bg-gradient-to-b from-orange-950/80 to-red-950/80 hover:from-orange-800 hover:to-red-800 border border-orange-500/50 p-6 rounded-2xl flex flex-col items-center gap-3 transition-all transform hover:scale-105">
+                    <i class="fa-solid fa-fire-flame-curved text-4xl text-orange-500"></i>
+                    <span class="text-xl font-bold text-orange-400">불의 호흡</span>
+                    <span class="text-xs text-gray-300">강력한 화염 파괴력과 가공할 일격</span>
+                </button>
+
+                <!-- Water -->
+                <button onclick="selectBreathing('water')" class="bg-gradient-to-b from-blue-950/80 to-cyan-950/80 hover:from-blue-800 hover:to-cyan-800 border border-blue-500/50 p-6 rounded-2xl flex flex-col items-center gap-3 transition-all transform hover:scale-105">
+                    <i class="fa-solid fa-water text-4xl text-cyan-400"></i>
+                    <span class="text-xl font-bold text-cyan-300">물의 호흡</span>
+                    <span class="text-xs text-gray-300">유연하고 끊임없는 유수 같은 참격</span>
+                </button>
+
+                <!-- Thunder -->
+                <button onclick="selectBreathing('thunder')" class="bg-gradient-to-b from-yellow-950/80 to-amber-950/80 hover:from-yellow-800 hover:to-amber-800 border border-yellow-500/50 p-6 rounded-2xl flex flex-col items-center gap-3 transition-all transform hover:scale-105">
+                    <i class="fa-solid fa-bolt text-4xl text-yellow-400"></i>
+                    <span class="text-xl font-bold text-yellow-300">번개의 호흡</span>
+                    <span class="text-xs text-gray-300">신속경첩의 초고속 일섬과 뇌전</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Logic -->
+    <script>
+        // --- GAME CONFIG & STATE ---
+        const STATE = {
+            hp: 5,
+            maxHp: 5,
+            hasRedBlade: false,
+            redBladeTimer: 0,
+            upperMoonsKilled: 0,
+            upperMoonTimer: 180, // 3 minutes
+            demonSpawnTimer: 5,  // 5 seconds
+            isBossStage: false,
+            currentBreathing: null, // 'flame', 'water', 'thunder'
+            cooldowns: [0, 0, 0, 0, 0],
+            muzanHp: 500,
+            muzanMaxHp: 500,
+            gameActive: false
+        };
+
+        const BREATHING_DATA = {
+            flame: {
+                name: '불의 호흡 (炎の呼吸)',
+                skills: [
+                    { key: '1', name: '1형 부지화', icon: 'fa-fire', kanji: '不知火' },
+                    { key: '2', name: '2형 상승염천', icon: 'fa-arrow-up-from-ground-water', kanji: '昇り炎天' },
+                    { key: '3', name: '3형 기염만상', icon: 'fa-volcano', kanji: '氣炎萬象' },
+                    { key: '4', name: '4형 성염의 파도', icon: 'fa-shield-halved', kanji: '盛炎のうねり' },
+                    { key: '5', name: '5형 염호', icon: 'fa-paw', kanji: '炎虎' }
+                ]
+            },
+            water: {
+                name: '물의 호흡 (水の呼吸)',
+                skills: [
+                    { key: '1', name: '1형 수면베기', icon: 'fa-water', kanji: '水面斬り' },
+                    { key: '2', name: '2형 물방아', icon: 'fa-rotate', kanji: '水車' },
+                    { key: '3', name: '3형 유유춤', icon: 'fa-wind', kanji: '流々舞い' },
+                    { key: '4', name: '4형 들이친 파도', icon: 'fa-waves', kanji: '打ち潮' },
+                    { key: '5', name: '5형 가뭄의 단비', icon: 'fa-cloud-showers-heavy', kanji: '干天の慈雨' }
+                ]
+            },
+            thunder: {
+                name: '번개의 호흡 (雷の呼吸)',
+                skills: [
+                    { key: '1', name: '1형 벽력일섬', icon: 'fa-bolt-lightning', kanji: '霹靂一閃' },
+                    { key: '7', name: '7형 화뢰신', icon: 'fa-dragon', kanji: '火雷神' }
+                ]
+            }
+        };
+
+        // THREE JS VARIABLES
+        let scene, camera, renderer, controls;
+        let playerBlade, bladeMaterial;
+        let demons = [];
+        let items = [];
+        let particles = [];
+        let arenaObjects = [];
+        let clock = new THREE.Clock();
+
+        // Controls input
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        let canJump = true;
+        let isSliding = false;
+        let slideTimer = 0;
+
+        // Attack Animation logic
+        let isAttacking = false;
+        let attackTime = 0;
+
+        // Sound Synthesis (Tone-like web audio synth)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            if (type === 'slash') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'heal') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'skill') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.4);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+        }
+
+        // --- INIT THREE.JS SCENE ---
+        function init() {
+            const container = document.getElementById('game-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x121015);
+            scene.fog = new THREE.FogExp2(0x121015, 0.012);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            // Lighting (High visibility ambient & directional)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffeedd, 1.5);
+            dirLight.position.set(20, 40, 20);
+            scene.add(dirLight);
+
+            const pointLight = new THREE.PointLight(0xff7744, 1.0, 50);
+            pointLight.position.set(0, 10, 0);
+            scene.add(pointLight);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.PointerLockControls(camera, document.body);
+
+            // Create Initial Environment (Dark Forest Arena)
+            createForestArena();
+
+            // Create Realistic Blade in FPS View
+            createPlayerBlade();
+
+            // Event Listeners
+            document.getElementById('start-btn').addEventListener('click', () => {
+                controls.lock();
+            });
+
+            controls.addEventListener('lock', () => {
+                document.getElementById('modal-screen').classList.add('hidden');
+                STATE.gameActive = true;
+            });
+
+            controls.addEventListener('unlock', () => {
+                if (STATE.hp > 0 && !STATE.isBossStage) {
+                    document.getElementById('modal-screen').classList.remove('hidden');
+                    STATE.gameActive = false;
+                }
+            });
+
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousedown', (e) => {
+                if (e.button === 0 && STATE.gameActive) performSlash();
+            });
+
+            // Start Main Game Loop
+            animate();
+        }
+
+        // --- ARENA CREATION ---
+        function createForestArena() {
+            // Remove previous objects
+            arenaObjects.forEach(obj => scene.remove(obj));
+            arenaObjects = [];
+
+            // Ground plane
+            const groundGeo = new THREE.PlaneGeometry(160, 160);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1f241a, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+            arenaObjects.push(ground);
+
+            // Trees and rocks around boundary
+            const treeGeo = new THREE.CylinderGeometry(0.5, 0.8, 12, 8);
+            const treeMat = new THREE.MeshStandardMaterial({ color: 0x2d1e18 });
+            const leafGeo = new THREE.ConeGeometry(3, 8, 8);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x0f2e1b });
+
+            for (let i = 0; i < 60; i++) {
+                const angle = (i / 60) * Math.PI * 2;
+                const dist = 65 + Math.random() * 10;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+
+                const trunk = new THREE.Mesh(treeGeo, treeMat);
+                trunk.position.set(x, 6, z);
+
+                const leaves = new THREE.Mesh(leafGeo, leafMat);
+                leaves.position.set(x, 12, z);
+
+                scene.add(trunk);
+                scene.add(leaves);
+                arenaObjects.push(trunk, leaves);
+            }
+        }
+
+        function createInfinityCastleArena() {
+            // Clear current forest
+            arenaObjects.forEach(obj => scene.remove(obj));
+            arenaObjects = [];
+
+            scene.background = new THREE.Color(0x1a0a0a);
+            scene.fog = new THREE.FogExp2(0x2a0d0d, 0.015);
+
+            // Infinity Castle Wooden Floor
+            const groundGeo = new THREE.PlaneGeometry(140, 140);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.4, metalness: 0.2 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+            arenaObjects.push(ground);
+
+            // Floating Tatami Room Platforms
+            const roomGeo = new THREE.BoxGeometry(16, 12, 16);
+            const roomMat = new THREE.MeshStandardMaterial({ color: 0x2b1810 });
+
+            for (let i = 0; i < 16; i++) {
+                const room = new THREE.Mesh(roomGeo, roomMat);
+                const angle = (i / 16) * Math.PI * 2;
+                const dist = 35 + (i % 3) * 10;
+                room.position.set(Math.cos(angle) * dist, 5 + (i % 4) * 4, Math.sin(angle) * dist);
+                room.rotation.y = Math.random() * Math.PI;
+                scene.add(room);
+                arenaObjects.push(room);
+            }
+        }
+
+        // --- PLAYER BLADE CREATION ---
+        function createPlayerBlade() {
+            const bladeGroup = new THREE.Group();
+
+            // Blade metal material
+            bladeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xe0e0e0,
+                metalness: 0.95,
+                roughness: 0.1,
+                emissive: 0x000000
+            });
+
+            // Curved Sharp Blade Body
+            const bladeGeo = new THREE.BoxGeometry(0.035, 1.35, 0.11);
+            const bladeMesh = new THREE.Mesh(bladeGeo, bladeMaterial);
+            bladeMesh.position.set(0, 0.65, 0);
+
+            // Sword Guard (Tsuba)
+            const guardGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.025, 16);
+            const guardMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, metalness: 0.8 });
+            const guard = new THREE.Mesh(guardGeo, guardMat);
+            guard.position.set(0, 0, 0);
+
+            // Handle (Tsuka)
+            const handleGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.38, 8);
+            const handleMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const handle = new THREE.Mesh(handleGeo, handleMat);
+            handle.position.set(0, -0.19, 0);
+
+            bladeGroup.add(bladeMesh);
+            bladeGroup.add(guard);
+            bladeGroup.add(handle);
+
+            // Attach to camera for First-Person perspective (Natural resting posture)
+            bladeGroup.position.set(0.38, -0.38, -0.55);
+            bladeGroup.rotation.set(0.15, -0.25, -0.15);
+            camera.add(bladeGroup);
+            scene.add(camera);
+
+            playerBlade = bladeGroup;
+        }
+
+        // --- ATTACK / SLASH MOTION (Top-to-Bottom Vertical & Arc Slash) ---
+        function performSlash() {
+            if (isAttacking) return;
+            isAttacking = true;
+            attackTime = 0;
+            playSound('slash');
+
+            // Trigger hit check
+            checkBladeHit();
+        }
+
+        function checkBladeHit() {
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+            const hitDistance = 4.5;
+
+            // Filter targets
+            demons.forEach((demon, index) => {
+                const dist = camera.position.distanceTo(demon.mesh.position);
+                if (dist <= hitDistance) {
+                    const dirToDemon = demon.mesh.position.clone().sub(camera.position).normalize();
+                    const camDir = camera.getWorldDirection(new THREE.Vector3());
+
+                    if (camDir.dot(dirToDemon) > 0.6) {
+                        // Calculate Damage
+                        let damage = 1;
+                        if (STATE.hasRedBlade) {
+                            // Red Blade Damage specs: Normal(1-hit kill), Mid(2-hit kill), Upper(3-hit kill)
+                            if (demon.type === 'normal') damage = 5;
+                            else if (demon.type === 'mid') damage = 1.5;
+                            else if (demon.type === 'upper') damage = 3.4;
+                            else if (demon.type === 'muzan') damage = 25;
+                        }
+
+                        demon.hp -= damage;
+                        playSound('hit');
+                        createBloodParticles(demon.mesh.position);
+
+                        // Knockback
+                        demon.mesh.position.add(camDir.multiplyScalar(0.8));
+
+                        if (demon.hp <= 0) {
+                            // Drop Item on death
+                            dropItem(demon.mesh.position.clone());
+
+                            if (demon.type === 'upper') {
+                                STATE.upperMoonsKilled++;
+                                document.getElementById('upper-moon-count').innerText = `${STATE.upperMoonsKilled} / 12 마리`;
+                                if (STATE.upperMoonsKilled >= 12 && !STATE.isBossStage) {
+                                    triggerMuzanBossBattle();
+                                }
+                            }
+
+                            if (demon.type === 'muzan') {
+                                STATE.muzanHp = 0;
+                                updateMuzanUI();
+                                alert('축하합니다! 키부츠지 무잔을 완전 토벌하였습니다!');
+                                location.reload();
+                                return;
+                            }
+
+                            scene.remove(demon.mesh);
+                            demons.splice(index, 1);
+                        } else if (demon.type === 'muzan') {
+                            STATE.muzanHp = Math.max(0, demon.hp);
+                            updateMuzanUI();
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- ITEM DROP SYSTEM ---
+        function dropItem(pos) {
+            const rand = Math.random();
+            const itemType = rand > 0.5 ? 'redBlade' : 'bandage';
+
+            const geo = itemType === 'redBlade' ? new THREE.OctahedronGeometry(0.4) : new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const mat = new THREE.MeshStandardMaterial({
+                color: itemType === 'redBlade' ? 0xff2200 : 0x00ff88,
+                emissive: itemType === 'redBlade' ? 0xaa1100 : 0x00aa44,
+                roughness: 0.3
+            });
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos);
+            mesh.position.y = 0.8;
+            scene.add(mesh);
+
+            items.push({ mesh, type: itemType });
+        }
+
+        // --- DEMON SPAWN SYSTEM ---
+        function spawnDemon(type = 'normal') {
+            const demonGroup = new THREE.Group();
+
+            // Color based on Demon Rank
+            let skinColor = 0x556655;
+            let eyeColor = 0xff0000;
+            let scale = 1.0;
+            let maxHp = 5; // Normal: dies in 5 normal sword hits
+
+            if (type === 'mid') {
+                skinColor = 0x443366;
+                scale = 1.3;
+                maxHp = 3; // Mid: dies in 3 normal sword hits
+            } else if (type === 'upper') {
+                // Progressive strength scaling for 12 Upper Moons
+                skinColor = 0x881122;
+                scale = 1.6 + (STATE.upperMoonsKilled * 0.05);
+                maxHp = 10; // Upper: dies in 10 normal sword hits
+            } else if (type === 'muzan') {
+                skinColor = 0x111111;
+                scale = 2.2;
+                maxHp = STATE.muzanMaxHp;
+            }
+
+            // Demon Head & Horns (Creepy design)
+            const headGeo = new THREE.SphereGeometry(0.7 * scale, 12, 12);
+            const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.2 * scale;
+            demonGroup.add(head);
+
+            // Glowing Eyes
+            const eyeGeo = new THREE.SphereGeometry(0.12 * scale, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.25 * scale, 2.3 * scale, 0.55 * scale);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.25 * scale, 2.3 * scale, 0.55 * scale);
+            demonGroup.add(leftEye, rightEye);
+
+            // Demon Body
+            const bodyGeo = new THREE.CylinderGeometry(0.6 * scale, 0.4 * scale, 2.0 * scale, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x111118 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.0 * scale;
+            demonGroup.add(body);
+
+            // Spawn Position randomly surrounding player
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 25 + Math.random() * 15;
+            demonGroup.position.x = camera.position.x + Math.cos(angle) * distance;
+            demonGroup.position.z = camera.position.z + Math.sin(angle) * distance;
+            demonGroup.position.y = 0;
+
+            scene.add(demonGroup);
+
+            demons.push({
+                mesh: demonGroup,
+                type: type,
+                hp: maxHp,
+                maxHp: maxHp,
+                attackTimer: 0,
+                speed: type === 'muzan' ? 6.5 : (3.5 + Math.random() * 1.5)
+            });
+        }
+
+        // --- BLOOD & FX ---
+        function createBloodParticles(pos) {
+            for (let i = 0; i < 12; i++) {
+                const pGeo = new THREE.SphereGeometry(0.08, 4, 4);
+                const pMat = new THREE.MeshBasicMaterial({ color: 0xcc0000 });
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(pos);
+                p.position.y += 1.0;
+
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 4,
+                    Math.random() * 4,
+                    (Math.random() - 0.5) * 4
+                );
+                scene.add(p);
+                particles.push({ mesh: p, vel, life: 0.4 });
+            }
+        }
+
+        // --- PLAYER DAMAGE & HEAL ---
+        function playerTakeDamage(type) {
+            // Hit limits: Normal = 5 hits to die, Mid = 3 hits, Upper = 2 hits
+            let dmg = 1; // 5 hits max (5 / 1)
+            if (type === 'mid') dmg = 1.67; // 3 hits max (5 / 1.67 = 3)
+            else if (type === 'upper' || type === 'muzan') dmg = 2.5; // 2 hits max (5 / 2.5 = 2)
+
+            STATE.hp = Math.max(0, STATE.hp - dmg);
+            updateHUD();
+
+            // Blood flash overlay
+            const bloodEl = document.getElementById('blood-overlay');
+            bloodEl.style.opacity = '1';
+            setTimeout(() => bloodEl.style.opacity = '0', 250);
+
+            if (STATE.hp <= 0) {
+                alert('혈귀에게 패배하였습니다... 다시 도전하십시오.');
+                location.reload();
+            }
+        }
+
+        function updateHUD() {
+            const hpBar = document.getElementById('hp-bar');
+            const hpText = document.getElementById('hp-text');
+            const percentage = (STATE.hp / STATE.maxHp) * 100;
+
+            hpBar.style.width = `${percentage}%`;
+            hpText.innerText = `생명력: ${Math.ceil(STATE.hp)} / ${STATE.maxHp}`;
+        }
+
+        function updateMuzanUI() {
+            const mBar = document.getElementById('muzan-hp-bar');
+            const mText = document.getElementById('muzan-hp-text');
+            const pct = Math.max(0, (STATE.muzanHp / STATE.muzanMaxHp) * 100);
+            mBar.style.width = `${pct}%`;
+            mText.innerText = `HP: ${Math.ceil(pct)}%`;
+        }
+
+        // --- FINAL BOSS TRANSITION ---
+        function triggerMuzanBossBattle() {
+            STATE.isBossStage = true;
+
+            // Clear existing demons
+            demons.forEach(d => scene.remove(d.mesh));
+            demons = [];
+
+            // Change map to Infinity Castle
+            createInfinityCastleArena();
+
+            // Show Breathing Modal
+            controls.unlock();
+            document.getElementById('breathing-modal').classList.remove('hidden');
+        }
+
+        function selectBreathing(type) {
+            STATE.currentBreathing = type;
+            document.getElementById('breathing-modal').classList.add('hidden');
+            controls.lock();
+
+            // Setup Boss Battle UI
+            document.getElementById('muzan-boss-ui').classList.remove('hidden');
+            document.getElementById('boss-banner').classList.remove('hidden');
+            document.getElementById('skill-slots').classList.remove('hidden');
+
+            setupSkillBar();
+
+            // Spawn Muzan
+            spawnDemon('muzan');
+        }
+
+        function setupSkillBar() {
+            const container = document.getElementById('skill-slots');
+            container.innerHTML = '';
+            const bData = BREATHING_DATA[STATE.currentBreathing];
+
+            bData.skills.forEach((skill, idx) => {
+                const slot = document.createElement('div');
+                slot.className = "relative flex flex-col items-center bg-gray-900/90 border border-amber-500/40 p-2 sm:p-3 rounded-xl w-16 sm:w-20 text-center";
+                slot.id = `skill-slot-${idx}`;
+                slot.innerHTML = `
+                    <span class="absolute -top-2 -left-2 bg-amber-500 text-black text-xs font-black px-1.5 py-0.5 rounded-full">${skill.key}</span>
+                    <i class="fa-solid ${skill.icon} text-amber-400 text-lg mb-1"></i>
+                    <span class="text-[10px] text-gray-200 font-bold leading-tight">${skill.name}</span>
+                    <span class="text-[9px] text-amber-300/80 font-serif">${skill.kanji}</span>
+                    <div id="cd-overlay-${idx}" class="cooldown-overlay rounded-xl hidden">0s</div>
+                `;
+                container.appendChild(slot);
+            });
+        }
+
+        // --- SKILL EXECUTION ---
+        function castBreathingSkill(index) {
+            if (!STATE.isBossStage || !STATE.currentBreathing) return;
+            const bData = BREATHING_DATA[STATE.currentBreathing];
+            if (index >= bData.skills.length) return;
+
+            if (STATE.cooldowns[index] > 0) return; // Cooldown active
+
+            // Trigger 10-second Cooldown
+            STATE.cooldowns[index] = 10;
+            playSound('skill');
+
+            const skillInfo = bData.skills[index];
+
+            // Thunder Breathing First Form: Fast Dash Strike
+            if (STATE.currentBreathing === 'thunder' && skillInfo.key === '1') {
+                const forward = camera.getWorldDirection(new THREE.Vector3());
+                camera.position.add(forward.multiplyScalar(15)); // Teleport forward quickly
+            }
+
+            // Heavy area slash towards Muzan/Enemies
+            demons.forEach(demon => {
+                const dist = camera.position.distanceTo(demon.mesh.position);
+                if (dist <= 12) {
+                    demon.hp -= 40; // High skill damage
+                    createBloodParticles(demon.mesh.position);
+                    if (demon.type === 'muzan') {
+                        STATE.muzanHp = Math.max(0, demon.hp);
+                        updateMuzanUI();
+                    }
+                }
+            });
+
+            // Slash visual overlay effect
+            const slashEl = document.getElementById('slash-overlay');
+            slashEl.style.background = STATE.currentBreathing === 'flame' ? 'radial-gradient(circle, rgba(255,100,0,0.5) 0%, transparent 80%)' :
+                                       STATE.currentBreathing === 'water' ? 'radial-gradient(circle, rgba(0,180,255,0.5) 0%, transparent 80%)' :
+                                       'radial-gradient(circle, rgba(255,230,0,0.6) 0%, transparent 80%)';
+            slashEl.style.opacity = '1';
+            setTimeout(() => slashEl.style.opacity = '0', 250);
+        }
+
+        // --- KEY INPUT HANDLING ---
+        function onKeyDown(e) {
+            switch (e.code) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'Space': if (canJump) velocity.y += 12; canJump = false; break;
+                case 'KeyC': isSliding = true; slideTimer = 0.4; break;
+                case 'Digit1': castBreathingSkill(0); break;
+                case 'Digit2': castBreathingSkill(1); break;
+                case 'Digit3': castBreathingSkill(2); break;
+                case 'Digit4': castBreathingSkill(3); break;
+                case 'Digit5': castBreathingSkill(4); break;
+            }
+        }
+
+        function onKeyUp(e) {
+            switch (e.code) {
+                case 'KeyW': moveForward = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyD': moveRight = false; break;
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            if (STATE.gameActive) {
+                // --- PLAYER MOVEMENT ---
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                const speed = isSliding ? 18.0 : 9.0;
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta * 10;
+                if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta * 10;
+
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= 30.0 * delta; // Gravity
+
+                controls.moveRight(-velocity.x * delta);
+                controls.moveForward(-velocity.z * delta);
+                camera.position.y += velocity.y * delta;
+
+                // Ground collision
+                const eyeHeight = isSliding ? 1.0 : 1.8;
+                if (camera.position.y < eyeHeight) {
+                    velocity.y = 0;
+                    camera.position.y = eyeHeight;
+                    canJump = true;
+                }
+
+                if (isSliding) {
+                    slideTimer -= delta;
+                    if (slideTimer <= 0) isSliding = false;
+                }
+
+                // --- TOP-TO-BOTTOM SLASH ANIMATION ---
+                if (isAttacking) {
+                    // 공격 속도 보정 (천천히 묵직하게 내려치도록 속도 감소)
+                    attackTime += delta * 4.0; 
+                    const t = Math.min(attackTime / Math.PI, 1.0);
+                    
+                    // 참격의 3단계 모션 (0~0.25: 우상단 뒤쪽 예비동작, 0.25~0.65: 우상단->좌하단 베기, 0.65~1.0: 제자리 복귀)
+                    let swing;
+                    if (t < 0.25) {
+                        // 우상단 뒤쪽으로 칼을 살짝 당기며 와인드업(예비 동작)
+                        const subT = t / 0.25;
+                        swing = -0.18 * Math.sin(subT * Math.PI * 0.5);
+                    } else if (t < 0.65) {
+                        // 우상단(오른쪽 위) 대각선에서 좌하단(왼쪽 아래)으로 거침없이 베어 내림
+                        const subT = (t - 0.25) / 0.4;
+                        swing = Math.sin(subT * Math.PI * 0.5) * 1.35;
+                    } else {
+                        // 자연스러운 제자리 대기 자세 복귀
+                        const subT = (t - 0.65) / 0.35;
+                        swing = 1.35 * (1.0 - Math.sin(subT * Math.PI * 0.5));
+                    }
+
+                    // 칼 회전 angle: 방향값 -2 적용
+                    playerBlade.rotation.x = 0.15 - swing * 2.0;
+                    playerBlade.rotation.y = -0.25 - swing * 2.0;
+                    playerBlade.rotation.z = -0.15 - swing * 2.0;
+
+                    // 칼 위치 movement: 방향값 -2 적용
+                    playerBlade.position.x = 0.38 - swing * 2.0;
+                    playerBlade.position.y = -0.38 - swing * 2.0;
+                    playerBlade.position.z = -0.55 - swing * 2.0;
+
+                    if (attackTime >= Math.PI) {
+                        isAttacking = false;
+                        playerBlade.rotation.set(0.15, -0.25, -0.15);
+                        playerBlade.position.set(0.38, -0.38, -0.55);
+                    }
+                }
+
+                // --- RED BLADE BUFF TIMER (30 Seconds) ---
+                if (STATE.hasRedBlade) {
+                    STATE.redBladeTimer -= delta;
+                    document.getElementById('buff-timer').innerText = `혁도 상태 (${Math.ceil(STATE.redBladeTimer)}s)`;
+                    if (STATE.redBladeTimer <= 0) {
+                        STATE.hasRedBlade = false;
+                        bladeMaterial.emissive.setHex(0x000000);
+                        document.getElementById('buff-status').classList.add('hidden');
+                    }
+                }
+
+                // --- DEMON SPAWN TIMERS ---
+                if (!STATE.isBossStage) {
+                    STATE.demonSpawnTimer -= delta;
+                    if (STATE.demonSpawnTimer <= 0) {
+                        spawnDemon(Math.random() > 0.6 ? 'mid' : 'normal');
+                        STATE.demonSpawnTimer = 5; // Spawn every 5 seconds
+                    }
+
+                    STATE.upperMoonTimer -= delta;
+                    const mins = Math.floor(STATE.upperMoonTimer / 60);
+                    const secs = Math.floor(STATE.upperMoonTimer % 60);
+                    document.getElementById('um-time').innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+                    if (STATE.upperMoonTimer <= 0) {
+                        spawnDemon('upper');
+                        STATE.upperMoonTimer = 180; // Upper moon every 3 minutes
+                    }
+                }
+
+                // --- DEMON AI & ATTACK LOGIC ---
+                demons.forEach(demon => {
+                    const dir = camera.position.clone().sub(demon.mesh.position);
+                    dir.y = 0;
+                    const dist = dir.length();
+                    dir.normalize();
+
+                    // Face Player
+                    demon.mesh.lookAt(camera.position.x, demon.mesh.position.y, camera.position.z);
+
+                    // Move towards Player
+                    if (dist > 2.0) {
+                        demon.mesh.position.add(dir.multiplyScalar(demon.speed * delta));
+                    } else {
+                        // Attack Player
+                        demon.attackTimer = (demon.attackTimer || 0) + delta;
+                        if (demon.attackTimer >= 1.2) {
+                            playerTakeDamage(demon.type);
+                            demon.attackTimer = 0;
+                        }
+                    }
+                });
+
+                // --- ITEM PICKUP LOGIC ---
+                items.forEach((item, index) => {
+                    item.mesh.rotation.y += delta * 2;
+                    if (camera.position.distanceTo(item.mesh.position) < 2.0) {
+                        if (item.type === 'redBlade') {
+                            STATE.hasRedBlade = true;
+                            STATE.redBladeTimer = 30; // Lasts 30 seconds
+                            bladeMaterial.emissive.setHex(0xff2200); // Red glow blade
+                            document.getElementById('buff-status').classList.remove('hidden');
+                            playSound('heal');
+                        } else { // Bandage
+                            STATE.hp = Math.min(STATE.maxHp, STATE.hp + 2);
+                            updateHUD();
+                            playSound('heal');
+                        }
+                        scene.remove(item.mesh);
+                        items.splice(index, 1);
+                    }
+                });
+
+                // --- SKILL COOLDOWNS TIMER ---
+                for (let i = 0; i < 5; i++) {
+                    if (STATE.cooldowns[i] > 0) {
+                        STATE.cooldowns[i] -= delta;
+                        const overlay = document.getElementById(`cd-overlay-${i}`);
+                        if (overlay) {
+                            if (STATE.cooldowns[i] > 0) {
+                                overlay.classList.remove('hidden');
+                                overlay.innerText = `${Math.ceil(STATE.cooldowns[i])}s`;
+                            } else {
+                                overlay.classList.add('hidden');
+                            }
+                        }
+                    }
+                }
+
+                // --- PARTICLE UPDATE ---
+                particles.forEach((p, index) => {
+                    p.life -= delta;
+                    p.mesh.position.addScaledVector(p.vel, delta);
+                    if (p.life <= 0) {
+                        scene.remove(p.mesh);
+                        particles.splice(index, 1);
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

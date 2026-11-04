@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Soccer Legends Ultimate 50KB</title>
+<style>
+body{margin:0;padding:0;background:#05070c;color:#fff;font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;user-select:none;}
+#gc{position:relative;width:1000px;height:580px;background:linear-gradient(135deg,#134e18 0%,#1b5e20 50%,#2e7d32 100%);border:6px solid #0f172a;border-radius:18px;box-shadow:0 25px 50px rgba(0,0,0,0.85);overflow:hidden;cursor:pointer;}
+canvas{display:block;}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+.hud{position:absolute;top:15px;left:50%;transform:translateX(-50%);font-size:30px;font-weight:900;letter-spacing:3px;text-shadow:3px 3px 0 rgba(0,0,0,0.9);background:rgba(0,0,0,0.4);padding:6px 30px;border-radius:35px;border:2px solid rgba(255,255,255,0.25);}
+#s-btn{position:absolute;top:15px;right:20px;background:linear-gradient(to bottom,#f59e0b,#d97706);border:2px solid #b45309;color:#fff;padding:10px 16px;cursor:pointer;font-size:18px;border-radius:10px;pointer-events:auto;box-shadow:0 5px 0 #b45309;}
+.modal{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(6,9,17,0.95);backdrop-filter:blur(8px);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:20;pointer-events:auto;}
+.hidden{display:none!important;}
+.m-box{background:linear-gradient(145deg,#1e293b,#0f172a);padding:35px;border:3px solid #38bdf8;border-radius:18px;text-align:center;min-width:420px;box-shadow:0 20px 40px rgba(0,0,0,0.9);}
+.m-box h2{margin-top:0;color:#38bdf8;font-size:28px;}
+.m-box button,.m-box select,.m-box input{margin:8px 0;padding:11px;font-size:15px;width:85%;background:#0f172a;color:#fff;border:2px solid #475569;border-radius:8px;cursor:pointer;outline:none;}
+.m-box button{background:linear-gradient(to bottom,#38bdf8,#0284c7);border-color:#0369a1;color:#0f172a;font-weight:800;box-shadow:0 4px 0 #0369a1;}
+.m-card{background:rgba(255,255,255,0.05);border:1px solid #475569;padding:10px;margin:6px 0;border-radius:8px;display:flex;justify-content:space-between;align-items:center;}
+#banner{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:900;color:#facc15;text-shadow:4px 4px 0 #000;pointer-events:none;text-align:center;width:100%;}
+#alert{position:absolute;top:22%;left:50%;transform:translateX(-50%);background:#f1c40f;color:#000;padding:6px 18px;font-weight:900;font-size:18px;border-radius:6px;border:2px solid #fff;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:15;}
+</style>
+</head>
+<body>
+<div id="gc">
+<canvas id="cv" width="1000" height="580"></canvas>
+<div id="ui">
+<div class="hud" id="sb">Player 0 : 0 AI</div>
+<button id="s-btn">⚙️</button>
+<div id="banner"></div>
+<div id="alert">FOUL!</div>
+</div>
+<div id="m-menu" class="modal">
+<div class="m-box">
+<h2>SOCCER LEGENDS 2.5D</h2>
+<p style="font-size:13px;color:#94a3b8;margin-bottom:10px;">Jump: 1P(SPACE) / 2P(U) | Shoot: 1P(V,B) / 2P(.,/)</p>
+<div style="background:rgba(0,0,0,0.3);padding:8px;border-radius:8px;margin-bottom:10px;font-size:14px;">
+💰 Wealth: <span id="w-txt" style="color:#22c55e;">$1,000</span> | 🌟 Fame: <span id="f-txt" style="color:#facc15;">100</span>
+</div>
+<label style="color:#cbd5e1;font-size:13px;">Game Mode:</label>
+<select id="mo-sel"><option value="single" selected>Single Match</option><option value="2p">2P Mode</option><option value="tournament">Tournament</option></select>
+<label style="color:#cbd5e1;font-size:13px;">Difficulty:</label>
+<select id="diff-sel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
+<button id="market-open">🛒 FC Transfer Market</button>
+<button id="start-btn" style="margin-top:10px;">START MATCH</button>
+</div>
+</div>
+<div id="m-market" class="modal hidden">
+<div class="m-box">
+<h2>TRANSFER MARKET</h2>
+<div id="m-list" style="max-height:220px;overflow-y:auto;text-align:left;"></div>
+<button id="market-close" style="margin-top:15px;">Back to Menu</button>
+</div>
+</div>
+<div id="m-sets" class="modal hidden">
+<div class="m-box">
+<h2>Club Stats</h2>
+<div style="text-align:left;margin-left:5%;margin-bottom:15px;">
+<label style="color:#cbd5e1;font-size:14px;">Name:</label>
+<input type="text" id="p-name" value="Player">
+<p style="color:#cbd5e1;"><strong>Wins:</strong> <span id="st-wins">0</span></p>
+<p style="color:#cbd5e1;"><strong>Time:</strong> <span id="st-time">0m 0s</span></p>
+<p style="color:#cbd5e1;"><strong>Power:</strong> <span id="st-pow">75 OVR</span></p>
+</div>
+<button id="sets-close">Close</button>
+</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+let gState='MENU',sec=0,wins=0,pName="Player",diff="normal",gMode="single",tStage=1,count=3;
+let wealth=1000,fame=100,tPow=75,signed=[];
+let pScore=0,p2Score=0,winScore=3,lNet=0,rNet=0;
+const keys={};
+const pool=[
+{name:"Striker Son",ovr:88,price:1500,fameGain:50,type:"ST"},
+{name:"Midfielder KDB",ovr:91,price:2800,fameGain:80,type:"MF"},
+{name:"Defender VVD",ovr:89,price:2000,fameGain:60,type:"DF"},
+{name:"Legend Messi",ovr:96,price:6000,fameGain:150,type:"FW"}
+];
+const p1={x:200,y:290,z:0,vz:0,r:35,spd:4.5,col:'#3b82f6',sCol:'#1d4ed8',shot:0,tack:0};
+const p2={x:800,y:290,z:0,vz:0,r:35,spd:4.5,col:'#ef4444',sCol:'#b91c1c',shot:0,tack:0};
+// 공 마찰력 증가(0.965)로 속도가 더 빨리 줄어들도록 조정
+const ball={x:500,y:290,z:0,vz:0,r:14,vx:0,vy:0,fric:0.965,grav:0.45};
+const gW=50,gH=180,gY=(580-gH)/2;
+
+window.addEventListener('keydown',e=>{
+let k=e.key.toLowerCase(); keys[k]=true;
+if(gState==='PLAYING'){
+if(e.code==='Space'&&p1.z===0)p1.vz=-11;
+if(k==='v')shoot(p1,9,false);  // 슛 속도 하향
+if(k==='b')shoot(p1,15,true);  // 슈퍼슛 속도 하향
+if(k==='l'&&p1.tack<=0)tackle(p1,p2);
+if(gMode==='2p'){
+if(k==='u'&&p2.z===0)p2.vz=-11;
+if(k==='.')shoot(p2,9,false);
+if(k==='/')shoot(p2,15,true);
+if(k==='h'&&p2.tack<=0)tackle(p2,p1);
+}}}
+);
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+
+const gc=document.getElementById('gc'),mMenu=document.getElementById('m-menu'),mMarket=document.getElementById('m-market'),mSets=document.getElementById('m-sets');
+document.getElementById('s-btn').onclick=e=>{e.stopPropagation();mSets.classList.remove('hidden');document.getElementById('st-wins').innerText=wins;document.getElementById('st-pow').innerText=tPow+" OVR";};
+document.getElementById('sets-close').onclick=()=>{pName=document.getElementById('p-name').value||"Player";mSets.classList.add('hidden');};
+document.getElementById('market-open').onclick=()=>{renderMarket();mMarket.classList.remove('hidden');};
+document.getElementById('market-close').onclick=()=>{mMarket.classList.add('hidden');updateMenu();};
+document.getElementById('start-btn').onclick=()=>{gMode=document.getElementById('mo-sel').value;diff=document.getElementById('diff-sel').value;mMenu.classList.add('hidden');pScore=0;p2Score=0;startCount();};
+gc.onclick=e=>{if((e.target===gc||e.target===cv)&&(gState==='PLAYING'||gState==='COUNTDOWN')){gState='MENU';mMenu.classList.remove('hidden');updateMenu();}};
+
+function updateMenu(){document.getElementById('w-txt').innerText="$"+wealth.toLocaleString();document.getElementById('f-txt').innerText=fame.toLocaleString();}
+function renderMarket(){
+let lst=document.getElementById('m-list');lst.innerHTML='';
+pool.forEach((p,i)=>{
+let s=signed.some(x=>x.name===p.name);
+lst.innerHTML+=`<div class="m-card"><div><strong>${p.name}</strong> (${p.type})<br><span style="font-size:12px;color:#38bdf8;">OVR:${p.ovr}</span></div><div><span style="color:#facc15;font-weight:bold;margin-right:10px;">$${p.price}</span><button ${s?'disabled style="background:#334155;"':''} onclick="buyP(${i})">${s?'Signed':'Sign'}</button></div></div>`;
+});
+}
+window.buyP=i=>{let p=pool[i];if(wealth>=p.price&&!signed.some(x=>x.name===p.name)){wealth-=p.price;fame+=p.fameGain;signed.push(p);tPow=Math.floor(75+signed.reduce((a,b)=>a+(b.ovr-75),0));renderMarket();updateMenu();}};
+
+function startCount(){
+gState='COUNTDOWN';count=3;resetPos();showB(count);
+let t=setInterval(()=>{
+count--;
+if(count>0)showB(count);
+else if(count===0)showB("WHISTLE!");
+else{clearInterval(t);showB("");gState='PLAYING';}
+},1000);
+}
+function showB(t){document.getElementById('banner').innerText=t;}
+function showAlert(t){let a=document.getElementById('alert');a.innerText=t;a.style.opacity='1';setTimeout(()=>a.style.opacity='0',1500);}
+function resetPos(){p1.x=200;p1.y=290;p1.z=0;p1.vz=0;p2.x=800;p2.y=290;p2.z=0;p2.vz=0;ball.x=500;ball.y=290;ball.z=0;ball.vz=0;ball.vx=0;ball.vy=0;}
+function shoot(e,p,sup){
+let dx=ball.x-e.x,dy=ball.y-e.y,d=Math.hypot(dx,dy);
+if(d<e.r+40){let a=Math.atan2(dy,dx),m=sup?1.8:1.0;ball.vx=Math.cos(a)*(p*m);ball.vy=Math.sin(a)*(p*m);ball.vz=e.z<-5?-12:-5;e.shot=18;}
+}
+function tackle(at,df){at.tack=55;at.shot=15;let d=Math.hypot(ball.x-at.x,ball.y-at.y);if(d<70){let a=Math.atan2(ball.y-at.y,ball.x-at.x);ball.vx=Math.cos(a)*11;ball.vy=Math.sin(a)*11;}}
+setInterval(()=>{if(gState==='PLAYING')sec++;},1000);
+
+function update(){
+if(gState==='PLAYING'){
+if(lNet>0)lNet*=0.92;if(rNet>0)rNet*=0.92;
+let p1vx=0,p1vy=0;
+if(keys['w'])p1vy-=p1.spd;if(keys['s'])p1vy+=p1.spd;if(keys['a'])p1vx-=p1.spd;if(keys['d'])p1vx+=p1.spd;
+p1.x+=p1vx;p1.y+=p1vy;p1.z+=p1.vz;
+if(p1.z>=0){p1.z=0;p1.vz=0;}else p1.vz+=ball.grav;
+
+let minX=35, maxX=1000-35, minY=35, maxY=580-35;
+if(p1.x<minX){p1.x=minX; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p1.x>maxX){p1.x=maxX; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p1.y<minY){p1.y=minY; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p1.y>maxY){p1.y=maxY; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+
+if(p1.shot>0)p1.shot--;if(p2.shot>0)p2.shot--;if(p1.tack>0)p1.tack--;if(p2.tack>0)p2.tack--;
+
+if(gMode==='2p'){
+let p2vx=0,p2vy=0;
+if(keys['i'])p2vy-=p2.spd;if(keys['k'])p2vy+=p2.spd;if(keys['j'])p2vx-=p2.spd;if(keys['l'])p2vx+=p2.spd;
+p2.x+=p2vx;p2.y+=p2vy;p2.z+=p2.vz;
+if(p2.z>=0){p2.z=0;p2.vz=0;}else p2.vz+=ball.grav;
+if(p2.x<minX){p2.x=minX; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p2.x>maxX){p2.x=maxX; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p2.y<minY){p2.y=minY; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+if(p2.y>maxY){p2.y=maxY; showAlert("FOUL! Wall Touch!"); goalMsg("Foul! Reset"); return;}
+}else{
+let aiSpd=(diff==='easy'?2.2:diff==='normal'?3.3:4.5)*(tPow/85);
+if(p2.y<ball.y)p2.y+=aiSpd;if(p2.y>ball.y)p2.y-=aiSpd;
+if(p2.x<ball.x+80)p2.x+=aiSpd*0.6;if(p2.x>ball.x+20)p2.x-=aiSpd;
+if(Math.random()<0.025&&p2.z===0&&ball.z<-10)p2.vz=-11;
+p2.z+=p2.vz;if(p2.z>=0){p2.z=0;p2.vz=0;}else p2.vz+=ball.grav;
+if(p2.x<500)p2.x=500;if(p2.x>maxX)p2.x=maxX;if(p2.y<minY)p2.y=minY;if(p2.y>maxY)p2.y=maxY;
+if(Math.hypot(ball.x-p2.x,ball.y-p2.y)<p2.r+ball.r+15){let a=Math.atan2(ball.y-p2.y,ball.x-p2.x);ball.vx=Math.cos(a)*9;ball.vy=Math.sin(a)*9;ball.vz=-6;p2.shot=15;}
+}
+
+ball.x+=ball.vx;ball.y+=ball.vy;ball.z+=ball.vz;ball.vx*=ball.fric;ball.vy*=ball.fric;ball.vz+=ball.grav;
+if(ball.z>=0){ball.z=0;ball.vz=-ball.vz*0.45;if(Math.abs(ball.vz)<1)ball.vz=0;}
+if(ball.y<=ball.r||ball.y>=580-ball.r){ball.vy*=-1;ball.y=Math.max(ball.r,Math.min(580-ball.r,ball.y));}
+
+let d1=Math.hypot(ball.x-p1.x,ball.y-p1.y);
+if(d1<p1.r+ball.r&&Math.abs(ball.z-p1.z)<35){
+let a=Math.atan2(ball.y-p1.y,ball.x-p1.x);
+ball.vx=Math.cos(a)*8+p1vx*0.4;ball.vy=Math.sin(a)*8+p1vy*0.4;ball.vz=-4;
+ball.x=p1.x+Math.cos(a)*(p1.r+ball.r+3);ball.y=p1.y+Math.sin(a)*(p1.r+ball.r+3);
+}
+let d2=Math.hypot(ball.x-p2.x,ball.y-p2.y);
+if(d2<p2.r+ball.r&&Math.abs(ball.z-p2.z)<35){
+let a=Math.atan2(ball.y-p2.y,ball.x-p2.x);
+ball.vx=Math.cos(a)*8;ball.vy=Math.sin(a)*8;ball.vz=-4;
+ball.x=p2.x+Math.cos(a)*(p2.r+ball.r+3);ball.y=p2.y+Math.sin(a)*(p2.r+ball.r+3);
+}
+
+if(ball.x<=gW&&ball.y>=gY&&ball.y<=gY+gH&&ball.z===0){lNet=1.0;p2Score++;checkMatch(gMode==='2p'?"Player 1 Scored!":pName+" scored!");}
+else if(ball.x>=1000-gW&&ball.y>=gY&&ball.y<=gY+gH&&ball.z===0){rNet=1.0;pScore++;checkMatch(gMode==='2p'?"Player 2 Scored!":"AI scored!");}
+
+if(ball.x<=gW&&(ball.y<gY||ball.y>gY+gH)){ball.vx*=-1;ball.x=gW+ball.r;}
+if(ball.x>=1000-gW&&(ball.y<gY||ball.y>gY+gH)){ball.vx*=-1;ball.x=(1000-gW)-ball.r;}
+if(ball.x<=ball.r||ball.x>=1000-ball.r){if(!(ball.y>=gY&&ball.y<=gY+gH)){ball.vx*=-1;ball.x=Math.max(ball.r,Math.min(1000-ball.r,ball.x));}}
+}
+document.getElementById('sb').innerText=`${pName} ${pScore} : ${p2Score} ${gMode==='2p'?'P2':'AI'}`;
+}
+
+function checkMatch(msg){
+if(pScore>=winScore){
+wins++;wealth+=500*(gMode==='tournament'?tStage:1);fame+=50;
+if(gMode==='tournament'){if(tStage<3){tStage++;goalMsg(`Stage Clear! Round ${tStage}`);return;}else{tStage=1;gameOver(`🏆 TOURNAMENT CHAMPION!`);return;}}
+gameOver(`${pName} Wins! 🎉`);
+}else if(p2Score>=winScore){
+if(gMode==='tournament')tStage=1;
+gameOver(gMode==='2p'?"Player 2 Wins!":"AI Wins! 🤖");
+}else{goalMsg(msg);}
+}
+function goalMsg(t){gState='GOAL';showB(t);setTimeout(()=>{showB("");resetPos();gState='PLAYING';},1800);}
+function gameOver(t){gState='GAMEOVER';showB(t);setTimeout(()=>{showB("");mMenu.classList.remove('hidden');gState='MENU';updateMenu();},2500);}
+
+function drawChar(e){
+ctx.save();ctx.translate(e.x,e.y+e.z);
+ctx.save();ctx.translate(0,-e.z);let sc=Math.max(0.4,1-Math.abs(e.z)/150);
+ctx.fillStyle='rgba(0,0,0,0.35)';ctx.beginPath();ctx.ellipse(0,42,e.r*sc,(e.r*0.4)*sc,0,0,Math.PI*2);ctx.fill();ctx.restore();
+ctx.fillStyle=e.sCol;ctx.beginPath();ctx.roundRect(-20,-2,40,36,[6,6,12,12]);ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#0f172a';ctx.stroke();
+ctx.fillStyle='#fff';ctx.fillRect(-3,4,6,18);
+let hGrad=ctx.createRadialGradient(-6,-26,8,0,-20,e.r);hGrad.addColorStop(0,'#fff');hGrad.addColorStop(0.35,e.col);hGrad.addColorStop(1,'#060911');
+ctx.fillStyle=hGrad;ctx.beginPath();ctx.arc(0,-20,e.r,0,Math.PI*2);ctx.fill();ctx.stroke();
+ctx.fillStyle='#fff';ctx.beginPath();let ed=e.col==='#3b82f6'?6:-6;ctx.arc(ed-4,-24,4.5,0,Math.PI*2);ctx.arc(ed+6,-24,4.5,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='#000';ctx.beginPath();ctx.arc(ed-4,-24,2,0,Math.PI*2);ctx.arc(ed+6,-24,2,0,Math.PI*2);ctx.fill();
+if(e.shot>0){ctx.fillStyle='#facc15';ctx.beginPath();ctx.arc(e.col==='#3b82f6'?28:-28,30,10,0,Math.PI*2);ctx.fill();ctx.stroke();}
+else{ctx.fillStyle='#1e293b';ctx.beginPath();ctx.arc(-10,36,7,0,Math.PI*2);ctx.arc(10,36,7,0,Math.PI*2);ctx.fill();ctx.stroke();}
+ctx.restore();
+}
+
+function draw(){
+ctx.fillStyle='#134e18';ctx.fillRect(0,0,cv.width,cv.height);
+ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.strokeRect(20,20,960,540);
+ctx.beginPath();ctx.arc(500,290,90,0,Math.PI*2);ctx.stroke();
+ctx.beginPath();ctx.moveTo(500,20);ctx.lineTo(500,560);ctx.stroke();
+ctx.fillStyle='rgba(255,255,255,'+(0.2+lNet*0.3)+')';ctx.fillRect(0,gY,gW+(lNet*15),gH);ctx.strokeRect(0,gY,gW,gH);
+ctx.fillStyle='rgba(255,255,255,'+(0.2+rNet*0.3)+')';ctx.fillRect(1000-gW-(rNet*15),gY,gW+(rNet*15),gH);ctx.strokeRect(1000-gW,gY,gW,gH);
+let bsc=Math.max(0.4,1-Math.abs(ball.z)/120);
+ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.ellipse(ball.x,ball.y-ball.z+18,ball.r*bsc,(ball.r*0.4)*bsc,0,0,Math.PI*2);ctx.fill();
+drawChar(p1);drawChar(p2);
+ctx.save();ctx.translate(ball.x,ball.y+ball.z);
+let bGrad=ctx.createRadialGradient(-4,-4,2,0,0,ball.r);bGrad.addColorStop(0,'#fff');bGrad.addColorStop(1,'#94a3b8');
+ctx.fillStyle=bGrad;ctx.beginPath();ctx.arc(0,0,ball.r,0,Math.PI*2);ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#334155';ctx.stroke();
+ctx.restore();
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+updateMenu();loop();
+</script>
+</body>
+</html>

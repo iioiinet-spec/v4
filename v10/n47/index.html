@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 근육 고라니 - 2세 '고라니선쌩님' 탄생 편</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 20px;
+            border-radius: 10px;
+            pointer-events: none;
+            user-select: none;
+            z-index: 10;
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 22px;
+            color: #ff9d00;
+        }
+        p {
+            margin: 0;
+            font-size: 11px;
+            color: #00ffcc;
+            line-height: 1.4;
+        }
+        #speech-bubble {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -100%) scale(0);
+            background: #ffffff;
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            pointer-events: none;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+            z-index: 100;
+        }
+        #speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 15px 15px 0;
+            border-style: solid;
+            border-color: #ffffff transparent;
+            display: block;
+            width: 0;
+        }
+        #speech-bubble.active {
+            transform: translate(-50%, -120%) scale(1);
+        }
+        #sub-caption {
+            position: absolute;
+            bottom: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff007f;
+            font-size: 30px;
+            font-weight: 900;
+            text-shadow: 3px 3px 0px #000, -3px -3px 0px #000, 3px -3px 0px #000, -3px 3px 0px #000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 200;
+            white-space: nowrap;
+            text-align: center;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>🎬 주한고라니: 2세 '고라니선쌩님' 대서사시</h1>
+        <p>[스페이스바] 변신➔우주선파괴➔지구위협감지➔지구폭발➔스파이신호➔로봇분쇄➔동맹회의➔댄스파티➔시공간균열➔건틀렛부활➔오라방출➔트월킹➔암살드론➔교통사고➔정화영역➔마음속결전➔소행성폭격➔멀티버스분신➔사이보그개조➔문어보스혈투➔성간제국건국➔고라니의죽음과무덤➔2세 '고라니선쌩님' 강림!</p>
+    </div>
+
+    <div id="speech-bubble">아임 고라니선생님! 🫰✨</div>
+    <div id="sub-caption">🪦 새로운 전설의 시작... 🪦</div>
+
+    <script>
+        function speakText(text, pitch = 1.0, rate = 1.0, onEndCallback = null) {
+            try {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const speech = new SpeechSynthesisUtterance(text);
+                    speech.lang = 'ko-KR';
+                    speech.pitch = pitch;
+                    speech.rate = rate;
+                    if (onEndCallback) {
+                        speech.onend = onEndCallback;
+                    }
+                    window.speechSynthesis.speak(speech);
+                } else if (onEndCallback) {
+                    setTimeout(onEndCallback, 2000);
+                }
+            } catch (e) {
+                if (onEndCallback) onEndCallback();
+            }
+        }
+
+        function playSoundEffect(type) {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                if (type === 'laser') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(900, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.4);
+                } else if (type === 'explosion') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(150, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.6);
+                } else {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(600, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.3);
+                }
+
+                gain.gain.setValueAtTime(1.0, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            } catch(e) {}
+        }
+
+        // 1. 씬 및 카메라 설정
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1c23);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const originalCamPos = new THREE.Vector3(0, 4, 16);
+        camera.position.copy(originalCamPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 2.5, 0);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        mainLight.position.set(5, 12, 8);
+        mainLight.castShadow = true;
+        scene.add(mainLight);
+
+        // 별 배경
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 600;
+        const starPositions = new Float32Array(starsCount * 3);
+        for(let i = 0; i < starsCount * 3; i++) {
+            starPositions[i] = (Math.random() - 0.5) * 120;
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+        const starsMaterial = new THREE.PointsMaterial({color: 0xffffff, size: 0.5});
+        const starField = new THREE.Points(starsGeometry, starsMaterial);
+        starField.visible = false;
+        scene.add(starField);
+
+        // 우주선 & 외계인
+        const spaceshipGroup = new THREE.Group();
+        const saucerGeo = new THREE.CylinderGeometry(3, 4, 0.8, 32);
+        const saucerMat = new THREE.MeshStandardMaterial({color: 0x888899, metalness: 0.8, roughness: 0.2});
+        const saucer = new THREE.Mesh(saucerGeo, saucerMat);
+        
+        const domeGeo = new THREE.SphereGeometry(1.5, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const domeMat = new THREE.MeshStandardMaterial({color: 0x00ffff, transparent: true, opacity: 0.4});
+        const dome = new THREE.Mesh(domeGeo, domeMat);
+        dome.position.y = 0.4;
+
+        const alienGroup = new THREE.Group();
+        const alienHead = new THREE.Mesh(
+            new THREE.SphereGeometry(0.35, 12, 12),
+            new THREE.MeshStandardMaterial({color: 0x22cc77, roughness: 0.3})
+        );
+        alienHead.position.set(0, 0.7, 0);
+
+        const eyeMat = new THREE.MeshBasicMaterial({color: 0x000000});
+        const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), eyeMat);
+        leftEye.position.set(-0.12, 0.75, 0.25);
+        const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), eyeMat);
+        rightEye.position.set(0.12, 0.75, 0.25);
+
+        const telescope = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.12, 0.8, 12),
+            new THREE.MeshStandardMaterial({color: 0x444444, metalness: 0.9})
+        );
+        telescope.rotation.x = Math.PI / 2 - 0.2;
+        telescope.position.set(0, 0.6, 0.4);
+
+        alienGroup.add(alienHead, leftEye, rightEye, telescope);
+        alienGroup.position.y = 0.4;
+
+        spaceshipGroup.add(saucer, dome, alienGroup);
+        spaceshipGroup.position.set(0, 8, -5);
+        spaceshipGroup.visible = false;
+        scene.add(spaceshipGroup);
+
+        // 지구 모델 및 위협 코어
+        const reviveEarthGroup = new THREE.Group();
+        const reviveEarthMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(4, 32, 32),
+            new THREE.MeshStandardMaterial({color: 0x2563eb, roughness: 0.5})
+        );
+        reviveEarthGroup.add(reviveEarthMesh);
+
+        const earthThreatCore = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 16, 16),
+            new THREE.MeshBasicMaterial({color: 0xff0000, wireframe: true})
+        );
+        reviveEarthGroup.add(earthThreatCore);
+        reviveEarthGroup.position.set(0, 0, -6);
+        reviveEarthGroup.visible = false;
+        scene.add(reviveEarthGroup);
+
+        // 건틀렛 및 시공간 균열
+        const gauntletGroup = new THREE.Group();
+        const glove = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.4, 0.25),
+            new THREE.MeshStandardMaterial({color: 0xf59e0b, metalness: 0.9, roughness: 0.2})
+        );
+        gauntletGroup.add(glove);
+        const stoneColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+        stoneColors.forEach((color, idx) => {
+            const stone = new THREE.Mesh(
+                new THREE.SphereGeometry(0.04, 8, 8),
+                new THREE.MeshBasicMaterial({color: color})
+            );
+            stone.position.set((idx - 2.5) * 0.08, 0.15, 0.13);
+            gauntletGroup.add(stone);
+        });
+        gauntletGroup.visible = false;
+        scene.add(gauntletGroup);
+
+        const spacetimeRift = new THREE.Mesh(
+            new THREE.RingGeometry(2.0, 2.8, 32),
+            new THREE.MeshBasicMaterial({color: 0x00ffff, side: THREE.DoubleSide})
+        );
+        spacetimeRift.position.set(0, 2, -3);
+        spacetimeRift.visible = false;
+        scene.add(spacetimeRift);
+
+        // 화성 및 로봇
+        const marsGroup = new THREE.Group();
+        const marsSurface = new THREE.Mesh(
+            new THREE.SphereGeometry(6, 32, 32),
+            new THREE.MeshStandardMaterial({color: 0xb91c1c, roughness: 0.9})
+        );
+        marsSurface.position.set(0, -6, -5);
+
+        const roverGroup = new THREE.Group();
+        const roverBody = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 0.8, 1.2),
+            new THREE.MeshStandardMaterial({color: 0xd1d5db, metalness: 0.8})
+        );
+        roverBody.position.y = 0.6;
+        const cameraTower = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 1.0),
+            new THREE.MeshStandardMaterial({color: 0x374151})
+        );
+        cameraTower.position.set(0.4, 1.3, 0.3);
+        const roverEye = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.2, 0.2),
+            new THREE.MeshStandardMaterial({color: 0x111827})
+        );
+        roverEye.position.set(0.4, 1.7, 0.3);
+        roverGroup.add(roverBody, cameraTower, roverEye);
+
+        const spyBeam = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.1, 0.8, 4, 12),
+            new THREE.MeshBasicMaterial({color: 0xff0055, transparent: true, opacity: 0.7})
+        );
+        spyBeam.position.set(0.4, 3.5, 0.3);
+        roverGroup.add(spyBeam);
+
+        for(let i=0; i<6; i++) {
+            const wheel = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.25, 0.25, 0.2, 12),
+                new THREE.MeshStandardMaterial({color: 0x111827})
+            );
+            wheel.rotation.z = Math.PI / 2;
+            const x = (i % 2 === 0 ? 0.9 : -0.9);
+            const z = -0.5 + Math.floor(i / 2) * 0.5;
+            wheel.position.set(x, 0.25, z);
+            roverGroup.add(wheel);
+        }
+        roverGroup.position.set(0, 0.1, -4);
+        marsGroup.add(marsSurface, roverGroup);
+        marsGroup.visible = false;
+        scene.add(marsGroup);
+
+        // 자동차 & 암살 드론
+        const carGroup = new THREE.Group();
+        const carBody = new THREE.Mesh(
+            new THREE.BoxGeometry(1.8, 0.8, 3.5),
+            new THREE.MeshStandardMaterial({color: 0xdc2626, metalness: 0.8, roughness: 0.2})
+        );
+        carBody.position.y = 0.5;
+        const carCabin = new THREE.Mesh(
+            new THREE.BoxGeometry(1.4, 0.6, 1.8),
+            new THREE.MeshStandardMaterial({color: 0x111827, roughness: 0.1})
+        );
+        carCabin.position.set(0, 1.1, -0.2);
+        carGroup.add(carBody, carCabin);
+
+        const assassinDrone = new THREE.Mesh(
+            new THREE.SphereGeometry(0.3, 8, 8),
+            new THREE.MeshBasicMaterial({color: 0x00ff00})
+        );
+        assassinDrone.position.set(0, 1.8, 0);
+        carGroup.add(assassinDrone);
+        carGroup.visible = false;
+        scene.add(carGroup);
+
+        // 카타나
+        const katanaGroup = new THREE.Group();
+        const blade = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, 2.5, 0.12),
+            new THREE.MeshStandardMaterial({color: 0xf3f4f6, metalness: 0.95, roughness: 0.1})
+        );
+        blade.position.y = 1.25;
+        const hilt = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.6, 8),
+            new THREE.MeshStandardMaterial({color: 0x991b1b})
+        );
+        hilt.position.y = -0.3;
+        katanaGroup.add(blade, hilt);
+        katanaGroup.visible = false;
+        scene.add(katanaGroup);
+
+        // 파티클들
+        const dustParticles = [];
+        const dustGroup = new THREE.Group();
+        const dustGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+        const dustMat = new THREE.MeshBasicMaterial({color: 0x9ca3af});
+        for(let i=0; i<150; i++) {
+            const p = new THREE.Mesh(dustGeo, dustMat);
+            p.visible = false;
+            dustGroup.add(p);
+            dustParticles.push({ mesh: p, vel: new THREE.Vector3() });
+        }
+        scene.add(dustGroup);
+
+        const poopParticles = [];
+        const poopGroup = new THREE.Group();
+        const poopGeo = new THREE.SphereGeometry(0.15, 8, 8);
+        const poopMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.8 });
+        for(let i=0; i<100; i++) {
+            const p = new THREE.Mesh(poopGeo, poopMat);
+            p.visible = false;
+            poopGroup.add(p);
+            poopParticles.push({ mesh: p, vel: new THREE.Vector3() });
+        }
+        scene.add(poopGroup);
+
+        // 마음속 결전 모델
+        const mindWorldGroup = new THREE.Group();
+        const teacherSkinMat = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.5 });
+        const teacherSuitMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.3 });
+        const teacherTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.4, 1.6, 12), teacherSuitMat);
+        teacherTorso.position.y = 1.4;
+        const teacherHead = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 12), teacherSkinMat);
+        teacherHead.position.set(0, 2.4, 0);
+        mindWorldGroup.add(teacherTorso, teacherHead);
+        mindWorldGroup.position.set(2, 0, -3);
+        mindWorldGroup.visible = false;
+        scene.add(mindWorldGroup);
+
+        const mindGoraniGroup = new THREE.Group();
+        const mindGoraniTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.5, 1.8, 12), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+        mindGoraniTorso.position.y = 1.5;
+        const mindGoraniHead = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 12), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+        mindGoraniHead.position.set(0, 2.6, 0.2);
+        mindGoraniGroup.add(mindGoraniTorso, mindGoraniHead);
+        mindGoraniGroup.position.set(-2, 0, -3);
+        mindGoraniGroup.visible = false;
+        scene.add(mindGoraniGroup);
+
+        // 고라니 행성
+        const goraniPlanetGroup = new THREE.Group();
+        const planetGeo = new THREE.SphereGeometry(7, 32, 32);
+        const planetMat = new THREE.MeshStandardMaterial({color: 0x9333ea, roughness: 0.5, emissive: 0x3b0764});
+        const planetMesh = new THREE.Mesh(planetGeo, planetMat);
+        planetMesh.position.set(0, -7, -6);
+        const ringGeo = new THREE.RingGeometry(8.5, 11, 32);
+        const ringMat = new THREE.MeshBasicMaterial({color: 0xf43f5e, side: THREE.DoubleSide, transparent: true, opacity: 0.6});
+        const planetRing = new THREE.Mesh(ringGeo, ringMat);
+        planetRing.rotation.x = Math.PI / 2;
+        planetRing.position.set(0, -3, -6);
+        goraniPlanetGroup.add(planetMesh, planetRing);
+
+        for(let i=0; i<4; i++) {
+            const allyShip = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 8), new THREE.MeshStandardMaterial({color: 0x00ffcc}));
+            const angle = (i / 4) * Math.PI * 2;
+            allyShip.position.set(Math.cos(angle)*9, 2, -6 + Math.sin(angle)*9);
+            allyShip.rotation.z = Math.PI / 2;
+            goraniPlanetGroup.add(allyShip);
+        }
+        goraniPlanetGroup.visible = false;
+        scene.add(goraniPlanetGroup);
+
+        // 후반 및 2세 관련 오브젝트들
+        const asteroidGroup = new THREE.Group();
+        for(let i=0; i<15; i++) {
+            const ast = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.8 + Math.random() * 1.2),
+                new THREE.MeshStandardMaterial({color: 0x555555, roughness: 0.9})
+            );
+            ast.position.set((Math.random()-0.5)*25, (Math.random()-0.5)*15, (Math.random()-0.5)*25);
+            asteroidGroup.add(ast);
+        }
+        asteroidGroup.visible = false;
+        scene.add(asteroidGroup);
+
+        const multiverseGroup = new THREE.Group();
+        const cloneModels = [];
+        function createRawGorani() {
+            const g = new THREE.Group();
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.5, 1.8, 12), new THREE.MeshStandardMaterial({color: 0x8b5a2b}));
+            torso.position.y = 1.5;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 12), new THREE.MeshStandardMaterial({color: 0x8b5a2b}));
+            head.position.set(0, 2.6, 0.2);
+            g.add(torso, head);
+            return g;
+        }
+        for(let i=0; i<10; i++) {
+            const m = createRawGorani();
+            const angle = (i / 10) * Math.PI * 2;
+            m.position.set(Math.cos(angle) * 6, 0, Math.sin(angle) * 6 - 3);
+            multiverseGroup.add(m);
+            cloneModels.push(m);
+        }
+        multiverseGroup.visible = false;
+        scene.add(multiverseGroup);
+
+        const bossMonsterGroup = new THREE.Group();
+        const bossHead = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), new THREE.MeshStandardMaterial({color: 0xff00ff, roughness: 0.2, metalness: 0.8}));
+        bossHead.position.y = 3;
+        bossMonsterGroup.add(bossHead);
+        for(let i=0; i<8; i++) {
+            const tentacle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, 5, 8), new THREE.MeshStandardMaterial({color: 0x9900aa}));
+            const angle = (i / 8) * Math.PI * 2;
+            tentacle.position.set(Math.cos(angle)*2, 1.5, Math.sin(angle)*2);
+            tentacle.rotation.z = Math.cos(angle)*0.5;
+            bossMonsterGroup.add(tentacle);
+        }
+        bossMonsterGroup.position.set(0, 0, -8);
+        bossMonsterGroup.visible = false;
+        scene.add(bossMonsterGroup);
+
+        const empireCitadelGroup = new THREE.Group();
+        const citadelTower = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 10, 16), new THREE.MeshStandardMaterial({color: 0xffd700, metalness: 0.9, roughness: 0.1}));
+        citadelTower.position.y = 5;
+        empireCitadelGroup.add(citadelTower);
+        empireCitadelGroup.position.set(0, 0, -10);
+        empireCitadelGroup.visible = false;
+        scene.add(empireCitadelGroup);
+
+        // 무덤 (묘비와 관) 컷씬 오브젝트
+        const tombGroup = new THREE.Group();
+        const coffin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 4), new THREE.MeshStandardMaterial({color: 0x3f3f46, roughness: 0.5}));
+        coffin.position.y = 0.6;
+        const tombstone = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 0.4), new THREE.MeshStandardMaterial({color: 0x71717a, roughness: 0.3}));
+        tombstone.position.set(0, 1.25, -2);
+        tombstone.rotation.x = -0.2;
+        tombGroup.add(coffin, tombstone);
+        tombGroup.position.set(0, 0, -8);
+        tombGroup.visible = false;
+        scene.add(tombGroup);
+
+        // 고라니 재질
+        const goraniColor = new THREE.Color(0x8b5a2b);   
+        const humanSkinColor = new THREE.Color(0xffdbac); 
+        const shirtColor = new THREE.Color(0x3b82f6);     
+        const pantsColor = new THREE.Color(0x1e293b);     
+        const cyberGoldColor = new THREE.Color(0xffaa00);
+        const sonColor = new THREE.Color(0x10b981); // 2세 고라니선쌩님만의 영롱한 에메랄드빛 컬러!
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const pecMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.4 });
+        const skinMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const legMat = new THREE.MeshStandardMaterial({ color: goraniColor.clone(), roughness: 0.5 });
+        const fangMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+
+        let rightArmGroup, rightHand;
+        let leftPecMesh, rightPecMesh;
+        let leftEarMesh, rightEarMesh;
+        let leftFangMesh, rightFangMesh;
+
+        function createGoraniModel(scale = 1, isMain = false, customColor = null) {
+            const gorani = new THREE.Group();
+            const col = customColor || goraniColor;
+            const torsoGeo = new THREE.CylinderGeometry(0.8, 0.5, 1.8, 12);
+            const torso = new THREE.Mesh(torsoGeo, isMain ? bodyMat : new THREE.MeshStandardMaterial({ color: col }));
+            torso.position.y = 1.5;
+            gorani.add(torso);
+
+            const pecGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const leftPec = new THREE.Mesh(pecGeo, isMain ? pecMat : new THREE.MeshStandardMaterial({ color: col }));
+            leftPec.position.set(-0.3, 1.8, 0.4);
+            const rightPec = new THREE.Mesh(pecGeo, isMain ? pecMat : new THREE.MeshStandardMaterial({ color: col }));
+            rightPec.position.set(0.3, 1.8, 0.4);
+            gorani.add(leftPec, rightPec);
+
+            const headGroup = new THREE.Group();
+            headGroup.position.set(0, 2.6, 0.2);
+            const headGeo = new THREE.SphereGeometry(0.4, 12, 12);
+            const head = new THREE.Mesh(headGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: col }));
+            headGroup.add(head);
+
+            const fangGeo = new THREE.ConeGeometry(0.04, 0.3, 8);
+            const leftFang = new THREE.Mesh(fangGeo, fangMat);
+            leftFang.position.set(-0.12, -0.2, 0.35);
+            leftFang.rotation.x = 0.2;
+            const rightFang = new THREE.Mesh(fangGeo, fangMat);
+            rightFang.position.set(0.12, -0.2, 0.35);
+            rightFang.rotation.x = 0.2;
+            headGroup.add(leftFang, rightFang);
+
+            const earGeo = new THREE.ConeGeometry(0.15, 0.6, 8);
+            const leftEar = new THREE.Mesh(earGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: col }));
+            leftEar.position.set(-0.3, 0.4, -0.1);
+            leftEar.rotation.z = 0.5;
+            const rightEar = new THREE.Mesh(earGeo, isMain ? skinMat : new THREE.MeshStandardMaterial({ color: col }));
+            rightEar.position.set(0.3, 0.4, -0.1);
+            rightEar.rotation.z = -0.5;
+            headGroup.add(leftEar, rightEar);
+
+            gorani.add(headGroup);
+
+            const armGeo = new THREE.CylinderGeometry(0.2, 0.15, 1.2, 8);
+            const leftArm = new THREE.Mesh(armGeo, isMain ? bodyMat : new THREE.MeshStandardMaterial({ color: col }));
+            leftArm.position.set(-0.9, 1.8, 0);
+            leftArm.rotation.z = 0.4;
+            gorani.add(leftArm);
+
+            if (isMain) {
+                leftPecMesh = leftPec; rightPecMesh = rightPec;
+                leftEarMesh = leftEar; rightEarMesh = rightEar;
+                leftFangMesh = leftFang; rightFangMesh = rightFang;
+
+                rightArmGroup = new THREE.Group();
+                rightArmGroup.position.set(0.9, 2.2, 0);
+
+                const armMesh = new THREE.Mesh(armGeo, bodyMat);
+                armMesh.position.set(0, -0.5, 0);
+                rightArmGroup.add(armMesh);
+
+                rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), skinMat);
+                rightHand.position.set(0, -1.1, 0.2);
+                rightArmGroup.add(rightHand);
+
+                gorani.add(rightArmGroup);
+            } else {
+                const rightArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: col }));
+                rightArm.position.set(0.9, 1.8, 0);
+                rightArm.rotation.z = -0.4;
+                gorani.add(rightArm);
+            }
+
+            const legGeo = new THREE.CylinderGeometry(0.25, 0.18, 1.2, 8);
+            const leftLeg = new THREE.Mesh(legGeo, isMain ? legMat : new THREE.MeshStandardMaterial({ color: col }));
+            leftLeg.position.set(-0.4, 0.6, 0);
+            const rightLeg = new THREE.Mesh(legGeo, isMain ? legMat : new THREE.MeshStandardMaterial({ color: col }));
+            rightLeg.position.set(0.4, 0.6, 0);
+            gorani.add(leftLeg, rightLeg);
+
+            gorani.scale.set(scale, scale, scale);
+            return gorani;
+        }
+
+        const baseScale = 1.2;
+        const maxScale = 2.6;
+        const mainGorani = createGoraniModel(baseScale, true);
+        scene.add(mainGorani);
+
+        // 2세 '고라니선쌩님' 모델 생성 (묘비 앞에서 부활/등장)
+        const sonGorani = createGoraniModel(baseScale, false, sonColor);
+        sonGorani.position.set(0, 0, -6);
+        sonGorani.visible = false;
+        scene.add(sonGorani);
+
+        const floorGeo = new THREE.CylinderGeometry(8, 8, 0.2, 32);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x22222a });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.position.y = -0.1;
+        scene.add(floor);
+
+        const projectiles = [];
+        const shockwaves = [];
+
+        function spawnGoraniCannon(position, velocity) {
+            const pGorani = createGoraniModel(0.25);
+            pGorani.position.copy(position);
+            scene.add(pGorani);
+            projectiles.push({ mesh: pGorani, vel: velocity, rotSpeed: new THREE.Vector3(Math.random()*0.5, Math.random()*0.5, Math.random()*0.5), life: 80 });
+        }
+
+        function triggerShockwave(pos) {
+            const ringGeo = new THREE.RingGeometry(0.2, 1.2, 32);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xff3300, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos);
+            ring.rotation.x = Math.PI / 2;
+            scene.add(ring);
+            shockwaves.push({ mesh: ring, scale: 1, opacity: 1 });
+        }
+
+        function explodeGoraniBurst(pos) {
+            for (let i = 0; i < 40; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const speed = 0.4 + Math.random() * 0.4;
+                const vx = speed * Math.sin(phi) * Math.cos(theta);
+                const vy = speed * Math.cos(phi) + 0.15;
+                const vz = speed * Math.sin(phi) * Math.sin(theta);
+                spawnGoraniCannon(pos.clone(), new THREE.Vector3(vx, vy, vz));
+            }
+            triggerShockwave(pos);
+        }
+
+        const sparkGroup = new THREE.Group();
+        for (let i = 0; i < 8; i++) {
+            const spark = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), sparkMat);
+            sparkGroup.add(spark);
+        }
+        sparkGroup.visible = false;
+        scene.add(sparkGroup);
+
+        function triggerSpark(pos) {
+            sparkGroup.position.copy(pos);
+            sparkGroup.visible = true;
+            sparkGroup.children.forEach(s => {
+                s.position.set((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8);
+            });
+            setTimeout(() => { sparkGroup.visible = false; }, 300);
+        }
+
+        let isJumping = false;
+        let jumpVelocity = 0;
+        const gravity = -0.012;
+        let poseState = 'idle'; 
+        let snapTimer = 0;
+        let shakeIntensity = 0;
+        let hasExploded = false;
+        let spaceStep = 0; 
+
+        const bubbleEl = document.getElementById('speech-bubble');
+        const captionEl = document.getElementById('sub-caption');
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isJumping && poseState === 'idle') {
+                isJumping = true;
+                poseState = 'launching';
+                jumpVelocity = 0.45;
+                hasExploded = false;
+                bubbleEl.classList.remove('active');
+                captionEl.style.opacity = '0';
+                spaceStep = 0;
+                starField.visible = false;
+                spaceshipGroup.visible = false;
+                reviveEarthGroup.visible = false;
+                earthThreatCore.visible = false;
+                gauntletGroup.visible = false;
+                spacetimeRift.visible = false;
+                marsGroup.visible = false;
+                spyBeam.visible = false;
+                katanaGroup.visible = false;
+                goraniPlanetGroup.visible = false;
+                carGroup.visible = false;
+                assassinDrone.visible = false;
+                mindWorldGroup.visible = false;
+                mindGoraniGroup.visible = false;
+                asteroidGroup.visible = false;
+                multiverseGroup.visible = false;
+                bossMonsterGroup.visible = false;
+                empireCitadelGroup.visible = false;
+                tombGroup.visible = false;
+                sonGorani.visible = false;
+                mainGorani.visible = true;
+                floor.visible = true;
+                scene.background.set(0x1a1c23);
+                mainGorani.position.set(0, 0, 0);
+                mainGorani.rotation.set(0, 0, 0);
+                reviveEarthMesh.scale.set(1, 1, 1);
+                dustParticles.forEach(dp => dp.mesh.visible = false);
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isJumping) {
+                mainGorani.position.y += jumpVelocity;
+                jumpVelocity += gravity;
+                mainGorani.rotation.y += 0.4;
+
+                if (jumpVelocity > 0) {
+                    const heightProgress = Math.min(Math.max(mainGorani.position.y / 5.0, 0), 1);
+                    const currentScale = THREE.MathUtils.lerp(baseScale, maxScale, heightProgress);
+                    mainGorani.scale.set(currentScale, currentScale, currentScale);
+                    const pecScale = THREE.MathUtils.lerp(1.0, 1.8, heightProgress);
+                    leftPecMesh.scale.set(pecScale, pecScale, pecScale);
+                    rightPecMesh.scale.set(pecScale, pecScale, pecScale);
+                } else {
+                    const fallProgress = Math.min(Math.max(1.0 - (mainGorani.position.y / 5.0), 0), 1);
+                    const currentScale = THREE.MathUtils.lerp(maxScale, baseScale, fallProgress);
+                    mainGorani.scale.set(currentScale, currentScale, currentScale);
+                    const pecScale = THREE.MathUtils.lerp(1.8, 0.8, fallProgress);
+                    leftPecMesh.scale.set(pecScale, pecScale, pecScale);
+                    rightPecMesh.scale.set(pecScale, pecScale, pecScale);
+
+                    const earScale = THREE.MathUtils.lerp(1.0, 0.0, fallProgress);
+                    leftEarMesh.scale.set(earScale, earScale, earScale);
+                    rightEarMesh.scale.set(earScale, earScale, earScale);
+
+                    const fangScale = THREE.MathUtils.lerp(1.0, 0.0, fallProgress);
+                    leftFangMesh.scale.set(fangScale, fangScale, fangScale);
+                    rightFangMesh.scale.set(fangScale, fangScale, fangScale);
+
+                    bodyMat.color.lerpColors(goraniColor, shirtColor, fallProgress);
+                    skinMat.color.lerpColors(goraniColor, humanSkinColor, fallProgress);
+                    legMat.color.lerpColors(goraniColor, pantsColor, fallProgress);
+                    pecMat.color.lerpColors(new THREE.Color(0x5c3a1e), shirtColor, fallProgress);
+                }
+
+                if (jumpVelocity <= 0.05 && !hasExploded) {
+                    hasExploded = true;
+                    const burstPos = mainGorani.position.clone().add(new THREE.Vector3(0, 2.5, 0));
+                    explodeGoraniBurst(burstPos);
+                    shakeIntensity = 0.4;
+                }
+
+                if (mainGorani.position.y <= 0) {
+                    mainGorani.position.y = 0;
+                    mainGorani.rotation.y = 0;
+                    mainGorani.scale.set(baseScale, baseScale, baseScale);
+                    leftEarMesh.scale.set(0, 0, 0); rightEarMesh.scale.set(0, 0, 0);
+                    leftFangMesh.scale.set(0, 0, 0); rightFangMesh.scale.set(0, 0, 0);
+                    bodyMat.color.copy(shirtColor);
+                    skinMat.color.copy(humanSkinColor);
+                    legMat.color.copy(pantsColor);
+                    pecMat.color.copy(shirtColor);
+
+                    isJumping = false;
+                    poseState = 'snapping';
+                    snapTimer = 0;
+                }
+            } 
+
+            // 착지 후 손가락 튕기기
+            if (poseState === 'snapping') {
+                snapTimer += 0.05;
+                if (snapTimer < 1.0) {
+                    rightArmGroup.rotation.z = THREE.MathUtils.lerp(rightArmGroup.rotation.z, -1.2, 0.2);
+                    rightArmGroup.rotation.x = THREE.MathUtils.lerp(rightArmGroup.rotation.x, 0.8, 0.2);
+                } else if (snapTimer < 1.2) {
+                    if (!bubbleEl.classList.contains('active')) {
+                        rightArmGroup.rotation.z = -0.8;
+                        const handWorldPos = new THREE.Vector3();
+                        rightHand.getWorldPosition(handWorldPos);
+                        triggerSpark(handWorldPos);
+                        bubbleEl.classList.add('active');
+                        speakText("아임 고라니선생님");
+                    }
+                } else if (snapTimer > 3.5) {
+                    poseState = 'spaceScene';
+                    spaceStep = 1;
+                    bubbleEl.classList.remove('active');
+                    
+                    scene.background.set(0x000005);
+                    starField.visible = true;
+                    floor.visible = false;
+                    spaceshipGroup.visible = true;
+                    camera.position.set(0, 2, 10);
+                    controls.target.set(0, 5, -3);
+
+                    speakText("흠..... 지구인들은 잘 지내고 있ㄱ....", 0.6, 0.8, () => {
+                        if (poseState === 'spaceScene') spaceStep = 2;
+                    });
+                }
+            } 
+            // ----------------- 완성된 17단계 연대기 파이프라인 (무덤과 2세 포함) -----------------
+            else if (poseState === 'spaceScene') {
+                alienGroup.rotation.y = Math.sin(Date.now() * 0.003) * 0.1;
+                spaceshipGroup.position.x = Math.sin(Date.now() * 0.005) * 0.1;
+
+                // 2. 우주선 파괴
+                if (spaceStep === 2) {
+                    mainGorani.position.y += 0.3;
+                    mainGorani.rotation.y += 0.6;
+
+                    if (mainGorani.position.y >= 7.5 && spaceshipGroup.visible) {
+                        spaceshipGroup.visible = false;
+                        explodeGoraniBurst(new THREE.Vector3(0, 8, -5));
+                        shakeIntensity = 1.0;
+                        spaceStep = 3;
+                    }
+                }
+                // 지구 위협 코어 감지
+                else if (spaceStep === 3) {
+                    mainGorani.rotation.x -= 3.0;
+                    mainGorani.position.y += Math.sin(Date.now() * 0.02) * 0.15;
+
+                    if (!window.coreDetectTimer) {
+                        window.coreDetectTimer = setTimeout(() => {
+                            window.coreDetectTimer = null;
+                            spaceStep = 3.5;
+                            reviveEarthGroup.visible = true;
+                            earthThreatCore.visible = true;
+                            camera.position.set(0, 0, 5);
+                            controls.target.set(0, 0, -6);
+                            mainGorani.position.set(0, 0, -3);
+                            captionEl.innerText = "🚨 [컷씬] 지구 내부 위협 코어 폭주 감지! 🚨";
+                            captionEl.style.opacity = '1';
+                            speakText("위협 코어가 폭주한다!", 1.1, 1.1);
+                        }, 1500);
+                    }
+                }
+                // 3. 지구 폭발
+                else if (spaceStep === 3.5) {
+                    earthThreatCore.scale.addScalar(0.05);
+                    if (!window.earthExplodeTimer) {
+                        window.earthExplodeTimer = setTimeout(() => {
+                            window.earthExplodeTimer = null;
+                            spaceStep = 4;
+                            earthThreatCore.visible = false;
+                            shakeIntensity = 2.5;
+                            captionEl.innerText = "💥 지구 위협 정화를 위한 강제 폭발! 💥";
+                        }, 2000);
+                    }
+                }
+                // 화성 스파이 로봇 신호
+                else if (spaceStep === 4) {
+                    reviveEarthMesh.scale.multiplyScalar(1.05);
+
+                    if (!window.marsPrepTimer) {
+                        window.marsPrepTimer = setTimeout(() => {
+                            window.marsPrepTimer = null;
+                            spaceStep = 5;
+                            reviveEarthGroup.visible = false;
+                            marsGroup.visible = true;
+                            katanaGroup.visible = true;
+                            spyBeam.visible = true;
+
+                            camera.position.set(0, 3, 6);
+                            controls.target.set(0, 0.5, -4);
+                            mainGorani.position.set(-2, 0.1, -4);
+                            captionEl.innerText = "📡 [컷씬] 로봇의 악성 스파이 전파 송출 포착! 📡";
+                            speakText("악성 전파를 차단해야 한다!", 1.0, 1.1);
+                        }, 2500);
+                    }
+                }
+                // 4. 로봇 분쇄
+                else if (spaceStep === 5) {
+                    spyBeam.scale.y = 1 + Math.sin(Date.now() * 0.05) * 0.3;
+                    if (!window.slashPrepTimer) {
+                        window.slashPrepTimer = setTimeout(() => {
+                            window.slashPrepTimer = null;
+                            spaceStep = 6;
+                            spyBeam.visible = false;
+                            captionEl.innerText = "⚔️ 스파이 로봇 파괴 카타나 난무! ⚔️";
+                        }, 2000);
+                    }
+                }
+                // 동맹군 함대 집결
+                else if (spaceStep === 6) {
+                    katanaGroup.rotation.z += 1.5;
+                    shakeIntensity = 0.6;
+
+                    if (!window.allyPrepTimer) {
+                        window.allyPrepTimer = setTimeout(() => {
+                            window.allyPrepTimer = null;
+                            spaceStep = 7;
+                            marsGroup.visible = false;
+                            katanaGroup.visible = false;
+                            goraniPlanetGroup.visible = true;
+
+                            camera.position.set(0, 3, 7);
+                            controls.target.set(0, 1, -4);
+                            mainGorani.position.set(0, 0, -4);
+                            mainGorani.scale.set(baseScale, baseScale, baseScale);
+
+                            captionEl.innerText = "🛸 [컷씬] 우주 동맹군 함대 집결 완료! 축제 시작! 🛸";
+                            speakText("동맹군과 함께 사기를 진작한다!", 1.2, 1.0);
+                        }, 2500);
+                    }
+                }
+                // 5. 댄스 파티
+                else if (spaceStep === 7) {
+                    const time = Date.now() * 0.008;
+                    mainGorani.position.y = Math.abs(Math.sin(time * 3)) * 0.8;
+                    goraniPlanetGroup.rotation.y += 0.02;
+
+                    if (!window.gauntletPrepTimer) {
+                        window.gauntletPrepTimer = setTimeout(() => {
+                            window.gauntletPrepTimer = null;
+                            spaceStep = 8;
+                            goraniPlanetGroup.visible = false;
+                            reviveEarthGroup.visible = true;
+                            gauntletGroup.visible = true;
+                            spacetimeRift.visible = true;
+
+                            reviveEarthMesh.scale.set(0.1, 0.1, 0.1);
+                            camera.position.set(0, 2, 8);
+                            controls.target.set(0, 0, -6);
+                            mainGorani.position.set(0, 1.5, -3);
+                            gauntletGroup.position.set(0.9, 2.5, -2.8);
+
+                            captionEl.innerText = "🌀 [컷씬] 시공간 균열 발생! 건틀렛 재구성 필요! 🌀";
+                            speakText("시공간 균열이 열렸다!", 1.0, 1.1);
+                        }, 3500);
+                    }
+                }
+                // 6. 건틀렛 부활
+                else if (spaceStep === 8) {
+                    spacetimeRift.rotation.z += 0.05;
+                    if (reviveEarthMesh.scale.x < 1.0) reviveEarthMesh.scale.addScalar(0.02);
+
+                    if (!window.twerkPrepTimer) {
+                        window.twerkPrepTimer = setTimeout(() => {
+                            window.twerkPrepTimer = null;
+                            spaceStep = 9;
+                            reviveEarthGroup.visible = false;
+                            gauntletGroup.visible = false;
+                            spacetimeRift.visible = false;
+
+                            camera.position.set(0, 2, 6);
+                            controls.target.set(0, 1, -3);
+                            mainGorani.position.set(0, 0, -3);
+                            captionEl.innerText = "🔥 신체 에너지 코어 증폭을 위한 트월킹 의식! 🔥";
+                            speakText("에너지를 극한으로 끌어올린다!", 1.0, 1.2);
+                        }, 3000);
+                    }
+                }
+                // 7. 트월킹 및 암살 드론 감지
+                else if (spaceStep === 9) {
+                    const twerkTime = Date.now() * 0.02;
+                    mainGorani.position.y = Math.abs(Math.sin(twerkTime * 2)) * 0.5;
+
+                    if (!window.carPrepTimer) {
+                        window.carPrepTimer = setTimeout(() => {
+                            window.carPrepTimer = null;
+                            spaceStep = 10;
+                            carGroup.visible = true;
+                            carGroup.position.set(0, 0, -8);
+                            assassinDrone.visible = true;
+
+                            captionEl.innerText = "🛸 [컷씬] 반동 세력의 암살 드론 추적 감지! 🛸";
+                            speakText("암살 드론이 붙었다!", 1.3, 1.2);
+                        }, 3500);
+                    }
+                }
+                // 8. 교통사고
+                else if (spaceStep === 10) {
+                    assassinDrone.position.y = 1.8 + Math.sin(Date.now() * 0.05) * 0.2;
+                    if (carGroup.position.z < -3) {
+                        carGroup.position.z += 0.4;
+                    } else {
+                        carGroup.visible = false;
+                        assassinDrone.visible = false;
+                        mainGorani.position.set(0, 0, -3);
+                        mainGorani.rotation.set(0, 0, 0);
+                        spaceStep = 11;
+
+                        poopGroup.visible = true;
+                        poopParticles.forEach(pp => {
+                            pp.mesh.visible = true;
+                            pp.mesh.position.set(0, 1.5, -3);
+                            const angle = Math.random() * Math.PI * 2;
+                            const speed = 0.2 + Math.random() * 0.3;
+                            pp.vel.set(Math.cos(angle) * speed, Math.random() * 0.2 + 0.1, Math.sin(angle) * speed);
+                        });
+
+                        captionEl.innerText = "💩 암살 음모 잔재 정화를 위한 영역 전개 똥뿌리기! 💩";
+                        speakText("부정한 영역을 정화한다!", 0.9, 1.0);
+                    }
+                }
+                // 9. 료이키텐카이(똥뿌리기)
+                else if (spaceStep === 11) {
+                    mainGorani.rotation.y += 0.35;
+                    poopParticles.forEach(pp => {
+                        pp.mesh.position.add(pp.vel);
+                        pp.vel.y -= 0.01;
+                    });
+
+                    if (!window.mindZoomTimer) {
+                        window.mindZoomTimer = setTimeout(() => {
+                            window.mindZoomTimer = null;
+                            spaceStep = 12;
+
+                            poopGroup.visible = false;
+                            mainGorani.visible = false;
+                            mindWorldGroup.visible = true;
+                            mindGoraniGroup.visible = true;
+
+                            scene.background.set(0x050005);
+                            camera.position.set(0, 3, 1);
+                            controls.target.set(0, 1.5, -3);
+
+                            captionEl.innerText = "⚡ 내면의 자아 통합을 위한 선생님과의 최후 결전! ⚡";
+                            speakText("내 안의 한계를 극복한다!", 0.8, 1.0);
+                        }, 3000);
+                    }
+                }
+                // 10. 마음속 결전
+                else if (spaceStep === 12) {
+                    const fightTime = Date.now() * 0.01;
+                    mindGoraniGroup.position.x = -1.5 + Math.sin(fightTime * 4) * 0.5;
+                    mindWorldGroup.position.x = 1.5 - Math.sin(fightTime * 4) * 0.5;
+                    shakeIntensity = 1.2;
+
+                    if (!window.asteroidStageTimer) {
+                        window.asteroidStageTimer = setTimeout(() => {
+                            window.asteroidStageTimer = null;
+                            spaceStep = 13;
+
+                            mindWorldGroup.visible = false;
+                            mindGoraniGroup.visible = false;
+                            starField.visible = true;
+                            asteroidGroup.visible = true;
+
+                            captionEl.innerText = "🌌 낙하 유성군 요격을 위한 우주 소행성 폭격! 🌌";
+                            playSoundEffect('laser');
+                            speakText("소행성을 요격한다!", 1.0, 1.1);
+                        }, 4000);
+                    }
+                }
+                // 11. 우주 소행성 폭격
+                else if (spaceStep === 13) {
+                    asteroidGroup.rotation.y += 0.02;
+                    shakeIntensity = 0.5;
+
+                    if (!window.multiverseStageTimer) {
+                        window.multiverseStageTimer = setTimeout(() => {
+                            window.multiverseStageTimer = null;
+                            spaceStep = 14;
+
+                            asteroidGroup.visible = false;
+                            multiverseGroup.visible = true;
+
+                            captionEl.innerText = "🌌 차원 전체 방어를 위한 멀티버스 군단 동기화! 🌌";
+                            playSoundEffect('laser');
+                            speakText("모든 차원의 고라니여, 동기화하라!", 1.1, 1.1);
+                        }, 3500);
+                    }
+                }
+                // 12. 멀티버스 분신 군단
+                else if (spaceStep === 14) {
+                    multiverseGroup.rotation.y += 0.05;
+                    cloneModels.forEach((cm, idx) => {
+                        cm.rotation.y += 0.1;
+                        cm.position.y = Math.sin(Date.now() * 0.01 + idx) * 0.5;
+                    });
+
+                    if (!window.cyborgStageTimer) {
+                        window.cyborgStageTimer = setTimeout(() => {
+                            window.cyborgStageTimer = null;
+                            spaceStep = 15;
+
+                            multiverseGroup.visible = false;
+                            mainGorani.visible = true;
+                            bodyMat.color.copy(cyberGoldColor);
+                            skinMat.color.copy(cyberGoldColor);
+
+                            captionEl.innerText = "⚡ 초고온 우주 환경 적합형 사이보그 강제 개조! ⚡";
+                            playSoundEffect('explosion');
+                            speakText("성간 환경 적합형으로 개조 완료!", 0.7, 1.2);
+                        }, 4000);
+                    }
+                }
+                // 13. 사이보그 메카 개조
+                else if (spaceStep === 15) {
+                    mainGorani.rotation.y += 0.2;
+                    shakeIntensity = 1.0;
+
+                    if (!window.bossStageTimer) {
+                        window.bossStageTimer = setTimeout(() => {
+                            window.bossStageTimer = null;
+                            spaceStep = 16;
+
+                            bossMonsterGroup.visible = true;
+
+                            captionEl.innerText = "🐙 우주 기원을 어지럽히는 차원 문어 보스 소탕 혈투! 🐙";
+                            playSoundEffect('laser');
+                            speakText("우주의 평화를 어지럽히는 자, 처단한다!", 0.6, 1.0);
+                        }, 3500);
+                    }
+                }
+                // 14. 차원 문어 보스 혈투
+                else if (spaceStep === 16) {
+                    bossMonsterGroup.rotation.y -= 0.05;
+                    shakeIntensity = 1.8;
+
+                    if (!window.empireStageTimer) {
+                        window.empireStageTimer = setTimeout(() => {
+                            window.empireStageTimer = null;
+                            spaceStep = 17;
+
+                            bossMonsterGroup.visible = false;
+                            empireCitadelGroup.visible = true;
+
+                            captionEl.innerText = "👑 영원한 평화 체제 확립: 고라니 성간 제국 건국! 👑";
+                            playSoundEffect('explosion');
+                            speakText("이로써 영원한 평화의 성간 제국이 건국되었다!", 1.2, 1.0);
+                        }, 4000);
+                    }
+                }
+                // 15. 고라니 성간 제국 건국 후 ➔ [신규 추가] 16. 고라니의 죽음과 무덤 안치
+                else if (spaceStep === 17) {
+                    empireCitadelGroup.rotation.y += 0.01;
+                    mainGorani.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 1.5;
+
+                    if (!window.tombStageTimer) {
+                        window.tombStageTimer = setTimeout(() => {
+                            window.tombStageTimer = null;
+                            spaceStep = 18;
+
+                            empireCitadelGroup.visible = false;
+                            mainGorani.visible = false;
+                            tombGroup.visible = true;
+
+                            camera.position.set(0, 2, 8);
+                            controls.target.set(0, 1, -8);
+
+                            captionEl.innerText = "🪦 영웅의 안식처: 고라니의 장례식과 무덤 안치... 🪦";
+                            playSoundEffect('explosion');
+                            speakText("위대한 영웅이여, 영면하소서...", 0.6, 0.9);
+                        }, 4000);
+                    }
+                }
+                // [신규 추가] 17. 2세 '고라니선쌩님'의 강림 및 대폭발 각성
+                else if (spaceStep === 18) {
+                    tombGroup.rotation.y += 0.01;
+
+                    if (!window.sonStageTimer) {
+                        window.sonStageTimer = setTimeout(() => {
+                            window.sonStageTimer = null;
+                            spaceStep = 19;
+
+                            tombGroup.visible = false;
+                            sonGorani.visible = true;
+                            sonGorani.position.set(0, 0, -6);
+
+                            camera.position.set(0, 3, 7);
+                            controls.target.set(0, 1.5, -6);
+
+                            captionEl.innerText = "✨ 2세 강림! 그의 이름은 바로 [고라니선쌩님]! ✨";
+                            explodeGoraniBurst(new THREE.Vector3(0, 2, -6));
+                            shakeIntensity = 2.5;
+                            playSnapSound();
+                            speakText("아임 고라니선쌩님! 의지를 이어받는다!", 1.1, 1.1);
+                        }, 4500);
+                    }
+                }
+                // 2세 고라니선쌩님 제국 통치 피날레 및 리셋 대기
+                else if (spaceStep === 19) {
+                    sonGorani.rotation.y += 0.05;
+                    sonGorani.position.y = Math.abs(Math.sin(Date.now() * 0.015)) * 1.0;
+
+                    if (!window.finalResetTimer) {
+                        window.finalResetTimer = setTimeout(() => {
+                            window.finalResetTimer = null;
+                            spaceStep = 0;
+                            poseState = 'idle';
+                            captionEl.style.opacity = '0';
+                            sonGorani.visible = false;
+                            starField.visible = false;
+                            floor.visible = true;
+                            scene.background.set(0x1a1c23);
+                            camera.position.copy(originalCamPos);
+                            controls.target.set(0, 2.5, 0);
+
+                            bodyMat.color.copy(goraniColor);
+                            skinMat.color.copy(goraniColor);
+                            legMat.color.copy(goraniColor);
+                            pecMat.setHex(0x5c3a1e);
+                            leftEarMesh.scale.set(1, 1, 1); rightEarMesh.scale.set(1, 1, 1);
+                            leftFangMesh.scale.set(1, 1, 1); rightFangMesh.scale.set(1, 1, 1);
+                        }, 6000);
+                    }
+                }
+            } 
+            else if (poseState === 'idle') {
+                rightArmGroup.rotation.z = -0.4;
+                rightArmGroup.rotation.x = 0;
+            }
+
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.mesh.position.add(p.vel);
+                p.mesh.rotation.x += p.rotSpeed.x;
+                p.mesh.rotation.y += p.rotSpeed.y;
+                p.mesh.rotation.z += p.rotSpeed.z;
+                p.life -= 1;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.scale += 0.8;
+                sw.mesh.scale.set(sw.scale, sw.scale, sw.scale);
+                sw.opacity -= 0.035;
+                sw.mesh.material.opacity = sw.opacity;
+                if (sw.opacity <= 0) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            if (shakeIntensity > 0) {
+                camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+                camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+                shakeIntensity -= 0.03;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

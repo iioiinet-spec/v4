@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Ford Mustang GT 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #080c18;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #game-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      background: rgba(10, 16, 30, 0.85);
+      border-left: 4px solid #ffb703;
+      padding: 12px 20px;
+      border-radius: 6px;
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+    #hud .title { font-size: 13px; font-weight: bold; color: #ffb703; letter-spacing: 1px; }
+    #hud .speed { font-size: 26px; font-weight: 900; margin: 4px 0; }
+    #hud .score { font-size: 14px; color: #38bdf8; }
+    #guide {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(10, 16, 30, 0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 12px 18px;
+      border-radius: 6px;
+      color: #cbd5e1;
+      font-size: 13px;
+      pointer-events: none;
+    }
+    #guide b { color: #ffb703; }
+  </style>
+</head>
+<body>
+
+  <div id="hud">
+    <div class="title">FORD MUSTANG GT 5.0 (TRUE 3D)</div>
+    <div class="speed"><span id="spd-text">0</span> <span style="font-size:14px; color:#94a3b8; font-weight:normal;">KM/H</span></div>
+    <div class="score">COINS: <span id="scr-text">0</span></div>
+  </div>
+
+  <div id="guide">
+    <b>[↑ / W]</b> 가속 &nbsp; <b>[↓ / S]</b> 후진/브레이크<br>
+    <b>[← / A]</b> 좌회전 &nbsp; <b>[→ / D]</b> 우회전
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const spdEl = document.getElementById('spd-text');
+    const scrEl = document.getElementById('scr-text');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // 1. 차량 물리 변수
+    let carX = 0, carZ = 0, carYaw = 0;
+    let speed = 0, score = 0;
+    const maxSpeed = 24, maxRev = -8, accel = 0.55, friction = 0.965;
+    const keys = { w: false, s: false, a: false, d: false };
+
+    window.addEventListener('keydown', e => {
+      if (['KeyW', 'ArrowUp'].includes(e.code)) keys.w = true;
+      if (['KeyS', 'ArrowDown'].includes(e.code)) keys.s = true;
+      if (['KeyA', 'ArrowLeft'].includes(e.code)) keys.a = true;
+      if (['KeyD', 'ArrowRight'].includes(e.code)) keys.d = true;
+    });
+
+    window.addEventListener('keyup', e => {
+      if (['KeyW', 'ArrowUp'].includes(e.code)) keys.w = false;
+      if (['KeyS', 'ArrowDown'].includes(e.code)) keys.s = false;
+      if (['KeyA', 'ArrowLeft'].includes(e.code)) keys.a = false;
+      if (['KeyD', 'ArrowRight'].includes(e.code)) keys.d = false;
+    });
+
+    // 2. 3D 투영 엔진 (World -> Camera -> 2D Screen)
+    function project(p, cam) {
+      const dx = p.x - cam.x;
+      const dy = p.y - cam.y;
+      const dz = p.z - cam.z;
+
+      // 카메라 Y축 회전 (Yaw)
+      const cosY = Math.cos(-cam.yaw);
+      const sinY = Math.sin(-cam.yaw);
+      const rx = dx * cosY - dz * sinY;
+      const rz = dx * sinY + dz * cosY;
+
+      // 카메라 X축 회전 (Pitch 내려다보기)
+      const cosP = Math.cos(cam.pitch);
+      const sinP = Math.sin(cam.pitch);
+      const ry = dy * cosP - rz * sinP;
+      const rz2 = dy * sinP + rz * cosP;
+
+      if (rz2 <= 5) return null; // 시야 뒤쪽 클리핑
+
+      const fov = 420;
+      const scale = fov / rz2;
+      return {
+        x: (canvas.width / 2) + rx * scale,
+        y: (canvas.height / 2) - ry * scale,
+        depth: rz2
+      };
+    }
+
+    // 3. 3D 직육면체 폴리곤 생성기
+    function makeBox(cx, cy, cz, w, h, d, color) {
+      const hw = w / 2, hh = h / 2, hd = d / 2;
+      const v = [
+        { x: cx - hw, y: cy - hh, z: cz - hd },
+        { x: cx + hw, y: cy - hh, z: cz - hd },
+        { x: cx + hw, y: cy + hh, z: cz - hd },
+        { x: cx - hw, y: cy + hh, z: cz - hd },
+        { x: cx - hw, y: cy - hh, z: cz + hd },
+        { x: cx + hw, y: cy - hh, z: cz + hd },
+        { x: cx + hw, y: cy + hh, z: cz + hd },
+        { x: cx - hw, y: cy + hh, z: cz + hd }
+      ];
+      const f = [
+        { idx: [4, 5, 6, 7], col: color, s: 1.0 },  // 앞
+        { idx: [1, 0, 3, 2], col: color, s: 0.6 },  // 뒤
+        { idx: [3, 2, 6, 7], col: color, s: 1.2 },  // 위
+        { idx: [0, 1, 5, 4], col: color, s: 0.4 },  // 아래
+        { idx: [0, 4, 7, 3], col: color, s: 0.75 }, // 좌
+        { idx: [5, 1, 2, 6], col: color, s: 0.85 }  // 우
+      ];
+      return { verts: v, faces: f };
+    }
+
+    // 머스탱 GT 전용 3D 부품 모델링 (Kona Blue, 롱노즈, 패스트백, 스트라이프, 3선 테일램프)
+    const mustangModels = [
+      makeBox(0, 12, 0, 46, 12, 94, '#1b4fb8'),        // 섀시 본체
+      makeBox(0, 20, 23, 44, 8, 46, '#1b4fb8'),        // 롱 노즈 후드
+      makeBox(0, 25, 24, 16, 3, 14, '#111827'),        // 후드 에어 스쿱
+      makeBox(0, 30, -8, 36, 15, 36, '#0f172a'),       // 패스트백 캐빈 윈도우
+      makeBox(0, 38, -8, 35, 2, 34, '#1b4fb8'),        // 루프 탑
+      makeBox(0, 14, 47.2, 38, 7, 2, '#0a0f1d'),       // 샤크 노즈 그릴
+      makeBox(-15, 16, 47.4, 7, 3, 1, '#ffffff'),       // 헤드라이트 좌
+      makeBox(15, 16, 47.4, 7, 3, 1, '#ffffff'),        // 헤드라이트 우
+      // 화이트 더블 레이싱 스트라이프
+      makeBox(-5, 24.5, 23, 3.5, 0.5, 46, '#ffffff'),
+      makeBox(5, 24.5, 23, 3.5, 0.5, 46, '#ffffff'),
+      makeBox(-5, 39.5, -8, 3.5, 0.5, 34, '#ffffff'),
+      makeBox(5, 39.5, -8, 3.5, 0.5, 34, '#ffffff'),
+      // 머스탱 3구 버티컬 테일램프
+      makeBox(-16, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      makeBox(-13, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      makeBox(-10, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      makeBox(10, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      makeBox(13, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      makeBox(16, 16, -47.2, 1.8, 6, 1, '#ef4444'),
+      // 4개 타이어
+      makeBox(-24, 8, 28, 6, 16, 16, '#111827'),
+      makeBox(24, 8, 28, 6, 16, 16, '#111827'),
+      makeBox(-24, 8, -28, 6, 16, 16, '#111827'),
+      makeBox(24, 8, -28, 6, 16, 16, '#111827')
+    ];
+
+    // 도심 빌딩 데이터
+    const buildings = [];
+    for (let x = -1200; x <= 1200; x += 300) {
+      for (let z = -1200; z <= 1200; z += 300) {
+        if (Math.abs(x) < 180 && Math.abs(z) < 180) continue;
+        const h = 180 + Math.random() * 260;
+        buildings.push(makeBox(x, h/2, z, 130, h, 130, '#0f172a'));
+      }
+    }
+
+    // 골드 코인 데이터
+    const coins = [];
+    for (let i = 0; i < 35; i++) {
+      coins.push({
+        x: (Math.random() - 0.5) * 2200,
+        y: 14,
+        z: (Math.random() - 0.5) * 2200,
+        mesh: makeBox(0, 0, 0, 14, 14, 14, '#ffb703')
+      });
+    }
+
+    function shadeColor(hex, factor) {
+      if (hex.startsWith('#') && hex.length === 7) {
+        let r = parseInt(hex.slice(1, 3), 16);
+        let g = parseInt(hex.slice(3, 5), 16);
+        let b = parseInt(hex.slice(5, 7), 16);
+        r = Math.min(255, Math.floor(r * factor));
+        g = Math.min(255, Math.floor(g * factor));
+        b = Math.min(255, Math.floor(b * factor));
+        return `rgb(${r},${g},${b})`;
+      }
+      return hex;
+    }
+
+    // 4. 메인 게임 루프
+    function loop() {
+      // 주행 입력
+      if (keys.w) speed = Math.min(maxSpeed, speed + accel);
+      else if (keys.s) speed = Math.max(maxRev, speed - accel);
+      else speed *= friction;
+
+      if (Math.abs(speed) > 0.05) {
+        const dir = speed >= 0 ? 1 : -1;
+        if (keys.a) carYaw -= 0.038 * dir;
+        if (keys.d) carYaw += 0.038 * dir;
+      }
+
+      carX += Math.sin(carYaw) * speed;
+      carZ += Math.cos(carYaw) * speed;
+
+      // 코인 획득 검사
+      coins.forEach(c => {
+        if (Math.hypot(carX - c.x, carZ - c.z) < 42) {
+          score += 10;
+          scrEl.innerText = score;
+          c.x = carX + (Math.random() - 0.5) * 1800;
+          c.z = carZ + (Math.random() - 0.5) * 1800;
+        }
+      });
+
+      spdEl.innerText = Math.round(Math.abs(speed) * 7.5);
+
+      // 화면 지우기 (밤하늘 배경)
+      ctx.fillStyle = '#080c18';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 카메라 설정 (머스탱 뒤편 상단에서 자연스럽게 추적)
+      const cam = {
+        x: carX - Math.sin(carYaw) * 180,
+        y: 75,
+        z: carZ - Math.cos(carYaw) * 180,
+        yaw: carYaw,
+        pitch: 0.18
+      };
+
+      // 지면 3D 격자선 렌더링
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#152038';
+      const gridSize = 150;
+      const startX = Math.floor((carX - 800) / gridSize) * gridSize;
+      const endX = startX + 1600;
+      const startZ = Math.floor((carZ - 800) / gridSize) * gridSize;
+      const endZ = startZ + 1600;
+
+      for (let gx = startX; gx <= endX; gx += gridSize) {
+        const p1 = project({ x: gx, y: 0, z: startZ }, cam);
+        const p2 = project({ x: gx, y: 0, z: endZ }, cam);
+        if (p1 && p2) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+      for (let gz = startZ; gz <= endZ; gz += gridSize) {
+        const p1 = project({ x: startX, y: 0, z: gz }, cam);
+        const p2 = project({ x: endX, y: 0, z: gz }, cam);
+        if (p1 && p2) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+
+      // 렌더링 큐에 폴리곤 모으기 (깊이 버퍼 정렬)
+      const renderQueue = [];
+
+      // 1) 빌딩 추가
+      buildings.forEach(b => {
+        b.faces.forEach(f => {
+          const projected = [];
+          let dSum = 0, inside = true;
+          for (let idx of f.idx) {
+            const pr = project(b.verts[idx], cam);
+            if (!pr) { inside = false; break; }
+            projected.push(pr);
+            dSum += pr.depth;
+          }
+          if (inside && projected.length >= 3) {
+            renderQueue.push({
+              pts: projected,
+              depth: dSum / projected.length,
+              col: shadeColor(f.col, f.s),
+              stroke: '#1e293b'
+            });
+          }
+        });
+      });
+
+      // 2) 코인 추가
+      coins.forEach(c => {
+        c.mesh.faces.forEach(f => {
+          const projected = [];
+          let dSum = 0, inside = true;
+          for (let idx of f.idx) {
+            const v = c.mesh.verts[idx];
+            const pr = project({ x: c.x + v.x, y: c.y + v.y, z: c.z + v.z }, cam);
+            if (!pr) { inside = false; break; }
+            projected.push(pr);
+            dSum += pr.depth;
+          }
+          if (inside) {
+            renderQueue.push({
+              pts: projected,
+              depth: dSum / projected.length,
+              col: shadeColor(f.col, f.s),
+              stroke: '#fef08a'
+            });
+          }
+        });
+      });
+
+      // 3) 머스탱 차량 본체 추가 (차량 좌표 & Yaw 회전 적용)
+      const cosC = Math.cos(carYaw);
+      const sinC = Math.sin(carYaw);
+
+      mustangModels.forEach(part => {
+        part.faces.forEach(f => {
+          const projected = [];
+          let dSum = 0, inside = true;
+          for (let idx of f.idx) {
+            const lv = part.verts[idx];
+            const wx = carX + lv.x * cosC + lv.z * sinC;
+            const wy = lv.y;
+            const wz = carZ - lv.x * sinC + lv.z * cosC;
+            const pr = project({ x: wx, y: wy, z: wz }, cam);
+            if (!pr) { inside = false; break; }
+            projected.push(pr);
+            dSum += pr.depth;
+          }
+          if (inside && projected.length >= 3) {
+            renderQueue.push({
+              pts: projected,
+              depth: dSum / projected.length,
+              col: shadeColor(f.col, f.s),
+              stroke: null
+            });
+          }
+        });
+      });
+
+      // 깊이 기준 내림차순 정렬 (Painter's Algorithm: 먼 곳부터 순서대로 렌더링)
+      renderQueue.sort((a, b) => b.depth - a.depth);
+
+      // 폴리곤 그리기
+      renderQueue.forEach(item => {
+        ctx.beginPath();
+        ctx.moveTo(item.pts[0].x, item.pts[0].y);
+        for (let i = 1; i < item.pts.length; i++) {
+          ctx.lineTo(item.pts[i].x, item.pts[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = item.col;
+        ctx.fill();
+        if (item.stroke) {
+          ctx.strokeStyle = item.stroke;
+          ctx.stroke();
+        }
+      });
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 타워 던전 RPG</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0b0b10;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #ui div {
+            margin-bottom: 8px;
+        }
+        #player-hp-container {
+            width: 200px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid #555;
+            border-radius: 4px;
+            height: 16px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        #player-hp-fill {
+            width: 100%;
+            height: 100%;
+            background: #2ecc71;
+            transition: width 0.2s;
+        }
+        #boss-health-container {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #ff3333;
+            border-radius: 5px;
+            padding: 5px;
+            text-align: center;
+            z-index: 10;
+        }
+        #boss-name {
+            color: #ff5555;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 3px;
+        }
+        #boss-hp-bar-bg {
+            width: 100%;
+            height: 14px;
+            background: #331111;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        #boss-hp-bar-fill {
+            width: 100%;
+            height: 100%;
+            background: #ff2222;
+            transition: width 0.1s;
+        }
+        #shop-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 30, 0.95);
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 30px;
+            color: white;
+            width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            z-index: 100;
+        }
+        .weapon-item {
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .weapon-item button {
+            background: #ffaa00;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .weapon-item button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #message {
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff3333;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            z-index: 10;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #000;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #aaa;
+            font-size: 14px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="floor-txt">타워 층: 1층</div>
+        <div id="wave-txt">웨이브: 1 / 5</div>
+        <div>
+            HP: <span id="hp-txt">100 / 100</span>
+            <div id="player-hp-container">
+                <div id="player-hp-fill"></div>
+            </div>
+        </div>
+        <div id="gem-txt" style="margin-top: 5px;">보석: 💎 0</div>
+        <div id="weapon-txt">현재 무기: 장검</div>
+    </div>
+
+    <div id="boss-health-container">
+        <div id="boss-name">🚨 해골 왕 (보스) - 특수 패턴 시전 중! 🚨</div>
+        <div id="boss-hp-bar-bg">
+            <div id="boss-hp-bar-fill"></div>
+        </div>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="message"></div>
+
+    <div id="controls-hint">
+        <b>WASD</b>: 이동 (A/D: 좌우) | <b>마우스 드래그</b>: 시점 회전 (속도 부드럽게 조절됨) | <b>좌클릭 / F</b>: 공격 | <b>G</b>: 가드 | <b>R</b>: 패링 | <b>B</b>: 무기고
+    </div>
+
+    <div id="shop-modal">
+        <h2>⚔️ 무기고 (Weapon Arsenal)</h2>
+        <p>보석은 사망해도 유지됩니다! 무기를 구매하고 장착하세요.</p>
+        <div id="shop-content"></div>
+        <br>
+        <button onclick="toggleShop()" style="padding: 10px 20px; background:#444; color:white; border:none; border-radius:5px; cursor:pointer;">닫기 (B)</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let player = { x: 0, z: 0, angle: 0 };
+        let monsters = [];
+        let keys = { w: false, a: false, s: false, d: false };
+        
+        let gameState = {
+            floor: 1,
+            wave: 1,
+            hp: 100,
+            maxHp: 100,
+            gems: 0,
+            currentWeapon: '장검',
+            ownedWeapons: ['장검'],
+            isGuarding: false,
+            isAttacking: false,
+            parryWindow: false
+        };
+
+        const weaponsData = {
+            '장검': { grade: '기본', dmg: 10, speed: 1.0, range: 50, color: '#ccc', price: 0 },
+            '도끼': { grade: '일반', dmg: 15, speed: 0.8, range: 45, color: '#995522', price: 5 },
+            '굉이': { grade: '일반', dmg: 12, speed: 0.9, range: 48, color: '#777777', price: 5 },
+            '녹슨 망치': { grade: '일반', dmg: 18, speed: 0.6, range: 40, color: '#554433', price: 5 },
+            '단검': { grade: '일반', dmg: 8, speed: 1.8, range: 35, color: '#aaaaaa', price: 5 },
+            '쌍검': { grade: '희귀', dmg: 22, speed: 1.5, range: 45, color: '#33ffcc', price: 10 },
+            '전투도끼': { grade: '희귀', dmg: 28, speed: 0.9, range: 48, color: '#ff5533', price: 10 },
+            '광선검': { grade: '희귀', dmg: 30, speed: 1.4, range: 55, color: '#00ffff', price: 10 },
+            '블레이드': { grade: '희귀', dmg: 25, speed: 1.2, range: 50, color: '#ddddff', price: 10 },
+            '양날도끼': { grade: '전설', dmg: 55, speed: 0.8, range: 55, color: '#ffaa00', price: 100, special: 'all_kill' },
+            '해적 레이시어': { grade: '전설', dmg: 60, speed: 1.2, range: 55, color: '#0055ff', price: 100, special: 'dash' },
+            '사이버슬레이어': { grade: '전설', dmg: 70, speed: 1.3, range: 60, color: '#ff00ff', price: 100, special: 'delete_target' },
+            '망령의 소울 검': { grade: '전설', dmg: 65, speed: 1.1, range: 55, color: '#33ff33', price: 100, special: 'spirit_spears' },
+            '전광쌍검': { grade: '환상', dmg: 150, speed: 2.0, range: 70, color: '#ffff00', price: 1000, special: 'lightning_dash' },
+            '바다영혼 낫': { grade: '환상', dmg: 140, speed: 1.3, range: 65, color: '#0088ff', price: 1000, special: 'ocean_guardian' },
+            '화염 삼지창': { grade: '환상', dmg: 160, speed: 1.0, range: 80, color: '#ff2200', price: 1000, special: 'fire_wall' }
+        };
+
+        window.addEventListener('keydown', e => {
+            if (['w','W'].includes(e.key)) keys.w = true;
+            if (['s','S'].includes(e.key)) keys.s = true;
+            if (['a','A'].includes(e.key)) keys.a = true;
+            if (['d','D'].includes(e.key)) keys.d = true;
+            if (['f','F'].includes(e.key)) { if (!gameState.isAttacking) attack(); }
+            if (['g','G'].includes(e.key)) gameState.isGuarding = true;
+            if (['r','R'].includes(e.key)) { if (gameState.isGuarding && gameState.parryWindow) parry(); }
+            if (['b','B'].includes(e.key)) toggleShop();
+        });
+        window.addEventListener('keyup', e => {
+            if (['w','W'].includes(e.key)) keys.w = false;
+            if (['s','S'].includes(e.key)) keys.s = false;
+            if (['a','A'].includes(e.key)) keys.a = false;
+            if (['d','D'].includes(e.key)) keys.d = false;
+            if (['g','G'].includes(e.key)) gameState.isGuarding = false;
+        });
+
+        let isMouseDown = false;
+        let lastMouseX = 0;
+        window.addEventListener('mousedown', e => {
+            if (e.button === 0) {
+                isMouseDown = true;
+                lastMouseX = e.clientX;
+                if (!gameState.isAttacking) attack();
+            }
+        });
+        window.addEventListener('mouseup', e => { if (e.button === 0) isMouseDown = false; });
+        window.addEventListener('mousemove', e => {
+            if (isMouseDown) {
+                let delta = e.clientX - lastMouseX;
+                player.angle += delta * 0.002; // 💡 회전 속도를 느리고 부드럽게 조정 (0.005 -> 0.002)
+                lastMouseX = e.clientX;
+            }
+        });
+
+        function spawnMonsters() {
+            monsters = [];
+            let isBossWave = (gameState.wave === 5);
+            let count = isBossWave ? 1 : (2 + gameState.floor);
+
+            for (let i = 0; i < count; i++) {
+                let isBoss = isBossWave && (i === 0);
+                let angle = Math.random() * Math.PI * 2;
+                let dist = 250 + Math.random() * 150;
+                monsters.push({
+                    x: Math.cos(angle) * dist,
+                    z: Math.sin(angle) * dist,
+                    isBoss: isBoss,
+                    hp: isBoss ? (500 * gameState.floor) : (30 * gameState.floor),
+                    maxHp: isBoss ? (500 * gameState.floor) : (30 * gameState.floor),
+                    atk: isBoss ? 30 : 8,
+                    speed: isBoss ? 1.0 : 1.6,
+                    attackCooldown: 0,
+                    hitTimer: 0,
+                    bossPatternTimer: 0
+                });
+            }
+            document.getElementById('boss-health-container').style.display = isBossWave ? 'block' : 'none';
+            showCenterMessage(isBossWave ? "🚨 5웨이브: 해골 왕 보스 등장! 🚨" : `${gameState.floor}층 - 웨이브 ${gameState.wave}`);
+        }
+
+        function attack() {
+            gameState.isAttacking = true;
+            let wData = weaponsData[gameState.currentWeapon];
+
+            if (wData.special === 'all_kill') {
+                gameState.hp -= gameState.maxHp * 0.3;
+                monsters = [];
+                showCenterMessage("⚡ [양날도끼] 전멸의 일격 발동!");
+            }
+
+            monsters.forEach(m => {
+                let dx = m.x - player.x;
+                let dz = m.z - player.z;
+                let dist = Math.sqrt(dx*dx + dz*dz);
+                let targetAngle = Math.atan2(dz, dx);
+                let angleDiff = Math.abs(targetAngle - player.angle);
+
+                if (dist < wData.range + 40 && angleDiff < 0.9) {
+                    m.hp -= wData.dmg;
+                    m.hitTimer = 12;
+                    if (!m.isBoss) {
+                        m.x += Math.cos(targetAngle) * 25;
+                        m.z += Math.sin(targetAngle) * 25;
+                    }
+                }
+            });
+
+            setTimeout(() => { gameState.isAttacking = false; }, 300 / wData.speed);
+            updateUI();
+        }
+
+        function parry() {
+            showCenterMessage("✨ 패링 성공! 데미지 반사!");
+            gameState.parryWindow = false;
+            if (monsters.length > 0) {
+                monsters[0].hp -= monsters[0].maxHp * 0.1;
+            }
+        }
+
+        function showCenterMessage(text) {
+            const msg = document.getElementById('message');
+            msg.innerText = text;
+            msg.style.opacity = '1';
+            setTimeout(() => { msg.style.opacity = '0'; }, 2000);
+        }
+
+        function updateUI() {
+            document.getElementById('floor-txt').innerText = `타워 층: ${gameState.floor}층`;
+            document.getElementById('wave-txt').innerText = `웨이브: ${gameState.wave} / 5`;
+            let curHp = Math.max(0, Math.round(gameState.hp));
+            document.getElementById('hp-txt').innerText = `${curHp} / ${gameState.maxHp}`;
+            document.getElementById('player-hp-fill').style.width = `${(curHp / gameState.maxHp) * 100}%`;
+            document.getElementById('gem-txt').innerText = `보석: 💎 ${gameState.gems}`;
+            document.getElementById('weapon-txt').innerText = `현재 무기: ${gameState.currentWeapon}`;
+        }
+
+        function toggleShop() {
+            const modal = document.getElementById('shop-modal');
+            modal.style.display = (modal.style.display === 'block') ? 'none' : 'block';
+            updateShopUI();
+        }
+
+        function updateShopUI() {
+            const content = document.getElementById('shop-content');
+            content.innerHTML = '';
+            for (let [name, data] of Object.entries(weaponsData)) {
+                let isOwned = gameState.ownedWeapons.includes(name);
+                let isEquipped = (gameState.currentWeapon === name);
+                let btnHtml = isEquipped ? `<button disabled>장착 중</button>` :
+                              isOwned ? `<button onclick="equipWeapon('${name}')">장착</button>` :
+                              `<button onclick="buyWeapon('${name}', ${data.price})" ${gameState.gems < data.price ? 'disabled' : ''}>구매 (💎${data.price})</button>`;
+
+                content.innerHTML += `
+                    <div class="weapon-item">
+                        <div><b>${name}</b> [${data.grade}]<br><small>공격력: ${data.dmg} | 사거리: ${data.range}</small></div>
+                        <div>${btnHtml}</div>
+                    </div>`;
+            }
+        }
+
+        window.buyWeapon = function(name, price) {
+            if (gameState.gems >= price) {
+                gameState.gems -= price;
+                gameState.ownedWeapons.push(name);
+                equipWeapon(name);
+            }
+        }
+
+        window.equipWeapon = function(name) {
+            gameState.currentWeapon = name;
+            updateShopUI();
+        }
+
+        spawnMonsters();
+
+        function gameLoop() {
+            let moveSpeed = 3.5;
+            if (keys.w) { player.x -= Math.sin(player.angle) * moveSpeed; player.z += Math.cos(player.angle) * moveSpeed; }
+            if (keys.s) { player.x += Math.sin(player.angle) * moveSpeed; player.z -= Math.cos(player.angle) * moveSpeed; }
+            if (keys.a) { player.x -= Math.cos(player.angle) * moveSpeed; player.z -= Math.sin(player.angle) * moveSpeed; }
+            if (keys.d) { player.x += Math.cos(player.angle) * moveSpeed; player.z += Math.sin(player.angle) * moveSpeed; }
+
+            ctx.fillStyle = '#111118';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#222233';
+            ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+            ctx.fillStyle = '#181822';
+            ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+
+            for (let i = -500; i <= 500; i += 200) {
+                let wx = i, wz = 500;
+                let relX = wx - player.x;
+                let relZ = wz - player.z;
+                let rotX = relX * Math.cos(-player.angle) - relZ * Math.sin(-player.angle);
+                let rotZ = relX * Math.sin(-player.angle) + relZ * Math.cos(-player.angle);
+                if (rotZ > 1) {
+                    let screenX = (canvas.width / 2) + (rotX / rotZ) * (canvas.width / 2);
+                    ctx.strokeStyle = '#444466';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(screenX, 0);
+                    ctx.lineTo(screenX, canvas.height);
+                    ctx.stroke();
+                }
+            }
+
+            monsters = monsters.filter(m => {
+                if (m.hp <= 0) return false;
+                if (m.hitTimer > 0) m.hitTimer--;
+
+                let dx = player.x - m.x;
+                let dz = player.z - m.z;
+                let dist = Math.sqrt(dx*dx + dz*dz);
+                let angleToPlayer = Math.atan2(dz, dx);
+
+                if (m.isBoss) {
+                    m.bossPatternTimer++;
+                    if (m.bossPatternTimer > 200) {
+                        m.bossPatternTimer = 0;
+                        showCenterMessage("🔥 [보스] 강력한 내려찍기 파동!");
+                        if (dist < 180) handleDamage(40);
+                    }
+                }
+
+                if (dist > 35) {
+                    m.x += Math.cos(angleToPlayer) * m.speed;
+                    m.z += Math.sin(angleToPlayer) * m.speed;
+                } else {
+                    m.attackCooldown++;
+                    if (m.attackCooldown > 60) {
+                        m.attackCooldown = 0;
+                        handleDamage(m.atk);
+                    }
+                }
+
+                let relX = m.x - player.x;
+                let relZ = m.z - player.z;
+                let rotX = relX * Math.cos(-player.angle) - relZ * Math.sin(-player.angle);
+                let rotZ = relX * Math.sin(-player.angle) + relZ * Math.cos(-player.angle);
+
+                if (rotZ > 1) {
+                    let screenX = (canvas.width / 2) + (rotX / rotZ) * (canvas.width / 2);
+                    let size = Math.min(1200, (1800 / rotZ) * (m.isBoss ? 2.5 : 1));
+
+                    ctx.fillStyle = m.hitTimer > 0 ? '#ff0000' : (m.isBoss ? '#aa2222' : '#ddddcc');
+                    ctx.fillRect(screenX - size/2, (canvas.height/2) - size/2, size, size);
+
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(screenX - size/3, (canvas.height/2) - size/3, size/4, size/4);
+                    ctx.fillRect(screenX + size/10, (canvas.height/2) - size/3, size/4, size/4);
+
+                    if (!m.isBoss) {
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(screenX - size/2, (canvas.height/2) - size/2 - 15, size, 8);
+                        ctx.fillStyle = '#0f0';
+                        ctx.fillRect(screenX - size/2, (canvas.height/2) - size/2 - 15, size * (m.hp / m.maxHp), 8);
+                    } else {
+                        document.getElementById('boss-hp-bar-fill').style.width = `${Math.max(0, (m.hp / m.maxHp) * 100)}%`;
+                    }
+                }
+
+                return true;
+            });
+
+            if (monsters.length === 0) {
+                gameState.wave++;
+                gameState.gems += 5;
+                document.getElementById('boss-health-container').style.display = 'none';
+                if (gameState.wave > 5) {
+                    gameState.wave = 1;
+                    gameState.floor++;
+                    showCenterMessage(`🏆 ${gameState.floor}층 진입!`);
+                } else {
+                    showCenterMessage(`🎉 웨이브 클리어! 보석 💎 +5 획득!`);
+                }
+                spawnMonsters();
+                updateUI();
+            }
+
+            let wData = weaponsData[gameState.currentWeapon];
+            ctx.fillStyle = wData.color;
+            ctx.fillRect(canvas.width - 250 + (gameState.isAttacking ? -60 : 0), canvas.height - 280, 90, 240);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleDamage(dmg) {
+            let actualDmg = dmg;
+            if (gameState.isGuarding) {
+                actualDmg *= 0.3;
+                gameState.parryWindow = true;
+                setTimeout(() => { gameState.parryWindow = false; }, 400);
+            }
+            gameState.hp -= actualDmg;
+            updateUI();
+
+            if (gameState.hp <= 0) {
+                alert("쓰러졌습니다! (보석은 유지됩니다)");
+                gameState.hp = gameState.maxHp;
+                player.x = 0; player.z = 0;
+                spawnMonsters();
+            }
+        }
+
+        updateUI();
+        gameLoop();
+    </script>
+</body>
+</html>

@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Zombie Arena</title>
+    <!-- Tailwind CSS for modern UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        /* Custom scrollbars or styling if needed */
+        .hud-shadow {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen">
+
+    <!-- Start Screen Overlay -->
+    <div id="start-screen" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center z-50 transition-opacity duration-500">
+        <div class="text-center p-8 bg-zinc-900/90 border border-zinc-700 rounded-2xl shadow-2xl max-w-md w-full mx-4">
+            <h1 class="text-4xl font-extrabold text-red-600 mb-2 tracking-wider">3D ZOMBIE ARENA</h1>
+            <p class="text-zinc-400 text-sm mb-8">5 웨이브 동안 좀비 무리에서 살아남으세요!</p>
+            
+            <div class="bg-zinc-800/80 p-4 rounded-xl mb-6 text-left text-xs text-zinc-300 space-y-2">
+                <p>🎮 <b>이동:</b> W, A, S, D / <b>점프:</b> Space</p>
+                <p>🔫 <b>무기 교체:</b> 1 (권총), 2 (소총), 3 (미니건)</p>
+                <p>🔄 <b>재장전:</b> R / <b>발사:</b> 마우스 좌클릭</p>
+            </div>
+
+            <button id="start-btn" class="w-full py-4 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold rounded-xl text-lg shadow-lg transform transition active:scale-95 cursor-pointer">
+                게임 시작
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over / Victory Overlay -->
+    <div id="end-screen" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-50 hidden">
+        <div class="text-center p-8 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl max-w-md w-full mx-4">
+            <h1 id="end-title" class="text-5xl font-extrabold text-red-600 mb-4 tracking-wider">GAME OVER</h1>
+            <p id="end-desc" class="text-zinc-300 text-base mb-8">웨이브를 클리어하지 못했습니다.</p>
+            <button id="restart-btn" class="w-full py-4 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold rounded-xl text-lg shadow-lg transform transition active:scale-95 cursor-pointer">
+                처음부터
+            </button>
+        </div>
+    </div>
+
+    <!-- Top Wave Banner HUD -->
+    <div id="top-hud" class="absolute top-6 left-1/2 transform -translate-x-1/2 z-20 hidden pointer-events-none">
+        <div class="bg-zinc-900/80 border border-zinc-700/60 backdrop-blur-md px-6 py-2 rounded-full shadow-lg text-center">
+            <span id="wave-text" class="text-white font-bold text-lg tracking-wider">WAVE 1 / 5</span>
+            <div id="zombie-count-text" class="text-xs text-red-400 font-semibold">남은 좀비: 10마리</div>
+        </div>
+    </div>
+
+    <!-- Crosshair -->
+    <div id="crosshair" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-25 hidden pointer-events-none">
+        <div class="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_6px_rgba(239,68,68,0.8)]"></div>
+    </div>
+
+    <!-- Right Side HUD -->
+    <div id="right-hud" class="absolute top-6 right-6 z-20 hidden pointer-events-none flex flex-col items-end space-y-4">
+        <!-- Player Stats Box -->
+        <div class="bg-zinc-900/85 border border-zinc-700/80 backdrop-blur-md p-4 rounded-xl shadow-xl w-64 text-right">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Player HP</span>
+                <span id="hp-text" class="text-emerald-400 font-extrabold text-sm">300 / 300</span>
+            </div>
+            <!-- HP Bar -->
+            <div class="w-full bg-zinc-800 h-2.5 rounded-full overflow-hidden mb-3">
+                <div id="hp-bar" class="bg-emerald-500 h-full w-full transition-all duration-300"></div>
+            </div>
+
+            <div class="border-t border-zinc-800 pt-3">
+                <div class="text-xs text-zinc-400 font-bold uppercase tracking-wider mb-1">Current Weapon</div>
+                <div id="weapon-name" class="text-white font-bold text-base mb-1">권총 (Pistol)</div>
+                <div class="flex justify-between items-center">
+                    <span class="text-xs text-zinc-400">잔탄수</span>
+                    <span id="ammo-text" class="text-amber-400 font-extrabold text-sm">17 / 17</span>
+                </div>
+                <!-- Ammo Gauge Bar -->
+                <div class="w-full bg-zinc-800 h-2 rounded-full overflow-hidden mt-1.5">
+                    <div id="ammo-bar" class="bg-amber-500 h-full w-full transition-all duration-150"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Right Weapon Selection Boxes -->
+    <div id="weapon-hud" class="absolute bottom-6 right-6 z-20 hidden pointer-events-none flex space-x-2">
+        <!-- Box 1: Pistol -->
+        <div id="wbox-1" class="weapon-box w-16 h-16 bg-zinc-900/90 border-2 border-amber-500 rounded-xl p-1.5 flex flex-col justify-between shadow-lg transition-all">
+            <div class="flex justify-between items-center text-[10px] font-bold text-amber-400">
+                <span>1</span>
+                <span>권총</span>
+            </div>
+            <div class="flex items-center justify-center my-auto">
+                <div class="w-8 h-3 bg-zinc-600 rounded-sm relative transform -rotate-12">
+                    <div class="absolute right-0 bottom-[-4px] w-2.5 h-3.5 bg-zinc-700 rounded-xs"></div>
+                </div>
+            </div>
+            <div class="text-[9px] text-zinc-400 text-center">17발</div>
+        </div>
+
+        <!-- Box 2: Rifle -->
+        <div id="wbox-2" class="weapon-box w-16 h-16 bg-zinc-900/90 border-2 border-zinc-700 rounded-xl p-1.5 flex flex-col justify-between shadow-lg transition-all opacity-75">
+            <div class="flex justify-between items-center text-[10px] font-bold text-zinc-400">
+                <span>2</span>
+                <span>소총</span>
+            </div>
+            <div class="flex items-center justify-center my-auto">
+                <div class="w-10 h-2.5 bg-zinc-600 rounded-sm relative">
+                    <div class="absolute left-2 bottom-[-4px] w-2 h-3.5 bg-zinc-700 rounded-xs"></div>
+                </div>
+            </div>
+            <div class="text-[9px] text-zinc-400 text-center">30발</div>
+        </div>
+
+        <!-- Box 3: Minigun -->
+        <div id="wbox-3" class="weapon-box w-16 h-16 bg-zinc-900/90 border-2 border-zinc-700 rounded-xl p-1.5 flex flex-col justify-between shadow-lg transition-all opacity-75">
+            <div class="flex justify-between items-center text-[10px] font-bold text-zinc-400">
+                <span>3</span>
+                <span>미니건</span>
+            </div>
+            <div class="flex items-center justify-center my-auto">
+                <div class="w-9 h-4 bg-zinc-700 rounded-md relative flex items-center justify-center">
+                    <div class="w-5 h-2.5 bg-zinc-500 rounded-full"></div>
+                </div>
+            </div>
+            <div class="text-[9px] text-zinc-400 text-center">100발</div>
+        </div>
+    </div>
+
+    <!-- Reloading / Notifications Notice Overlay -->
+    <div id="notice-msg" class="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20 hidden pointer-events-none">
+        <div class="bg-black/70 border border-amber-500/50 text-amber-400 px-4 py-1.5 rounded-lg text-sm font-bold shadow-lg animate-pulse">
+            장전 중... (RELOADING)
+        </div>
+    </div>
+
+    <!-- Three.js Game Logic Script -->
+    <script>
+        // --- GAME CONFIG & STATES ---
+        let scene, camera, renderer, clock;
+        let isGameStarted = false, isGameOver = false, isVictory = false;
+
+        // Player Stats & Controls
+        const player = {
+            hp: 300,
+            maxHp: 300,
+            speed: 8.5,
+            jumpSpeed: 11,
+            velocity: new THREE.Vector3(),
+            position: new THREE.Vector3(0, 2, 0),
+            height: 2.0,
+            isJumping: false,
+            yaw: 0,
+            pitch: 0
+        };
+
+        // Weapons Config
+        const weapons = {
+            1: { name: '권총 (Pistol)', maxAmmo: 17, ammo: 17, damage: 30, fireRate: 0.3, isAuto: false, reloadTime: 1.2 },
+            2: { name: '소총 (Rifle)', maxAmmo: 30, ammo: 30, damage: 15, fireRate: 0.1, isAuto: true, reloadTime: 1.8 },
+            3: { name: '미니건 (Minigun)', maxAmmo: 100, ammo: 100, damage: 10, fireRate: 0.05, isAuto: true, reloadTime: 3.0 }
+        };
+        let currentWeaponKey = 1;
+        let lastShootTime = 0;
+        let isReloading = false;
+        let reloadTimer = 0;
+
+        // Wave & Enemy State
+        let currentWave = 1;
+        const maxWaves = 5;
+        let zombiesPerWave = 10;
+        let zombiesRemainingInWave = 10;
+        let zombies = [];
+        let particles = [];
+        let items = [];
+
+        // Input states
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        let mouseMoveX = 0, mouseMoveY = 0;
+        let isMouseDown = false;
+
+        // Scene meshes for collision & raycasting
+        let collidables = [];
+        let weaponMeshGroup;
+
+        // --- INITIALIZATION ---
+        function init() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b0f19);
+            scene.fog = new THREE.FogExp2(0x0b0f19, 0.015);
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffeedd, 0.8);
+            dirLight.position.set(50, 80, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 250;
+            const d = 60;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Build Map & Environment
+            buildEnvironment();
+
+            // Create First-Person Weapon Model
+            createWeaponModel();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mousedown', (e) => { if (e.button === 0) isMouseDown = true; });
+            document.addEventListener('mouseup', (e) => { if (e.button === 0) isMouseDown = false; });
+
+            // UI button bindings
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', restartGame);
+
+            // Animation Loop
+            animate();
+        }
+
+        // --- ENVIRONMENT & MAP CREATION ---
+        function buildEnvironment() {
+            // Ground
+            const groundGeo = new THREE.PlaneGeometry(300, 300, 32, 32);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.8 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Grid decoration on ground
+            const grid = new THREE.GridHelper(300, 60, 0x3b82f6, 0x27272a);
+            grid.position.y = 0.01;
+            scene.add(grid);
+
+            // Hills (Displaced low geometry)
+            const hillMat = new THREE.MeshStandardMaterial({ color: 0x232d3f, roughness: 0.9 });
+            for (let i = 0; i < 8; i++) {
+                const radius = 15 + Math.random() * 20;
+                const hillGeo = new THREE.ConeGeometry(radius, radius * 0.4, 8);
+                const hill = new THREE.Mesh(hillGeo, hillMat);
+                const angle = (i / 8) * Math.PI * 2;
+                const dist = 70 + Math.random() * 40;
+                hill.position.set(Math.cos(angle) * dist, radius * 0.2, Math.sin(angle) * dist);
+                hill.castShadow = true;
+                hill.receiveShadow = true;
+                scene.add(hill);
+            }
+
+            // Buildings
+            const buildingMat = new THREE.MeshStandardMaterial({ color: 0x2b3440, roughness: 0.7 });
+            const buildingPositions = [
+                { x: 40, z: 40, w: 20, h: 25, d: 20 },
+                { x: -45, z: 40, w: 25, h: 18, d: 25 },
+                { x: 40, z: -45, w: 22, h: 30, d: 22 },
+                { x: -40, z: -40, w: 18, h: 20, d: 18 },
+                { x: 0, z: -70, w: 40, h: 15, d: 20 }
+            ];
+
+            buildingPositions.forEach(b => {
+                const bGeo = new THREE.BoxGeometry(b.w, b.h, b.d);
+                const building = new THREE.Mesh(bGeo, buildingMat);
+                building.position.set(b.x, b.h / 2, b.z);
+                building.castShadow = true;
+                building.receiveShadow = true;
+                scene.add(building);
+                collidables.push(building);
+            });
+
+            // Oil Drums
+            const drumMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.4, metalness: 0.3 });
+            const drumGeo = new THREE.CylinderGeometry(1.2, 1.2, 3.5, 16);
+            for (let i = 0; i < 15; i++) {
+                const drum = new THREE.Mesh(drumGeo, drumMat);
+                let x = (Math.random() - 0.5) * 120;
+                let z = (Math.random() - 0.5) * 120;
+                // Avoid center spawn area
+                if (Math.abs(x) < 15 && Math.abs(z) < 15) x += 25;
+                drum.position.set(x, 1.75, z);
+                drum.castShadow = true;
+                drum.receiveShadow = true;
+                scene.add(drum);
+                collidables.push(drum);
+            }
+        }
+
+        // --- WEAPON VIEWMODEL SETUP ---
+        function createWeaponModel() {
+            weaponMeshGroup = new THREE.Group();
+            camera.add(weaponMeshGroup);
+            scene.add(camera);
+
+            updateWeaponVisuals();
+        }
+
+        function updateWeaponVisuals() {
+            // Clear existing weapon geometry
+            while(weaponMeshGroup.children.length > 0){ 
+                weaponMeshGroup.remove(weaponMeshGroup.children[0]); 
+            }
+
+            const wKey = currentWeaponKey;
+            if (wKey === 1) {
+                // Pistol Model
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.15, 0.2, 0.6),
+                    new THREE.MeshStandardMaterial({ color: 0x3f3f46, metalness: 0.8, roughness: 0.2 })
+                );
+                body.position.set(0.3, -0.3, -0.6);
+                const barrel = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.1, 0.1, 0.4),
+                    new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.9, roughness: 0.1 })
+                );
+                barrel.position.set(0.3, -0.22, -0.8);
+                weaponMeshGroup.add(body);
+                weaponMeshGroup.add(barrel);
+            } else if (wKey === 2) {
+                // Rifle Model
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.18, 0.22, 1.1),
+                    new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.7, roughness: 0.3 })
+                );
+                body.position.set(0.32, -0.32, -0.8);
+                const mag = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.12, 0.4, 0.2),
+                    new THREE.MeshStandardMaterial({ color: 0x18181b })
+                );
+                mag.position.set(0.32, -0.55, -0.65);
+                weaponMeshGroup.add(body);
+                weaponMeshGroup.add(mag);
+            } else if (wKey === 3) {
+                // Minigun Model
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.35, 0.35, 1.2),
+                    new THREE.MeshStandardMaterial({ color: 0x71717a, metalness: 0.9, roughness: 0.2 })
+                );
+                body.position.set(0.35, -0.35, -0.85);
+                // Multi barrels
+                for(let i=0; i<3; i++) {
+                    const bar = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8),
+                        new THREE.MeshStandardMaterial({ color: 0x09090b, metalness: 0.95 })
+                    );
+                    bar.rotation.x = Math.PI / 2;
+                    let bx = 0.35 + (i === 0 ? 0 : (i === 1 ? 0.08 : -0.08));
+                    let by = -0.35 + (i === 0 ? 0.08 : -0.05);
+                    bar.position.set(bx, by, -1.3);
+                    weaponMeshGroup.add(bar);
+                }
+                weaponMeshGroup.add(body);
+            }
+        }
+
+        // --- GAME FLOW & CONTROLS ---
+        function startGame() {
+            const startScreen = document.getElementById('start-screen');
+            startScreen.classList.add('opacity-0');
+            setTimeout(() => {
+                startScreen.classList.add('hidden');
+                document.getElementById('top-hud').classList.remove('hidden');
+                document.getElementById('right-hud').classList.remove('hidden');
+                document.getElementById('weapon-hud').classList.remove('hidden');
+                document.getElementById('crosshair').classList.remove('hidden');
+                
+                // Request pointer lock for 360 look
+                document.body.requestPointerLock();
+                isGameStarted = true;
+                
+                // Spawn first wave
+                startWave(1);
+            }, 500);
+        }
+
+        function restartGame() {
+            // Reset states
+            player.hp = 300;
+            player.position.set(0, 2, 0);
+            player.yaw = 0;
+            player.pitch = 0;
+            currentWave = 1;
+            isGameOver = false;
+            isVictory = false;
+
+            // Reset weapons ammo
+            Object.values(weapons).forEach(w => w.ammo = w.maxAmmo);
+            currentWeaponKey = 1;
+            updateWeaponVisuals();
+            updateHUD();
+
+            // Clear remaining zombies & items & particles
+            zombies.forEach(z => scene.remove(z.mesh));
+            zombies = [];
+            items.forEach(it => scene.remove(it.mesh));
+            items = [];
+            particles.forEach(p => scene.remove(p.mesh));
+            particles = [];
+
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('top-hud').classList.remove('hidden');
+            document.getElementById('right-hud').classList.remove('hidden');
+            document.getElementById('weapon-hud').classList.remove('hidden');
+            document.getElementById('crosshair').classList.remove('hidden');
+
+            document.body.requestPointerLock();
+            isGameStarted = true;
+            startWave(1);
+        }
+
+        function triggerGameOver(victory) {
+            isGameStarted = false;
+            document.exitPointerLock();
+            document.getElementById('top-hud').classList.add('hidden');
+            document.getElementById('right-hud').classList.add('hidden');
+            document.getElementById('weapon-hud').classList.add('hidden');
+            document.getElementById('crosshair').classList.add('hidden');
+
+            const endTitle = document.getElementById('end-title');
+            const endDesc = document.getElementById('end-desc');
+            const endScreen = document.getElementById('end-screen');
+
+            if (victory) {
+                endTitle.textContent = "승리!";
+                endTitle.className = "text-5xl font-extrabold text-amber-500 mb-4 tracking-wider";
+                endDesc.textContent = "모든 5개의 웨이브를 성공적으로 클리어했습니다!";
+                isVictory = true;
+            } else {
+                endTitle.textContent = "GAME OVER";
+                endTitle.className = "text-5xl font-extrabold text-red-600 mb-4 tracking-wider";
+                endDesc.textContent = `웨이브 ${currentWave}에서 사망하셨습니다.`;
+                isGameOver = true;
+            }
+            endScreen.classList.remove('hidden');
+        }
+
+        // --- WAVE & ZOMBIE SYSTEM ---
+        function startWave(waveNum) {
+            currentWave = waveNum;
+            zombiesPerWave = 10 + (waveNum - 1) * 3;
+            zombiesRemainingInWave = zombiesPerWave;
+            updateHUD();
+
+            // Spawn zombies
+            for (let i = 0; i < zombiesPerWave; i++) {
+                spawnZombie();
+            }
+        }
+
+        function spawnZombie() {
+            const zGeo = new THREE.BoxGeometry(1.2, 2.2, 0.8);
+            const zMat = new THREE.MeshStandardMaterial({ color: 0x365314, roughness: 0.7 });
+            const mesh = new THREE.Mesh(zGeo, zMat);
+
+            // Random spawn distance around player
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 40 + Math.random() * 50;
+            const x = player.position.x + Math.cos(angle) * dist;
+            const z = player.position.z + Math.sin(angle) * dist;
+
+            mesh.position.set(x, 1.1, z);
+            mesh.castShadow = true;
+            scene.add(mesh);
+
+            zombies.push({
+                mesh: mesh,
+                hp: 100,
+                maxHp: 100,
+                speed: 3.5 + Math.random() * 1.5,
+                attackCooldown: 0
+            });
+        }
+
+        // --- MOUSE & KEYBOARD EVENT HANDLERS ---
+        function onKeyDown(e) {
+            if (!isGameStarted) return;
+            if (e.code === 'KeyW') keys.w = true;
+            if (e.code === 'KeyS') keys.s = true;
+            if (e.code === 'KeyA') keys.a = true;
+            if (e.code === 'KeyD') keys.d = true;
+            if (e.code === 'Space' && !player.isJumping) {
+                player.velocity.y = player.jumpSpeed;
+                player.isJumping = true;
+            }
+            if (e.code === 'KeyR') {
+                reloadWeapon();
+            }
+            if (['Digit1', 'Digit2', 'Digit3'].includes(e.code)) {
+                const num = parseInt(e.code.replace('Digit', ''));
+                switchWeapon(num);
+            }
+        }
+
+        function onKeyUp(e) {
+            if (e.code === 'KeyW') keys.w = false;
+            if (e.code === 'KeyS') keys.s = false;
+            if (e.code === 'KeyA') keys.a = false;
+            if (e.code === 'KeyD') keys.d = false;
+        }
+
+        function onMouseMove(e) {
+            if (document.pointerLockElement !== document.body) return;
+            const sensitivity = 0.002;
+            player.yaw -= e.movementX * sensitivity;
+            player.pitch -= e.movementY * sensitivity;
+
+            // Clamp pitch
+            const maxPitch = Math.PI / 2 - 0.05;
+            player.pitch = Math.max(-maxPitch, Math.min(maxPitch, player.pitch));
+        }
+
+        function switchWeapon(num) {
+            if (isReloading) return;
+            currentWeaponKey = num;
+            updateWeaponVisuals();
+            
+            // Update HUD styling for weapon boxes
+            for (let i = 1; i <= 3; i++) {
+                const box = document.getElementById(`wbox-${i}`);
+                if (i === num) {
+                    box.className = "weapon-box w-16 h-16 bg-zinc-900/90 border-2 border-amber-500 rounded-xl p-1.5 flex flex-col justify-between shadow-lg transition-all";
+                    box.querySelector('span').className = "flex justify-between items-center text-[10px] font-bold text-amber-400";
+                } else {
+                    box.className = "weapon-box w-16 h-16 bg-zinc-900/90 border-2 border-zinc-700 rounded-xl p-1.5 flex flex-col justify-between shadow-lg transition-all opacity-75";
+                    box.querySelector('span').className = "flex justify-between items-center text-[10px] font-bold text-zinc-400";
+                }
+            }
+            updateHUD();
+        }
+
+        function reloadWeapon() {
+            const weapon = weapons[currentWeaponKey];
+            if (isReloading || weapon.ammo === weapon.maxAmmo) return;
+
+            isReloading = true;
+            const notice = document.getElementById('notice-msg');
+            notice.classList.remove('hidden');
+
+            setTimeout(() => {
+                weapon.ammo = weapon.maxAmmo;
+                isReloading = false;
+                notice.classList.add('hidden');
+                updateHUD();
+            }, weapon.reloadTime * 1000);
+        }
+
+        // --- SHOOTING & PARTICLES ---
+        function shootWeapon(time) {
+            const weapon = weapons[currentWeaponKey];
+            if (isReloading) return;
+            if (weapon.ammo <= 0) {
+                reloadWeapon();
+                return;
+            }
+            if (time - lastShootTime < weapon.fireRate) return;
+
+            lastShootTime = time;
+            weapon.ammo--;
+            updateHUD();
+
+            // Recoil visual effect (slight camera kick / weapon kick)
+            player.pitch += 0.015;
+            weaponMeshGroup.position.z += 0.08;
+            setTimeout(() => { weaponMeshGroup.position.z -= 0.08; }, 50);
+
+            // Create muzzle spark particles
+            createSparkParticles();
+
+            // Raycast for hitting zombies
+            checkRaycastHit(weapon.damage);
+        }
+
+        function createSparkParticles() {
+            for (let i = 0; i < 4; i++) {
+                const pGeo = new THREE.SphereGeometry(0.03, 4, 4);
+                const pMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+                const pMesh = new THREE.Mesh(pGeo, pMat);
+
+                // Position near gun muzzle
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                pMesh.position.copy(camera.position).add(dir.clone().multiplyScalar(1.2));
+                
+                // Add random velocity offset
+                const velocity = dir.clone().multiplyScalar(15 + Math.random() * 10);
+                velocity.x += (Math.random() - 0.5) * 4;
+                velocity.y += (Math.random() - 0.5) * 4;
+                velocity.z += (Math.random() - 0.5) * 4;
+
+                scene.add(pMesh);
+                particles.push({ mesh: pMesh, velocity: velocity, life: 0.1 });
+            }
+        }
+
+        function createBloodSplatter(pos) {
+            for (let i = 0; i < 8; i++) {
+                const pGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+                const pMat = new THREE.MeshBasicMaterial({ color: 0xdc2626 });
+                const pMesh = new THREE.Mesh(pGeo, pMat);
+                pMesh.position.copy(pos);
+
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 8,
+                    Math.random() * 6 + 2,
+                    (Math.random() - 0.5) * 8
+                );
+
+                scene.add(pMesh);
+                particles.push({ mesh: pMesh, velocity: velocity, life: 0.25 });
+            }
+        }
+
+        function checkRaycastHit(damage) {
+            const raycaster = new THREE.Raycaster();
+            const center = new THREE.Vector2(0, 0);
+            raycaster.setFromCamera(center, camera);
+
+            // Collect zombie meshes
+            const zombieMeshes = zombies.map(z => z.mesh);
+            const intersects = raycaster.intersectObjects(zombieMeshes);
+
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const zombieObj = zombies.find(z => z.mesh === hitMesh);
+                if (zombieObj) {
+                    zombieObj.hp -= damage;
+                    createBloodSplatter(intersects[0].point);
+
+                    if (zombieObj.hp <= 0) {
+                        // Kill zombie & drop item
+                        dropItem(zombieObj.mesh.position);
+                        scene.remove(zombieObj.mesh);
+                        zombies = zombies.filter(z => z !== zombieObj);
+                        zombiesRemainingInWave--;
+                        updateHUD();
+
+                        if (zombiesRemainingInWave <= 0) {
+                            if (currentWave < maxWaves) {
+                                setTimeout(() => { startWave(currentWave + 1); }, 1500);
+                            } else {
+                                triggerGameOver(true); // Victory!
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function dropItem(pos) {
+            const itemGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const itemMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x059669 });
+            const itemMesh = new THREE.Mesh(itemGeo, itemMat);
+            itemMesh.position.set(pos.x, 0.4, pos.z);
+            scene.add(itemMesh);
+            items.push({ mesh: itemMesh });
+        }
+
+        // --- HUD UPDATES ---
+        function updateHUD() {
+            const weapon = weapons[currentWeaponKey];
+            document.getElementById('weapon-name').textContent = weapon.name;
+            document.getElementById('ammo-text').textContent = `${weapon.ammo} / ${weapon.maxAmmo}`;
+            
+            // Ammo Gauge bar percentage
+            const ammoPct = (weapon.ammo / weapon.maxAmmo) * 100;
+            document.getElementById('ammo-bar').style.width = `${ammoPct}%`;
+
+            // HP bar percentage
+            const hpPct = Math.max(0, (player.hp / player.maxHp) * 100);
+            document.getElementById('hp-text').textContent = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${hpPct}%`;
+
+            // Wave & zombie counter
+            document.getElementById('wave-text').textContent = `WAVE ${currentWave} / ${maxWaves}`;
+            document.getElementById('zombie-count-text').textContent = `남은 좀비: ${zombiesRemainingInWave}마리`;
+        }
+
+        // --- MAIN GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            if (isGameStarted) {
+                // Continuous shooting for automatic weapons (rifle & minigun)
+                if (isMouseDown && weapons[currentWeaponKey].isAuto) {
+                    shootWeapon(time);
+                }
+
+                // Player Movement Calculation
+                const moveDir = new THREE.Vector3();
+                const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
+                const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
+
+                if (keys.w) moveDir.add(forward);
+                if (keys.s) moveDir.sub(forward);
+                if (keys.a) moveDir.sub(right);
+                if (keys.d) moveDir.add(right);
+                moveDir.normalize();
+
+                // Apply velocity & position
+                player.position.x += moveDir.x * player.speed * delta;
+                player.position.z += moveDir.z * player.speed * delta;
+
+                // Gravity & Jump
+                player.velocity.y -= 25 * delta;
+                player.position.y += player.velocity.y * delta;
+
+                if (player.position.y < player.height) {
+                    player.position.y = player.height;
+                    player.velocity.y = 0;
+                    player.isJumping = false;
+                }
+
+                // Camera orientation
+                camera.position.copy(player.position);
+                
+                // Construct camera rotation quaternion from yaw and pitch
+                const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
+                const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), player.pitch);
+                camera.quaternion.multiplyQuaternions(qYaw, qPitch);
+
+                // Update Zombies AI & Movement
+                zombies.forEach(z => {
+                    const zDir = new THREE.Vector3().subVectors(player.position, z.mesh.position);
+                    zDir.y = 0;
+                    const distToPlayer = zDir.length();
+                    zDir.normalize();
+
+                    if (distToPlayer > 1.5) {
+                        z.mesh.position.add(zDir.multiplyScalar(z.speed * delta));
+                        z.mesh.lookAt(player.position.x, z.mesh.position.y, player.position.z);
+                    } else {
+                        // Attack player
+                        z.attackCooldown += delta;
+                        if (z.attackCooldown >= 1.0) {
+                            player.hp -= 15;
+                            z.attackCooldown = 0;
+                            updateHUD();
+                            if (player.hp <= 0) {
+                                triggerGameOver(false);
+                            }
+                        }
+                    }
+                });
+
+                // Check item pickups
+                items.forEach((item, index) => {
+                    if (player.position.distanceTo(item.mesh.position) < 2.0) {
+                        // Heal & ammo refill
+                        player.hp = Math.min(player.maxHp, player.hp + 15);
+                        Object.values(weapons).forEach(w => {
+                            w.ammo = Math.min(w.maxAmmo, w.ammo + 10);
+                        });
+                        updateHUD();
+
+                        scene.remove(item.mesh);
+                        items.splice(index, 1);
+                    }
+                });
+            }
+
+            // Update Particles
+            particles.forEach((p, index) => {
+                p.mesh.position.add(p.velocity.clone().multiplyScalar(delta));
+                p.life -= delta;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(index, 1);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // Window resize handler
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Single click shooting for semi-automatic (Pistol)
+        window.addEventListener('mousedown', (e) => {
+            if (!isGameStarted) return;
+            if (e.button === 0 && !weapons[currentWeaponKey].isAuto) {
+                shootWeapon(clock.getElapsedTime());
+            }
+        });
+
+        // Run initialization on load window
+        window.onload = function() {
+            init();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>좀비 때리기 타이쿤 (Zombie Slap Tycoon)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gamja+Flower&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', 'Comic Sans MS', cursive, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+            background-color: #fef08a; /* Bright sunny yellow */
+        }
+
+        .b-game-font {
+            font-family: 'Gamja Flower', cursive;
+        }
+
+        /* Goofy button animations */
+        .btn-bounce {
+            transition: transform 0.05s ease, box-shadow 0.05s ease;
+        }
+        .btn-bounce:active {
+            transform: scale(0.92) rotate(-2deg);
+        }
+
+        /* Slap shaking animation */
+        @keyframes slapShake {
+            0% { transform: scale(1) rotate(0deg); }
+            20% { transform: scale(1.15) rotate(-12deg) translate(-10px, -5px); }
+            40% { transform: scale(0.9) rotate(10deg) translate(10px, 5px); }
+            60% { transform: scale(1.08) rotate(-6deg); }
+            80% { transform: scale(0.98) rotate(3deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+
+        /* Swing weapon animation */
+        @keyframes weaponSwing {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(0.4) rotate(-60deg); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.4) rotate(15deg); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1) rotate(35deg); }
+        }
+
+        .animate-weapon {
+            animation: weaponSwing 0.22s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards;
+        }
+
+        .screen-shake {
+            animation: screenShake 0.2s ease-in-out;
+        }
+
+        /* Floating slap popup text */
+        .slap-popup {
+            position: absolute;
+            pointer-events: none;
+            font-weight: 900;
+            text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+            animation: floatUp 0.7s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+            z-index: 50;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(0.7) rotate(-5deg); }
+            50% { opacity: 1; transform: translateY(-40px) scale(1.3) rotate(8deg); }
+            100% { opacity: 0; transform: translateY(-80px) scale(1) rotate(0deg); }
+        }
+
+        /* Custom Scrollbar for upgrades list */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #fef08a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #facc15;
+            border-radius: 4px;
+            border: 2px solid #000;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-2 md:p-4 text-slate-900 bg-amber-100">
+
+    <!-- Top Meme Banner -->
+    <header class="w-full max-w-4xl bg-yellow-300 border-4 border-black rounded-2xl p-2 md:p-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center mb-2">
+        <div class="flex items-center justify-between px-2">
+            <span class="text-xs md:text-sm bg-red-500 text-white font-bold px-2 py-1 rounded-full border-2 border-black animate-pulse">
+                🔥 B급 똥겜 공식 인증
+            </span>
+            <h1 class="text-xl md:text-3xl font-black text-rose-600 drop-shadow-[2px_2px_0_#000]">
+                👋 좀비 때리기 타이쿤
+            </h1>
+            <div class="flex gap-2">
+                <button id="bgmToggleBtn" class="bg-purple-300 hover:bg-purple-400 border-2 border-black rounded-xl px-2 py-1 text-xs md:text-sm font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-1">
+                    🎵 BGM 켜기
+                </button>
+            </div>
+        </div>
+        <!-- Live Meme News Bar -->
+        <div class="mt-2 bg-white border-2 border-black rounded-lg p-1 text-xs md:text-sm text-center font-bold text-gray-700 overflow-hidden whitespace-nowrap">
+            <span id="memeMarquee">📢 [속보] 억울하게 생긴 좀비가 동네 공원에 나타나 뺨을 기다리고 있습니다!</span>
+        </div>
+    </header>
+
+    <!-- Main Game Container -->
+    <main class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-4 flex-grow">
+
+        <!-- Left / Center Column: Zombie Slap Zone -->
+        <section class="md:col-span-7 bg-lime-200 border-4 border-black rounded-3xl p-4 flex flex-col items-center justify-between relative shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden min-h-[420px]">
+            
+            <!-- Currency & Stats Display -->
+            <div class="w-full flex flex-wrap justify-between items-center gap-2 bg-white border-3 border-black rounded-2xl p-3 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl md:text-3xl">💰</span>
+                    <div>
+                        <div class="text-xs text-gray-500 font-bold">소유한 골드</div>
+                        <div id="goldDisplay" class="text-xl md:text-3xl font-black text-amber-600">0 G</div>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-500 font-bold">초당 자동 골드 (GPS)</div>
+                    <div id="gpsDisplay" class="text-base md:text-lg font-bold text-emerald-600">+0 G/초</div>
+                </div>
+            </div>
+
+            <!-- Zombie Info & Health Bar -->
+            <div class="w-full mt-2 text-center">
+                <div class="flex justify-center items-center gap-2">
+                    <span id="zombieLevelTag" class="bg-amber-400 text-black text-xs font-black px-2 py-0.5 rounded-full border border-black">Lv.1</span>
+                    <h2 id="zombieName" class="text-lg md:text-2xl font-black text-slate-800">일반 억울한 좀비</h2>
+                </div>
+                <!-- Health Bar -->
+                <div class="w-full bg-gray-300 border-3 border-black rounded-full h-6 mt-2 relative overflow-hidden shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    <div id="hpBar" class="bg-rose-500 h-full w-full transition-all duration-75"></div>
+                    <span id="hpText" class="absolute inset-0 flex items-center justify-center text-xs md:text-sm font-black text-white drop-shadow-[1px_1px_0_#000]">
+                        100 / 100
+                    </span>
+                </div>
+            </div>
+
+            <!-- Clickable Zombie Interactive Area -->
+            <div id="zombieClickArea" class="relative my-4 flex-grow flex items-center justify-center cursor-pointer select-none w-full max-w-[280px]">
+                
+                <!-- Floor Shadow -->
+                <div class="absolute bottom-2 w-48 h-8 bg-lime-400/60 rounded-full blur-sm -z-0 border-2 border-dashed border-lime-600"></div>
+
+                <!-- Slap Hand Animation Effect overlay -->
+                <div id="slapHandOverlay" class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity">
+                    <span class="text-7xl transform -rotate-45">🖐️</span>
+                </div>
+
+                <!-- Zombie Vector Render Container -->
+                <div id="zombieAvatar" class="relative z-10 transition-transform transform hover:scale-105 active:scale-95 duration-100">
+                    <!-- SVG Zombie Rendered by JS -->
+                </div>
+            </div>
+
+            <!-- Bottom Control / Prestige Button Bar -->
+            <div class="w-full flex justify-between items-center gap-2">
+                <button id="rebirthBtn" class="btn-bounce bg-purple-500 hover:bg-purple-600 text-white font-black px-3 py-2 rounded-xl border-2 border-black text-xs md:text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    🌀 영혼 환생 (배율: x<span id="rebirthMult">1.0</span>)
+                </button>
+                <div class="text-xs font-bold text-gray-700 bg-white/80 px-2 py-1 rounded-lg border border-black">
+                    총 뺨 때린 횟수: <span id="totalSlaps" class="text-rose-600 font-black">0</span> 회
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Upgrades & Shop Zone -->
+        <section class="md:col-span-5 bg-sky-200 border-4 border-black rounded-3xl p-3 md:p-4 flex flex-col shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] max-h-[600px]">
+            <!-- Shop Tabs -->
+            <div class="flex gap-2 mb-3">
+                <button id="tabPowerBtn" class="flex-1 bg-yellow-400 text-black border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    💪 뺨 대미지
+                </button>
+                <button id="tabMinionBtn" class="flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    🤖 자동 때리개
+                </button>
+                <button id="tabAchieveBtn" class="flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    🏆 업적
+                </button>
+            </div>
+
+            <!-- Tab Content Container -->
+            <div id="shopContent" class="flex-grow overflow-y-auto pr-1 space-y-2">
+                <!-- Dynamic Items Inserted via JS -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer Status Bar -->
+    <footer class="w-full max-w-4xl mt-3 text-center text-xs font-bold text-gray-600 flex justify-between items-center bg-white/70 p-2 border-2 border-black rounded-xl">
+        <span>🎮 찰진 손맛 100% 보장 똥겜</span>
+        <button id="resetDataBtn" class="text-red-500 hover:underline">데이터 초기화</button>
+    </footer>
+
+    <!-- Custom Modal for Notifications / Prestige -->
+    <div id="modalOverlay" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 p-4">
+        <div class="bg-yellow-200 border-4 border-black rounded-3xl p-6 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center relative">
+            <h3 id="modalTitle" class="text-2xl font-black text-rose-600 mb-2">🎉 축하합니다!</h3>
+            <p id="modalBody" class="text-sm md:text-base font-bold text-gray-800 mb-6">내용이 들어갑니다.</p>
+            <button id="modalCloseBtn" class="btn-bounce bg-emerald-400 hover:bg-emerald-500 text-black font-black border-3 border-black px-6 py-2 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                확인
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Game Logic -->
+    <script>
+        /* -------------------------------------------------------------------------- */
+        /* GAME STATE & CONFIGURATION                                                 */
+        /* -------------------------------------------------------------------------- */
+        const gameState = {
+            gold: 0,
+            totalSlaps: 0,
+            slapPower: 1,
+            slapPowerLevel: 1,
+            rebirthCount: 0,
+            rebirthMultiplier: 1.0,
+            currentZombieIndex: 0,
+            currentZombieHp: 30,
+            maxZombieHp: 30,
+            bgmActive: false,
+            
+            // Auto Slappers (Minions)
+            minions: [
+                { id: 'slipper', name: '굴러다니는 실내화', count: 0, baseCost: 15, gps: 2, icon: '🥿' },
+                { id: 'flyswatter', name: '거대 파리채', count: 0, baseCost: 100, gps: 15, icon: '🏸' },
+                { id: 'toyhammer', name: '알록달록 뿅망치', count: 0, baseCost: 1100, gps: 80, icon: '🔨' },
+                { id: 'catpaw', name: '냥냥 펀치 로봇', count: 0, baseCost: 12000, gps: 450, icon: '🐾' },
+                { id: 'goldenhand', name: '황금 짝귀 부채', count: 0, baseCost: 130000, gps: 2500, icon: '✋' },
+                { id: 'laser', name: '우주 뺨 레이저', count: 0, baseCost: 1400000, gps: 15000, icon: '🛰️' }
+            ],
+
+            // Slap Power Weapons
+            equippedWeaponIndex: 0,
+            weapons: [
+                { id: 'barehand', name: '맨손 찰싹', level: 1, baseCost: 10, powerAdd: 1, icon: '🖐️', visual: '🖐️' },
+                { id: 'waterbottle', name: '삼다수 페트병', level: 0, baseCost: 50, powerAdd: 5, icon: '🍾', visual: '🍾' },
+                { id: 'slipper_wp', name: '짝 맞춰 신은 삼디다스', level: 0, baseCost: 200, powerAdd: 12, icon: '🩴', visual: '🩴' },
+                { id: 'fryingpan', name: '무쇠 후라이팬', level: 0, baseCost: 1000, powerAdd: 55, icon: '🍳', visual: '🍳' },
+                { id: 'flyswatter_wp', name: '특대형 파리채', level: 0, baseCost: 5000, powerAdd: 220, icon: '🏸', visual: '🏸' },
+                { id: 'cactus', name: '가시 선인장', level: 0, baseCost: 25000, powerAdd: 900, icon: '🌵', visual: '🌵' },
+                { id: 'durian', name: '황금 두리안', level: 0, baseCost: 150000, powerAdd: 4200, icon: '🍈', visual: '🍈' },
+                { id: 'thorsmacker', name: '오비탈 뺨 레이저 망치', level: 0, baseCost: 1000000, powerAdd: 20000, icon: '⚡', visual: '⚡' }
+            ],
+
+            // Achievements
+            achievements: [
+                { id: 'slap_10', title: '첫 찰싹의 추억', desc: '뺨 10번 때리기', unlocked: false, reward: 50 },
+                { id: 'slap_100', title: '손바닥에 불난다', desc: '뺨 100번 때리기', unlocked: false, reward: 500 },
+                { id: 'slap_1000', title: '전설의 뺨때리개', desc: '뺨 1,000번 때리기', unlocked: false, reward: 10000 },
+                { id: 'gold_10k', title: '동네 용돈 부자', desc: '10,000 Gold 모으기', unlocked: false, reward: 2000 },
+                { id: 'boss_defeat', title: '대탈모 좀비 격퇴', desc: '보스 좀비 물리치기', unlocked: false, reward: 50000 }
+            ]
+        };
+
+        // Zombie Roster Data with SVGs and Funny Quotes
+        const zombies = [
+            {
+                name: '무한 체력 억울한 좀비',
+                baseHp: 3000,
+                goldReward: 500,
+                color: '#86efac',
+                quote: '왜 나만 1만 번 넘게 때려요...?',
+                svg: `
+                <svg width="180" height="220" viewBox="0 0 200 240">
+                    <ellipse cx="100" cy="190" rx="50" ry="30" fill="#4ade80" stroke="#000" stroke-width="4"/>
+                    <circle cx="100" cy="110" r="60" fill="#86efac" stroke="#000" stroke-width="5"/>
+                    <circle cx="75" cy="100" r="14" fill="#fff" stroke="#000" stroke-width="3"/>
+                    <circle cx="125" cy="100" r="14" fill="#fff" stroke="#000" stroke-width="3"/>
+                    <circle cx="78" cy="102" r="5" fill="#000"/>
+                    <circle cx="122" cy="102" r="5" fill="#000"/>
+                    <path d="M 60 85 Q 75 95 90 90" stroke="#000" stroke-width="4" fill="none"/>
+                    <path d="M 110 90 Q 125 95 140 85" stroke="#000" stroke-width="4" fill="none"/>
+                    <path d="M 80 140 Q 100 120 120 140" stroke="#000" stroke-width="5" fill="none"/>
+                    <path d="M 115 135 Q 118 155 112 165" stroke="#38bdf8" stroke-width="4" fill="none"/>
+                </svg>`
+            },
+            {
+                name: '강철 체력 직장인 좀비',
+                baseHp: 25000,
+                goldReward: 3500,
+                color: '#cbd5e1',
+                quote: '야근 300일차... 통증도 안 느껴진다...',
+                svg: `
+                <svg width="180" height="220" viewBox="0 0 200 240">
+                    <rect x="50" y="160" width="100" height="70" fill="#94a3b8" stroke="#000" stroke-width="4" rx="10"/>
+                    <path d="M 90 160 L 100 185 L 110 160" fill="#ef4444" stroke="#000" stroke-width="3"/>
+                    <circle cx="100" cy="100" r="55" fill="#cbd5e1" stroke="#000" stroke-width="5"/>
+                    <ellipse cx="75" cy="102" rx="16" ry="12" fill="#64748b"/>
+                    <ellipse cx="125" cy="102" rx="16" ry="12" fill="#64748b"/>
+                    <circle cx="75" cy="98" r="8" fill="#fff" stroke="#000" stroke-width="2"/>
+                    <circle cx="125" cy="98" r="8" fill="#fff" stroke="#000" stroke-width="2"/>
+                    <circle cx="75" cy="98" r="3" fill="#000"/>
+                    <circle cx="125" cy="98" r="3" fill="#000"/>
+                    <path d="M 50 80 Q 70 40 100 50 Q 130 40 150 80" fill="#334155" stroke="#000" stroke-width="4"/>
+                    <path d="M 75 130 L 125 130" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+                </svg>`
+            },
+            {
+                name: '말랑 탱탱 슬라임 좀비',
+                baseHp: 150000,
+                goldReward: 20000,
+                color: '#f472b6',
+                quote: '아무리 때려도 금방 복원됨 젤리젤리!',
+                svg: `
+                <svg width="180" height="220" viewBox="0 0 200 240">
+                    <path d="M 40 180 C 20 120, 40 50, 100 50 C 160 50, 180 120, 160 180 C 140 210, 60 210, 40 180 Z" fill="#f472b6" stroke="#000" stroke-width="5"/>
+                    <ellipse cx="70" cy="80" rx="12" ry="6" fill="#fff" transform="rotate(-30 70 80)"/>
+                    <circle cx="75" cy="120" r="10" fill="#000"/>
+                    <circle cx="125" cy="120" r="10" fill="#000"/>
+                    <circle cx="78" cy="117" r="3" fill="#fff"/>
+                    <circle cx="128" cy="117" r="3" fill="#fff"/>
+                    <path d="M 85 145 Q 100 160 115 145" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>
+                </svg>`
+            },
+            {
+                name: '불사신 댄싱 디스코 좀비',
+                baseHp: 1000000,
+                goldReward: 120000,
+                color: '#a855f7',
+                quote: '100만 회 타격도 댄스로 튕겨낸다!',
+                svg: `
+                <svg width="180" height="220" viewBox="0 0 200 240">
+                    <path d="M 60 160 L 140 160 L 120 230 L 80 230 Z" fill="#ec4899" stroke="#000" stroke-width="4"/>
+                    <circle cx="100" cy="95" r="55" fill="#c084fc" stroke="#000" stroke-width="5"/>
+                    <rect x="55" y="80" width="40" height="25" rx="5" fill="#000"/>
+                    <rect x="105" y="80" width="40" height="25" rx="5" fill="#000"/>
+                    <line x1="95" y1="90" x2="105" y2="90" stroke="#000" stroke-width="4"/>
+                    <circle cx="60" cy="65" r="25" fill="#f59e0b"/>
+                    <circle cx="100" cy="45" r="30" fill="#f59e0b"/>
+                    <circle cx="140" cy="65" r="25" fill="#f59e0b"/>
+                    <path d="M 75 120 Q 100 150 125 120 Z" fill="#ef4444" stroke="#000" stroke-width="4"/>
+                </svg>`
+            },
+            {
+                name: '👑 신화급 광채 대탈모 보스 좀비',
+                baseHp: 10000000,
+                goldReward: 1500000,
+                color: '#fbbf24',
+                quote: '천만 번 때려봐라! 내 정수리는 안 무너진다!',
+                svg: `
+                <svg width="180" height="220" viewBox="0 0 200 240">
+                    <path d="M 90 20 L 95 35 L 110 40 L 95 45 L 90 60 L 85 45 L 70 40 L 85 35 Z" fill="#fef08a"/>
+                    <rect x="50" y="160" width="100" height="70" fill="#dc2626" stroke="#000" stroke-width="5" rx="15"/>
+                    <circle cx="100" cy="105" r="60" fill="#fcd34d" stroke="#000" stroke-width="5"/>
+                    <ellipse cx="80" cy="65" rx="20" ry="10" fill="#fff" opacity="0.6" transform="rotate(-20 80 65)"/>
+                    <path d="M 55 80 L 85 95" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M 145 80 L 115 95" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="75" cy="110" r="10" fill="#000"/>
+                    <circle cx="125" cy="110" r="10" fill="#000"/>
+                    <path d="M 70 140 Q 100 125 130 140 Q 100 160 70 140 Z" fill="#7f1d1d" stroke="#000" stroke-width="4"/>
+                    <rect x="90" y="133" width="8" height="8" fill="#fff"/>
+                    <rect x="102" y="133" width="8" height="8" fill="#fff"/>
+                </svg>`
+            }
+        ];
+
+        // Meme Marquee Commentary Lines
+        const memeQuotes = [
+            "📢 [속보] 억울하게 생긴 좀비가 동네 공원에 나타나 뺨을 기다리고 있습니다!",
+            "📢 손맛이 찰질수록 통장 잔고가 늘어나는 신기한 현상!",
+            "📢 찰싹! 소리에 스트레스가 싹 날아간다고 합니다.",
+            "📢 개발자 한마디: 이 게임은 100% 순수 똥겜 감성으로 제작되었습니다.",
+            "📢 좀비 조합에서 '뺨 너무 세게 때리지 말라'는 항의문 발표!",
+            "📢 황금 짝귀 부채를 구매하면 뺨에서 빛이 납니다."
+        ];
+
+        /* -------------------------------------------------------------------------- */
+        /* AUDIO SYNTHESIZER (Web Audio API)                                          */
+        /* -------------------------------------------------------------------------- */
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playSlap() {
+                this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                
+                // Slap Noise Burst
+                const bufferSize = this.ctx.sampleRate * 0.08;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 800;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                whiteNoise.start();
+
+                // Low thud frequency tone
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.08);
+                oscGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playCoin() {
+                this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, this.ctx.currentTime); // B5
+                osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime + 0.06); // E6
+
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            playBgmLoop() {
+                this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                // Simple silly synthesized melody loop
+                if (this.bgmInterval) clearInterval(this.bgmInterval);
+
+                const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+                let noteIdx = 0;
+
+                this.bgmInterval = setInterval(() => {
+                    if (!gameState.bgmActive) return;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = notes[noteIdx % notes.length];
+                    gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+                    
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.2);
+
+                    noteIdx++;
+                }, 250);
+            }
+
+            stopBgm() {
+                if (this.bgmInterval) clearInterval(this.bgmInterval);
+            }
+        }
+
+        const sound = new SoundEffects();
+
+        /* -------------------------------------------------------------------------- */
+        /* DOM ELEMENTS                                                               */
+        /* -------------------------------------------------------------------------- */
+        const goldDisplay = document.getElementById('goldDisplay');
+        const gpsDisplay = document.getElementById('gpsDisplay');
+        const zombieName = document.getElementById('zombieName');
+        const zombieLevelTag = document.getElementById('zombieLevelTag');
+        const hpBar = document.getElementById('hpBar');
+        const hpText = document.getElementById('hpText');
+        const zombieAvatar = document.getElementById('zombieAvatar');
+        const zombieClickArea = document.getElementById('zombieClickArea');
+        const totalSlapsDisplay = document.getElementById('totalSlaps');
+        const rebirthMultDisplay = document.getElementById('rebirthMult');
+        const shopContent = document.getElementById('shopContent');
+        const memeMarquee = document.getElementById('memeMarquee');
+
+        const tabPowerBtn = document.getElementById('tabPowerBtn');
+        const tabMinionBtn = document.getElementById('tabMinionBtn');
+        const tabAchieveBtn = document.getElementById('tabAchieveBtn');
+        const rebirthBtn = document.getElementById('rebirthBtn');
+        const resetDataBtn = document.getElementById('resetDataBtn');
+        const bgmToggleBtn = document.getElementById('bgmToggleBtn');
+
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+
+        let activeTab = 'power'; // 'power' | 'minion' | 'achieve'
+
+        /* -------------------------------------------------------------------------- */
+        /* CORE GAME LOGIC & FUNCTIONS                                                */
+        /* -------------------------------------------------------------------------- */
+
+        function initGame() {
+            loadGame();
+            renderZombie();
+            updateUI();
+            renderShop();
+
+            // Auto loop for Passive Gold (GPS)
+            setInterval(() => {
+                const totalGps = calculateGPS();
+                if (totalGps > 0) {
+                    addGold(totalGps / 10);
+                }
+            }, 100);
+
+            // Auto Save Loop every 10 seconds
+            setInterval(saveGame, 10000);
+
+            // Rotate Meme Marquee Text
+            setInterval(() => {
+                const randQuote = memeQuotes[Math.floor(Math.random() * memeQuotes.length)];
+                memeMarquee.textContent = randQuote;
+            }, 7000);
+        }
+
+        function calculateSlapDamage() {
+            let basePower = 0;
+            gameState.weapons.forEach(w => {
+                basePower += w.level * w.powerAdd;
+            });
+            return Math.max(1, Math.floor(basePower * gameState.rebirthMultiplier));
+        }
+
+        function calculateGPS() {
+            let totalGps = 0;
+            gameState.minions.forEach(m => {
+                totalGps += m.count * m.gps;
+            });
+            return Math.floor(totalGps * gameState.rebirthMultiplier);
+        }
+
+        function addGold(amount) {
+            gameState.gold += amount;
+            updateUI();
+            checkAchievements();
+        }
+
+        function slapZombie(e) {
+            sound.playSlap();
+
+            const damage = calculateSlapDamage();
+            gameState.currentZombieHp -= damage;
+            gameState.totalSlaps++;
+            addGold(damage);
+
+            // Animation & Visual Feedback for Zombie
+            zombieAvatar.classList.remove('animate-slap');
+            void zombieAvatar.offsetWidth;
+            zombieAvatar.classList.add('animate-slap');
+
+            // Show Visual Weapon Animation over the hit location
+            spawnWeaponVisual(e);
+
+            // Chance of Crit Screen Shake
+            if (Math.random() < 0.25) {
+                document.body.classList.remove('screen-shake');
+                void document.body.offsetWidth;
+                document.body.classList.add('screen-shake');
+            }
+
+            // Spawn floating text popup
+            spawnSlapText(e, damage);
+
+            // Check if Zombie Defeated
+            if (gameState.currentZombieHp <= 0) {
+                sound.playCoin();
+                const currentData = zombies[gameState.currentZombieIndex];
+                addGold(currentData.goldReward * (gameState.currentZombieIndex + 1));
+                
+                // Dramatic Defeat Effect
+                zombieAvatar.style.transform = 'scale(0.2) rotate(720deg)';
+                zombieAvatar.style.opacity = '0';
+
+                setTimeout(() => {
+                    // Advance Zombie and exponentially scale HP
+                    gameState.currentZombieIndex = (gameState.currentZombieIndex + 1) % zombies.length;
+                    const nextZombie = zombies[gameState.currentZombieIndex];
+                    const multiplier = Math.pow(2.2, Math.floor(gameState.totalSlaps / 300));
+                    gameState.maxZombieHp = Math.floor(nextZombie.baseHp * multiplier);
+                    gameState.currentZombieHp = gameState.maxZombieHp;
+
+                    zombieAvatar.style.transform = 'scale(1) rotate(0deg)';
+                    zombieAvatar.style.opacity = '1';
+                    renderZombie();
+                    updateUI();
+                }, 400);
+
+                showModal('💥 좀비 퇴치 성공!', `[${currentData.name}]을(를) 엄청난 난타 끝에 때려눕혔습니다! 대량의 골드를 보상으로 받습니다.`);
+            }
+
+            updateUI();
+        }
+
+        // Render distinct weapon smack graphic over click location
+        function spawnWeaponVisual(e) {
+            const equippedWp = gameState.weapons[gameState.equippedWeaponIndex] || gameState.weapons[0];
+            const weaponElem = document.createElement('div');
+            weaponElem.className = 'absolute pointer-events-none text-6xl md:text-8xl z-40 animate-weapon drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]';
+            weaponElem.textContent = equippedWp.visual;
+
+            const rect = zombieClickArea.getBoundingClientRect();
+            let x = rect.width / 2;
+            let y = rect.height / 2;
+
+            if (e && e.clientX) {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+
+            weaponElem.style.left = `${x}px`;
+            weaponElem.style.top = `${y}px`;
+
+            zombieClickArea.appendChild(weaponElem);
+
+            setTimeout(() => {
+                weaponElem.remove();
+            }, 250);
+        }
+
+        function spawnSlapText(e, damage) {
+            const popup = document.createElement('div');
+            popup.className = 'slap-popup text-yellow-300 text-2xl md:text-4xl';
+
+            const slapWords = ['찰싹!', '떍!', '악!', '찰지구나!', '퍽!', '따끔!', '크리티컬!'];
+            const word = slapWords[Math.floor(Math.random() * slapWords.length)];
+
+            popup.innerHTML = `${word}<br><span class="text-white text-lg md:text-xl">+${damage}G</span>`;
+
+            const rect = zombieClickArea.getBoundingClientRect();
+            let x = rect.width / 2;
+            let y = rect.height / 2;
+
+            if (e && e.clientX) {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+
+            popup.style.left = `${x - 30}px`;
+            popup.style.top = `${y - 40}px`;
+
+            zombieClickArea.appendChild(popup);
+
+            setTimeout(() => {
+                popup.remove();
+            }, 700);
+        }
+
+        function renderZombie() {
+            const z = zombies[gameState.currentZombieIndex];
+            zombieName.textContent = z.name;
+            zombieLevelTag.textContent = `Lv.${gameState.currentZombieIndex + 1}`;
+            zombieAvatar.innerHTML = z.svg;
+        }
+
+        function updateUI() {
+            goldDisplay.textContent = `${Math.floor(gameState.gold).toLocaleString()} G`;
+            gpsDisplay.textContent = `+${calculateGPS().toLocaleString()} G/초`;
+            totalSlapsDisplay.textContent = gameState.totalSlaps.toLocaleString();
+            rebirthMultDisplay.textContent = gameState.rebirthMultiplier.toFixed(1);
+
+            // Health Bar
+            const percent = Math.max(0, (gameState.currentZombieHp / gameState.maxZombieHp) * 100);
+            hpBar.style.width = `${percent}%`;
+            hpText.textContent = `${Math.ceil(gameState.currentZombieHp).toLocaleString()} / ${gameState.maxZombieHp.toLocaleString()}`;
+
+            // Refresh shop button active states
+            updateShopButtons();
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* SHOP & UPGRADES SYSTEM                                                     */
+        /* -------------------------------------------------------------------------- */
+
+        function renderShop() {
+            shopContent.innerHTML = '';
+
+            if (activeTab === 'power') {
+                gameState.weapons.forEach((w, idx) => {
+                    const cost = Math.floor(w.baseCost * Math.pow(1.35, w.level));
+                    const canAfford = gameState.gold >= cost;
+
+                    const card = document.createElement('div');
+                    card.className = `p-3 rounded-2xl border-3 border-black bg-white flex items-center justify-between shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${!canAfford ? 'opacity-70' : ''}`;
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="text-3xl">${w.icon}</span>
+                            <div>
+                                <div class="font-black text-sm md:text-base">${w.name} <span class="text-xs bg-yellow-300 px-1.5 py-0.5 rounded-md border border-black">Lv.${w.level}</span></div>
+                                <div class="text-xs text-gray-600 font-bold">뺨 대미지 +${w.powerAdd}</div>
+                            </div>
+                        </div>
+                        <button onclick="buyWeapon(${idx})" class="btn-bounce bg-emerald-400 hover:bg-emerald-500 font-black px-3 py-1.5 rounded-xl border-2 border-black text-xs md:text-sm ${!canAfford ? 'bg-gray-300 hover:bg-gray-300 text-gray-500 cursor-not-allowed' : ''}">
+                            강화<br><span class="text-[10px] md:text-xs font-normal">${cost.toLocaleString()}G</span>
+                        </button>
+                    `;
+                    shopContent.appendChild(card);
+                });
+            } else if (activeTab === 'minion') {
+                gameState.minions.forEach((m, idx) => {
+                    const cost = Math.floor(m.baseCost * Math.pow(1.25, m.count));
+                    const canAfford = gameState.gold >= cost;
+
+                    const card = document.createElement('div');
+                    card.className = `p-3 rounded-2xl border-3 border-black bg-white flex items-center justify-between shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${!canAfford ? 'opacity-70' : ''}`;
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="text-3xl">${m.icon}</span>
+                            <div>
+                                <div class="font-black text-sm md:text-base">${m.name} <span class="text-xs bg-cyan-300 px-1.5 py-0.5 rounded-md border border-black">${m.count}개</span></div>
+                                <div class="text-xs text-emerald-600 font-bold">+${m.gps} G/초</div>
+                            </div>
+                        </div>
+                        <button onclick="buyMinion(${idx})" class="btn-bounce bg-cyan-400 hover:bg-cyan-500 font-black px-3 py-1.5 rounded-xl border-2 border-black text-xs md:text-sm ${!canAfford ? 'bg-gray-300 hover:bg-gray-300 text-gray-500 cursor-not-allowed' : ''}">
+                            구매<br><span class="text-[10px] md:text-xs font-normal">${cost.toLocaleString()}G</span>
+                        </button>
+                    `;
+                    shopContent.appendChild(card);
+                });
+            } else if (activeTab === 'achieve') {
+                gameState.achievements.forEach(a => {
+                    const card = document.createElement('div');
+                    card.className = `p-3 rounded-2xl border-3 border-black ${a.unlocked ? 'bg-amber-200' : 'bg-gray-100 opacity-60'} flex items-center justify-between shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`;
+                    card.innerHTML = `
+                        <div>
+                            <div class="font-black text-sm md:text-base">${a.unlocked ? '🏆 ' : '🔒 '}${a.title}</div>
+                            <div class="text-xs text-gray-600 font-bold">${a.desc}</div>
+                        </div>
+                        <div class="text-xs font-black ${a.unlocked ? 'text-emerald-700' : 'text-gray-400'}">
+                            ${a.unlocked ? '완료! (+' + a.reward + 'G)' : '미달성'}
+                        </div>
+                    `;
+                    shopContent.appendChild(card);
+                });
+            }
+        }
+
+        function updateShopButtons() {
+            // Re-render shop content to update costs & affordability states
+            renderShop();
+        }
+
+        window.buyWeapon = function(index) {
+            const w = gameState.weapons[index];
+            const cost = Math.floor(w.baseCost * Math.pow(1.35, w.level));
+            if (gameState.gold >= cost) {
+                gameState.gold -= cost;
+                w.level++;
+                gameState.equippedWeaponIndex = index; // Equip highest upgraded weapon
+                sound.playCoin();
+                updateUI();
+                renderShop();
+            }
+        };
+
+        window.buyMinion = function(index) {
+            const m = gameState.minions[index];
+            const cost = Math.floor(m.baseCost * Math.pow(1.25, m.count));
+            if (gameState.gold >= cost) {
+                gameState.gold -= cost;
+                m.count++;
+                sound.playCoin();
+                updateUI();
+                renderShop();
+            }
+        };
+
+        function checkAchievements() {
+            gameState.achievements.forEach(a => {
+                if (!a.unlocked) {
+                    if (a.id === 'slap_10' && gameState.totalSlaps >= 10) unlockAchieve(a);
+                    if (a.id === 'slap_100' && gameState.totalSlaps >= 100) unlockAchieve(a);
+                    if (a.id === 'slap_1000' && gameState.totalSlaps >= 1000) unlockAchieve(a);
+                    if (a.id === 'gold_10k' && gameState.gold >= 10000) unlockAchieve(a);
+                    if (a.id === 'boss_defeat' && gameState.currentZombieIndex === 4 && gameState.currentZombieHp <= 0) unlockAchieve(a);
+                }
+            });
+        }
+
+        function unlockAchieve(a) {
+            a.unlocked = true;
+            addGold(a.reward);
+            showModal('🏆 업적 달성!', `[${a.title}] 업적을 달성하여 보상 ${a.reward} Gold를 얻었습니다!`);
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* PRESTIGE / REBIRTH SYSTEM                                                  */
+        /* -------------------------------------------------------------------------- */
+
+        function triggerRebirth() {
+            const minSlapsReq = 200;
+            if (gameState.totalSlaps < minSlapsReq) {
+                showModal('🌀 영혼 환생 불가', `환생을 하려면 최소 뺨을 ${minSlapsReq}번 이상 때려야 합니다! (현재: ${gameState.totalSlaps}회)`);
+                return;
+            }
+
+            const addedMultiplier = parseFloat((gameState.totalSlaps / 200).toFixed(1));
+            
+            gameState.gold = 0;
+            gameState.slapPowerLevel = 1;
+            gameState.rebirthCount++;
+            gameState.rebirthMultiplier += addedMultiplier;
+            gameState.currentZombieIndex = 0;
+
+            // Reset weapon levels & minion counts
+            gameState.weapons.forEach((w, i) => w.level = i === 0 ? 1 : 0);
+            gameState.minions.forEach(m => m.count = 0);
+
+            const z = zombies[0];
+            gameState.maxZombieHp = z.baseHp;
+            gameState.currentZombieHp = z.baseHp;
+
+            saveGame();
+            renderZombie();
+            updateUI();
+            renderShop();
+
+            showModal('✨ 영혼 환생 성공!', `모든 장비와 골드가 초기화되지만, 뺨 대미지 배율이 x${gameState.rebirthMultiplier.toFixed(1)} 배로 대폭 증가했습니다!`);
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* MODAL & AUDIO TOGGLES                                                      */
+        /* -------------------------------------------------------------------------- */
+
+        function showModal(title, text) {
+            modalTitle.textContent = title;
+            modalBody.textContent = text;
+            modalOverlay.classList.remove('hidden');
+            modalOverlay.classList.add('flex');
+        }
+
+        modalCloseBtn.addEventListener('click', () => {
+            modalOverlay.classList.add('hidden');
+            modalOverlay.classList.remove('flex');
+        });
+
+        bgmToggleBtn.addEventListener('click', () => {
+            gameState.bgmActive = !gameState.bgmActive;
+            if (gameState.bgmActive) {
+                bgmToggleBtn.textContent = '🎵 BGM 끄기';
+                sound.playBgmLoop();
+            } else {
+                bgmToggleBtn.textContent = '🎵 BGM 켜기';
+                sound.stopBgm();
+            }
+        });
+
+        /* -------------------------------------------------------------------------- */
+        /* TAB NAVIGATION                                                             */
+        /* -------------------------------------------------------------------------- */
+
+        tabPowerBtn.addEventListener('click', () => {
+            activeTab = 'power';
+            tabPowerBtn.className = "flex-1 bg-yellow-400 text-black border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabMinionBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabAchieveBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            renderShop();
+        });
+
+        tabMinionBtn.addEventListener('click', () => {
+            activeTab = 'minion';
+            tabMinionBtn.className = "flex-1 bg-cyan-400 text-black border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabPowerBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabAchieveBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            renderShop();
+        });
+
+        tabAchieveBtn.addEventListener('click', () => {
+            activeTab = 'achieve';
+            tabAchieveBtn.className = "flex-1 bg-purple-400 text-black border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabPowerBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            tabMinionBtn.className = "flex-1 bg-white text-gray-700 border-2 border-black rounded-xl py-2 font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]";
+            renderShop();
+        });
+
+        zombieClickArea.addEventListener('click', (e) => slapZombie(e));
+        rebirthBtn.addEventListener('click', triggerRebirth);
+
+        resetDataBtn.addEventListener('click', () => {
+            if (confirm('정말로 저장된 게임 데이터를 초기화하시겠습니까?')) {
+                localStorage.removeItem('zombie_slap_tycoon_save');
+                location.reload();
+            }
+        });
+
+        /* -------------------------------------------------------------------------- */
+        /* SAVE & LOAD SYSTEM                                                         */
+        /* -------------------------------------------------------------------------- */
+
+        function saveGame() {
+            localStorage.setItem('zombie_slap_tycoon_save', JSON.stringify(gameState));
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('zombie_slap_tycoon_save');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    gameState.gold = parsed.gold || 0;
+                    gameState.totalSlaps = parsed.totalSlaps || 0;
+                    gameState.rebirthCount = parsed.rebirthCount || 0;
+                    gameState.rebirthMultiplier = parsed.rebirthMultiplier || 1.0;
+                    gameState.currentZombieIndex = parsed.currentZombieIndex || 0;
+
+                    if (parsed.weapons) {
+                        parsed.weapons.forEach((w, idx) => {
+                            if (gameState.weapons[idx]) gameState.weapons[idx].level = w.level;
+                        });
+                    }
+
+                    if (parsed.minions) {
+                        parsed.minions.forEach((m, idx) => {
+                            if (gameState.minions[idx]) gameState.minions[idx].count = m.count;
+                        });
+                    }
+
+                    if (parsed.achievements) {
+                        parsed.achievements.forEach((a, idx) => {
+                            if (gameState.achievements[idx]) gameState.achievements[idx].unlocked = a.unlocked;
+                        });
+                    }
+
+                    const z = zombies[gameState.currentZombieIndex];
+                    gameState.maxZombieHp = Math.floor(z.baseHp * Math.pow(1.5, Math.floor(gameState.totalSlaps / 50)));
+                    gameState.currentZombieHp = gameState.maxZombieHp;
+
+                } catch (e) {
+                    console.error("Save load error", e);
+                }
+            }
+        }
+
+        // Start game on window load
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
