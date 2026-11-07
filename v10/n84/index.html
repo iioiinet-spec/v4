@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹 그림판 (Paint App)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* Custom scrollbar for color palette and history */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Active tool indicator */
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+        /* Color preset selection active state */
+        .color-swatch.active {
+            ring: 3px;
+            transform: scale(1.15);
+        }
+        /* Canvas crosshair cursor depending on tool */
+        .canvas-container {
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Header Navigation -->
+    <header class="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-sm z-10">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg shadow">
+                <i class="fa-solid me-0 fa-palette text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold text-slate-800 leading-tight">웹 그림판</h1>
+                <p class="text-xs text-slate-500">손쉽게 그리고 저장하는 온라인 화방</p>
+            </div>
+        </div>
+
+        <!-- Action Control Buttons (Undo, Redo, Clear, Download) -->
+        <div class="flex items-center space-x-2">
+            <button id="btn-undo" title="되돌리기 (Ctrl+Z)" class="p-2.5 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span class="hidden sm:inline">되돌리기</span>
+            </button>
+            <button id="btn-redo" title="다시 실행 (Ctrl+Y)" class="p-2.5 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span class="hidden sm:inline">다시 실행</span>
+            </button>
+            <div class="h-6 w-px bg-slate-300 mx-1"></div>
+            <button id="btn-clear" title="전체 지우기" class="p-2.5 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i>
+                <span class="hidden sm:inline">초기화</span>
+            </button>
+            <button id="btn-download" title="PNG 이미지로 저장" class="p-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i>
+                <span>저장하기</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area: Sidebar Tools + Canvas -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Sidebar Controls -->
+        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col p-4 space-y-5 overflow-y-auto z-10 shadow-sm shrink-0">
+            
+            <!-- Tool Selection -->
+            <div>
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">그리기 도구</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <button data-tool="brush" title="붓 (자유 곡선)" class="tool-btn active p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-paint-brush text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">붓</span>
+                    </button>
+                    <button data-tool="pencil" title="연필 (가는 선)" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-pencil text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">연필</span>
+                    </button>
+                    <button data-tool="eraser" title="지우개" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-eraser text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">지우개</span>
+                    </button>
+                    <button data-tool="bucket" title="페인트 통 (채우기)" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-fill-drip text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">채우기</span>
+                    </button>
+                    <button data-tool="line" title="직선" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-slash text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">직선</span>
+                    </button>
+                    <button data-tool="rect" title="직사각형" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-regular fa-square text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">사각형</span>
+                    </button>
+                    <button data-tool="circle" title="원" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-regular fa-circle text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">원</span>
+                    </button>
+                    <button data-tool="text" title="텍스트 입력" class="tool-btn p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 flex flex-col items-center justify-center transition">
+                        <i class="fa-solid fa-font text-lg"></i>
+                        <span class="text-[10px] mt-1 font-medium">텍스트</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shape Options (Shown conditionally for shapes) -->
+            <div id="shape-options" class="bg-slate-50 p-3 rounded-lg border border-slate-200 hidden">
+                <label class="block text-xs font-semibold text-slate-500 mb-2">도형 속성</label>
+                <div class="flex items-center justify-between text-xs">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="fill-shape" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4">
+                        <span class="text-slate-700">색상 채우기</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Brush Size & Opacity -->
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">굵기 / 크기</label>
+                        <span id="brush-size-val" class="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">5 px</span>
+                    </div>
+                    <input type="range" id="brush-size" min="1" max="100" value="5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    
+                    <!-- Brush Preview Box -->
+                    <div class="mt-2 h-12 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden">
+                        <div id="brush-preview" class="bg-black rounded-full transition-all duration-75"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">투명도</label>
+                        <span id="opacity-val" class="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">100%</span>
+                    </div>
+                    <input type="range" id="opacity" min="1" max="100" value="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                </div>
+            </div>
+
+            <hr class="border-slate-200">
+
+            <!-- Color Selection -->
+            <div class="space-y-3">
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">색상 선택</label>
+                
+                <!-- Color Picker & Current Color -->
+                <div class="flex items-center gap-3">
+                    <div class="relative group">
+                        <input type="color" id="color-picker" value="#000000" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10">
+                        <div id="current-color-bg" class="w-10 h-10 rounded-lg border-2 border-slate-300 shadow-inner flex items-center justify-center" style="background-color: #000000;">
+                            <i class="fa-solid fa-eye-dropper text-white text-xs drop-shadow"></i>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <input type="text" id="hex-code" value="#000000" class="w-full text-xs font-mono px-2.5 py-2 border border-slate-200 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <!-- Color Palette Presets -->
+                <div class="grid grid-cols-6 gap-2 pt-1" id="palette-container">
+                    <!-- Dynamic colors inserted via JS -->
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Canvas Container -->
+        <main class="flex-1 bg-slate-200 flex items-center justify-center p-4 relative overflow-hidden canvas-container">
+            <!-- Canvas Wrapper -->
+            <div id="canvas-wrapper" class="relative bg-white shadow-xl rounded-lg overflow-hidden border border-slate-300">
+                <canvas id="paint-canvas"></canvas>
+            </div>
+            
+            <!-- Canvas Overlay Text Input (Invisible by default, shown when clicking text tool) -->
+            <input type="text" id="canvas-text-input" class="absolute hidden bg-transparent border border-blue-500 outline-none font-sans px-1 py-0.5 shadow-sm rounded" placeholder="글자 입력 후 Enter">
+        </main>
+    </div>
+
+    <!-- Confirmation Modal for Canvas Reset -->
+    <div id="clear-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 m-4 transform scale-95 transition-transform duration-200" id="modal-box">
+            <div class="text-center">
+                <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">캔버스를 초기화하시겠습니까?</h3>
+                <p class="text-sm text-slate-500 mb-6">현재 작성 중인 모든 작업 내용이 삭제됩니다. 계속 진행하시겠습니까?</p>
+                <div class="flex gap-3 justify-center">
+                    <button id="modal-cancel" class="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">취소</button>
+                    <button id="modal-confirm" class="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded-lg transition">초기화</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Main elements
+            const canvas = document.getElementById('paint-canvas');
+            const ctx = canvas.getContext('2d');
+            const wrapper = document.getElementById('canvas-wrapper');
+            const textInput = document.getElementById('canvas-text-input');
+
+            // UI Elements
+            const toolButtons = document.querySelectorAll('.tool-btn');
+            const shapeOptions = document.getElementById('shape-options');
+            const fillShapeCheckbox = document.getElementById('fill-shape');
+            const brushSizeInput = document.getElementById('brush-size');
+            const brushSizeVal = document.getElementById('brush-size-val');
+            const brushPreview = document.getElementById('brush-preview');
+            const opacityInput = document.getElementById('opacity');
+            const opacityVal = document.getElementById('opacity-val');
+            const colorPicker = document.getElementById('color-picker');
+            const currentColorBg = document.getElementById('current-color-bg');
+            const hexCodeInput = document.getElementById('hex-code');
+            const paletteContainer = document.getElementById('palette-container');
+
+            // Header Action Buttons
+            const btnUndo = document.getElementById('btn-undo');
+            const btnRedo = document.getElementById('btn-redo');
+            const btnClear = document.getElementById('btn-clear');
+            const btnDownload = document.getElementById('btn-download');
+
+            // Modal Elements
+            const clearModal = document.getElementById('clear-modal');
+            const modalBox = document.getElementById('modal-box');
+            const modalCancel = document.getElementById('modal-cancel');
+            const modalConfirm = document.getElementById('modal-confirm');
+
+            // App State
+            let currentTool = 'brush';
+            let currentColor = '#000000';
+            let brushSize = 5;
+            let opacity = 1.0;
+            let fillShape = false;
+
+            let isDrawing = false;
+            let startX = 0;
+            let startY = 0;
+            let snapshot = null; // Canvas image snapshot for line/shape preview
+
+            // Undo / Redo History Stacks
+            const historyStack = [];
+            const redoStack = [];
+            const MAX_HISTORY = 30;
+
+            // Preset Colors Palette
+            const presetColors = [
+                '#000000', '#ffffff', '#64748b', '#ef4444', '#f97316', '#f59e0b',
+                '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#a855f7',
+                '#ec4899', '#f43f5e', '#78350f', '#064e3b', '#1e3a8a', '#581c87'
+            ];
+
+            // Setup Canvas Size & Resize Handling
+            function initCanvasSize() {
+                // Set canvas dimension based on container size on first load
+                const pWidth = wrapper.parentElement.clientWidth - 32;
+                const pHeight = wrapper.parentElement.clientHeight - 32;
+
+                const targetWidth = Math.max(600, Math.min(1200, pWidth));
+                const targetHeight = Math.max(400, Math.min(800, pHeight));
+
+                // Save image data if canvas already has content
+                let tempCanvasData = null;
+                if (canvas.width > 0 && canvas.height > 0) {
+                    tempCanvasData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+
+                // Fill white background initial state
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (tempCanvasData) {
+                    ctx.putImageData(tempCanvasData, 0, 0);
+                } else {
+                    saveState(); // Initial empty white canvas state
+                }
+            }
+
+            // Render Palette Colors
+            function buildPalette() {
+                paletteContainer.innerHTML = '';
+                presetColors.forEach((color, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = `w-7 h-7 rounded-md border border-slate-300 transition hover:scale-110 color-swatch ${idx === 0 ? 'active' : ''}`;
+                    btn.style.backgroundColor = color;
+                    btn.setAttribute('title', color);
+                    btn.addEventListener('click', () => setColor(color));
+                    paletteContainer.appendChild(btn);
+                });
+            }
+
+            // Set Color Function
+            function setColor(hex) {
+                currentColor = hex;
+                colorPicker.value = hex;
+                hexCodeInput.value = hex.toUpperCase();
+                currentColorBg.style.backgroundColor = hex;
+                updateBrushPreview();
+
+                // Highlight Active Swatch
+                document.querySelectorAll('.color-swatch').forEach(swatch => {
+                    if (swatch.style.backgroundColor === hexToRgb(hex)) {
+                        swatch.classList.add('ring-2', 'ring-blue-500', 'ring-offset-1');
+                    } else {
+                        swatch.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-1');
+                    }
+                });
+            }
+
+            // Hex to RGB helper for style matching
+            function hexToRgb(hex) {
+                const temp = document.createElement('div');
+                temp.style.color = hex;
+                document.body.appendChild(temp);
+                const rgb = window.getComputedStyle(temp).color;
+                document.body.removeChild(temp);
+                return rgb;
+            }
+
+            // Update Brush Preview Circle
+            function updateBrushPreview() {
+                brushSizeVal.textContent = `${brushSize} px`;
+                opacityVal.textContent = `${Math.round(opacity * 100)}%`;
+                
+                const previewSize = Math.min(40, Math.max(2, brushSize));
+                brushPreview.style.width = `${previewSize}px`;
+                brushPreview.style.height = `${previewSize}px`;
+                
+                if (currentTool === 'eraser') {
+                    brushPreview.style.backgroundColor = '#ffffff';
+                    brushPreview.style.border = '1px solid #cbd5e1';
+                } else {
+                    brushPreview.style.backgroundColor = currentColor;
+                    brushPreview.style.border = 'none';
+                }
+                brushPreview.style.opacity = opacity;
+            }
+
+            // History Management (Undo / Redo)
+            function saveState() {
+                if (historyStack.length >= MAX_HISTORY) {
+                    historyStack.shift();
+                }
+                historyStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                redoStack.length = 0; // Clear redo history on new action
+                updateHistoryButtons();
+            }
+
+            function updateHistoryButtons() {
+                btnUndo.disabled = historyStack.length <= 1;
+                btnRedo.disabled = redoStack.length === 0;
+            }
+
+            function undo() {
+                if (historyStack.length > 1) {
+                    redoStack.push(historyStack.pop());
+                    const state = historyStack[historyStack.length - 1];
+                    ctx.putImageData(state, 0, 0);
+                    updateHistoryButtons();
+                }
+            }
+
+            function redo() {
+                if (redoStack.length > 0) {
+                    const state = redoStack.pop();
+                    historyStack.push(state);
+                    ctx.putImageData(state, 0, 0);
+                    updateHistoryButtons();
+                }
+            }
+
+            // Get Correct Coordinates Relative to Canvas
+            function getCoordinates(e) {
+                const rect = canvas.getBoundingClientRect();
+                let clientX = e.clientX;
+                let clientY = e.clientY;
+
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                }
+
+                return {
+                    x: (clientX - rect.left) * (canvas.width / rect.width),
+                    y: (clientY - rect.top) * (canvas.height / rect.height)
+                };
+            }
+
+            // Set Context Styling
+            function applyContextSettings() {
+                ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : currentColor;
+                ctx.fillStyle = currentColor;
+                ctx.globalAlpha = opacity;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = currentTool === 'pencil' ? Math.min(2, brushSize) : brushSize;
+            }
+
+            // Start Drawing
+            function startDrawing(e) {
+                if (currentTool === 'text') {
+                    handleTextToolClick(e);
+                    return;
+                }
+
+                isDrawing = true;
+                const coords = getCoordinates(e);
+                startX = coords.x;
+                startY = coords.y;
+
+                applyContextSettings();
+
+                if (currentTool === 'bucket') {
+                    floodFill(Math.floor(startX), Math.floor(startY), currentColor);
+                    saveState();
+                    isDrawing = false;
+                    return;
+                }
+
+                // Save snapshot for shapes preview
+                snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                if (currentTool === 'brush' || currentTool === 'pencil' || currentTool === 'eraser') {
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(startX, startY);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw Motion
+            function draw(e) {
+                if (!isDrawing) return;
+                const coords = getCoordinates(e);
+
+                if (currentTool === 'brush' || currentTool === 'pencil' || currentTool === 'eraser') {
+                    ctx.lineTo(coords.x, coords.y);
+                    ctx.stroke();
+                } else {
+                    // Restore original snapshot to draw live shape preview
+                    ctx.putImageData(snapshot, 0, 0);
+                    applyContextSettings();
+
+                    if (currentTool === 'line') {
+                        ctx.beginPath();
+                        ctx.moveTo(startX, startY);
+                        ctx.lineTo(coords.x, coords.y);
+                        ctx.stroke();
+                    } else if (currentTool === 'rect') {
+                        const width = coords.x - startX;
+                        const height = coords.y - startY;
+                        if (fillShape) {
+                            ctx.fillRect(startX, startY, width, height);
+                        }
+                        ctx.strokeRect(startX, startY, width, height);
+                    } else if (currentTool === 'circle') {
+                        ctx.beginPath();
+                        const radius = Math.sqrt(Math.pow(coords.x - startX, 2) + Math.pow(coords.y - startY, 2));
+                        ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                        if (fillShape) {
+                            ctx.fill();
+                        }
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // Stop Drawing
+            function stopDrawing() {
+                if (isDrawing) {
+                    isDrawing = false;
+                    ctx.beginPath();
+                    saveState();
+                }
+            }
+
+            // Text Tool Logic
+            function handleTextToolClick(e) {
+                const coords = getCoordinates(e);
+                const rect = canvas.getBoundingClientRect();
+                
+                // Position input on UI relative to wrapper
+                const inputX = (coords.x * (rect.width / canvas.width));
+                const inputY = (coords.y * (rect.height / canvas.height));
+
+                textInput.style.left = `${inputX}px`;
+                textInput.style.top = `${inputY}px`;
+                textInput.style.color = currentColor;
+                textInput.style.fontSize = `${Math.max(12, brushSize * 3)}px`;
+                textInput.style.fontFamily = 'Noto Sans KR, sans-serif';
+                textInput.classList.remove('hidden');
+                textInput.value = '';
+                textInput.focus();
+
+                // Save target canvas position
+                textInput.dataset.canvasX = coords.x;
+                textInput.dataset.canvasY = coords.y;
+            }
+
+            function commitText() {
+                if (textInput.classList.contains('hidden')) return;
+                const text = textInput.value.trim();
+                if (text.length > 0) {
+                    const x = parseFloat(textInput.dataset.canvasX);
+                    const y = parseFloat(textInput.dataset.canvasY);
+
+                    applyContextSettings();
+                    const fontSize = Math.max(12, brushSize * 3);
+                    ctx.font = `${fontSize}px 'Noto Sans KR', sans-serif`;
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(text, x, y);
+                    saveState();
+                }
+                textInput.classList.add('hidden');
+            }
+
+            textInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    commitText();
+                } else if (e.key === 'Escape') {
+                    textInput.classList.add('hidden');
+                }
+            });
+
+            textInput.addEventListener('blur', () => {
+                commitText();
+            });
+
+            // Flood Fill Algorithm (Paint Bucket)
+            function floodFill(startX, startY, fillColorHex) {
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+
+                const targetRgb = getPixelColor(data, startX, startY);
+                const fillRgb = hexToRgbComponents(fillColorHex);
+
+                if (colorsMatch(targetRgb, fillRgb)) return;
+
+                const pixelsToCheck = [startX, startY];
+                const width = canvas.width;
+                const height = canvas.height;
+
+                while (pixelsToCheck.length > 0) {
+                    const y = pixelsToCheck.pop();
+                    const x = pixelsToCheck.pop();
+
+                    const currentColor = getPixelColor(data, x, y);
+
+                    if (colorsMatch(currentColor, targetRgb)) {
+                        setPixelColor(data, x, y, fillRgb, opacity);
+
+                        if (x > 0) pixelsToCheck.push(x - 1, y);
+                        if (x < width - 1) pixelsToCheck.push(x + 1, y);
+                        if (y > 0) pixelsToCheck.push(x, y - 1);
+                        if (y < height - 1) pixelsToCheck.push(x, y + 1);
+                    }
+                }
+
+                ctx.putImageData(imgData, 0, 0);
+            }
+
+            function getPixelColor(data, x, y) {
+                const index = (y * canvas.width + x) * 4;
+                return [data[index], data[index + 1], data[index + 2], data[index + 3]];
+            }
+
+            function setPixelColor(data, x, y, fillRgb, alphaVal) {
+                const index = (y * canvas.width + x) * 4;
+                data[index] = fillRgb[0];
+                data[index + 1] = fillRgb[1];
+                data[index + 2] = fillRgb[2];
+                data[index + 3] = Math.round(alphaVal * 255);
+            }
+
+            function colorsMatch(a, b) {
+                return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && Math.abs(a[3] - b[3]) < 10;
+            }
+
+            function hexToRgbComponents(hex) {
+                let c = hex.replace('#', '');
+                if (c.length === 3) c = c.split('').map(x => x + x).join('');
+                const num = parseInt(c, 16);
+                return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+            }
+
+            // Tool Switching Event Listener
+            toolButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    toolButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentTool = btn.dataset.tool;
+
+                    // Toggle Shape Options Display
+                    if (['rect', 'circle'].includes(currentTool)) {
+                        shapeOptions.classList.remove('hidden');
+                    } else {
+                        shapeOptions.classList.add('hidden');
+                    }
+
+                    updateBrushPreview();
+                });
+            });
+
+            // Input Event Listeners
+            brushSizeInput.addEventListener('input', (e) => {
+                brushSize = parseInt(e.target.value);
+                updateBrushPreview();
+            });
+
+            opacityInput.addEventListener('input', (e) => {
+                opacity = parseFloat(e.target.value) / 100;
+                updateBrushPreview();
+            });
+
+            colorPicker.addEventListener('input', (e) => setColor(e.target.value));
+
+            hexCodeInput.addEventListener('change', (e) => {
+                let hex = e.target.value.trim();
+                if (!hex.startsWith('#')) hex = '#' + hex;
+                if (/^#[0-9A-F]{6}$/i.test(hex)) {
+                    setColor(hex);
+                }
+            });
+
+            fillShapeCheckbox.addEventListener('change', (e) => {
+                fillShape = e.target.checked;
+            });
+
+            // Canvas Mouse/Touch Events
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+
+            // Touch Support
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                startDrawing(e);
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                draw(e);
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                stopDrawing();
+            }, { passive: false });
+
+            // Undo / Redo Actions
+            btnUndo.addEventListener('click', undo);
+            btnRedo.addEventListener('click', redo);
+
+            // Keyboard Shortcuts
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return; // Ignore when typing in inputs
+
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                    if (e.shiftKey) {
+                        redo();
+                    } else {
+                        undo();
+                    }
+                } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                    redo();
+                }
+            });
+
+            // Clear Canvas Modal Logic
+            btnClear.addEventListener('click', () => {
+                clearModal.classList.remove('hidden');
+                setTimeout(() => {
+                    clearModal.classList.remove('opacity-0');
+                    modalBox.classList.remove('scale-95');
+                    modalBox.classList.add('scale-100');
+                }, 10);
+            });
+
+            function closeModal() {
+                clearModal.classList.add('opacity-0');
+                modalBox.classList.remove('scale-100');
+                modalBox.classList.add('scale-95');
+                setTimeout(() => {
+                    clearModal.classList.add('hidden');
+                }, 200);
+            }
+
+            modalCancel.addEventListener('click', closeModal);
+
+            modalConfirm.addEventListener('click', () => {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                saveState();
+                closeModal();
+            });
+
+            // Download Canvas as PNG
+            btnDownload.addEventListener('click', () => {
+                const link = document.createElement('a');
+                const date = new Date().toISOString().slice(0, 10);
+                link.download = `my-drawing-${date}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+
+            // Initialize App
+            initCanvasSize();
+            buildPalette();
+            setColor('#000000');
+        });
+    </script>
+</body>
+</html>
