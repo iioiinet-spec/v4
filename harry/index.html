@@ -76,22 +76,22 @@ canvas{display:block;width:100%;height:100%}
   background:linear-gradient(90deg,#ffe08a,var(--gold),#ffd166);
   -webkit-background-clip:text;background-clip:text;color:transparent}
 .tline{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
-.lead{font-size:.86rem;opacity:.75;margin-bottom:14px;line-height:1.5}
+.lead{font-size:.82rem;opacity:.75;margin-bottom:10px;line-height:1.45}
 .sec{font-size:.82rem;font-weight:800;color:var(--gold);letter-spacing:1px;
   margin:14px 0 8px;display:flex;align-items:center;gap:8px}
 .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(211,166,37,.5),transparent)}
 .grid{display:grid;gap:10px}
 #char-grid{grid-template-columns:repeat(auto-fit,minmax(128px,1fr))}
-#map-grid{grid-template-columns:1fr}
+#map-grid{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
 .cols{display:flex;gap:20px;align-items:flex-start}
-.cols .c1{flex:1.55;min-width:0}
+.cols .c1{flex:1.2;min-width:0}
 .cols .c2{flex:1;min-width:0}
 .sec{margin:0 0 8px}
 #shop-items{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .pick-card{background:rgba(255,255,255,.045);border:2px solid rgba(211,166,37,.25);
   border-radius:14px;padding:10px;cursor:pointer;transition:all .18s}
 .pick-card.map{display:flex;gap:11px;align-items:center;text-align:left}
-.pick-card.map .pick-icon{font-size:1.8rem;flex:0 0 auto}
+.pick-card.map .pick-icon{font-size:1.45rem;flex:0 0 auto}
 .pick-card.map>div:last-child{min-width:0}
 .pick-card:hover{border-color:rgba(211,166,37,.7);transform:translateY(-2px);background:rgba(255,255,255,.08)}
 .pick-card.on{border-color:var(--gold);background:rgba(211,166,37,.17);
@@ -100,10 +100,12 @@ canvas{display:block;width:100%;height:100%}
 .pick-badge{font-size:.66rem;font-weight:800;background:rgba(211,166,37,.25);
   border:1px solid rgba(211,166,37,.55);color:#ffe08a;border-radius:20px;padding:1px 8px}
 .pick-icon{font-size:1.9rem;line-height:1.2}
-.pick-name{font-weight:900;font-size:1.02rem;margin-top:2px}
+.pick-name{font-weight:900;font-size:.98rem;margin-top:2px;line-height:1.25}
 .pick-house{font-size:.74rem;color:var(--gold);font-weight:700}
 .pick-stats{display:flex;gap:8px;margin-top:6px;font-size:.72rem;font-weight:800;opacity:.85}
-.pick-stats span{background:rgba(255,255,255,.08);border-radius:6px;padding:1px 7px}
+.pick-stats span{background:rgba(255,255,255,.08);border-radius:6px;padding:1px 7px;white-space:nowrap}
+.pick-stats{flex-wrap:wrap}
+.pick-card.map .pick-name{font-size:.9rem}
 .pick-desc{font-size:.72rem;opacity:.7;margin-top:5px;line-height:1.4;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pick-stats .best{color:var(--ok)}
@@ -173,7 +175,7 @@ canvas{display:block;width:100%;height:100%}
   </div>
 
   <div id="toast-msg">체크포인트!</div>
-  <div id="hint-text">마우스 드래그 = 시점 회전 · WASD = 이동 · Space = 점프 · R = 투명 망토 · M = 메뉴</div>
+  <div id="hint-text">마우스 드래그 = 시점 회전 · WASD = 이동 · Space = 점프 · R = 투명 망토 · P = 코인 +10 · M = 메뉴</div>
 
   <div class="mobile">
     <div id="touch-joy"><div id="touch-handle"></div></div>
@@ -187,11 +189,12 @@ canvas{display:block;width:100%;height:100%}
   <div class="ov active" id="menu-overlay">
     <div class="card">
       <div class="tline">
-        <div class="title"> 해리포터 3D 마법 오비</div>
+        <div class="title">⚡ 해리포터 3D 마법 오비</div>
         <div class="coin-pill">🪙 <span id="menu-coin">0</span></div>
       </div>
       <div class="lead">
         마법사와 마법 세계를 골라 11개 관문을 통과하세요. 뒤 화면이 선택한 맵의 실제 출발 지점입니다.
+        <b style="color:var(--gold)">P 키</b>를 누를 때마다 코인 10개를 받습니다.
       </div>
 
       <div class="cols">
@@ -282,6 +285,40 @@ class AudioSystem {
         g.gain.exponentialRampToValueAtTime(0.001, t + dur);
         osc.connect(g); g.connect(c.destination);
         osc.start(t); osc.stop(t + dur + 0.02);
+    }
+    /* 짧은 감쇠 노이즈 — 기계식 스위치의 '딸깍' 성분 */
+    _noise(dur, freq, q, vol, delay) {
+        if (this.muted) return;
+        const c = this._c();
+        if (!c) return;
+        const t = c.currentTime + (delay || 0);
+        const len = Math.max(8, Math.ceil(c.sampleRate * dur));
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4);
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const bp = c.createBiquadFilter();
+        bp.type = "bandpass"; bp.frequency.value = freq; bp.Q.value = q;
+        const g = c.createGain();
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+        src.connect(bp); bp.connect(g); g.connect(c.destination);
+        src.start(t); src.stop(t + dur + 0.01);
+    }
+    /* 타건음 : 발소리마다 울리는 기계식 키보드 소리 */
+    keyClick() {
+        const f = 2300 + Math.random() * 1400;
+        this._noise(0.028, f, 6, 0.21);
+        this._tone("sine", 195 + Math.random() * 60, 95, 0.05, 0.13);
+    }
+    keyThock() {                 // 착지 — 깊은 엔터키
+        this._noise(0.05, 1500 + Math.random() * 500, 4, 0.3);
+        this._tone("sine", 145, 62, 0.1, 0.22);
+    }
+    keySpace() {                 // 점프 — 스페이스바
+        this._noise(0.055, 1050 + Math.random() * 350, 3.2, 0.3);
+        this._tone("triangle", 120, 58, 0.13, 0.2);
     }
     jump() { this._tone("sine", 220, 520, 0.12, 0.26); }
     dblJump() { this._tone("triangle", 420, 860, 0.16, 0.24); }
@@ -379,6 +416,85 @@ function studTexture(hex, studAlpha) {
     t.anisotropy = 4;
     t.encoding = THREE.sRGBEncoding;
     texCache[key] = t;
+    return t;
+}
+
+/* 키캡 상판 텍스처 — 2×2 키 배열에 각인 */
+function keycapTexture(hex, letters) {
+    const key = "k" + hex + letters.join("");
+    if (texCache[key]) return texCache[key];
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 256;
+    const g = cv.getContext("2d");
+    const base = new THREE.Color(hex);
+    g.fillStyle = base.clone().multiplyScalar(0.34).getStyle();
+    g.fillRect(0, 0, 256, 256);
+
+    function cap(ox, oy, label) {
+        const m = 10, S = 128, r = 20;
+        const x0 = ox + m, y0 = oy + m, w = S - m * 2;
+        const grad = g.createLinearGradient(0, y0, 0, y0 + w);
+        grad.addColorStop(0, base.clone().lerp(new THREE.Color(0xffffff), 0.26).getStyle());
+        grad.addColorStop(1, base.clone().multiplyScalar(0.82).getStyle());
+        g.beginPath();
+        g.moveTo(x0 + r, y0);
+        g.arcTo(x0 + w, y0, x0 + w, y0 + w, r);
+        g.arcTo(x0 + w, y0 + w, x0, y0 + w, r);
+        g.arcTo(x0, y0 + w, x0, y0, r);
+        g.arcTo(x0, y0, x0 + w, y0, r);
+        g.closePath();
+        g.fillStyle = grad; g.fill();
+        g.strokeStyle = "rgba(255,255,255,0.32)"; g.lineWidth = 3.5; g.stroke();
+        // 상판 안쪽 홈
+        g.beginPath();
+        g.ellipse(x0 + w / 2, y0 + w / 2 + 6, w * 0.38, w * 0.3, 0, 0, 6.2832);
+        g.fillStyle = "rgba(255,255,255,0.07)"; g.fill();
+        // 각인
+        g.fillStyle = "rgba(240,248,255,0.92)";
+        g.font = "700 " + (label.length > 1 ? 40 : 58) + "px 'Segoe UI',Arial,sans-serif";
+        g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText(label, x0 + w / 2, y0 + w / 2 + 4);
+    }
+    cap(0, 0, letters[0]); cap(128, 0, letters[1]);
+    cap(0, 128, letters[2]); cap(128, 128, letters[3]);
+
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    t.encoding = THREE.sRGBEncoding;
+    texCache[key] = t;
+    return t;
+}
+
+/* 코드가 흐르는 모니터 화면 텍스처 */
+function codeTexture() {
+    if (texCache.code) return texCache.code;
+    const cv = document.createElement("canvas");
+    cv.width = 512; cv.height = 320;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#0b1020"; g.fillRect(0, 0, 512, 320);
+    g.font = "13px 'Consolas','Courier New',monospace";
+    const cols = ["#7ee787", "#79c0ff", "#ffa657", "#d2a8ff", "#8b949e"];
+    const toks = ["function", "wizard", "(x, y)", "{", "return", "lumos()", "};",
+        "const", "spell =", "[expelliarmus]", "if (coin > 0)", "jump();",
+        "// 마법 오비", "while(true)", "accio(coin);", "}", "let hp = 100;"];
+    rndSeed(4242);
+    for (let i = 0; i < 22; i++) {
+        let x = 14 + ((i * 7) % 3) * 16;
+        const y = 18 + i * 14;
+        const n = 1 + ((i * 5) % 3);
+        for (let k = 0; k < n; k++) {
+            const tk = toks[(i * 3 + k * 7) % toks.length];
+            g.fillStyle = cols[(i + k) % cols.length];
+            g.fillText(tk, x, y);
+            x += g.measureText(tk).width + 10;
+        }
+    }
+    g.fillStyle = "rgba(126,231,135,0.85)";
+    g.fillRect(14, 322 - 14, 9, 13);
+    const t = new THREE.CanvasTexture(cv);
+    t.encoding = THREE.sRGBEncoding;
+    texCache.code = t;
     return t;
 }
 
@@ -888,7 +1004,7 @@ function updateCharacter(rig, dt, moving, grounded, rainbow) {
 
 /* ===== hp-map.js ===== */
 /* =========================================================================
-   HP-MAP : 맵 3종 (호그와트 · 바다 · 우주) — 코스 데이터 + 테마 연출
+   HP-MAP : 맵 4종 (호그와트 · 바다 · 우주 · 키보드) — 코스 데이터 + 테마 연출
    ========================================================================= */
 
 /* ── 코스 데이터 생성기 (THREE 없이 순수 계산 — 도달 검증용) ──────── */
@@ -910,6 +1026,12 @@ const MAPS_META = [
         sub: "저중력 부유감과 회전 레이저",
         grav: 20, gap: 5.2, moveGap: 4.0, rise: 0.9,
         pat: ["steps", "pad", "moveX", "spin", "vanish", "zig", "narrow", "spiral", "moveZ", "pad"]
+    },
+    {
+        id: "keyboard", name: "마법 키보드 연구소", icon: "⌨️",
+        sub: "밟을 때마다 타건음이 울리는 거대 키보드",
+        grav: 26, gap: 4.4, moveGap: 3.2, rise: 0.75, typing: true,
+        pat: ["steps", "moveX", "narrow", "vanish", "pad", "zig", "spin", "moveZ", "spiral", "steps"]
     }
 ];
 
@@ -1065,6 +1187,18 @@ const THEMES = {
         rim: [0xb44cff, 0.44],
         pal: { base: 0x33406b, a: 0x8c93b8, b: 0x5b3b8c, c: 0x1f6f8c, win: 0xffd54f, pad: 0x76ff03, kill: 0xff1744 },
         studs: 0.25
+    },
+    keyboard: {
+        sky: [0x101630, 0x1b2446, 0x05070f],
+        fog: [0x0b1022, 0.0056],
+        hemi: [0xa8bcff, 0x11162c, 0.58],
+        key: [0xf2f6ff, 0.8, [45, 95, 65]],
+        rim: [0x00e5ff, 0.55],
+        pal: {
+            base: 0x2b3456, a: 0x3b4670, b: 0x6a3f9e, c: 0x1f7f9c,
+            win: 0x00e5ff, pad: 0x76ff03, kill: 0xff2d55
+        },
+        studs: 0, keycap: true
     }
 };
 
@@ -1078,21 +1212,40 @@ function clearWorld() {
     disposeGroup(worldGroup);
     platforms.length = 0; coins.length = 0; hazards.length = 0;
     checkpoints.length = 0; spinners.length = 0; animators.length = 0;
-    winPoint = null; totalCoins = 0;
+    winPoint = null; totalCoins = 0; keyIdx = 0;
 }
 
 /* ── 개별 오브젝트 ─────────────────────────────────────────────── */
+const KEY_LEGEND = ("ASDF JKL; QWER TYUI ZXCV BNM, GHRU 1234 5678 ←→↑↓ ⌘⌥⇧⌃ ESC TAB ENT SPC").split(" ");
+let keyIdx = 0;
+
 function addPlatform(o, TH, colorKey) {
     const col = TH.pal[colorKey || "a"];
-    const tex = studTexture(col, TH.studs);
-    tex.repeat.set(Math.max(1, o.w / 2.4), Math.max(1, o.d / 2.4));
     const h = o.t === "vanish" ? 0.5 : 0.9;
-    const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(o.w, h, o.d),
-        new THREE.MeshStandardMaterial({ map: tex.clone(), roughness: 0.52, metalness: 0.14 })
-    );
-    mesh.material.map.repeat.copy(tex.repeat);
-    mesh.material.map.needsUpdate = true;
+    let mats;
+
+    if (TH.keycap) {
+        // 키캡 발판 : 윗면에만 각인, 옆면은 무광 하우징
+        const grp = KEY_LEGEND[keyIdx++ % KEY_LEGEND.length];
+        const letters = [grp.charAt(0), grp.charAt(1), grp.charAt(2), grp.charAt(3)];
+        const kt = keycapTexture(col, letters).clone();
+        kt.needsUpdate = true;
+        kt.repeat.set(Math.max(1, Math.round(o.w / 6.4)), Math.max(1, Math.round(o.d / 6.4)));
+        const side = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(col).multiplyScalar(0.46), roughness: 0.56, metalness: 0.3
+        });
+        const top = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.46, metalness: 0.12 });
+        mats = [side, side, top, side, side, side];
+    } else {
+        const tex = studTexture(col, TH.studs);
+        tex.repeat.set(Math.max(1, o.w / 2.4), Math.max(1, o.d / 2.4));
+        const m = new THREE.MeshStandardMaterial({ map: tex.clone(), roughness: 0.52, metalness: 0.14 });
+        m.map.repeat.copy(tex.repeat);
+        m.map.needsUpdate = true;
+        mats = m;
+    }
+
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(o.w, h, o.d), mats);
     mesh.position.set(o.x, o.y, o.z);
     mesh.castShadow = true; mesh.receiveShadow = true;
     worldGroup.add(mesh);
@@ -1107,8 +1260,11 @@ function addPlatform(o, TH, colorKey) {
 
     const p = {
         mesh: mesh, edge: edge, box: new THREE.Box3(), type: o.t,
-        originalY: o.y, w: o.w, d: o.d
+        originalY: o.y, w: o.w, d: o.d,
+        tint: Array.isArray(mesh.material) ? [mesh.material[0], mesh.material[2]] : [mesh.material]
     };
+    p.tintOrig = p.tint.map(function (m) { return m.color.getHex(); });
+    p.edgeOrig = TH.pal.win;
     if (o.t === "moveX") { p.speed = o.sp; p.minX = o.x - o.rng; p.maxX = o.x + o.rng; }
     if (o.t === "moveZ") { p.speed = o.sp; p.minZ = o.z - o.rng; p.maxZ = o.z + o.rng; }
     if (o.t === "vanish") { p.touched = false; p.baseColor = col; }
@@ -1320,7 +1476,7 @@ function addTower(o, TH) {
 }
 
 /* ── 테마 장식 ─────────────────────────────────────────────────── */
-function decorate(themeId, TH, zMin, yMax) {
+function decorate(themeId, TH, zMin, yMax, nodes) {
     rndSeed(778899);
     if (themeId === "hogwarts") {
         // 떠다니는 촛불
@@ -1442,6 +1598,116 @@ function decorate(themeId, TH, zMin, yMax) {
             ray.rotation.z = rr(-0.18, 0.18);
             worldGroup.add(ray);
         }
+    } else if (themeId === "keyboard") {
+        /* 거대 모니터 — 코스 맨 앞에서 코드를 비춘다 */
+        function monitor(mx, my, mz, s, ry) {
+            const g = new THREE.Group();
+            g.position.set(mx, my, mz);
+            g.rotation.y = ry;
+            g.scale.setScalar(s);
+            const bez = new THREE.Mesh(new THREE.BoxGeometry(40, 25, 1.6),
+                new THREE.MeshStandardMaterial({ color: 0x15192a, roughness: 0.5, metalness: 0.6 }));
+            g.add(bez);
+            const scr = new THREE.Mesh(new THREE.PlaneGeometry(37, 22),
+                new THREE.MeshBasicMaterial({ map: codeTexture(), toneMapped: false }));
+            scr.position.z = 0.85;
+            g.add(scr);
+            const glow = new THREE.PointLight(0x5ea8ff, 1.6, 90);
+            glow.position.z = 8;
+            g.add(glow);
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(3, 10, 3),
+                new THREE.MeshStandardMaterial({ color: 0x1b2036, roughness: 0.4, metalness: 0.7 }));
+            stand.position.y = -17;
+            g.add(stand);
+            worldGroup.add(g);
+        }
+        monitor(0, 34, zMin - 95, 2.1, 0);
+        monitor(-95, 26, -60, 1.3, 0.75);
+        monitor(96, 30, -210, 1.3, -0.75);
+
+        /* 떠다니는 키캡 */
+        const capCols = [0x3b4670, 0x6a3f9e, 0x1f7f9c, 0x8c4a7a];
+        for (let i = 0; i < 58; i++) {
+            const c = capCols[i % 4];
+            const grp = KEY_LEGEND[(i * 3) % KEY_LEGEND.length];
+            const kt = keycapTexture(c, [grp.charAt(0), grp.charAt(1), grp.charAt(2), grp.charAt(3)]);
+            const side = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(c).multiplyScalar(0.5), roughness: 0.55, metalness: 0.3
+            });
+            const top = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.45 });
+            const sz = rr(1.6, 4.2);
+            const m = new THREE.Mesh(new THREE.BoxGeometry(sz, sz * 0.55, sz),
+                [side, side, top, side, side, side]);
+            const bx = (rnd() > 0.5 ? 1 : -1) * rr(14, 72);
+            const by = rr(-14, yMax + 30), bz = rr(zMin - 40, 25);
+            m.position.set(bx, by, bz);
+            m.castShadow = true;
+            worldGroup.add(m);
+            const rx = rr(-0.5, 0.5), rz = rr(-0.5, 0.5), amp = rr(0.6, 2.4), ph = rr(0, 6.28);
+            animators.push(function (t) {
+                m.rotation.x = t * rx; m.rotation.z = t * rz;
+                m.position.y = by + Math.sin(t * 0.6 + ph) * amp;
+            });
+        }
+
+        /* 떠다니는 코드 기호 */
+        const syms = ["{", "}", "<", ">", ";", "=>", "()", "[]", "&&", "/*", "*/", "#", "++", "!="];
+        syms.forEach(function (s, i) {
+            for (let k = 0; k < 3; k++) {
+                const cv = document.createElement("canvas");
+                cv.width = cv.height = 64;
+                const g2 = cv.getContext("2d");
+                g2.font = "700 40px 'Consolas','Courier New',monospace";
+                g2.textAlign = "center"; g2.textBaseline = "middle";
+                g2.fillStyle = ["#7ee787", "#79c0ff", "#d2a8ff"][k % 3];
+                g2.fillText(s, 32, 34);
+                const tx = new THREE.CanvasTexture(cv);
+                tx.encoding = THREE.sRGBEncoding;
+                const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: tx, transparent: true, opacity: 0.6, depthWrite: false, fog: false
+                }));
+                sp.scale.setScalar(rr(1.6, 3.4));
+                const bx = rr(-70, 70), by = rr(-10, yMax + 34), bz = rr(zMin - 30, 20);
+                sp.position.set(bx, by, bz);
+                worldGroup.add(sp);
+                const sp2 = rr(0.8, 2.2), rg = yMax + 48, ph = rr(0, 6.28);
+                animators.push(function (t) {
+                    sp.position.y = -10 + ((by + 10 + t * sp2) % rg);
+                    sp.position.x = bx + Math.sin(t * 0.5 + ph) * 1.6;
+                    sp.material.opacity = 0.35 + Math.sin(t * 1.2 + ph) * 0.25;
+                });
+            }
+        });
+
+        /* RGB 언더글로우 — 발판 아래에서 무지개가 흐른다 */
+        let gi = 0;
+        (nodes || []).forEach(function (o) {
+            if (o.t !== "base" && o.t !== "plat") return;
+            if (o.t === "plat" && (gi % 2)) { gi++; return; }
+            const off = gi++ * 0.07;
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0xffffff, transparent: true, opacity: 0.4, toneMapped: false
+            });
+            const bar = new THREE.Mesh(
+                new THREE.BoxGeometry(o.w * 0.92, 0.16, o.d * 0.92), mat);
+            bar.position.set(o.x, o.y - 0.52, o.z);
+            worldGroup.add(bar);
+            animators.push(function (t) {
+                mat.color.setHSL((t * 0.13 + off) % 1, 1, 0.58);
+                mat.opacity = 0.3 + Math.sin(t * 2.2 + off * 7) * 0.16;
+            });
+        });
+
+        /* 케이블 아치 */
+        const cableMat = new THREE.MeshStandardMaterial({ color: 0x191d2e, roughness: 0.75 });
+        for (let i = 0; i < 9; i++) {
+            const cz = rr(zMin - 20, 10), cx = (rnd() > 0.5 ? 1 : -1) * rr(26, 62);
+            const R = rr(10, 24);
+            const arc = new THREE.Mesh(new THREE.TorusGeometry(R, 0.55, 7, 26, Math.PI), cableMat);
+            arc.position.set(cx, rr(-12, yMax + 10), cz);
+            arc.rotation.set(rr(-0.4, 0.4), rr(0, 3.14), rr(-0.3, 0.3));
+            worldGroup.add(arc);
+        }
     } else {
         // 별
         const starGeo = new THREE.BufferGeometry();
@@ -1548,7 +1814,7 @@ function buildWorld(mapIdx) {
         else if (o.t === "tower") addTower(o, TH);
     });
 
-    decorate(M.id, TH, zMin, yMax);
+    decorate(M.id, TH, zMin, yMax, nodes);
     return { stages: MAPS_META[mapIdx].pat.length + 1, coins: totalCoins };
 }
 
@@ -1695,8 +1961,7 @@ function renderMenu() {
             '<div class="pick-icon">' + m.icon + '</div>' +
             '<div><div class="pick-name">' + m.name + '</div>' +
             '<div class="pick-desc">' + m.sub + '</div>' +
-            '<div class="pick-stats"><span>중력 ' + m.grav + '</span><span>관문 ' +
-            (m.pat.length + 1) + '</span>' +
+            '<div class="pick-stats"><span>중력 ' + m.grav + '</span>' +
             '<span class="best">' + (b ? "⏱ " + fmtTime(b) : "기록 없음") + '</span></div></div>';
         el.onclick = function () {
             G.mapIdx = i; SAVE.mapIdx = i; save();
@@ -1814,12 +2079,14 @@ let camYaw = Math.PI, camPitch = 0.32;
 let dragging = false, lastPt = { x: 0, y: 0 };
 let touchVec = { x: 0, y: 0 };
 
+function isTypingMap() { return !!MAPS_META[G.mapIdx].typing; }
+
 function doJump() {
     if (G.state !== "play" || G.paused) return;
     const v = BASE_JUMP * P.cfg.jump;
     if (P.grounded || P.coyote > 0) {
         P.vel.y = v; P.grounded = false; P.coyote = 0; P.dblUsed = false;
-        audio.jump();
+        if (isTypingMap()) audio.keySpace(); else audio.jump();
     } else if (geared("broom") && !P.dblUsed) {
         P.vel.y = v * 0.92; P.dblUsed = true;
         audio.dblJump();
@@ -1837,6 +2104,15 @@ window.addEventListener("keydown", function (e) {
     keys[e.code] = true;
     if (e.code === "Space") { e.preventDefault(); doJump(); }
     if (e.code === "KeyR") doCloak();
+    if (e.code === "KeyP" && !e.repeat) {
+        SAVE.coins += 10;
+        save();
+        audio.coin();
+        toast("🪙 +10 코인  (보유 " + SAVE.coins + ")", 1300);
+        updateHud();
+        renderMenu();
+        if ($("shop-modal").classList.contains("active")) renderShop();
+    }
     if (e.code === "Escape" || e.code === "KeyM") {
         if ($("shop-modal").classList.contains("active")) closeShop();
         else if (G.state === "play") enterMenu();
@@ -2042,7 +2318,7 @@ function frame() {
             }
             if (pl.type === "vanish" && !pl.touched) {
                 pl.touched = true;
-                pl.mesh.material.color.setHex(0xff5252);
+                pl.tint.forEach(function (m) { m.color.setHex(0xff5252); });
                 pl.edge.material.color.setHex(0xff5252);
                 setTimeout(function () {
                     pl.mesh.visible = false; pl.edge.visible = false;
@@ -2050,8 +2326,8 @@ function frame() {
                     setTimeout(function () {
                         pl.mesh.position.y = pl.originalY;
                         pl.mesh.visible = true; pl.edge.visible = true;
-                        pl.mesh.material.color.setHex(0xffffff);
-                        pl.edge.material.color.setHex(0xd3a625);
+                        pl.tint.forEach(function (m, i) { m.color.setHex(pl.tintOrig[i]); });
+                        pl.edge.material.color.setHex(pl.edgeOrig);
                         pl.touched = false;
                     }, 2600);
                 }, 700);
@@ -2060,6 +2336,15 @@ function frame() {
     });
     if (wasGround && !P.grounded && P.vel.y <= 0) P.coyote = 0.12;
     else if (P.coyote > 0) P.coyote -= dt;
+
+    /* ── 타건음 : 키보드 맵에서 발소리마다 기계식 키 소리 ── */
+    if (playing && isTypingMap()) {
+        if (!wasGround && P.grounded) audio.keyThock();          // 착지 = 엔터키
+        if (moving && P.grounded) {
+            P.stepT = (P.stepT || 0) + dt * 11;
+            if (P.stepT >= Math.PI) { P.stepT -= Math.PI; audio.keyClick(); }
+        } else P.stepT = 0;
+    }
 
     if (playing) {
         /* ── 장애물 ── */
