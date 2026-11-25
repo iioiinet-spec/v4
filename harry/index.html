@@ -165,6 +165,8 @@ canvas{display:block;width:100%;height:100%}
         <div class="stat">⏱ <b id="time-val">0:00.0</b></div>
         <div class="stat" id="glass-stat" style="display:none">🪟 <b id="glass-ok" style="color:var(--ok)">0</b>
           <span style="opacity:.6">/</span> <b id="glass-bad" style="color:#ff6b7a">0</b></div>
+        <div class="stat" id="crumb-stat" style="display:none">🔥 <b id="crumb-now" style="color:var(--ok)">0</b>
+          <span style="opacity:.6">연속 · 최고</span> <b id="crumb-best">0</b></div>
         <div class="stat sub" id="map-name">호그와트 성</div>
         <div class="stat sub" id="char-name">해리 포터</div>
         <div id="gear-list"></div>
@@ -341,6 +343,42 @@ class AudioSystem {
         }
         this._tone("sine", 430, 85, 0.34, 0.16, 0.02);
     }
+    /* 밟는 순간의 균열음 — 0:얼음 1:쿠키 2:도자기 3:레고 */
+    crackSfx(k) {
+        if (k === 0) {                       // 얼음 : 쩌저적—
+            this._tone("sawtooth", 880, 240, 0.32, 0.085);
+            this._noise(0.24, 1650, 2.0, 0.12);
+        } else if (k === 1) {                // 쿠키 : 바스락
+            this._noise(0.13, 880, 1.0, 0.19);
+            this._noise(0.1, 2300, 1.6, 0.11, 0.055);
+        } else if (k === 2) {                // 도자기 : 틱—
+            this._tone("sine", 2650, 2050, 0.11, 0.13);
+            this._noise(0.05, 4300, 7, 0.09);
+        } else {                             // 레고 : 딱
+            this._tone("square", 720, 500, 0.05, 0.09);
+            this._noise(0.04, 1500, 5, 0.09);
+        }
+    }
+    /* 무너질 때의 파괴음 */
+    breakSfx(k) {
+        if (k === 0) {                       // 얼음 : 쨍!
+            this._noise(0.3, 4600, 1.0, 0.34);
+            for (let i = 0; i < 7; i++)
+                this._tone("triangle", 1800 + Math.random() * 2800, 700, 0.2, 0.065, Math.random() * 0.16);
+        } else if (k === 1) {                // 쿠키 : 바삭!
+            this._noise(0.28, 1050, 0.65, 0.38);
+            this._noise(0.18, 2700, 1.2, 0.2, 0.04);
+            this._tone("sine", 185, 70, 0.2, 0.13);
+        } else if (k === 2) {                // 도자기 : 와장창
+            this._noise(0.1, 5200, 1.4, 0.32);
+            for (let i = 0; i < 8; i++)
+                this._tone("sine", 1200 + Math.random() * 2200, 480, 0.14, 0.07, Math.random() * 0.26);
+        } else {                             // 레고 : 와르르
+            for (let i = 0; i < 11; i++)
+                this._tone("square", 420 + Math.random() * 900, 300, 0.055, 0.07, Math.random() * 0.34);
+            this._noise(0.2, 820, 1.0, 0.15);
+        }
+    }
     jump() { this._tone("sine", 220, 520, 0.12, 0.26); }
     dblJump() { this._tone("triangle", 420, 860, 0.16, 0.24); }
     bounce() { this._tone("triangle", 230, 940, 0.26, 0.4); }
@@ -516,6 +554,35 @@ function codeTexture() {
     const t = new THREE.CanvasTexture(cv);
     t.encoding = THREE.sRGBEncoding;
     texCache.code = t;
+    return t;
+}
+
+/* 균열 선 오버레이 — 밟은 발판 위에 덧씌운다 */
+function crackLinesTexture(hex) {
+    const key = "cl" + hex;
+    if (texCache[key]) return texCache[key];
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 256;
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, 256, 256);
+    const col = "#" + new THREE.Color(hex).getHexString();
+    rndSeed(31337);
+    function branch(x, y, ang, len, w, depth) {
+        if (depth <= 0 || len < 6) return;
+        const nx = x + Math.cos(ang) * len, ny = y + Math.sin(ang) * len;
+        g.strokeStyle = col;
+        g.lineWidth = w;
+        g.lineCap = "round";
+        g.globalAlpha = 0.55 + depth * 0.1;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(nx, ny); g.stroke();
+        branch(nx, ny, ang + rr(-0.9, 0.9), len * rr(0.5, 0.78), w * 0.72, depth - 1);
+        if (rnd() > 0.35) branch(nx, ny, ang + rr(-1.4, 1.4), len * rr(0.4, 0.68), w * 0.6, depth - 1);
+    }
+    for (let i = 0; i < 7; i++) branch(128, 128, (i / 7) * 6.2832 + rr(-0.3, 0.3), rr(28, 46), 5.5, 4);
+    g.globalAlpha = 1;
+    const t = new THREE.CanvasTexture(cv);
+    t.encoding = THREE.sRGBEncoding;
+    texCache[key] = t;
     return t;
 }
 
@@ -1025,7 +1092,7 @@ function updateCharacter(rig, dt, moving, grounded, rainbow) {
 
 /* ===== hp-map.js ===== */
 /* =========================================================================
-   HP-MAP : 맵 5종 (호그와트 · 바다 · 우주 · 키보드 · 유리다리) — 코스 데이터 + 테마 연출
+   HP-MAP : 맵 6종 (호그와트 · 바다 · 우주 · 키보드 · 유리다리 · 붕괴탑) — 코스 데이터 + 테마 연출
    ========================================================================= */
 
 /* ── 코스 데이터 생성기 (THREE 없이 순수 계산 — 도달 검증용) ──────── */
@@ -1059,7 +1126,22 @@ const MAPS_META = [
         sub: "둘 중 하나는 깨진다 — 강화유리를 골라 건너라",
         grav: 27, gap: 4.4, moveGap: 3.2, rise: 0.7, step: "glass",
         pat: ["steps", "glass", "moveX", "glass", "pad", "narrow", "glass", "zig", "spin", "steps"]
+    },
+    {
+        id: "crumble", name: "무너지는 간식탑", icon: "🍪",
+        sub: "밟으면 금이 간다 — 얼음·쿠키·도자기·레고 4구역",
+        grav: 26, gap: 4.0, moveGap: 3.2, rise: 0.6, crumbleMap: true,
+        pat: ["crumble", "crumble", "pad", "crumble", "crumble", "crumble",
+              "zig", "crumble", "crumble", "crumble"]
     }
+];
+
+/* 붕괴 발판 재질 — 구역이 바뀌면 색 · 파편 · 효과음이 함께 바뀐다 */
+const CRUMBLE_MATS = [
+    { id: 0, name: "얼음",   icon: "❄️", color: 0x8ad4ef, crack: 0xe8fbff, deb: 0xcdefff, hint: "쩌적— 쨍!" },
+    { id: 1, name: "쿠키",   icon: "🍪", color: 0xc9873f, crack: 0x6e3f16, deb: 0xd9a05e, hint: "바삭바삭!" },
+    { id: 2, name: "도자기", icon: "🏺", color: 0xf0ece0, crack: 0x7f96ad, deb: 0xfdfbf4, hint: "와장창!" },
+    { id: 3, name: "레고",   icon: "🧱", color: 0xd3382f, crack: 0x7c1410, deb: 0xffc107, hint: "와르르!" }
 ];
 
 function mkLevel(M) {
@@ -1082,6 +1164,8 @@ function mkLevel(M) {
     function deco(t, o) { o.t = t; N.push(o); }
 
     N.push({ t: "base", x: 0, y: 0, z: 0, w: 9, d: 9, cp: 1 });
+    let crumbleSeq = 0;
+    const crumbleTotal = Math.max(1, M.pat.filter(function (q) { return q === "crumble"; }).length);
 
     const PAT = {
         /* 계단식 발판 */
@@ -1157,6 +1241,17 @@ function mkLevel(M) {
             const last = N[N.length - (N.length && N[N.length - 1].t === "coin" ? 2 : 1)];
             S.x = last.x; S.y = last.y; S.z = last.z; S.r = 1.5;
             deco("tower", { x: cx, y: S.y, z: cz, h: ly });
+        },
+        /* 무너지는 발판 — 멈추면 떨어진다 */
+        crumble: function () {
+            const zone = Math.min(CRUMBLE_MATS.length - 1,
+                Math.floor(crumbleSeq * CRUMBLE_MATS.length / crumbleTotal));
+            crumbleSeq++;
+            for (let i = 0; i < 5; i++) {
+                put({ t: "crumble", w: 3.4, d: 3.4, mat: zone }, M.gap,
+                    (i % 2 ? 2.3 : -2.3), M.rise);
+                if (i === 1 || i === 3) coin();
+            }
         },
         /* 유리 징검다리 — 나란한 두 장 중 하나만 강화유리 */
         glass: function () {
@@ -1258,6 +1353,18 @@ const THEMES = {
             win: 0x7fe9ff, pad: 0x76ff03, kill: 0xff2d55
         },
         studs: 0.55
+    },
+    crumble: {
+        sky: [0x180c28, 0x47253f, 0x0b0512],
+        fog: [0x200f2c, 0.0062],
+        hemi: [0xffd7b0, 0x2a1526, 0.66],
+        key: [0xfff2dc, 1.08, [50, 92, 48]],
+        rim: [0xff9a66, 0.55],
+        pal: {
+            base: 0x7a4030, a: 0xb0734a, b: 0x9a5a6e, c: 0x4a7d8c,
+            win: 0xffcf66, pad: 0x76ff03, kill: 0xff2d55
+        },
+        studs: 0.8
     }
 };
 
@@ -1327,6 +1434,69 @@ function addPlatform(o, TH, colorKey) {
     if (o.t === "moveX") { p.speed = o.sp; p.minX = o.x - o.rng; p.maxX = o.x + o.rng; }
     if (o.t === "moveZ") { p.speed = o.sp; p.minZ = o.z - o.rng; p.maxZ = o.z + o.rng; }
     if (o.t === "vanish") { p.touched = false; p.baseColor = col; }
+    platforms.push(p);
+    return p;
+}
+
+/* 무너지는 발판 — 재질별 색과 균열 오버레이 */
+function addCrumble(o, TH) {
+    const M = CRUMBLE_MATS[o.mat || 0];
+    const tex = studTexture(M.color, 0.75);
+    tex.repeat.set(Math.max(1, o.w / 2.6), Math.max(1, o.d / 2.6));
+    const mat = new THREE.MeshStandardMaterial({
+        map: tex.clone(), roughness: M.id === 2 ? 0.26 : (M.id === 0 ? 0.12 : 0.72),
+        metalness: M.id === 0 ? 0.1 : 0.05,
+        transparent: M.id === 0, opacity: M.id === 0 ? 0.88 : 1
+    });
+    mat.map.repeat.copy(tex.repeat);
+    mat.map.needsUpdate = true;
+
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(o.w, 0.8, o.d), mat);
+    mesh.position.set(o.x, o.y, o.z);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    worldGroup.add(mesh);
+
+    // 레고 구역은 윗면에 돌기를 붙인다
+    if (M.id === 3) {
+        const studMat = new THREE.MeshStandardMaterial({ color: M.color, roughness: 0.5 });
+        const sg = new THREE.CylinderGeometry(0.3, 0.3, 0.18, 10);
+        [[-0.85, -0.85], [0.85, -0.85], [-0.85, 0.85], [0.85, 0.85]].forEach(function (q) {
+            const st = new THREE.Mesh(sg, studMat);
+            st.position.set(o.x + q[0], o.y + 0.49, o.z + q[1]);
+            worldGroup.add(st);
+            mesh.userData.studs = mesh.userData.studs || [];
+            mesh.userData.studs.push(st);
+        });
+    }
+
+    const edge = new THREE.Mesh(
+        new THREE.BoxGeometry(o.w + 0.12, 0.09, o.d + 0.12),
+        new THREE.MeshBasicMaterial({ color: TH.pal.win, transparent: true, opacity: 0.34, toneMapped: false })
+    );
+    edge.position.set(o.x, o.y + 0.44, o.z);
+    worldGroup.add(edge);
+
+    // 균열 오버레이 (밟기 전에는 숨김)
+    const crack = new THREE.Mesh(
+        new THREE.PlaneGeometry(o.w * 0.98, o.d * 0.98),
+        new THREE.MeshBasicMaterial({
+            map: crackLinesTexture(M.crack), transparent: true,
+            opacity: 0.95, depthWrite: false, toneMapped: false
+        })
+    );
+    crack.rotation.x = -Math.PI / 2;
+    crack.position.set(o.x, o.y + 0.42, o.z);
+    crack.visible = false;
+    crack.renderOrder = 2;
+    worldGroup.add(crack);
+
+    const p = {
+        mesh: mesh, edge: edge, crack: crack, box: new THREE.Box3(), type: "crumble",
+        originalY: o.y, w: o.w, d: o.d, matId: M.id, matDef: M,
+        cracking: false, broken: false,
+        tint: [mat], tintOrig: [mat.color.getHex()], edgeOrig: TH.pal.win,
+        studs: mesh.userData.studs || null
+    };
     platforms.push(p);
     return p;
 }
@@ -1717,6 +1887,118 @@ function decorate(themeId, TH, zMin, yMax, nodes) {
             ray.rotation.z = rr(-0.18, 0.18);
             worldGroup.add(ray);
         }
+    } else if (themeId === "crumble") {
+        /* 구역마다 배경 소품이 바뀐다 — 얼음 / 쿠키 / 도자기 / 레고 */
+        const zoneZ = {};
+        (nodes || []).forEach(function (o) {
+            if (o.t !== "crumble") return;
+            const z = zoneZ[o.mat] || { a: 1e9, b: -1e9, y: -1e9 };
+            z.a = Math.min(z.a, o.z); z.b = Math.max(z.b, o.z); z.y = Math.max(z.y, o.y);
+            zoneZ[o.mat] = z;
+        });
+
+        function iceProp(g, sc) {
+            const m = new THREE.MeshPhysicalMaterial({
+                color: 0xa8e4ff, transparent: true, opacity: 0.55, roughness: 0.06,
+                metalness: 0, clearcoat: 1, emissive: 0x1d5a78, emissiveIntensity: 0.3
+            });
+            for (let i = 0; i < 4; i++) {
+                const c = new THREE.Mesh(new THREE.IcosahedronGeometry(rr(1.2, 3.4), 0), m);
+                c.position.set(rr(-3, 3), rr(-2, 4), rr(-3, 3));
+                c.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6);
+                g.add(c);
+            }
+            g.scale.setScalar(sc);
+        }
+        function cookieProp(g, sc) {
+            const dough = new THREE.MeshStandardMaterial({ color: 0xc9873f, roughness: 0.85 });
+            const chip = new THREE.MeshStandardMaterial({ color: 0x4a2a16, roughness: 0.7 });
+            const ck = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.7, 18), dough);
+            g.add(ck);
+            for (let i = 0; i < 7; i++) {
+                const c = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 7), chip);
+                const a = rr(0, 6.28), r2 = rr(0.5, 2.5);
+                c.position.set(Math.cos(a) * r2, 0.4, Math.sin(a) * r2);
+                g.add(c);
+            }
+            g.rotation.set(rr(-0.8, 0.8), rr(0, 3), rr(-0.8, 0.8));
+            g.scale.setScalar(sc);
+        }
+        function chinaProp(g, sc) {
+            const w = new THREE.MeshStandardMaterial({ color: 0xf5f1e6, roughness: 0.22, metalness: 0.12 });
+            const blue = new THREE.MeshStandardMaterial({ color: 0x3f5f9e, roughness: 0.25 });
+            const cup = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 1.3, 2.2, 18, 1, true), w);
+            cup.position.y = 1.1; g.add(cup);
+            const bot = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.2, 18), w);
+            g.add(bot);
+            const rim = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.11, 7, 22), blue);
+            rim.rotation.x = Math.PI / 2; rim.position.y = 2.2; g.add(rim);
+            const hd = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.2, 7, 18, Math.PI * 1.3), w);
+            hd.position.set(2.1, 1.3, 0); g.add(hd);
+            const plate = new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.0, 0.22, 20), w);
+            plate.position.y = -0.2; g.add(plate);
+            g.rotation.y = rr(0, 6.28);
+            g.scale.setScalar(sc);
+        }
+        function legoProp(g, sc) {
+            const cols = [0xd3382f, 0x1565c0, 0xfdd835, 0x2e7d32, 0xffffff];
+            for (let i = 0; i < 3; i++) {
+                const c = cols[(i * 2 + ((rnd() * 5) | 0)) % 5];
+                const m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.42, metalness: 0.05 });
+                const bw = rr(2.4, 5), bd = rr(2, 3.4);
+                const br = new THREE.Mesh(new THREE.BoxGeometry(bw, 1.5, bd), m);
+                br.position.set(rr(-2, 2), i * 1.7, rr(-2, 2));
+                g.add(br);
+                for (let k = 0; k < 2; k++) {
+                    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10), m);
+                    st.position.set(br.position.x + (k ? bw * 0.25 : -bw * 0.25), i * 1.7 + 0.9, br.position.z);
+                    g.add(st);
+                }
+            }
+            g.rotation.y = rr(0, 6.28);
+            g.scale.setScalar(sc);
+        }
+        const makers = [iceProp, cookieProp, chinaProp, legoProp];
+
+        Object.keys(zoneZ).forEach(function (k) {
+            const z = zoneZ[k], mk = makers[k | 0];
+            for (let i = 0; i < 16; i++) {
+                const g = new THREE.Group();
+                mk(g, rr(0.7, 1.9));
+                const side = rnd() > 0.5 ? 1 : -1;
+                g.position.set(side * rr(15, 62), rr(z.y - 24, z.y + 22), rr(z.a - 12, z.b + 12));
+                worldGroup.add(g);
+                const by = g.position.y, rx = rr(-0.25, 0.25), ph = rr(0, 6.28), amp = rr(0.6, 2.2);
+                animators.push(function (t) {
+                    g.rotation.x = Math.sin(t * 0.3 + ph) * 0.2;
+                    g.rotation.z = t * rx * 0.3;
+                    g.position.y = by + Math.sin(t * 0.5 + ph) * amp;
+                });
+            }
+        });
+
+        /* 떠다니는 부스러기 */
+        const crumbMat = new THREE.SpriteMaterial({
+            map: glowTexture(0xffd9a0), transparent: true, opacity: 0.4, depthWrite: false, fog: false
+        });
+        for (let i = 0; i < 90; i++) {
+            const sp = new THREE.Sprite(crumbMat.clone());
+            sp.scale.setScalar(rr(0.2, 0.6));
+            const bx = rr(-70, 70), by = rr(-26, yMax + 24), bz = rr(zMin - 30, 20);
+            sp.position.set(bx, by, bz);
+            worldGroup.add(sp);
+            const v = rr(1.0, 2.6), rg = yMax + 54;
+            animators.push(function (t) {
+                sp.position.y = -26 + ((by + 26 - t * v) % rg + rg) % rg;
+            });
+        }
+
+        /* 따뜻한 오븐 불빛 */
+        for (let i = 0; i < 5; i++) {
+            const lt = new THREE.PointLight(0xffb066, 1.3, 72);
+            lt.position.set(rr(-30, 30), rr(-6, yMax + 16), zMin * (i / 5) + rr(-15, 15));
+            worldGroup.add(lt);
+        }
     } else if (themeId === "glass") {
         /* 떠다니는 유리 파편 */
         const shardMat = new THREE.MeshPhysicalMaterial({
@@ -1752,8 +2034,10 @@ function decorate(themeId, TH, zMin, yMax, nodes) {
                 o2.position.set(Math.cos(a) * 2.6, -rr(0.6, 2.4), Math.sin(a) * 2.6);
                 ch.add(o2);
             }
-            const lt = new THREE.PointLight(0x9fe8ff, 1.2, 42);
-            ch.add(lt);
+            if (i % 3 === 0) {
+                const lt = new THREE.PointLight(0x9fe8ff, 1.5, 54);
+                ch.add(lt);
+            }
             worldGroup.add(ch);
             const ph = rr(0, 6.28);
             animators.push(function (t) { ch.rotation.y = t * 0.2 + ph; });
@@ -2007,6 +2291,7 @@ function buildWorld(mapIdx) {
         else if (o.t === "moveX" || o.t === "moveZ") addPlatform(o, TH, "c");
         else if (o.t === "vanish") addPlatform(o, TH, "b");
         else if (o.t === "glass") addGlass(o, TH);
+        else if (o.t === "crumble") addCrumble(o, TH);
         else if (o.t === "pad") addPad(o, TH);
         else if (o.t === "kill") addKill(o, TH, M.id);
         else if (o.t === "spin") addSpin(o, TH, M.id);
@@ -2037,7 +2322,8 @@ const ITEMS = [
     { id: "magnet", kind: "gear", name: "아씨오 주문", icon: "🧲", price: 5, desc: "코인을 멀리서 끌어온다" },
     { id: "cloak", kind: "gear", name: "투명 망토", icon: "👻", price: 12, desc: "R 키 — 4초간 장애물 무시" },
     { id: "phoenix", kind: "gear", name: "불사조 깃털", icon: "🪽", price: 14, desc: "추락해도 그 자리에서 1회 부활" },
-    { id: "truth", kind: "gear", name: "진실의 안경", icon: "🧿", price: 16, desc: "유리 다리에서 강화유리가 초록으로 보인다" }
+    { id: "truth", kind: "gear", name: "진실의 안경", icon: "🧿", price: 16, desc: "유리 다리에서 강화유리가 초록으로 보인다" },
+    { id: "levio", kind: "gear", name: "윙가르디움 레비오사", icon: "⚖️", price: 9, desc: "무너지는 발판이 1.7배 더 오래 버틴다" }
 ];
 
 /* ── 저장 ──────────────────────────────────────────────────────── */
@@ -2199,6 +2485,7 @@ function enterMenu() {
 function startRun() {
     G.state = "play";
     G.stage = 1; G.runCoins = 0; G.runTime = 0; G.glassOk = 0; G.glassBad = 0;
+    G.crumbStreak = 0; G.crumbBest = 0; G.crumbZone = -1;
     P.phoenixUsed = false; P.cloakT = 0; P.cloakCd = 0;
     buildWorld(G.mapIdx); G.builtMap = G.mapIdx;   // 코인·사라진 발판 초기화
     G.maxStage = MAPS_META[G.mapIdx].pat.length + 1;
@@ -2225,6 +2512,12 @@ function updateHud() {
         $("glass-ok").textContent = G.glassOk || 0;
         $("glass-bad").textContent = G.glassBad || 0;
     } else gw.style.display = "none";
+    const cw = $("crumb-stat");
+    if (MAPS_META[G.mapIdx].crumbleMap) {
+        cw.style.display = "flex";
+        $("crumb-now").textContent = G.crumbStreak || 0;
+        $("crumb-best").textContent = G.crumbBest || 0;
+    } else cw.style.display = "none";
     const gl = $("gear-list");
     gl.innerHTML = "";
     SAVE.gear.forEach(function (id) {
@@ -2395,27 +2688,34 @@ function spawnPuff(pos, color) {
 /* ── 유리 파편 ─────────────────────────────────────────────────── */
 const shards = [];
 const shardGeo = new THREE.TetrahedronGeometry(0.3);
+
+/* 재질별 파편 — 색 · 개수 · 투명도를 바꿔 쓴다 */
+function spawnDebris(cx, cy, cz, w, d, color, count, opa, flat) {
+    for (let i = 0; i < count; i++) {
+        const m = new THREE.Mesh(
+            flat ? new THREE.BoxGeometry(0.36, 0.14, 0.36) : shardGeo,
+            new THREE.MeshStandardMaterial({
+                color: color, transparent: opa < 1, opacity: opa,
+                roughness: 0.5, metalness: 0.05, flatShading: true
+            }));
+        m.position.set(cx + (rnd() - 0.5) * w, cy + 0.15, cz + (rnd() - 0.5) * d);
+        m.rotation.set(rnd() * 6.28, rnd() * 6.28, rnd() * 6.28);
+        m.scale.setScalar(0.5 + rnd() * 1.0);
+        scene.add(m);
+        shards.push({
+            m: m, life: 2.4, fade: opa,
+            v: new THREE.Vector3((rnd() - 0.5) * 5.5, rnd() * 2.6, (rnd() - 0.5) * 5.5),
+            rv: new THREE.Vector3((rnd() - 0.5) * 7, (rnd() - 0.5) * 7, (rnd() - 0.5) * 7)
+        });
+    }
+}
 function shatterGlass(pl) {
     if (pl.broken) return;
     pl.broken = true;
     pl.group.visible = false;
     audio.glassBreak();
     const c = pl.group.position;
-    for (let i = 0; i < 16; i++) {
-        const m = new THREE.Mesh(shardGeo, new THREE.MeshPhysicalMaterial({
-            color: 0xdaf4ff, transparent: true, opacity: 0.6, roughness: 0.04,
-            metalness: 0, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false
-        }));
-        m.position.set(c.x + (rnd() - 0.5) * pl.w, c.y + 0.1, c.z + (rnd() - 0.5) * pl.d);
-        m.rotation.set(rnd() * 6.28, rnd() * 6.28, rnd() * 6.28);
-        m.scale.setScalar(0.5 + rnd() * 0.9);
-        scene.add(m);
-        shards.push({
-            m: m, life: 2.6,
-            v: new THREE.Vector3((rnd() - 0.5) * 6, rnd() * 3.2, (rnd() - 0.5) * 6),
-            rv: new THREE.Vector3((rnd() - 0.5) * 7, (rnd() - 0.5) * 7, (rnd() - 0.5) * 7)
-        });
-    }
+    spawnDebris(c.x, c.y, c.z, pl.w, pl.d, 0xdaf4ff, 16, 0.6, false);
 }
 function updateShards(dt) {
     for (let i = shards.length - 1; i >= 0; i--) {
@@ -2426,9 +2726,52 @@ function updateShards(dt) {
         s.m.rotation.x += s.rv.x * dt;
         s.m.rotation.y += s.rv.y * dt;
         s.m.rotation.z += s.rv.z * dt;
-        s.m.material.opacity = Math.max(0, s.life / 2.6) * 0.6;
+        const f = s.fade === undefined ? 0.6 : s.fade;
+        s.m.material.transparent = true;
+        s.m.material.opacity = Math.max(0, s.life / (s.fade === undefined ? 2.6 : 2.4)) * f;
         if (s.life <= 0) { scene.remove(s.m); s.m.material.dispose(); shards.splice(i, 1); }
     }
+}
+
+/* ── 무너지는 발판 ─────────────────────────────────────────────── */
+function crackPlatform(pl) {
+    if (pl.cracking || pl.broken) return;
+    pl.cracking = true;
+    audio.crackSfx(pl.matId);
+    pl.crack.visible = true;
+    pl.tint.forEach(function (m) { m.color.setHex(0xd9c6c0); });
+    pl.edge.material.color.setHex(0xff8a65);
+
+    G.crumbStreak = (G.crumbStreak || 0) + 1;
+    if (G.crumbStreak > (G.crumbBest || 0)) G.crumbBest = G.crumbStreak;
+    if (G.crumbZone !== pl.matId) {
+        G.crumbZone = pl.matId;
+        toast(pl.matDef.icon + " " + pl.matDef.name + " 구역 — " + pl.matDef.hint, 2000);
+    }
+    updateHud();
+
+    const hold = (0.55 + Math.random() * 0.45) * (geared("levio") ? 1.7 : 1.0);
+    setTimeout(function () { breakPlatform(pl); }, hold * 1000);
+}
+function breakPlatform(pl) {
+    if (pl.broken) return;
+    pl.broken = true;
+    pl.mesh.visible = false;
+    pl.edge.visible = false;
+    pl.crack.visible = false;
+    if (pl.studs) pl.studs.forEach(function (s) { s.visible = false; });
+    audio.breakSfx(pl.matId);
+    const q = pl.mesh.position;
+    spawnDebris(q.x, q.y, q.z, pl.w, pl.d, pl.matDef.deb,
+        pl.matId === 3 ? 10 : 14, pl.matId === 0 ? 0.55 : 1, pl.matId === 3);
+    // 잠시 뒤 복구 — 되살아난 플레이어가 길을 잃지 않도록
+    setTimeout(function () {
+        pl.broken = false; pl.cracking = false;
+        pl.mesh.visible = true; pl.edge.visible = true;
+        if (pl.studs) pl.studs.forEach(function (s) { s.visible = true; });
+        pl.tint.forEach(function (m, i) { m.color.setHex(pl.tintOrig[i]); });
+        pl.edge.material.color.setHex(pl.edgeOrig);
+    }, 4200);
 }
 
 /* ── 진실의 안경 : 강화유리 / 일반유리를 색으로 드러낸다 ───────── */
@@ -2490,6 +2833,7 @@ function die() {
         return;
     }
     P.dead = 0.35;
+    G.crumbStreak = 0;
     audio.fall();
     spawnPuff(P.pos, 0x9c27b0);
     P.pos.copy(P.spawn);
@@ -2580,6 +2924,13 @@ function frame() {
             if (pl.mesh.position.z > pl.maxZ || pl.mesh.position.z < pl.minZ) pl.speed *= -1;
             if (pl.edge) pl.edge.position.z = pl.mesh.position.z;
         }
+        if (pl.type === "crumble" && pl.cracking && !pl.broken) {
+            const sh = Math.sin(performance.now() * 0.045) * 0.07;
+            pl.mesh.position.y = pl.originalY + sh;
+            pl.edge.position.y = pl.originalY + 0.44 + sh;
+            pl.crack.position.y = pl.originalY + 0.42 + sh;
+            pl.crack.material.opacity = 0.75 + Math.sin(performance.now() * 0.02) * 0.25;
+        }
         if (!playing || pl.broken) return;
         pl.box.setFromObject(pl.mesh);
         const feet = P.pos.y - FEET * 0.9;
@@ -2603,6 +2954,7 @@ function frame() {
                 audio.bounce();
                 spawnPuff(P.pos, 0x7cf7ff);
             }
+            if (pl.type === "crumble") crackPlatform(pl);
             if (pl.type === "glass") {
                 if (pl.safe) {
                     if (!pl.stepped) {
