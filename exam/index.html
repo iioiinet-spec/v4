@@ -1,0 +1,2175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 1인칭 시험장 단속반 · 문밖 퇴장 & 8종 무기</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            background: #0d121a;
+            color: #f4f7fb;
+        }
+        #game-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+        }
+        #crosshair {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            width: 28px;
+            height: 28px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #crosshair::before,
+        #crosshair::after {
+            content: "";
+            position: absolute;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+        }
+        #crosshair::before {
+            width: 18px;
+            height: 2px;
+        }
+        #crosshair::after {
+            width: 2px;
+            height: 18px;
+        }
+        #crosshair.locked::before,
+        #crosshair.locked::after {
+            background: #ff5252;
+        }
+        #crosshair-ring {
+            width: 26px;
+            height: 26px;
+            border: 1.5px solid rgba(77, 208, 225, 0.8);
+            border-radius: 50%;
+            transition: transform 0.12s ease, border-color 0.12s ease;
+        }
+        #crosshair.locked #crosshair-ring {
+            transform: scale(1.25);
+            border-color: #ff5252;
+        }
+
+        #hud {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 16px 22px;
+            z-index: 10;
+        }
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .panel {
+            background: rgba(12, 18, 28, 0.82);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            padding: 11px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .stage-title {
+            font-size: 19px;
+            font-weight: 800;
+            color: #4dd0e1;
+            margin-bottom: 5px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, auto);
+            gap: 3px 18px;
+            font-size: 13.5px;
+            line-height: 1.45;
+        }
+        .stats-grid strong {
+            color: #ffd54f;
+        }
+        .inspector-box {
+            min-width: 300px;
+            max-width: 365px;
+            text-align: right;
+        }
+        .inspector-sub {
+            font-size: 11.5px;
+            color: #90a4ae;
+        }
+        .inspector-seat {
+            font-size: 16px;
+            font-weight: 800;
+            color: #ffffff;
+            margin: 2px 0;
+        }
+        .inspector-clue {
+            font-size: 12.5px;
+            color: #a5d6a7;
+            min-height: 34px;
+        }
+
+        .center-banner {
+            align-self: center;
+            text-align: center;
+            margin-top: -55px;
+        }
+        #banner-main {
+            font-size: 36px;
+            font-weight: 900;
+            color: #ffeb3b;
+            text-shadow: 0 3px 12px rgba(0, 0, 0, 0.92), 0 0 24px rgba(255, 145, 0, 0.7);
+            opacity: 0;
+            transform: translateY(8px) scale(0.92);
+            transition: all 0.16s ease-out;
+        }
+        #banner-main.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        #banner-sub {
+            font-size: 16px;
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.92);
+            opacity: 0;
+            margin-top: 4px;
+            transition: opacity 0.18s ease-out;
+        }
+        #banner-sub.show {
+            opacity: 1;
+        }
+
+        .bottom-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .weapon-bar {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+            background: rgba(10, 15, 23, 0.86);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 8px;
+            pointer-events: auto;
+        }
+        .weapon-slot {
+            background: rgba(28, 39, 56, 0.86);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 7px 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.12s ease;
+        }
+        .weapon-slot:hover {
+            border-color: #80deea;
+            background: rgba(38, 54, 77, 0.95);
+        }
+        .weapon-slot.active {
+            background: linear-gradient(180deg, rgba(0, 131, 143, 0.88), rgba(0, 77, 91, 0.92));
+            border-color: #4dd0e1;
+            box-shadow: 0 0 14px rgba(77, 208, 225, 0.45);
+            transform: translateY(-2px);
+        }
+        .slot-key {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            background: rgba(0, 0, 0, 0.45);
+            color: #ffd54f;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-bottom: 3px;
+        }
+        .slot-name {
+            font-size: 12px;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .slot-type {
+            font-size: 10.5px;
+            color: #b0bec5;
+            margin-top: 1px;
+        }
+
+        .bottom-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+        }
+        .legend-box, .controls-box {
+            background: rgba(12, 18, 28, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            padding: 8px 13px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #cfd8dc;
+        }
+        .controls-box {
+            text-align: right;
+        }
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        kbd {
+            background: #263238;
+            border: 1px solid #546e7a;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 11.5px;
+            color: #fff;
+        }
+
+        #overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(7, 11, 18, 0.86);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            pointer-events: auto;
+        }
+        .modal-card {
+            width: min(590px, 92vw);
+            background: #151e2c;
+            border: 1px solid rgba(77, 208, 225, 0.45);
+            border-radius: 16px;
+            padding: 26px 28px;
+            box-shadow: 0 22px 54px rgba(0, 0, 0, 0.7);
+            text-align: center;
+        }
+        .modal-card h1 {
+            margin: 0 0 10px;
+            font-size: 25px;
+            color: #4dd0e1;
+        }
+        .modal-card p {
+            margin: 8px 0 18px;
+            font-size: 14px;
+            line-height: 1.65;
+            color: #d6dee8;
+        }
+        .stage-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+        .stage-btn {
+            padding: 9px 6px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+            background: #1f2b3d;
+            color: #eceff1;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .stage-btn.active {
+            background: #00838f;
+            border-color: #4dd0e1;
+            color: #fff;
+        }
+        .start-btn {
+            width: 100%;
+            padding: 13px 18px;
+            font-size: 17px;
+            font-weight: 800;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #ff6d00, #ff3d00);
+            color: #fff;
+            cursor: pointer;
+        }
+        .credit-line {
+            margin-top: 14px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            color: #9fb4cc;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+<div id="crosshair"><div id="crosshair-ring"></div></div>
+
+<div id="hud">
+    <div class="top-row">
+        <div class="panel">
+            <div class="stage-title" id="stage-title">단계 1 / 8 · 초급 감시</div>
+            <div class="stats-grid">
+                <div>남은 시간: <strong id="time-val">50.0s</strong></div>
+                <div>적발 인원: <strong id="caught-val">0 / 6</strong></div>
+                <div>점수: <strong id="score-val">0</strong></div>
+                <div>콤보: <strong id="combo-val">0</strong> (문밖 퇴장: <strong id="door-val">0</strong>)</div>
+            </div>
+        </div>
+
+        <div class="panel inspector-box">
+            <div class="inspector-sub" id="weapon-status">선택 장비: [1] 목재 방망이 (휘두르기)</div>
+            <div class="inspector-seat" id="aim-seat">좌석 #--</div>
+            <div class="inspector-clue" id="aim-clue">마우스를 움직여 1인칭 시점으로 50명을 살펴보고 클릭/Space로 공격하세요.</div>
+        </div>
+    </div>
+
+    <div class="center-banner">
+        <div id="banner-main">적발!!</div>
+        <div id="banner-sub">+100점</div>
+    </div>
+
+    <div class="bottom-area">
+        <div class="weapon-bar" id="weapon-bar"></div>
+        <div class="bottom-info">
+            <div class="legend-box">
+                <div><span class="dot" style="background:#00e5ff;"></span><strong>AI 안경:</strong> 시안광·시선 스캔 &nbsp;·&nbsp; <span class="dot" style="background:#ff5252;"></span><strong>단추 위장:</strong> 붉은 LED 점멸</div>
+                <div><span class="dot" style="background:#ffd740;"></span><strong>핀카메라:</strong> 렌즈 반사광 &nbsp;·&nbsp; <span class="dot" style="background:#90caf9;"></span><strong>잠든 사람:</strong> 고개 숙임·호흡 움직임</div>
+            </div>
+            <div class="controls-box">
+                <div><kbd>1</kbd>~<kbd>8</kbd> 무기/투척 전환 &nbsp;·&nbsp; <kbd>좌클릭</kbd> / <kbd>Space</kbd> 공격</div>
+                <div><kbd>마우스 이동</kbd> 1인칭 시점 회전(커서 숨김) &nbsp;·&nbsp; <kbd>WASD</kbd> / <kbd>방향키</kbd> 이동</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="overlay">
+    <div class="modal-card">
+        <h1 id="modal-title">3D 1인칭 시험장 단속반</h1>
+        <p id="modal-desc">
+            50명 응시자 중 <strong>잠든 사람, AI 안경, 단추 위장, 핀카메라</strong>를 찾아 날려버리세요.<br>
+            시작 시 마우스 포인터가 숨겨지며 1인칭 시점이 활성화됩니다. 날아간 응시자가 <strong>출입문을 뚫고 복도 밖으로 퇴장</strong>하면 추가 점수를 얻습니다!
+        </p>
+        <div class="stage-grid" id="stage-grid"></div>
+        <button class="start-btn" id="start-btn">1인칭 단속 시작하기</button>
+        <div class="credit-line">SCM &nbsp; 고라니</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // =========================================================================
+    // 1. 8단계 난이도 및 8종 무기 정의
+    // =========================================================================
+    const STAGES = [
+        { stage: 1, name: "초급 감시", duration: 50, quota: 6,  minSus: 5,  maxSus: 7,  revealBase: 0.90, stealth: 0.30, mult: 1.0 },
+        { stage: 2, name: "초중급 순찰", duration: 48, quota: 8,  minSus: 6,  maxSus: 9,  revealBase: 0.78, stealth: 0.42, mult: 1.15 },
+        { stage: 3, name: "중급 시선 추적", duration: 45, quota: 10, minSus: 7,  maxSus: 11, revealBase: 0.66, stealth: 0.54, mult: 1.30 },
+        { stage: 4, name: "위장 심화", duration: 43, quota: 12, minSus: 9,  maxSus: 13, revealBase: 0.55, stealth: 0.65, mult: 1.45 },
+        { stage: 5, name: "고급 단속", duration: 40, quota: 15, minSus: 10, maxSus: 15, revealBase: 0.45, stealth: 0.75, mult: 1.65 },
+        { stage: 6, name: "초고난도 기습", duration: 38, quota: 17, minSus: 12, maxSus: 17, revealBase: 0.36, stealth: 0.84, mult: 1.85 },
+        { stage: 7, name: "마스터 감시관", duration: 36, quota: 20, minSus: 14, maxSus: 19, revealBase: 0.28, stealth: 0.92, mult: 2.10 },
+        { stage: 8, name: "전설의 감독관", duration: 34, quota: 23, minSus: 16, maxSus: 22, revealBase: 0.22, stealth: 1.00, mult: 2.50 }
+    ];
+
+    const WEAPONS = [
+        { key: "1", name: "목재 방망이", mode: "swing", kind: "wood",   typeLabel: "휘두르기", cooldown: 0.30, power: 24, up: 12, radius: 2.8,  color: 0xd99b43 },
+        { key: "2", name: "파워 배트",   mode: "swing", kind: "alloy",  typeLabel: "초강력 휘두르기", cooldown: 0.36, power: 36, up: 16, radius: 3.6,  color: 0x00e5ff },
+        { key: "3", name: "단속 권총",   mode: "gun",   kind: "pistol", typeLabel: "정밀 사격", cooldown: 0.20, power: 25, up: 12, radius: 1.4,  color: 0xffeb3b },
+        { key: "4", name: "펄스 소총",   mode: "gun",   kind: "rifle",  typeLabel: "고속 빔 사격", cooldown: 0.13, power: 28, up: 13, radius: 1.55, color: 0x69f0ae },
+        { key: "5", name: "방망이 던지기",mode: "throw", kind: "toss",   typeLabel: "방망이 투척", cooldown: 0.42, power: 30, up: 14, radius: 2.4,  color: 0xff9100 },
+        { key: "6", name: "폭탄 방망이", mode: "throw", kind: "bomb",   typeLabel: "투척+광역폭발", cooldown: 0.52, power: 38, up: 17, radius: 5.8,  color: 0xff1744 },
+        { key: "7", name: "산탄 단속총", mode: "gun",   kind: "shotgun",typeLabel: "다중 탄환 사격", cooldown: 0.40, power: 27, up: 13, radius: 2.6,  color: 0xffab40 },
+        { key: "8", name: "메가 해머",   mode: "swing", kind: "hammer", typeLabel: "내려치기 광역", cooldown: 0.45, power: 40, up: 18, radius: 5.5,  color: 0xe040fb }
+    ];
+
+    const ARCHETYPES = {
+        NORMAL:   { id: "NORMAL",   label: "정상 응시자", isTarget: false, pts: 0 },
+        SLEEPING: { id: "SLEEPING", label: "잠든 사람",   isTarget: true,  pts: 100 },
+        AI_GLASS: { id: "AI_GLASS", label: "AI 안경",     isTarget: true,  pts: 140 },
+        BUTTON:   { id: "BUTTON",   label: "단추 위장",   isTarget: true,  pts: 160 },
+        PINCAM:   { id: "PINCAM",   label: "핀카메라",    isTarget: true,  pts: 180 }
+    };
+
+    // =========================================================================
+    // 2. Three.js 씬, 1인칭 카메라 리그 및 렌더러
+    // =========================================================================
+    const canvas = document.getElementById("game-canvas");
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xbcd8f0);
+    scene.fog = new THREE.FogExp2(0xc5dcf1, 0.0052);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.08, 260);
+    const camRig = new THREE.Group();
+    camRig.position.set(0, 1.85, 16.5);
+    camRig.add(camera);
+    scene.add(camRig);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.06;
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xb6956f, 0.66);
+    hemiLight.position.set(0, 26, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfff7e8, 0.86);
+    dirLight.position.set(18, 28, 18);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 2;
+    dirLight.shadow.camera.far = 110;
+    const scB = 34;
+    dirLight.shadow.camera.left = -scB;
+    dirLight.shadow.camera.right = scB;
+    dirLight.shadow.camera.top = scB;
+    dirLight.shadow.camera.bottom = -scB;
+    scene.add(dirLight);
+
+    // =========================================================================
+    // 3. 50인 시험장 + 출입문 + 외부 복도 환경 구축
+    // =========================================================================
+    const exitDoors = []; // 날아가는 대상이 부딪혀 밀려나는 출입문들
+    const EXIT_Z_BOUNDARY = -37.0; // 이 Z 좌표 뒤쪽이 출입문 및 복도 구역
+
+    function createSwingingDoor(xPos, zPos, width, height, rotY) {
+        const doorPivot = new THREE.Group();
+        // 왼쪽 힌지 기준 회전
+        doorPivot.position.set(xPos - width * 0.5, 0, zPos);
+        doorPivot.rotation.y = rotY || 0;
+
+        const panel = new THREE.Mesh(
+            new THREE.BoxGeometry(width, height, 0.14),
+            new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.55 })
+        );
+        panel.position.set(width * 0.5, height * 0.5, 0);
+        panel.castShadow = true;
+        panel.receiveShadow = true;
+        doorPivot.add(panel);
+
+        // 문 손잡이
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.025, 0.025, 0.24, 10),
+            new THREE.MeshStandardMaterial({ color: 0xe0e0e0, metalness: 0.85, roughness: 0.2 })
+        );
+        handle.rotation.x = Math.PI / 2;
+        handle.position.set(width - 0.22, height * 0.46, 0.11);
+        doorPivot.add(handle);
+
+        scene.add(doorPivot);
+        exitDoors.push({
+            pivot: doorPivot,
+            centerX: xPos,
+            z: zPos,
+            halfWidth: width * 0.5,
+            openAngle: 0,
+            angularVel: 0,
+            triggered: false
+        });
+    }
+
+    function buildExamHallAndCorridor() {
+        const hall = new THREE.Group();
+
+        // 시험장 바닥 + 문밖 복도 연장 바닥
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(60, 86),
+            new THREE.MeshStandardMaterial({ color: 0xc59a6c, roughness: 0.72 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(0, 0, -14);
+        floor.receiveShadow = true;
+        hall.add(floor);
+
+        // 문밖 복도 바닥 색상 구분 (z < -37)
+        const corridorFloor = new THREE.Mesh(
+            new THREE.PlaneGeometry(58, 22),
+            new THREE.MeshStandardMaterial({ color: 0x90a4ae, roughness: 0.65 })
+        );
+        corridorFloor.rotation.x = -Math.PI / 2;
+        corridorFloor.position.set(0, 0.008, -48);
+        corridorFloor.receiveShadow = true;
+        hall.add(corridorFloor);
+
+        // 통로 안내 라인
+        const aisleMat = new THREE.MeshStandardMaterial({ color: 0xae8152, roughness: 0.8 });
+        for (let r = 1; r < 5; r++) {
+            const stripe = new THREE.Mesh(new THREE.PlaneGeometry(54, 0.45), aisleMat);
+            stripe.rotation.x = -Math.PI / 2;
+            stripe.position.set(0, 0.006, 9.0 - r * 7.2);
+            stripe.receiveShadow = true;
+            hall.add(stripe);
+        }
+
+        // 전면 벽 (중앙 출입구 2개 폭 확보)
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.85 });
+        const frontLeftWall = new THREE.Mesh(new THREE.BoxGeometry(22, 16, 0.8), wallMat);
+        frontLeftWall.position.set(-16.5, 8, EXIT_Z_BOUNDARY);
+        const frontMidWall = new THREE.Mesh(new THREE.BoxGeometry(7.6, 16, 0.8), wallMat);
+        frontMidWall.position.set(0, 8, EXIT_Z_BOUNDARY);
+        const frontRightWall = new THREE.Mesh(new THREE.BoxGeometry(22, 16, 0.8), wallMat);
+        frontRightWall.position.set(16.5, 8, EXIT_Z_BOUNDARY);
+        hall.add(frontLeftWall, frontMidWall, frontRightWall);
+
+        // 출입구 상단 인방
+        const headerLeft = new THREE.Mesh(new THREE.BoxGeometry(3.8, 10.2, 0.8), wallMat);
+        headerLeft.position.set(-5.7, 10.9, EXIT_Z_BOUNDARY);
+        const headerRight = new THREE.Mesh(new THREE.BoxGeometry(3.8, 10.2, 0.8), wallMat);
+        headerRight.position.set(5.7, 10.9, EXIT_Z_BOUNDARY);
+        hall.add(headerLeft, headerRight);
+
+        // 좌우 출입문 2개 설치 (응시자들이 날아가며 문을 밀치고 복도 밖으로 퇴장)
+        createSwingingDoor(-5.7, EXIT_Z_BOUNDARY, 3.6, 5.8, 0);
+        createSwingingDoor(5.7, EXIT_Z_BOUNDARY, 3.6, 5.8, 0);
+
+        // 문밖 복도 외벽
+        const corridorBack = new THREE.Mesh(new THREE.BoxGeometry(60, 16, 0.8), wallMat);
+        corridorBack.position.set(0, 8, -58);
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(60, 16, 0.8), wallMat);
+        backWall.position.set(0, 8, 23);
+        hall.add(corridorBack, backWall);
+
+        // ── 좌우 외벽 : 창이 실제로 뚫려 밖이 보이는 분할 벽 ──────────────
+        const WIN_Z = [-30, -20, -10, 0, 10, 19.8];   // 창 중심 z
+        const WIN_W = 7.2;                            // 창 폭
+        const SILL_Y = 3.2;                           // 창 아래 허리벽 높이
+        const HEAD_Y = 9.6;                           // 창 위 상인방 시작 높이
+        const WZA = WIN_Z[0] - WIN_W / 2;
+        const WZB = WIN_Z[WIN_Z.length - 1] + WIN_W / 2;
+
+        const glassMat = new THREE.MeshStandardMaterial({
+            color: 0xdaeefb, transparent: true, opacity: 0.17,
+            roughness: 0.06, metalness: 0.1, side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const sashMat = new THREE.MeshStandardMaterial({ color: 0xaeb8c2, metalness: 0.45, roughness: 0.42 });
+        const sillMat = new THREE.MeshStandardMaterial({ color: 0xdcd3c4, roughness: 0.8 });
+
+        function buildWindowWall(sx) {
+            const g = new THREE.Group();
+            // 창 구역 바깥(복도 쪽) 통짜 벽
+            const solid = new THREE.Mesh(new THREE.BoxGeometry(0.8, 16, WZA + 58), wallMat);
+            solid.position.set(sx, 8, (-58 + WZA) / 2);
+            g.add(solid);
+            // 허리벽 + 상인방
+            const low = new THREE.Mesh(new THREE.BoxGeometry(0.8, SILL_Y, WZB - WZA), wallMat);
+            low.position.set(sx, SILL_Y / 2, (WZA + WZB) / 2);
+            const high = new THREE.Mesh(new THREE.BoxGeometry(0.8, 16 - HEAD_Y, WZB - WZA), wallMat);
+            high.position.set(sx, (16 + HEAD_Y) / 2, (WZA + WZB) / 2);
+            g.add(low, high);
+            // 창틀 선반(실내측)
+            const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.12, WZB - WZA), sillMat);
+            shelf.position.set(sx - Math.sign(sx) * 0.52, SILL_Y + 0.06, (WZA + WZB) / 2);
+            g.add(shelf);
+            // 창 사이 기둥
+            for (let i = 0; i + 1 < WIN_Z.length; i++) {
+                const pw = (WIN_Z[i + 1] - WIN_Z[i]) - WIN_W;
+                const pier = new THREE.Mesh(new THREE.BoxGeometry(0.8, HEAD_Y - SILL_Y, pw), wallMat);
+                pier.position.set(sx, (SILL_Y + HEAD_Y) / 2, (WIN_Z[i] + WIN_Z[i + 1]) / 2);
+                g.add(pier);
+            }
+            // 유리 + 창틀
+            const openH = HEAD_Y - SILL_Y;
+            WIN_Z.forEach(function (zc) {
+                const pane = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W - 0.26, openH - 0.26), glassMat);
+                pane.rotation.y = Math.PI / 2;
+                pane.position.set(sx, (SILL_Y + HEAD_Y) / 2, zc);
+                g.add(pane);
+                // 상/하/좌/우 틀 + 중간 멀리온 + 중간 가로대
+                const fr = [
+                    [0.26, 0.14, WIN_W, 0, openH / 2 - 0.07],
+                    [0.26, 0.14, WIN_W, 0, -openH / 2 + 0.07],
+                    [0.26, openH, 0.16, WIN_W / 2 - 0.08, 0],
+                    [0.26, openH, 0.16, -WIN_W / 2 + 0.08, 0],
+                    [0.22, openH, 0.13, 0, 0],
+                    [0.22, 0.11, WIN_W, 0, 0.6]
+                ];
+                fr.forEach(function (f) {
+                    const m = new THREE.Mesh(new THREE.BoxGeometry(f[0], f[1], f[2]), sashMat);
+                    m.position.set(sx, (SILL_Y + HEAD_Y) / 2 + f[4], zc + f[3]);
+                    g.add(m);
+                });
+            });
+            return g;
+        }
+        hall.add(buildWindowWall(-28), buildWindowWall(28));
+
+        // ── 창밖 풍경 ────────────────────────────────────────────────
+        (function buildOutside() {
+            const out = new THREE.Group();
+
+            // 잔디 대지
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(620, 620),
+                new THREE.MeshStandardMaterial({ color: 0x7fa15c, roughness: 0.96 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.set(0, -0.08, -18);
+            out.add(ground);
+
+            // 운동장 (흙 바닥)
+            const fieldMat = new THREE.MeshStandardMaterial({ color: 0xbe8e60, roughness: 0.95 });
+            [-66, 66].forEach(function (fx) {
+                const f = new THREE.Mesh(new THREE.PlaneGeometry(48, 86), fieldMat);
+                f.rotation.x = -Math.PI / 2;
+                f.position.set(fx, -0.05, -6);
+                out.add(f);
+            });
+
+            // 건물
+            const bodyMats = [
+                new THREE.MeshStandardMaterial({ color: 0xd9d3c6, roughness: 0.9 }),
+                new THREE.MeshStandardMaterial({ color: 0xc7ced6, roughness: 0.9 }),
+                new THREE.MeshStandardMaterial({ color: 0xe1cdb2, roughness: 0.9 })
+            ];
+            const bwinMat = new THREE.MeshStandardMaterial({ color: 0x55738d, roughness: 0.25, metalness: 0.3 });
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c5f4e, roughness: 0.86 });
+            const BLD = [
+                [-104, -34, 26, 30, 20, 1], [-98, 10, 22, 21, 18, 0], [-112, 48, 28, 34, 22, 2],
+                [-120, -2, 20, 44, 20, 1], [104, -30, 24, 26, 20, 0], [100, 14, 26, 36, 22, 2],
+                [116, 52, 22, 20, 18, 1], [122, -6, 20, 40, 20, 0], [-46, -70, 30, 17, 18, 2],
+                [48, -74, 28, 15, 18, 1]
+            ];
+            BLD.forEach(function (b) {
+                const g = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(b[2], b[3], b[4]), bodyMats[b[5]]);
+                body.position.y = b[3] / 2;
+                g.add(body);
+                const roof = new THREE.Mesh(new THREE.BoxGeometry(b[2] + 1.1, 0.8, b[4] + 1.1), roofMat);
+                roof.position.y = b[3] + 0.4;
+                g.add(roof);
+                const rows = Math.max(1, Math.floor((b[3] - 2.6) / 3.6));
+                const sgn = b[0] < 0 ? 1 : -1;
+                for (let i = 0; i < rows; i++) {
+                    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.7, b[4] * 0.84), bwinMat);
+                    strip.position.set(sgn * (b[2] / 2 + 0.08), 2.4 + i * 3.6, 0);
+                    g.add(strip);
+                }
+                g.position.set(b[0], 0, b[1]);
+                out.add(g);
+            });
+
+            // 나무
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a32, roughness: 0.92 });
+            const leafMats = [
+                new THREE.MeshStandardMaterial({ color: 0x3f7a3c, roughness: 0.92 }),
+                new THREE.MeshStandardMaterial({ color: 0x4f8c44, roughness: 0.92 }),
+                new THREE.MeshStandardMaterial({ color: 0x356b38, roughness: 0.92 })
+            ];
+            const trunkGeo = new THREE.CylinderGeometry(0.45, 0.62, 4.6, 7);
+            const leafGeo = new THREE.ConeGeometry(2.9, 5.4, 9);
+            for (let i = 0; i < 20; i++) {
+                const side = i % 2 ? 1 : -1;
+                const tx = side * (36 + (i * 13) % 42);
+                const tz = -62 + ((i * 29) % 110);
+                const sc = 0.82 + ((i * 7) % 9) * 0.07;
+                const t = new THREE.Group();
+                const tr = new THREE.Mesh(trunkGeo, trunkMat);
+                tr.position.y = 2.3;
+                t.add(tr);
+                const l1 = new THREE.Mesh(leafGeo, leafMats[i % 3]);
+                l1.position.y = 6.4;
+                t.add(l1);
+                const l2 = new THREE.Mesh(leafGeo, leafMats[(i + 1) % 3]);
+                l2.position.y = 9.1;
+                l2.scale.setScalar(0.72);
+                t.add(l2);
+                t.position.set(tx, 0, tz);
+                t.scale.setScalar(sc);
+                out.add(t);
+            }
+
+            // 먼 산
+            const mtMat = new THREE.MeshStandardMaterial({ color: 0x8ba2b4, roughness: 1.0 });
+            [[-230, -120, 86, 42], [-150, -210, 70, 34], [40, -250, 100, 48],
+             [220, -140, 92, 40], [260, 40, 74, 32]].forEach(function (m) {
+                const peak = new THREE.Mesh(new THREE.ConeGeometry(m[2], m[3], 10), mtMat);
+                peak.position.set(m[0], m[3] / 2 - 2, m[1]);
+                out.add(peak);
+            });
+
+            // 구름
+            const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+            for (let i = 0; i < 7; i++) {
+                const c = new THREE.Mesh(new THREE.SphereGeometry(10, 10, 7), cloudMat);
+                c.scale.set(1 + (i % 3) * 0.5, 0.42, 0.85);
+                c.position.set(-180 + i * 62, 52 + (i % 3) * 11, -150 + (i % 4) * 70);
+                out.add(c);
+            }
+            scene.add(out);
+        })();
+
+        // 전면 중앙 칠판
+        const board = new THREE.Mesh(
+            new THREE.BoxGeometry(7.0, 3.4, 0.2),
+            new THREE.MeshStandardMaterial({ color: 0x1e4c30, roughness: 0.45 })
+        );
+        board.position.set(0, 4.2, EXIT_Z_BOUNDARY + 0.45);
+        hall.add(board);
+
+        // ── 천장 + LED 등 ────────────────────────────────────────────
+        const CEIL_Y = 12.0;
+        const ceiling = new THREE.Mesh(
+            new THREE.PlaneGeometry(56.6, 86),
+            new THREE.MeshStandardMaterial({
+                color: 0xeaeef2, roughness: 0.93, side: THREE.DoubleSide,
+                emissive: 0xdde7f1, emissiveIntensity: 0.4
+            })
+        );
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(0, CEIL_Y, -14);
+        hall.add(ceiling);
+
+        // 천장 T바 격자
+        const tbarMat = new THREE.MeshStandardMaterial({
+            color: 0xd2d8de, roughness: 0.68, emissive: 0xc8d2dc, emissiveIntensity: 0.42
+        });
+        for (let gx = -24; gx <= 24; gx += 8) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 86), tbarMat);
+            b.position.set(gx, CEIL_Y - 0.07, -14);
+            hall.add(b);
+        }
+        for (let gz = -56; gz <= 28; gz += 8.4) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(56.6, 0.11, 0.17), tbarMat);
+            b.position.set(0, CEIL_Y - 0.07, gz);
+            hall.add(b);
+        }
+
+        // LED 평판 등기구
+        const ledCaseMat = new THREE.MeshStandardMaterial({
+            color: 0xc9d0d7, metalness: 0.45, roughness: 0.4,
+            emissive: 0xbcc8d4, emissiveIntensity: 0.5
+        });
+        const ledPanelMat = new THREE.MeshBasicMaterial({ color: 0xfdffff, toneMapped: false });
+        const ledCaseGeo = new THREE.BoxGeometry(2.9, 0.26, 2.9);
+        const ledPanelGeo = new THREE.BoxGeometry(2.52, 0.1, 2.52);
+        const ledHaloGeo = new THREE.PlaneGeometry(5.2, 5.2);
+        const ledHaloMat = new THREE.MeshBasicMaterial({
+            color: 0xeaf3ff, transparent: true, opacity: 0.22,
+            depthWrite: false, toneMapped: false
+        });
+        for (const lx of [-18, -6, 6, 18]) {
+            for (let lz = -52; lz <= 18; lz += 10) {
+                const cs = new THREE.Mesh(ledCaseGeo, ledCaseMat);
+                cs.position.set(lx, CEIL_Y - 0.22, lz);
+                hall.add(cs);
+                const pn = new THREE.Mesh(ledPanelGeo, ledPanelMat);
+                pn.position.set(lx, CEIL_Y - 0.37, lz);
+                hall.add(pn);
+                const ha = new THREE.Mesh(ledHaloGeo, ledHaloMat);
+                ha.rotation.x = Math.PI / 2;
+                ha.position.set(lx, CEIL_Y - 0.44, lz);
+                hall.add(ha);
+            }
+        }
+
+        // 실내 조명 보강 (등기구 아래 빛 고임)
+        [[-12, 4], [12, 4], [-12, -20], [12, -20], [0, -47]].forEach(function (p) {
+            const pl = new THREE.PointLight(0xeef5ff, 0.42, 46);
+            pl.position.set(p[0], CEIL_Y - 1.2, p[1]);
+            hall.add(pl);
+        });
+
+        scene.add(hall);
+    }
+    buildExamHallAndCorridor();
+
+    // =========================================================================
+    // 4. 1인칭 시점 무기 뷰모델 (방망이 / 권총 / 소총 / 투척방망이 / 해머)
+    // =========================================================================
+    const weaponAnchor = new THREE.Group();
+    weaponAnchor.position.set(0.54, -0.44, -0.98);
+    camera.add(weaponAnchor);
+
+    const viewBatGroup = new THREE.Group();
+    const batGrip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.028, 0.26, 12),
+        new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85 })
+    );
+    batGrip.position.y = 0.13;
+    const batBarrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.056, 0.028, 0.62, 14),
+        new THREE.MeshStandardMaterial({ color: 0xd99b43, metalness: 0.25, roughness: 0.4 })
+    );
+    batBarrel.position.y = 0.56;
+    const batTipRing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.058, 0.058, 0.05, 14),
+        new THREE.MeshStandardMaterial({ color: 0xff5722, emissive: 0x551100, roughness: 0.3 })
+    );
+    batTipRing.position.y = 0.84;
+    viewBatGroup.add(batGrip, batBarrel, batTipRing);
+    weaponAnchor.add(viewBatGroup);
+
+    const viewGunGroup = new THREE.Group();
+    const gunBody = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.11, 0.42),
+        new THREE.MeshStandardMaterial({ color: 0x263238, metalness: 0.75, roughness: 0.3 })
+    );
+    const gunBarrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.022, 0.32, 12),
+        new THREE.MeshStandardMaterial({ color: 0x546e7a, metalness: 0.85, roughness: 0.2 })
+    );
+    gunBarrel.rotation.x = Math.PI / 2;
+    gunBarrel.position.set(0, 0.02, -0.28);
+    const gunGlow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.086, 0.025, 0.22),
+        new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+    );
+    gunGlow.position.set(0, 0.055, -0.05);
+    viewGunGroup.add(gunBody, gunBarrel, gunGlow);
+    viewGunGroup.visible = false;
+    weaponAnchor.add(viewGunGroup);
+
+    const viewHammerGroup = new THREE.Group();
+    const hammerShaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.024, 0.76, 12),
+        new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.5, roughness: 0.4 })
+    );
+    hammerShaft.position.y = 0.38;
+    const hammerHead = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.18, 0.18),
+        new THREE.MeshStandardMaterial({ color: 0xab47bc, emissive: 0x38006b, metalness: 0.65, roughness: 0.25 })
+    );
+    hammerHead.position.y = 0.74;
+    viewHammerGroup.add(hammerShaft, hammerHead);
+    viewHammerGroup.visible = false;
+    weaponAnchor.add(viewHammerGroup);
+
+    const batIdleRot = new THREE.Euler(-0.35, 0.25, -0.58);
+    viewBatGroup.rotation.copy(batIdleRot);
+
+    let currentWeaponIdx = 0;
+    let thrownBatActive = false;
+
+    function selectWeapon(idx) {
+        currentWeaponIdx = Math.max(0, Math.min(WEAPONS.length - 1, idx));
+        const w = WEAPONS[currentWeaponIdx];
+
+        viewBatGroup.visible = (w.mode === "swing" && w.kind !== "hammer") || (w.mode === "throw" && !thrownBatActive);
+        viewGunGroup.visible = (w.mode === "gun");
+        viewHammerGroup.visible = (w.mode === "swing" && w.kind === "hammer");
+
+        if (w.kind === "alloy") {
+            batBarrel.material.color.setHex(0x90caf9);
+            batTipRing.material.color.setHex(0x00e5ff);
+        } else if (w.kind === "bomb") {
+            batBarrel.material.color.setHex(0x37474f);
+            batTipRing.material.color.setHex(0xff1744);
+        } else if (w.kind === "toss") {
+            batBarrel.material.color.setHex(0xffab40);
+            batTipRing.material.color.setHex(0xff9100);
+        } else {
+            batBarrel.material.color.setHex(0xd99b43);
+            batTipRing.material.color.setHex(0xff5722);
+        }
+
+        if (w.kind === "rifle") {
+            gunGlow.material.color.setHex(0x69f0ae);
+            gunBarrel.scale.set(1.15, 1.15, 1.45);
+        } else if (w.kind === "shotgun") {
+            gunGlow.material.color.setHex(0xffab40);
+            gunBarrel.scale.set(1.45, 1.45, 1.05);
+        } else {
+            gunGlow.material.color.setHex(0x00e5ff);
+            gunBarrel.scale.set(1, 1, 1);
+        }
+
+        document.getElementById("weapon-status").textContent =
+            "선택 장비: [" + w.key + "] " + w.name + " (" + w.typeLabel + ")";
+
+        document.querySelectorAll(".weapon-slot").forEach(function (el, i) {
+            el.classList.toggle("active", i === currentWeaponIdx);
+        });
+    }
+
+    const weaponBarEl = document.getElementById("weapon-bar");
+    WEAPONS.forEach(function (w, idx) {
+        const slot = document.createElement("div");
+        slot.className = "weapon-slot" + (idx === 0 ? " active" : "");
+        slot.innerHTML =
+            '<div class="slot-key">' + w.key + '</div>' +
+            '<div class="slot-name">' + w.name + '</div>' +
+            '<div class="slot-type">' + w.typeLabel + '</div>';
+        slot.onclick = function () { selectWeapon(idx); };
+        weaponBarEl.appendChild(slot);
+    });
+
+    // =========================================================================
+    // 5. 50명 응시자 배치 (10열 × 5행)
+    // =========================================================================
+    const COLS = 10;
+    const ROWS = 5;
+    const seats = [];
+    const hitTargets = [];
+
+    const deskTopGeo = new THREE.BoxGeometry(1.78, 0.08, 1.06);
+    const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xdeb07b, roughness: 0.65 });
+    const legGeo = new THREE.BoxGeometry(0.07, 0.92, 0.07);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x3b424c, roughness: 0.6 });
+    const paperGeo = new THREE.PlaneGeometry(0.58, 0.72);
+    const paperMat = new THREE.MeshBasicMaterial({ color: 0xfafafa });
+
+    const shirtPalette = [0x2b3a4a, 0x37474f, 0x2c3e50, 0x3e4c59, 0x455a64, 0x283593, 0x374151];
+    const hairPalette = [0x171717, 0x26211d, 0x1e242b, 0x2d241e];
+    const skinPalette = [0xf5cfa8, 0xedd0b4, 0xe3b892, 0xf2d5b8];
+
+    // =========================================================================
+    // 5-1. 수험생 공용 리소스 (재질 · 지오메트리 · 얼굴 텍스처 공유로 비용 절감)
+    // =========================================================================
+    const shirtMats = shirtPalette.map(function (c) {
+        return new THREE.MeshStandardMaterial({ color: c, roughness: 0.74 });
+    });
+    const plackMats = shirtPalette.map(function (c) {
+        return new THREE.MeshStandardMaterial({
+            color: new THREE.Color(c).offsetHSL(0, -0.04, 0.1), roughness: 0.7
+        });
+    });
+    const hairMats = hairPalette.map(function (c) {
+        return new THREE.MeshStandardMaterial({ color: c, roughness: 0.88 });
+    });
+    const skinMats = skinPalette.map(function (c) {
+        return new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
+    });
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0xf3f5f8, roughness: 0.68 });
+    const tagMat = new THREE.MeshStandardMaterial({ color: 0xfbfbf2, roughness: 0.6 });
+
+    // 얼굴(눈 · 눈썹 · 입 · 코 음영) 텍스처 — 4종을 전원이 공유
+    function makeFaceTexture(v) {
+        const cv = document.createElement("canvas");
+        cv.width = 128; cv.height = 128;
+        const g = cv.getContext("2d");
+        const EX = [24, 104], EY = 62;
+
+        // 눈 흰자
+        g.fillStyle = "#fdfcf8";
+        EX.forEach(function (x) {
+            g.beginPath(); g.ellipse(x, EY, 13, 9.5, 0, 0, 6.2832); g.fill();
+        });
+        // 눈동자 + 하이라이트
+        const look = [0, -3.5, 3.5, 0][v];
+        g.fillStyle = "#1f252d";
+        EX.forEach(function (x) {
+            g.beginPath(); g.ellipse(x + look, EY + 1, 6.2, 7.4, 0, 0, 6.2832); g.fill();
+        });
+        g.fillStyle = "#ffffff";
+        EX.forEach(function (x) {
+            g.beginPath(); g.arc(x + look - 2.2, EY - 2.4, 2.0, 0, 6.2832); g.fill();
+        });
+        // 위 눈꺼풀 선
+        g.strokeStyle = "#4b3a2b"; g.lineWidth = 3.2; g.lineCap = "round";
+        EX.forEach(function (x) {
+            g.beginPath(); g.ellipse(x, EY, 13, 9.5, 0, 3.32, 6.10); g.stroke();
+        });
+        // 눈썹
+        g.strokeStyle = "#2a2017"; g.lineWidth = 6.2;
+        const tilt = [3, -4, 0, 6][v];
+        for (let i = 0; i < 2; i++) {
+            const s = i === 0 ? 1 : -1;
+            g.beginPath();
+            g.moveTo(EX[i] - 15 * s, EY - 20 + tilt);
+            g.lineTo(EX[i] + 15 * s, EY - 23 - tilt * 0.4);
+            g.stroke();
+        }
+        // 코 음영
+        g.strokeStyle = "rgba(170,116,82,0.68)"; g.lineWidth = 4;
+        g.beginPath(); g.moveTo(61, 76); g.lineTo(64, 88); g.lineTo(70, 90); g.stroke();
+        // 입
+        const mw = [11, 14.5, 9, 12][v], mc = [4.5, -2.5, 6.5, 1][v];
+        g.strokeStyle = "#8f5146"; g.lineWidth = 5;
+        g.beginPath();
+        g.moveTo(64 - mw, 103);
+        g.quadraticCurveTo(64, 103 + mc, 64 + mw, 103);
+        g.stroke();
+
+        const t = new THREE.CanvasTexture(cv);
+        t.needsUpdate = true;
+        return t;
+    }
+    const faceMats = [0, 1, 2, 3].map(function (v) {
+        return new THREE.MeshStandardMaterial({
+            map: makeFaceTexture(v), transparent: true,
+            roughness: 0.6, depthWrite: false
+        });
+    });
+
+    const headGeo = new THREE.SphereGeometry(0.25, 18, 16);
+    const faceGeo = new THREE.SphereGeometry(0.2535, 18, 14, Math.PI / 2 - 0.62, 1.24, 1.0, 1.05);
+    const earGeo = new THREE.SphereGeometry(0.062, 8, 7);
+    const neckGeo = new THREE.CylinderGeometry(0.082, 0.098, 0.18, 12);
+    const torsoGeo = new THREE.CylinderGeometry(0.28, 0.34, 0.82, 16);
+    const shoulderGeo = new THREE.SphereGeometry(0.3, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.52);
+    const collarGeo = new THREE.CylinderGeometry(0.14, 0.185, 0.12, 14, 1, true);
+    const placketGeo = new THREE.BoxGeometry(0.052, 0.62, 0.02);
+    const tagGeo = new THREE.BoxGeometry(0.15, 0.065, 0.016);
+    const handGeo = new THREE.SphereGeometry(0.076, 10, 8);
+    const hairCapGeo = [
+        new THREE.SphereGeometry(0.262, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.455),
+        new THREE.SphereGeometry(0.265, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.49),
+        new THREE.SphereGeometry(0.261, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.445),
+        new THREE.SphereGeometry(0.256, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.4)
+    ];
+    const bangGeo = new THREE.BoxGeometry(0.3, 0.078, 0.07);
+    const flapGeo = new THREE.SphereGeometry(0.13, 10, 9);
+    const ponyGeo = new THREE.SphereGeometry(0.1, 10, 9);
+
+    // 팔 : 모든 좌석이 동일 자세(책상 위에 손) → 세그먼트를 한 번만 계산해 공유
+    const ARM_SEGS = (function () {
+        const out = [];
+        for (let a = 0; a < 2; a++) {
+            const s = a === 0 ? -1 : 1;
+            const sh = new THREE.Vector3(s * 0.295, 0.70, 0.015);
+            const el = new THREE.Vector3(s * 0.348, 0.40, 0.305);
+            const hd = new THREE.Vector3(s * 0.235, 0.262, 0.615);
+            [[sh, el, 0.088, "shirt"], [el, hd, 0.073, "skin"]].forEach(function (seg) {
+                const dir = new THREE.Vector3().subVectors(seg[1], seg[0]);
+                out.push({
+                    geo: new THREE.CylinderGeometry(seg[2], seg[2] * 0.88, dir.length(), 8),
+                    pos: new THREE.Vector3().addVectors(seg[0], seg[1]).multiplyScalar(0.5),
+                    quat: new THREE.Quaternion().setFromUnitVectors(
+                        new THREE.Vector3(0, 1, 0), dir.clone().normalize()),
+                    kind: seg[3]
+                });
+            });
+            out.push({ geo: handGeo, pos: hd.clone(), quat: null, kind: "hand" });
+        }
+        return out;
+    })();
+
+    function buildSeat(idx, col, row) {
+        const x = (col - (COLS - 1) / 2) * 3.65;
+        const z = 9.0 - row * 7.2;
+
+        const root = new THREE.Group();
+        root.position.set(x, 0, z);
+
+        const desk = new THREE.Group();
+        desk.position.set(0, 0, 0.55);
+        const top = new THREE.Mesh(deskTopGeo, deskTopMat);
+        top.position.y = 0.94;
+        top.castShadow = true;
+        top.receiveShadow = true;
+        desk.add(top);
+
+        const paper = new THREE.Mesh(paperGeo, paperMat);
+        paper.rotation.x = -Math.PI / 2;
+        paper.position.set(-0.14, 0.985, 0.04);
+        desk.add(paper);
+
+        [[-0.78, -0.42], [0.78, -0.42], [-0.78, 0.42], [0.78, 0.42]].forEach(function (off) {
+            const leg = new THREE.Mesh(legGeo, legMat);
+            leg.position.set(off[0], 0.46, off[1]);
+            leg.castShadow = true;
+            desk.add(leg);
+        });
+        root.add(desk);
+
+        const chair = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 0.07, 0.9),
+            new THREE.MeshStandardMaterial({ color: 0x4e5d6c })
+        );
+        chair.position.set(0, 0.65, -0.45);
+        root.add(chair);
+
+        const person = new THREE.Group();
+        person.position.set(0, 0.68, -0.42);
+        root.add(person);
+
+        const torsoPivot = new THREE.Group();
+        torsoPivot.position.set(0, 0.05, 0);
+        person.add(torsoPivot);
+
+        const shirtMat = shirtMats[idx % shirtMats.length];
+        const skinMat = skinMats[idx % skinMats.length];
+
+        const torso = new THREE.Mesh(torsoGeo, shirtMat);
+        torso.position.y = 0.41;
+        torso.castShadow = true;
+        torsoPivot.add(torso);
+
+        // 어깨
+        const shoulders = new THREE.Mesh(shoulderGeo, shirtMat);
+        shoulders.position.y = 0.695;
+        shoulders.scale.set(1.1, 0.4, 0.88);
+        shoulders.castShadow = true;
+        torsoPivot.add(shoulders);
+
+        // 교복 칼라
+        const collar = new THREE.Mesh(collarGeo, collarMat);
+        collar.position.y = 0.795;
+        torsoPivot.add(collar);
+
+        // 앞여밈 + 명찰
+        const placket = new THREE.Mesh(placketGeo, plackMats[idx % plackMats.length]);
+        placket.position.set(0, 0.42, 0.3);
+        torsoPivot.add(placket);
+
+        const tag = new THREE.Mesh(tagGeo, tagMat);
+        tag.position.set(-0.158, 0.555, 0.253);
+        tag.rotation.y = -0.24;
+        torsoPivot.add(tag);
+
+        // 목
+        const neck = new THREE.Mesh(neckGeo, skinMat);
+        neck.position.set(0, 0.845, 0.012);
+        torsoPivot.add(neck);
+
+        // 팔 · 손 (책상 위에 올린 자세)
+        ARM_SEGS.forEach(function (seg) {
+            const m = new THREE.Mesh(seg.geo, seg.kind === "shirt" ? shirtMat : skinMat);
+            m.position.copy(seg.pos);
+            if (seg.quat) m.quaternion.copy(seg.quat);
+            if (seg.kind === "hand") {
+                m.scale.set(1.0, 0.62, 1.3);
+                m.rotation.x = -0.42;
+            }
+            if (seg.kind === "shirt") m.castShadow = true;
+            torsoPivot.add(m);
+        });
+
+        // 단추 위장 단서
+        const buttonClueMat = new THREE.MeshStandardMaterial({
+            color: 0x263238,
+            emissive: 0xff1744,
+            emissiveIntensity: 0.0,
+            roughness: 0.3
+        });
+        const buttonClue = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 10), buttonClueMat);
+        buttonClue.position.set(0, 0.46, 0.31);
+        torsoPivot.add(buttonClue);
+
+        // 핀카메라 단서
+        const pincamMat = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            emissive: 0xffd54f,
+            emissiveIntensity: 0.0,
+            metalness: 0.85,
+            roughness: 0.15
+        });
+        const pincamClue = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.045, 10), pincamMat);
+        pincamClue.rotation.x = Math.PI / 2;
+        pincamClue.position.set(0.24, 0.66, 0.25);
+        torsoPivot.add(pincamClue);
+
+        const headPivot = new THREE.Group();
+        headPivot.position.set(0, 0.92, 0.02);
+        torsoPivot.add(headPivot);
+
+        const head = new THREE.Mesh(headGeo, skinMat);
+        head.position.y = 0.22;
+        head.castShadow = true;
+        headPivot.add(head);
+
+        // 귀
+        [-1, 1].forEach(function (s) {
+            const ear = new THREE.Mesh(earGeo, skinMat);
+            ear.position.set(s * 0.237, 0.208, -0.012);
+            ear.scale.set(0.52, 1.05, 0.82);
+            headPivot.add(ear);
+        });
+
+        // 얼굴 (눈 · 눈썹 · 코 · 입)
+        const face = new THREE.Mesh(faceGeo, faceMats[idx % 4]);
+        face.position.y = 0.22;
+        face.renderOrder = 1;
+        headPivot.add(face);
+
+        // 머리 — 4종 스타일
+        const hairStyle = (idx + ((idx / 10) | 0)) % 4;
+        const hairMat = hairMats[idx % hairMats.length];
+        const hair = new THREE.Mesh(hairCapGeo[hairStyle], hairMat);
+        hair.position.set(0, 0.238, -0.012);
+        hair.rotation.x = -0.07;
+        hair.castShadow = true;
+        headPivot.add(hair);
+
+        if (hairStyle === 0) {              // 앞머리
+            const bang = new THREE.Mesh(bangGeo, hairMat);
+            bang.position.set(0, 0.352, 0.196);
+            bang.rotation.x = 0.28;
+            headPivot.add(bang);
+        } else if (hairStyle === 1) {       // 단발 (옆머리)
+            [-1, 1].forEach(function (s) {
+                const flap = new THREE.Mesh(flapGeo, hairMat);
+                flap.position.set(s * 0.202, 0.135, -0.035);
+                flap.scale.set(0.52, 1.08, 0.95);
+                headPivot.add(flap);
+            });
+        } else if (hairStyle === 2) {       // 뒤로 묶음
+            const pony = new THREE.Mesh(ponyGeo, hairMat);
+            pony.position.set(0, 0.168, -0.255);
+            pony.scale.set(0.82, 1.55, 0.92);
+            headPivot.add(pony);
+        }
+
+        // AI 안경 단서
+        const glassesGroup = new THREE.Group();
+        glassesGroup.position.set(0, 0.23, 0.23);
+        headPivot.add(glassesGroup);
+
+        const frameMat = new THREE.MeshStandardMaterial({
+            color: 0x1b2631,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 0.0,
+            metalness: 0.7,
+            roughness: 0.25
+        });
+        // 상단 테 (눈을 가리지 않도록 렌즈 위쪽에 배치)
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.325, 0.024, 0.038), frameMat);
+        bridge.position.y = 0.037;
+        glassesGroup.add(bridge);
+
+        const lensMat = new THREE.MeshBasicMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.06,
+            depthWrite: false
+        });
+        const lLens = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.075, 0.02), lensMat);
+        lLens.position.set(-0.095, -0.01, 0.015);
+        lLens.renderOrder = 3;
+        const rLens = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.075, 0.02), lensMat);
+        rLens.position.set(0.095, -0.01, 0.015);
+        rLens.renderOrder = 3;
+        glassesGroup.add(lLens, rLens);
+
+        const hitBox = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 1.6, 0.85),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hitBox.position.set(0, 0.8, 0.02);
+        person.add(hitBox);
+
+        const seat = {
+            index: idx,
+            code: "#" + String(idx + 1).padStart(2, "0") + " (" + (row + 1) + "열 " + (col + 1) + "번)",
+            basePos: new THREE.Vector3(0, 0.68, -0.42),
+            root: root,
+            person: person,
+            torsoPivot: torsoPivot,
+            headPivot: headPivot,
+            buttonClue: buttonClue,
+            buttonClueMat: buttonClueMat,
+            pincamClue: pincamClue,
+            pincamMat: pincamMat,
+            frameMat: frameMat,
+            lensMat: lensMat,
+            hitBox: hitBox,
+            archetype: ARCHETYPES.NORMAL,
+            clueIntensity: 0,
+            targetClueIntensity: 0,
+            phase: idx * 0.73,
+            isFlying: false,
+            exitedThroughDoor: false,
+            velocity: new THREE.Vector3(),
+            rotVelocity: new THREE.Vector3(),
+            respawnTimer: 0
+        };
+
+        hitBox.userData.seatIndex = idx;
+        hitTargets.push(hitBox);
+        scene.add(root);
+        return seat;
+    }
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            seats.push(buildSeat(r * COLS + c, c, r));
+        }
+    }
+
+    // =========================================================================
+    // 6. 투척 방망이, 탄환 투사체, 파티클 및 효과음
+    // =========================================================================
+    const thrownBatGroup = new THREE.Group();
+    const tHandle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.05, 0.45, 10),
+        new THREE.MeshStandardMaterial({ color: 0x212121 })
+    );
+    tHandle.position.y = -0.45;
+    const tBarrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.055, 1.15, 12),
+        new THREE.MeshStandardMaterial({ color: 0xff9100, emissive: 0x552200, metalness: 0.3, roughness: 0.35 })
+    );
+    thrownBatGroup.add(tHandle, tBarrel);
+    thrownBatGroup.visible = false;
+    scene.add(thrownBatGroup);
+
+    let thrownBatPos = new THREE.Vector3();
+    let thrownBatVel = new THREE.Vector3();
+    let thrownBatKind = "toss";
+    let thrownBatLife = 0;
+    let thrownBatDidHit = false;
+
+    const projectiles = [];
+    const projGeo = new THREE.SphereGeometry(0.11, 8, 8);
+
+    function spawnProjectile(origin, dir, speed, colorHex, kind, radius) {
+        const mesh = new THREE.Mesh(projGeo, new THREE.MeshBasicMaterial({ color: colorHex }));
+        mesh.position.copy(origin);
+        if (kind === "rifle") mesh.scale.set(0.7, 0.7, 3.2);
+        scene.add(mesh);
+        projectiles.push({
+            mesh: mesh,
+            vel: dir.clone().normalize().multiplyScalar(speed),
+            life: 1.6,
+            kind: kind,
+            radius: radius
+        });
+    }
+
+    const particles = [];
+    const partGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+    function spawnParticles(pos, colorHex, count, scaleSpread) {
+        const sp = scaleSpread || 1;
+        for (let i = 0; i < count; i++) {
+            const p = new THREE.Mesh(partGeo, new THREE.MeshBasicMaterial({ color: colorHex }));
+            p.position.copy(pos);
+            p.userData.vel = new THREE.Vector3(
+                (Math.random() - 0.5) * 16 * sp,
+                (Math.random() * 10 + 2) * sp,
+                (Math.random() - 0.5) * 16 * sp
+            );
+            p.userData.life = 0.6 + Math.random() * 0.35;
+            scene.add(p);
+            particles.push(p);
+        }
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(f1, f2, dur, type, vol) {
+        try {
+            if (audioCtx.state === "suspended") audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type || "triangle";
+            const t = audioCtx.currentTime;
+            osc.frequency.setValueAtTime(f1, t);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(25, f2), t + dur);
+            gain.gain.setValueAtTime(vol || 0.25, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(t);
+            osc.stop(t + dur);
+        } catch (e) {}
+    }
+
+    // =========================================================================
+    // 7. 게임 상태, 1인칭 포인터 락 및 8단계 로직
+    // =========================================================================
+    let stageIdx = 0;
+    let gameActive = false;
+    let timeLeft = 50;
+    let caughtCount = 0;
+    let score = 0;
+    let combo = 0;
+    let doorExits = 0;
+    let waveTimer = 0;
+    let attackCooldown = 0;
+    let actionAnimTimer = 0;
+    let actionAnimDuration = 0.25;
+    let actionHitTriggered = false;
+    let hitStopFrames = 0;
+    let screenShake = 0;
+
+    // 1인칭 시점 각도 (yaw: 좌우, pitch: 상하)
+    let yaw = 0;
+    let pitch = -0.06;
+    const keys = {};
+    let hoveredSeat = null;
+
+    const raycaster = new THREE.Raycaster();
+    const centerNdc = new THREE.Vector2(0, 0);
+    const crosshairEl = document.getElementById("crosshair");
+    const stageTitleEl = document.getElementById("stage-title");
+    const timeValEl = document.getElementById("time-val");
+    const caughtValEl = document.getElementById("caught-val");
+    const scoreValEl = document.getElementById("score-val");
+    const comboValEl = document.getElementById("combo-val");
+    const doorValEl = document.getElementById("door-val");
+    const aimSeatEl = document.getElementById("aim-seat");
+    const aimClueEl = document.getElementById("aim-clue");
+    const bannerMainEl = document.getElementById("banner-main");
+    const bannerSubEl = document.getElementById("banner-sub");
+    const overlayEl = document.getElementById("overlay");
+    const modalTitleEl = document.getElementById("modal-title");
+    const modalDescEl = document.getElementById("modal-desc");
+    const startBtnEl = document.getElementById("start-btn");
+    const stageGridEl = document.getElementById("stage-grid");
+
+    let bannerTimer = null;
+    function flashBanner(mainTxt, subTxt, colorStr) {
+        bannerMainEl.textContent = mainTxt;
+        bannerMainEl.style.color = colorStr || "#ffeb3b";
+        bannerSubEl.textContent = subTxt || "";
+        bannerMainEl.classList.add("show");
+        bannerSubEl.classList.add("show");
+        if (bannerTimer) clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(function () {
+            bannerMainEl.classList.remove("show");
+            bannerSubEl.classList.remove("show");
+        }, 950);
+    }
+
+    function getCfg() {
+        return STAGES[stageIdx];
+    }
+
+    function refreshHud() {
+        const cfg = getCfg();
+        stageTitleEl.textContent = "단계 " + cfg.stage + " / 8 · " + cfg.name;
+        timeValEl.textContent = Math.max(0, timeLeft).toFixed(1) + "s";
+        caughtValEl.textContent = caughtCount + " / " + cfg.quota;
+        scoreValEl.textContent = String(score);
+        comboValEl.textContent = String(combo);
+        doorValEl.textContent = String(doorExits);
+    }
+
+    function requestHiddenPointer() {
+        try {
+            if (canvas.requestPointerLock && document.pointerLockElement !== canvas) {
+                canvas.requestPointerLock();
+            }
+        } catch (e) {}
+    }
+
+    function exitHiddenPointer() {
+        try {
+            if (document.pointerLockElement === canvas && document.exitPointerLock) {
+                document.exitPointerLock();
+            }
+        } catch (e) {}
+    }
+
+    function resetSeat(s) {
+        s.archetype = ARCHETYPES.NORMAL;
+        s.clueIntensity = 0;
+        s.targetClueIntensity = 0;
+        s.isFlying = false;
+        s.exitedThroughDoor = false;
+        s.respawnTimer = 0;
+        s.person.position.copy(s.basePos);
+        s.person.rotation.set(0, 0, 0);
+        s.torsoPivot.rotation.set(0, 0, 0);
+        s.headPivot.rotation.set(0, 0, 0);
+        s.buttonClue.position.z = 0.31;
+        s.buttonClueMat.emissiveIntensity = 0;
+        s.pincamClue.position.z = 0.25;
+        s.pincamMat.emissiveIntensity = 0;
+        s.frameMat.emissiveIntensity = 0;
+        s.lensMat.opacity = 0.06;
+        if (!hitTargets.includes(s.hitBox)) hitTargets.push(s.hitBox);
+    }
+
+    function refreshSuspects() {
+        const cfg = getCfg();
+        const pool = [ARCHETYPES.SLEEPING, ARCHETYPES.AI_GLASS, ARCHETYPES.BUTTON, ARCHETYPES.PINCAM];
+        const idleSeats = seats.filter(function (s) { return !s.isFlying; });
+        const targetTotal = cfg.minSus + Math.floor(Math.random() * (cfg.maxSus - cfg.minSus + 1));
+
+        let current = idleSeats.filter(function (s) { return s.archetype.isTarget; });
+        while (current.length > targetTotal) {
+            resetSeat(current.pop());
+        }
+
+        const normals = idleSeats.filter(function (s) { return !s.archetype.isTarget; });
+        for (let i = normals.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = normals[i];
+            normals[i] = normals[j];
+            normals[j] = tmp;
+        }
+
+        const need = Math.max(0, targetTotal - current.length);
+        for (let k = 0; k < need && k < normals.length; k++) {
+            const chosen = normals[k];
+            chosen.archetype = pool[Math.floor(Math.random() * pool.length)];
+            const initClue = Math.max(0.18, cfg.revealBase - cfg.stealth * 0.22);
+            chosen.targetClueIntensity = Math.min(1.0, initClue + Math.random() * 0.35);
+        }
+    }
+
+    function launchSeat(seat, power, upVel, sourceWorldPos) {
+        if (!seat || seat.isFlying) return;
+        const cfg = getCfg();
+        const seatWorld = new THREE.Vector3();
+        seat.person.getWorldPosition(seatWorld);
+        seatWorld.y += 0.9;
+
+        if (seat.archetype.isTarget) {
+            seat.isFlying = true;
+            seat.exitedThroughDoor = false;
+            seat.respawnTimer = 3.2;
+            const hIdx = hitTargets.indexOf(seat.hitBox);
+            if (hIdx !== -1) hitTargets.splice(hIdx, 1);
+
+            combo += 1;
+            caughtCount += 1;
+            const gained = Math.round(seat.archetype.pts * cfg.mult * (1 + Math.min(combo - 1, 10) * 0.1));
+            score += gained;
+
+            const pushDir = new THREE.Vector3().subVectors(seatWorld, sourceWorldPos || camRig.position);
+            pushDir.y = 0;
+            if (pushDir.lengthSq() < 0.01) {
+                camera.getWorldDirection(pushDir);
+                pushDir.y = 0;
+            }
+            pushDir.normalize();
+
+            seat.velocity.set(
+                pushDir.x * power + (Math.random() - 0.5) * 6,
+                upVel + Math.random() * 4.5,
+                pushDir.z * power - 6
+            );
+            seat.rotVelocity.set(
+                -11 - Math.random() * 6,
+                (Math.random() - 0.5) * 14,
+                (Math.random() - 0.5) * 14
+            );
+
+            hitStopFrames = 2;
+            screenShake = Math.max(screenShake, 0.24);
+            playSound(185, 44, 0.22, "triangle", 0.32);
+
+            let pColor = 0x00e5ff;
+            if (seat.archetype.id === "BUTTON") pColor = 0xff5252;
+            else if (seat.archetype.id === "PINCAM") pColor = 0xffd740;
+            else if (seat.archetype.id === "SLEEPING") pColor = 0x90caf9;
+            spawnParticles(seatWorld, pColor, 16, 1.0);
+
+            flashBanner(seat.archetype.label + " 적발!!", "+" + gained + "점 · " + combo + "콤보", "#76ff03");
+            refreshHud();
+
+            if (caughtCount >= cfg.quota) {
+                setTimeout(function () {
+                    if (gameActive) endStage(true);
+                }, 420);
+            }
+        } else {
+            combo = 0;
+            score = Math.max(0, score - 70);
+            timeLeft = Math.max(0.5, timeLeft - 1.8);
+            screenShake = Math.max(screenShake, 0.2);
+            playSound(125, 65, 0.22, "sawtooth", 0.22);
+            spawnParticles(seatWorld, 0xff1744, 9, 0.8);
+            flashBanner("오인 타격!! 정상 응시자", "-70점 · 시간 -1.8s", "#ff5252");
+            refreshHud();
+        }
+    }
+
+    function applyAreaSplash(centerPos, splashRadius, power, upVel, kind) {
+        const isBomb = (kind === "bomb");
+        spawnParticles(centerPos, isBomb ? 0xff3d00 : 0xe040fb, isBomb ? 32 : 24, isBomb ? 1.5 : 1.25);
+        playSound(isBomb ? 110 : 150, 32, isBomb ? 0.35 : 0.25, "sawtooth", 0.35);
+        screenShake = Math.max(screenShake, isBomb ? 0.42 : 0.32);
+
+        let hitAny = false;
+        const seatPos = new THREE.Vector3();
+        for (let i = 0; i < seats.length; i++) {
+            const s = seats[i];
+            if (s.isFlying) continue;
+            s.person.getWorldPosition(seatPos);
+            seatPos.y += 0.9;
+            if (seatPos.distanceTo(centerPos) <= splashRadius && s.archetype.isTarget) {
+                launchSeat(s, power, upVel, centerPos);
+                hitAny = true;
+            }
+        }
+        return hitAny;
+    }
+
+    function performAttack() {
+        if (!gameActive || attackCooldown > 0) return;
+        requestHiddenPointer();
+
+        const w = WEAPONS[currentWeaponIdx];
+        attackCooldown = w.cooldown;
+        actionAnimTimer = Math.min(0.28, w.cooldown * 0.85);
+        actionAnimDuration = actionAnimTimer;
+        actionHitTriggered = false;
+
+        const camWorldPos = new THREE.Vector3();
+        const aimDir = new THREE.Vector3();
+        camera.getWorldPosition(camWorldPos);
+        camera.getWorldDirection(aimDir);
+        aimDir.normalize();
+
+        if (w.mode === "swing") {
+            playSound(280, 95, 0.14, "sine", 0.2);
+        } else if (w.mode === "gun") {
+            if (w.kind === "shotgun") {
+                playSound(210, 55, 0.18, "sawtooth", 0.28);
+                for (let p = 0; p < 5; p++) {
+                    const spread = aimDir.clone().add(new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.12,
+                        (Math.random() - 0.5) * 0.09,
+                        (Math.random() - 0.5) * 0.12
+                    ));
+                    spawnProjectile(camWorldPos.clone().addScaledVector(aimDir, 1.1), spread, 72, w.color, w.kind, w.radius);
+                }
+            } else {
+                playSound(w.kind === "rifle" ? 640 : 480, 120, 0.12, "square", 0.18);
+                spawnProjectile(camWorldPos.clone().addScaledVector(aimDir, 1.1), aimDir, w.kind === "rifle" ? 95 : 78, w.color, w.kind, w.radius);
+            }
+        } else if (w.mode === "throw") {
+            playSound(340, 110, 0.18, "triangle", 0.25);
+            if (!thrownBatActive) {
+                thrownBatActive = true;
+                thrownBatKind = w.kind;
+                thrownBatLife = 1.6;
+                thrownBatDidHit = false;
+                thrownBatPos.copy(camWorldPos).addScaledVector(aimDir, 1.2);
+                thrownBatVel.copy(aimDir).multiplyScalar(40);
+                thrownBatVel.y += 4.5;
+                thrownBatGroup.position.copy(thrownBatPos);
+                thrownBatGroup.visible = true;
+                tBarrel.material.color.setHex(w.kind === "bomb" ? 0x37474f : 0xffab40);
+                tBarrel.material.emissive.setHex(w.kind === "bomb" ? 0xff1744 : 0x552200);
+                viewBatGroup.visible = false;
+            }
+        }
+    }
+
+    function startStage(idx) {
+        stageIdx = Math.max(0, Math.min(STAGES.length - 1, idx));
+        const cfg = getCfg();
+        timeLeft = cfg.duration;
+        caughtCount = 0;
+        combo = 0;
+        waveTimer = 0.35;
+        attackCooldown = 0;
+        thrownBatActive = false;
+        thrownBatGroup.visible = false;
+        camRig.position.set(0, 1.85, 16.5);
+        yaw = 0;
+        pitch = -0.06;
+
+        for (let i = 0; i < projectiles.length; i++) scene.remove(projectiles[i].mesh);
+        projectiles.length = 0;
+
+        for (let d = 0; d < exitDoors.length; d++) {
+            exitDoors[d].openAngle = 0;
+            exitDoors[d].angularVel = 0;
+            exitDoors[d].triggered = false;
+            exitDoors[d].pivot.rotation.y = 0;
+        }
+
+        for (let s = 0; s < seats.length; s++) resetSeat(seats[s]);
+        refreshSuspects();
+        selectWeapon(currentWeaponIdx);
+
+        gameActive = true;
+        overlayEl.style.display = "none";
+        refreshHud();
+        requestHiddenPointer();
+        flashBanner("단계 " + cfg.stage + " 시작!", "목표 " + cfg.quota + "명 · 제한 " + cfg.duration + "초", "#4dd0e1");
+    }
+
+    function endStage(cleared) {
+        gameActive = false;
+        exitHiddenPointer();
+        const cfg = getCfg();
+        if (cleared) {
+            const bonus = Math.round(timeLeft * 15 * cfg.mult);
+            score += bonus;
+            refreshHud();
+
+            if (stageIdx < STAGES.length - 1) {
+                modalTitleEl.textContent = "단계 " + cfg.stage + " 단속 성공!";
+                modalDescEl.innerHTML =
+                    "목표 <strong>" + cfg.quota + "명</strong> 적발 완료! (보너스 +" + bonus + "점, 총점 " + score + "점)<br>" +
+                    "문밖 퇴장 보너스 <strong>" + doorExits + "회</strong> 기록! 다음 단계로 진행하세요.";
+                startBtnEl.textContent = "단계 " + (cfg.stage + 1) + " 시작";
+                startBtnEl.onclick = function () { startStage(stageIdx + 1); };
+            } else {
+                modalTitleEl.textContent = "8단계 전 과정 정복!";
+                modalDescEl.innerHTML =
+                    "50인 시험장의 단속 임무를 모두 완수했습니다!<br>" +
+                    "최종 점수: <strong>" + score + "점</strong> · 문밖 퇴장: <strong>" + doorExits + "회</strong>";
+                startBtnEl.textContent = "1단계부터 다시 시작";
+                startBtnEl.onclick = function () { startStage(0); };
+            }
+        } else {
+            modalTitleEl.textContent = "시간 종료 — 단계 " + cfg.stage + " 실패";
+            modalDescEl.innerHTML =
+                "목표 <strong>" + cfg.quota + "명</strong> 중 <strong>" + caughtCount + "명</strong>을 적발했습니다.<br>" +
+                "1인칭 시점 회전과 1~8번 무기를 활용해 다시 도전해 보세요.";
+            startBtnEl.textContent = "단계 " + cfg.stage + " 재도전";
+            startBtnEl.onclick = function () { startStage(stageIdx); };
+        }
+        renderStageButtons();
+        overlayEl.style.display = "flex";
+    }
+
+    function renderStageButtons() {
+        stageGridEl.innerHTML = "";
+        for (let i = 0; i < STAGES.length; i++) {
+            const b = document.createElement("button");
+            b.className = "stage-btn" + (i === stageIdx ? " active" : "");
+            b.textContent = (i + 1) + "단계";
+            b.onclick = (function (index) {
+                return function () {
+                    stageIdx = index;
+                    renderStageButtons();
+                    startBtnEl.textContent = "단계 " + (index + 1) + " 시작하기";
+                    startBtnEl.onclick = function () { startStage(index); };
+                };
+            })(i);
+            stageGridEl.appendChild(b);
+        }
+    }
+    renderStageButtons();
+    startBtnEl.onclick = function () { startStage(stageIdx); };
+
+    // =========================================================================
+    // 8. 조준 및 단서 갱신
+    // =========================================================================
+    function updateAim(dt) {
+        raycaster.setFromCamera(centerNdc, camera);
+        const hits = raycaster.intersectObjects(hitTargets, false);
+        hoveredSeat = null;
+
+        if (hits.length > 0) {
+            const idx = hits[0].object.userData.seatIndex;
+            const s = seats[idx];
+            if (s && !s.isFlying) {
+                hoveredSeat = s;
+                s.targetClueIntensity = Math.min(1.0, s.targetClueIntensity + dt * 0.78);
+            }
+        }
+
+        if (hoveredSeat && hoveredSeat.archetype.isTarget && hoveredSeat.clueIntensity >= 0.22) {
+            crosshairEl.classList.add("locked");
+        } else {
+            crosshairEl.classList.remove("locked");
+        }
+
+        if (!hoveredSeat) {
+            aimSeatEl.textContent = "좌석 #--";
+            aimClueEl.textContent = "마우스로 1인칭 시점을 돌려 50명의 단서를 확인하세요.";
+            return;
+        }
+
+        aimSeatEl.textContent = "좌석 " + hoveredSeat.code;
+        if (!hoveredSeat.archetype.isTarget || hoveredSeat.clueIntensity < 0.22) {
+            aimClueEl.textContent = "겉보기엔 평범하게 시험지를 보는 중... (조준 시 단서 선명화)";
+        } else if (hoveredSeat.archetype.id === "SLEEPING") {
+            aimClueEl.textContent = "단서: 고개가 푹 숙여진 채 규칙적으로 상체가 들썩임 (잠든 사람)";
+        } else if (hoveredSeat.archetype.id === "AI_GLASS") {
+            aimClueEl.textContent = "단서: 안경 시안광과 허공 시선 스캔 포착 (AI 안경)";
+        } else if (hoveredSeat.archetype.id === "BUTTON") {
+            aimClueEl.textContent = "단서: 가슴 단추 위치에서 미세한 붉은 LED 점멸 (단추 위장)";
+        } else if (hoveredSeat.archetype.id === "PINCAM") {
+            aimClueEl.textContent = "단서: 상의 측면에 초소형 렌즈 반사광 포착 (핀카메라)";
+        }
+    }
+
+    // =========================================================================
+    // 9. 1인칭 마우스 포인터 락 & 키보드 입력 핸들러
+    // =========================================================================
+    window.addEventListener("mousemove", function (e) {
+        if (!gameActive) return;
+        const sensitivity = 0.0023;
+        if (document.pointerLockElement === canvas) {
+            yaw -= e.movementX * sensitivity;
+            pitch -= e.movementY * sensitivity;
+        } else {
+            const nx = (e.clientX / window.innerWidth) * 2 - 1;
+            const ny = (e.clientY / window.innerHeight) * 2 - 1;
+            yaw = -nx * 1.45;
+            pitch = -0.06 - ny * 0.55;
+        }
+        pitch = Math.max(-0.82, Math.min(0.55, pitch));
+    });
+
+    window.addEventListener("mousedown", function (e) {
+        if (e.button === 0 && gameActive) {
+            performAttack();
+        }
+    });
+
+    window.addEventListener("keydown", function (e) {
+        keys[e.code] = true;
+        if (e.key >= "1" && e.key <= "8") {
+            selectWeapon(parseInt(e.key, 10) - 1);
+        }
+        if (e.code === "Space" && gameActive) {
+            e.preventDefault();
+            performAttack();
+        }
+    });
+
+    window.addEventListener("keyup", function (e) {
+        keys[e.code] = false;
+    });
+
+    window.addEventListener("resize", function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // =========================================================================
+    // 10. 메인 1인칭 물리 및 애니메이션 루프
+    // =========================================================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const elapsed = clock.getElapsedTime();
+
+        if (hitStopFrames > 0) {
+            hitStopFrames--;
+            renderer.render(scene, camera);
+            return;
+        }
+
+        if (attackCooldown > 0) attackCooldown = Math.max(0, attackCooldown - dt);
+
+        if (gameActive) {
+            timeLeft -= dt;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                refreshHud();
+                endStage(false);
+            } else {
+                refreshHud();
+            }
+
+            waveTimer -= dt;
+            if (waveTimer <= 0) {
+                waveTimer = 4.2;
+                refreshSuspects();
+            }
+        }
+
+        // 1인칭 시점 기준 전후좌우 이동 (WASD / 방향키)
+        const forwardVec = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const rightVec = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+        const moveStep = 11.5 * dt;
+
+        if (keys["KeyW"] || keys["ArrowUp"]) camRig.position.addScaledVector(forwardVec, moveStep);
+        if (keys["KeyS"] || keys["ArrowDown"]) camRig.position.addScaledVector(forwardVec, -moveStep);
+        if (keys["KeyA"] || keys["ArrowLeft"]) camRig.position.addScaledVector(rightVec, -moveStep);
+        if (keys["KeyD"] || keys["ArrowRight"]) camRig.position.addScaledVector(rightVec, moveStep);
+
+        camRig.position.x = Math.max(-24, Math.min(24, camRig.position.x));
+        camRig.position.z = Math.max(-32, Math.min(19.5, camRig.position.z));
+
+        const sX = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+        const sY = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+        if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 1.9);
+
+        camera.position.set(sX, sY, 0);
+        camera.rotation.order = "YXZ";
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+
+        // 출입문 스프링/회전 물리 업데이트
+        for (let d = 0; d < exitDoors.length; d++) {
+            const door = exitDoors[d];
+            const springForce = -door.openAngle * 14.0 - door.angularVel * 3.2;
+            door.angularVel += springForce * dt;
+            door.openAngle += door.angularVel * dt;
+            door.openAngle = Math.max(-1.45, Math.min(1.45, door.openAngle));
+            door.pivot.rotation.y = door.openAngle;
+        }
+
+        // 1인칭 무기 스윙/사격/투척 애니메이션
+        const curWeapon = WEAPONS[currentWeaponIdx];
+        if (actionAnimTimer > 0) {
+            actionAnimTimer = Math.max(0, actionAnimTimer - dt);
+            const t = 1.0 - (actionAnimTimer / Math.max(0.01, actionAnimDuration));
+            const arc = Math.sin(t * Math.PI);
+
+            if (curWeapon.mode === "swing") {
+                if (curWeapon.kind === "hammer") {
+                    viewHammerGroup.rotation.x = -0.3 - arc * 1.45;
+                    viewHammerGroup.position.set(-arc * 0.25, arc * 0.22, -arc * 0.25);
+                } else {
+                    viewBatGroup.rotation.z = batIdleRot.z + arc * 1.65;
+                    viewBatGroup.rotation.y = batIdleRot.y - arc * 1.35;
+                    viewBatGroup.position.set(-arc * 0.52, arc * 0.16, -arc * 0.35);
+                }
+
+                if (!actionHitTriggered && t >= 0.35) {
+                    actionHitTriggered = true;
+                    if (curWeapon.kind === "hammer") {
+                        const slamPos = new THREE.Vector3();
+                        camera.getWorldPosition(slamPos);
+                        const fDir = new THREE.Vector3();
+                        camera.getWorldDirection(fDir);
+                        slamPos.addScaledVector(fDir, 5.5);
+                        slamPos.y = 1.1;
+                        applyAreaSplash(slamPos, curWeapon.radius, curWeapon.power, curWeapon.up, "hammer");
+                    } else {
+                        const camPos = new THREE.Vector3();
+                        const fDir = new THREE.Vector3();
+                        camera.getWorldPosition(camPos);
+                        camera.getWorldDirection(fDir);
+                        fDir.normalize();
+
+                        let bestSeat = hoveredSeat;
+                        let bestDist = 15.0;
+                        const sPos = new THREE.Vector3();
+                        for (let i = 0; i < seats.length; i++) {
+                            const s = seats[i];
+                            if (s.isFlying) continue;
+                            s.person.getWorldPosition(sPos);
+                            sPos.y += 0.85;
+                            const toSeat = new THREE.Vector3().subVectors(sPos, camPos);
+                            const dist = toSeat.length();
+                            if (dist < bestDist) {
+                                toSeat.normalize();
+                                if (fDir.dot(toSeat) > 0.88 && s.archetype.isTarget) {
+                                    bestDist = dist;
+                                    bestSeat = s;
+                                }
+                            }
+                        }
+                        if (bestSeat) {
+                            launchSeat(bestSeat, curWeapon.power, curWeapon.up, camPos);
+                        }
+                    }
+                }
+            } else if (curWeapon.mode === "gun") {
+                viewGunGroup.position.z = arc * 0.16;
+                viewGunGroup.rotation.x = arc * 0.28;
+            } else if (curWeapon.mode === "throw") {
+                viewBatGroup.rotation.x = -arc * 1.1;
+            }
+        } else {
+            viewBatGroup.position.set(0, 0, 0);
+            viewBatGroup.rotation.copy(batIdleRot);
+            viewGunGroup.position.set(0, 0, 0);
+            viewGunGroup.rotation.set(0, 0, 0);
+            viewHammerGroup.position.set(0, 0, 0);
+            viewHammerGroup.rotation.set(0, 0, 0);
+        }
+
+        // 던진 방망이 물리
+        if (thrownBatActive) {
+            thrownBatLife -= dt;
+            thrownBatVel.y -= 16 * dt;
+            thrownBatPos.addScaledVector(thrownBatVel, dt);
+            thrownBatGroup.position.copy(thrownBatPos);
+            thrownBatGroup.rotation.z += 22 * dt;
+            thrownBatGroup.rotation.x += 12 * dt;
+
+            const sPos = new THREE.Vector3();
+            for (let i = 0; i < seats.length; i++) {
+                const s = seats[i];
+                if (s.isFlying) continue;
+                s.person.getWorldPosition(sPos);
+                sPos.y += 0.85;
+                if (thrownBatPos.distanceTo(sPos) < 1.35) {
+                    if (thrownBatKind === "bomb") {
+                        applyAreaSplash(thrownBatPos, 5.8, 38, 17, "bomb");
+                        thrownBatActive = false;
+                        thrownBatGroup.visible = false;
+                        if (curWeapon.mode === "throw") viewBatGroup.visible = true;
+                        break;
+                    } else if (!thrownBatDidHit) {
+                        thrownBatDidHit = true;
+                        launchSeat(s, 30, 14, thrownBatPos);
+                    }
+                }
+            }
+
+            if (thrownBatActive && (thrownBatPos.y <= 0.15 || thrownBatLife <= 0)) {
+                if (thrownBatKind === "bomb") {
+                    applyAreaSplash(thrownBatPos, 5.8, 38, 17, "bomb");
+                }
+                thrownBatActive = false;
+                thrownBatGroup.visible = false;
+                if (curWeapon.mode === "throw") viewBatGroup.visible = true;
+            }
+        }
+
+        // 총알 / 펄스 빔 / 산탄 투사체 업데이트
+        for (let pIdx = projectiles.length - 1; pIdx >= 0; pIdx--) {
+            const pr = projectiles[pIdx];
+            pr.life -= dt;
+            pr.mesh.position.addScaledVector(pr.vel, dt);
+
+            let hitSomething = false;
+            const seatWorld = new THREE.Vector3();
+            for (let sIdx = 0; sIdx < seats.length; sIdx++) {
+                const s = seats[sIdx];
+                if (s.isFlying) continue;
+                s.person.getWorldPosition(seatWorld);
+                seatWorld.y += 0.85;
+                if (pr.mesh.position.distanceTo(seatWorld) <= pr.radius) {
+                    const wCfg = WEAPONS.find(function (item) { return item.kind === pr.kind; }) || WEAPONS[2];
+                    launchSeat(s, wCfg.power, wCfg.up, pr.mesh.position);
+                    hitSomething = true;
+                    break;
+                }
+            }
+
+            if (hitSomething || pr.life <= 0 || pr.mesh.position.y <= 0) {
+                scene.remove(pr.mesh);
+                projectiles.splice(pIdx, 1);
+            }
+        }
+
+        if (gameActive) {
+            updateAim(dt);
+        }
+
+        // 50명 응시자 비행 + 출입문 충돌 & 문밖 복도 퇴장 판정
+        const worldPersonPos = new THREE.Vector3();
+        for (let i = 0; i < seats.length; i++) {
+            const s = seats[i];
+            if (s.isFlying) {
+                s.velocity.y -= 25 * dt;
+                s.person.position.addScaledVector(s.velocity, dt);
+                s.person.rotation.x += s.rotVelocity.x * dt;
+                s.person.rotation.y += s.rotVelocity.y * dt;
+                s.person.rotation.z += s.rotVelocity.z * dt;
+
+                s.person.getWorldPosition(worldPersonPos);
+
+                // 출입문 통과/충돌 체크 (EXIT_Z_BOUNDARY = -37.0)
+                if (!s.exitedThroughDoor && worldPersonPos.z <= EXIT_Z_BOUNDARY + 0.6) {
+                    let nearDoor = null;
+                    for (let d = 0; d < exitDoors.length; d++) {
+                        const door = exitDoors[d];
+                        if (Math.abs(worldPersonPos.x - door.centerX) <= door.halfWidth + 1.4) {
+                            nearDoor = door;
+                            break;
+                        }
+                    }
+
+                    if (nearDoor) {
+                        // 출입문을 세게 밀치며 열고 복도 밖으로 날아감!
+                        s.exitedThroughDoor = true;
+                        nearDoor.angularVel = (worldPersonPos.x < nearDoor.centerX ? 1 : -1) * 9.5;
+                        s.velocity.z *= 1.15;
+                        s.velocity.y = Math.max(s.velocity.y, 6.5);
+
+                        doorExits += 1;
+                        const doorBonus = Math.round(80 * getCfg().mult);
+                        score += doorBonus;
+                        refreshHud();
+                        playSound(240, 620, 0.22, "triangle", 0.26);
+                        spawnParticles(worldPersonPos, 0xffd54f, 18, 1.2);
+                        flashBanner("문밖으로 날아감!!", "출입문 퇴장 보너스 +" + doorBonus + "점", "#ffd54f");
+                    } else {
+                        // 벽면 충돌 시 살짝 튕김
+                        s.person.position.z = EXIT_Z_BOUNDARY + 0.8 - s.root.position.z;
+                        s.velocity.z *= -0.35;
+                    }
+                }
+
+                // 복도 끝 벽 제한
+                if (worldPersonPos.z < -56.5) {
+                    s.person.position.z = -56.5 - s.root.position.z;
+                    s.velocity.z *= -0.3;
+                }
+
+                if (s.person.position.y < 0.35) {
+                    s.person.position.y = 0.35;
+                    s.velocity.y *= -0.45;
+                    s.velocity.x *= 0.75;
+                    s.velocity.z *= 0.75;
+                }
+
+                s.respawnTimer -= dt;
+                if (s.respawnTimer <= 0 && gameActive) {
+                    resetSeat(s);
+                }
+                continue;
+            }
+
+            s.clueIntensity += (s.targetClueIntensity - s.clueIntensity) * Math.min(1, dt * 5.0);
+            const ci = s.clueIntensity;
+
+            s.torsoPivot.rotation.set(0, 0, 0);
+            s.headPivot.rotation.set(0, 0, 0);
+            s.buttonClue.position.z = 0.31;
+            s.buttonClueMat.emissiveIntensity = 0;
+            s.pincamClue.position.z = 0.25;
+            s.pincamMat.emissiveIntensity = 0;
+            s.frameMat.emissiveIntensity = 0;
+            s.lensMat.opacity = 0.05;
+
+            if (s.archetype.id === "NORMAL") {
+                s.headPivot.rotation.x = 0.24 + Math.sin(elapsed * 2.0 + s.phase) * 0.03;
+                s.headPivot.rotation.y = Math.sin(elapsed * 1.1 + s.phase) * 0.05;
+            } else if (s.archetype.id === "SLEEPING") {
+                const breath = Math.sin(elapsed * 2.4 + s.phase);
+                s.torsoPivot.rotation.x = 0.16 + breath * (0.025 + ci * 0.045);
+                s.headPivot.rotation.x = 0.56 + breath * (0.03 + ci * 0.05);
+                s.headPivot.rotation.z = Math.sin(elapsed * 0.9 + s.phase) * 0.08;
+            } else if (s.archetype.id === "AI_GLASS") {
+                s.headPivot.rotation.x = -0.05;
+                const step = Math.floor((elapsed * 1.8 + s.phase) % 3) - 1;
+                s.headPivot.rotation.y = step * (0.09 + ci * 0.12);
+                const pulse = 0.5 + 0.5 * Math.sin(elapsed * 7.0 + s.phase);
+                s.frameMat.emissiveIntensity = ci * (0.35 + pulse * 0.75);
+                s.lensMat.opacity = 0.08 + ci * (0.35 + pulse * 0.45);
+            } else if (s.archetype.id === "BUTTON") {
+                s.headPivot.rotation.x = 0.22;
+                const blink = Math.sin(elapsed * 8.5 + s.phase) > 0.35 ? 1 : 0;
+                s.buttonClue.position.z = 0.31 + ci * 0.025;
+                s.buttonClueMat.emissiveIntensity = ci * blink * 1.8;
+            } else if (s.archetype.id === "PINCAM") {
+                s.headPivot.rotation.x = 0.18;
+                s.torsoPivot.rotation.y = Math.sin(elapsed * 1.6 + s.phase) * (0.06 + ci * 0.08);
+                const glint = Math.pow(Math.max(0, Math.sin(elapsed * 6.0 + s.phase)), 6);
+                s.pincamClue.position.z = 0.25 + ci * 0.02;
+                s.pincamMat.emissiveIntensity = ci * (0.2 + glint * 2.2);
+            }
+        }
+
+        // 파티클 업데이트
+        for (let idx = particles.length - 1; idx >= 0; idx--) {
+            const p = particles[idx];
+            p.userData.vel.y -= 24 * dt;
+            p.position.addScaledVector(p.userData.vel, dt);
+            p.rotation.x += 9 * dt;
+            p.rotation.y += 9 * dt;
+            p.userData.life -= dt;
+            p.scale.setScalar(Math.max(0.01, p.userData.life));
+            if (p.userData.life <= 0) {
+                scene.remove(p);
+                particles.splice(idx, 1);
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+})();
+</script>
+</body>
+</html>
